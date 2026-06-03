@@ -50,6 +50,13 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
+@app.get("/debug")
+async def debug():
+    from database import get_supabase_client
+    sb = get_supabase_client()
+    r = sb.table("invoices").select("id", count="exact").execute()
+    return {"invoices_in_db": r.count, "backend": "OK"}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
