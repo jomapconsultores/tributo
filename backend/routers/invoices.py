@@ -64,8 +64,11 @@ async def process_txt(
         if not claves:
             raise HTTPException(status_code=400, detail="No se encontraron claves válidas")
 
-        # Descargar XMLs
-        xmls, errores = descargar_multiples_xmls(list(claves))
+        # Limitar a 50 claves por solicitud para evitar timeouts
+        claves_list = list(claves)[:50]
+
+        # Descargar XMLs con timeout
+        xmls, errores = descargar_multiples_xmls(claves_list, max_workers=5)
 
         # Obtener clasificador del usuario
         supabase = get_supabase_client()
@@ -73,19 +76,18 @@ async def process_txt(
             .select("ruc, categoria")\
             .eq("user_id", user_id)\
             .execute()
-        classification_map = {row['ruc']: row['categoria'] for row in class_response.data}
+        classification_map = {row['ruc']: row['categoria'] for row in class_response.data or []}
 
         # Obtener memoria de tarjetas
         memory_response = supabase.table("card_memory")\
             .select("mem_key, tarjeta_credito")\
             .eq("user_id", user_id)\
             .execute()
-        card_memory = {row['mem_key']: row['tarjeta_credito'] for row in memory_response.data}
+        card_memory = {row['mem_key']: row['tarjeta_credito'] for row in memory_response.data or []}
 
         # Parsear y guardar
         new_count = 0
         dup_count = 0
-        loaded_ids = set()
 
         for xml_content in xmls:
             invoice = parse_xml_invoice(xml_content, classification_map, card_memory)
@@ -93,8 +95,8 @@ async def process_txt(
                 continue
 
             unique_id = invoice.pop('unique_id')
-            base_orig = invoice.pop('base_15_original')
-            total_orig = invoice.pop('total_original')
+            _ = invoice.pop('base_15_original', None)
+            _ = invoice.pop('total_original', None)
 
             try:
                 response = supabase.table("invoices")\
@@ -106,20 +108,19 @@ async def process_txt(
                     .execute()
                 if response.data:
                     new_count += 1
-                    loaded_ids.add(unique_id)
             except Exception as insert_e:
                 if "duplicate" in str(insert_e).lower():
                     dup_count += 1
-                else:
-                    print(f"Error inserting invoice: {insert_e}")
 
         return {
             "processed": len(xmls),
             "new": new_count,
             "duplicates": dup_count,
-            "errors": errores
+            "errors": errores,
+            "total_claves": len(claves)
         }
     except Exception as e:
+        print(f"Error in process_txt: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/process-xml")
