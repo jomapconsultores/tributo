@@ -98,7 +98,7 @@ async def import_classifications(
 
         supabase = get_supabase_client()
         count = 0
-        errors = 0
+        updated = 0
 
         for _, row in df.iterrows():
             try:
@@ -107,20 +107,39 @@ async def import_classifications(
                 categoria = str(row[2]).strip().upper() if len(row) > 2 else ""
 
                 if ruc and categoria:
-                    supabase.table("classification_map")\
-                        .upsert({
-                            "user_id": user_id,
-                            "ruc": ruc,
-                            "nombre_proveedor": nombre,
-                            "categoria": categoria
-                        })\
+                    # Check if exists
+                    existing = supabase.table("classification_map")\
+                        .select("id")\
+                        .eq("user_id", user_id)\
+                        .eq("ruc", ruc)\
                         .execute()
-                    count += 1
-            except Exception as e:
-                errors += 1
-                print(f"Error importing row: {e}")
 
-        return {"imported": count, "errors": errors}
+                    if existing.data:
+                        # Update existing
+                        supabase.table("classification_map")\
+                            .update({
+                                "nombre_proveedor": nombre,
+                                "categoria": categoria
+                            })\
+                            .eq("user_id", user_id)\
+                            .eq("ruc", ruc)\
+                            .execute()
+                        updated += 1
+                    else:
+                        # Insert new
+                        supabase.table("classification_map")\
+                            .insert({
+                                "user_id": user_id,
+                                "ruc": ruc,
+                                "nombre_proveedor": nombre,
+                                "categoria": categoria
+                            })\
+                            .execute()
+                        count += 1
+            except Exception as e:
+                print(f"Error importing row {ruc}: {e}")
+
+        return {"imported": count, "updated": updated}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
