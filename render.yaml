@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: tributos-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    rootDir: backend
+    envVars:
+      - key: SUPABASE_URL
+        scope: build
+      - key: SUPABASE_SERVICE_KEY
+        scope: build
+      - key: SUPABASE_ANON_KEY
+        scope: build
+      - key: JWT_SECRET
+        scope: build
+      - key: CORS_ORIGINS
+        value: http://localhost:5173,http://localhost:3000
+        scope: build
+
+  - type: static
+    name: tributos-web
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    rootDir: frontend
+    envVars:
+      - key: VITE_API_URL
+        value: https://tributos-api.onrender.com
+        scope: build
