@@ -146,25 +146,27 @@ export default function Dashboard({ user, onLogout }) {
           <button onClick={handleClear} className="btn-small danger">🗑 Limpiar todo</button>
         </div>
 
-        {loading ? (
-          <div className="loading">Cargando facturas...</div>
-        ) : error ? null : invoices.length === 0 ? (
-          <div className="empty">No hay facturas. Sube un TXT o XML para comenzar.</div>
-        ) : (
-          <>
-            <InvoiceTable
-              invoices={invoices}
-              onInvoicesChange={() => loadInvoices(page)}
-            />
-            {total > limit && (
-              <div className="pagination">
-                <button onClick={() => loadInvoices(page - 1)} disabled={page === 1} className="pag-btn">← Anterior</button>
-                <span className="pag-info">Página {page} de {Math.ceil(total / limit)} — {total} facturas</span>
-                <button onClick={() => loadInvoices(page + 1)} disabled={page * limit >= total} className="pag-btn">Siguiente →</button>
-              </div>
-            )}
-          </>
-        )}
+        <div className="table-section">
+          {loading ? (
+            <div className="loading">Cargando facturas...</div>
+          ) : error ? null : invoices.length === 0 ? (
+            <div className="empty">No hay facturas. Sube un TXT o XML para comenzar.</div>
+          ) : (
+            <>
+              <InvoiceTable
+                invoices={invoices}
+                onInvoicesChange={() => loadInvoices(page)}
+              />
+              {total > limit && (
+                <div className="pagination">
+                  <button onClick={() => loadInvoices(page - 1)} disabled={page === 1} className="pag-btn">← Anterior</button>
+                  <span className="pag-info">Página {page} de {Math.ceil(total / limit)} — {total} facturas</span>
+                  <button onClick={() => loadInvoices(page + 1)} disabled={page * limit >= total} className="pag-btn">Siguiente →</button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </main>
     </div>
   )

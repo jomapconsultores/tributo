@@ -37,7 +37,7 @@ export default function InvoiceTable({ invoices, onInvoicesChange }) {
   }
 
   return (
-    <div style={{overflowX:'auto', background:'white', borderRadius:'8px', boxShadow:'0 1px 3px rgba(0,0,0,0.08)'}}>
+    <div style={{overflowX:'auto', overflowY:'auto', background:'white', borderRadius:'8px', boxShadow:'0 1px 3px rgba(0,0,0,0.08)', flex:1, minHeight:0}}>
       <p style={{padding:'8px 12px', margin:0, fontSize:'0.8em', color:'#888', borderBottom:'1px solid #eee'}}>
         {invoices.length} facturas — click en Clasificación para editar
       </p>
