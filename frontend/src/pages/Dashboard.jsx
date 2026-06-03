@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { invoicesAPI, classificationAPI } from '../services/api'
+import { invoicesAPI } from '../services/api'
 import InvoiceTable from '../components/InvoiceTable'
 import UploadPanel from '../components/UploadPanel'
 import './Dashboard.css'
@@ -8,25 +8,25 @@ import './Dashboard.css'
 export default function Dashboard({ user, onLogout }) {
   const navigate = useNavigate()
   const [invoices, setInvoices] = useState([])
-  const [filteredInvoices, setFilteredInvoices] = useState([])
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState({})
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [limit, setLimit] = useState(20)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterClassification, setFilterClassification] = useState('ALL')
-  const [showUnclassified, setShowUnclassified] = useState(false)
 
   useEffect(() => {
-    loadInvoices()
-  }, [])
+    loadInvoices(page)
+  }, [page])
 
-  useEffect(() => {
-    applyFilters()
-  }, [invoices, searchTerm, filterClassification, showUnclassified])
-
-  const loadInvoices = async () => {
+  const loadInvoices = async (pageNum) => {
+    setLoading(true)
     try {
-      const response = await invoicesAPI.list(0, 500)
-      setInvoices(response.data || [])
+      const skip = (pageNum - 1) * limit
+      const response = await invoicesAPI.list(skip, limit)
+      setInvoices(response.data?.data || [])
+      setTotal(response.data?.total || 0)
+      setPage(pageNum)
     } catch (error) {
       console.error('Error loading invoices:', error)
     } finally {
@@ -34,60 +34,30 @@ export default function Dashboard({ user, onLogout }) {
     }
   }
 
-  const applyFilters = () => {
+  const getFilteredInvoices = () => {
     let filtered = invoices
 
-    // Filtro de búsqueda
     if (searchTerm) {
       filtered = filtered.filter(inv =>
         inv.nombre_proveedor?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        inv.ruc_proveedor?.includes(searchTerm) ||
-        inv.concepto?.toLowerCase().includes(searchTerm.toLowerCase())
+        inv.ruc_proveedor?.includes(searchTerm)
       )
     }
 
-    // Filtro de clasificación
     if (filterClassification !== 'ALL') {
       if (filterClassification === 'UNCLASSIFIED') {
-        filtered = filtered.filter(inv =>
-          !inv.clasificacion || inv.clasificacion === 'SIN CLASIFICAR'
-        )
+        filtered = filtered.filter(inv => !inv.clasificacion || inv.clasificacion === 'SIN CLASIFICAR')
       } else {
         filtered = filtered.filter(inv => inv.clasificacion === filterClassification)
       }
     }
 
-    setFilteredInvoices(filtered)
-    updateStats(filtered)
+    return filtered
   }
 
-  const updateStats = (data) => {
-    const total = data.reduce((sum, inv) => sum + (inv.total || 0), 0)
-    const unclassified = data.filter(i => !i.clasificacion || i.clasificacion === 'SIN CLASIFICAR').length
-    setStats({
-      count: data.length,
-      total: total.toFixed(2),
-      unclassified,
-    })
-  }
-
-  const handleProcessTxt = async (file) => {
-    try {
-      await invoicesAPI.processTxt(file)
-      loadInvoices()
-    } catch (error) {
-      console.error('Error processing txt:', error)
-    }
-  }
-
-  const handleProcessXml = async (files) => {
-    try {
-      await invoicesAPI.processXml(files)
-      loadInvoices()
-    } catch (error) {
-      console.error('Error processing xml:', error)
-    }
-  }
+  const filteredInvoices = getFilteredInvoices()
+  const unclassified = invoices.filter(i => !i.clasificacion || i.clasificacion === 'SIN CLASIFICAR').length
+  const totalAmount = invoices.reduce((sum, inv) => sum + (inv.total || 0), 0)
 
   const handleExportExcel = async () => {
     try {
@@ -98,7 +68,7 @@ export default function Dashboard({ user, onLogout }) {
       a.download = `facturas_${new Date().toISOString().split('T')[0]}.xlsx`
       a.click()
     } catch (error) {
-      console.error('Error exporting:', error)
+      console.error('Error:', error)
     }
   }
 
@@ -111,7 +81,7 @@ export default function Dashboard({ user, onLogout }) {
       a.download = `resumen_${new Date().toISOString().split('T')[0]}.pdf`
       a.click()
     } catch (error) {
-      console.error('Error exporting:', error)
+      console.error('Error:', error)
     }
   }
 
@@ -120,132 +90,92 @@ export default function Dashboard({ user, onLogout }) {
       try {
         await invoicesAPI.clear()
         setInvoices([])
+        setTotal(0)
       } catch (error) {
-        console.error('Error clearing:', error)
+        console.error('Error:', error)
       }
     }
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('userId')
-    localStorage.removeItem('email')
-    onLogout()
-  }
-
-  const getClassifications = () => {
-    const classifications = new Set(invoices
-      .filter(i => i.clasificacion && i.clasificacion !== 'SIN CLASIFICAR')
-      .map(i => i.clasificacion))
-    return Array.from(classifications).sort()
-  }
-
   return (
     <div className="dashboard">
-      <header className="dashboard-header">
-        <div className="header-content">
-          <h1>📊 Gestor SRI - Facturas</h1>
-          <p className="subtitle">Procesa, clasifica y exporta tus facturas</p>
+      {/* Header */}
+      <header className="header">
+        <div className="header-left">
+          <h1>Facturas SRI</h1>
         </div>
-        <div className="header-actions">
-          <span className="user-email">{user.email}</span>
-          <button onClick={() => navigate('/clasificador')} className="btn-nav">
-            📋 Clasificador
-          </button>
-          <button onClick={handleLogout} className="btn-logout">
-            Cerrar sesión
-          </button>
+        <div className="header-right">
+          <button onClick={() => navigate('/clasificador')} className="link-btn">Clasificador</button>
+          <button onClick={onLogout} className="link-btn logout">Salir</button>
         </div>
       </header>
 
-      <main className="dashboard-content">
-        {/* Stats Bar */}
-        <div className="stats-container">
-          <div className="stat-card primary">
-            <div className="stat-icon">📁</div>
-            <div className="stat-info">
-              <div className="stat-label">Total Facturas</div>
-              <div className="stat-value">{stats.count || 0}</div>
-            </div>
+      {/* Main Content */}
+      <main className="content">
+        {/* Quick Stats */}
+        <div className="mini-stats">
+          <div className="stat">
+            <span className="stat-num">{total}</span>
+            <span className="stat-label">Facturas</span>
           </div>
-          <div className="stat-card success">
-            <div className="stat-icon">💰</div>
-            <div className="stat-info">
-              <div className="stat-label">Monto Total</div>
-              <div className="stat-value">${stats.total || '0.00'}</div>
-            </div>
+          <div className="stat">
+            <span className="stat-num">${totalAmount.toFixed(0)}</span>
+            <span className="stat-label">Total</span>
           </div>
-          <div className="stat-card warning">
-            <div className="stat-icon">⚠️</div>
-            <div className="stat-info">
-              <div className="stat-label">Sin Clasificar</div>
-              <div className="stat-value">{stats.unclassified || 0}</div>
-            </div>
+          <div className="stat warning">
+            <span className="stat-num">{unclassified}</span>
+            <span className="stat-label">Sin clasificar</span>
           </div>
         </div>
 
-        {/* Upload Panel */}
+        {/* Upload */}
         <UploadPanel
-          onProcessTxt={handleProcessTxt}
-          onProcessXml={handleProcessXml}
+          onProcessTxt={async (file) => {
+            await invoicesAPI.processTxt(file)
+            loadInvoices(1)
+          }}
+          onProcessXml={async (files) => {
+            await invoicesAPI.processXml(files)
+            loadInvoices(1)
+          }}
         />
 
-        {/* Filters and Actions */}
-        <div className="filters-section">
-          <div className="search-bar">
-            <input
-              type="text"
-              placeholder="🔍 Buscar por proveedor, RUC o concepto..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="search-input"
-            />
-          </div>
-
-          <div className="filter-group">
-            <select
-              value={filterClassification}
-              onChange={(e) => setFilterClassification(e.target.value)}
-              className="filter-select"
-            >
-              <option value="ALL">Todas las categorías</option>
-              <option value="UNCLASSIFIED">Sin clasificar</option>
-              {getClassifications().map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="actions-group">
-            <button onClick={handleExportExcel} className="btn btn-primary" title="Descargar Excel">
-              📥 Excel
-            </button>
-            <button onClick={handleExportPdf} className="btn btn-primary" title="Descargar PDF">
-              📄 PDF
-            </button>
-            <button onClick={handleClear} className="btn btn-danger" title="Limpiar todo">
-              🗑 Limpiar
-            </button>
-          </div>
+        {/* Controls */}
+        <div className="controls">
+          <input
+            type="text"
+            placeholder="🔍 Buscar proveedor o RUC..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="search"
+          />
+          <select value={filterClassification} onChange={(e) => setFilterClassification(e.target.value)} className="select">
+            <option value="ALL">Todas</option>
+            <option value="UNCLASSIFIED">Sin clasificar</option>
+          </select>
+          <button onClick={handleExportExcel} className="btn-small">Excel</button>
+          <button onClick={handleExportPdf} className="btn-small">PDF</button>
+          <button onClick={handleClear} className="btn-small danger">Limpiar</button>
         </div>
 
         {/* Table */}
         {loading ? (
-          <div className="loading-state">
-            <div className="spinner"></div>
-            <p>Cargando facturas...</p>
-          </div>
+          <div className="loading">Cargando...</div>
         ) : filteredInvoices.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">📭</div>
-            <h3>Sin facturas</h3>
-            <p>Sube un archivo TXT con claves SRI o importa XMLs para comenzar</p>
-          </div>
+          <div className="empty">Sin facturas. Sube un archivo para comenzar.</div>
         ) : (
-          <InvoiceTable
-            invoices={filteredInvoices}
-            onInvoicesChange={loadInvoices}
-          />
+          <>
+            <InvoiceTable invoices={filteredInvoices} onInvoicesChange={() => loadInvoices(page)} />
+
+            {/* Pagination */}
+            {total > limit && (
+              <div className="pagination">
+                <button onClick={() => loadInvoices(page - 1)} disabled={page === 1} className="pag-btn">← Anterior</button>
+                <span className="pag-info">Página {page} de {Math.ceil(total / limit)}</span>
+                <button onClick={() => loadInvoices(page + 1)} disabled={page * limit >= total} className="pag-btn">Siguiente →</button>
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>

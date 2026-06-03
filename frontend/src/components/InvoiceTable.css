@@ -1,7 +1,7 @@
 .table-wrapper {
   background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -15,40 +15,36 @@
 .invoice-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9em;
+  font-size: 0.85em;
 }
 
 .invoice-table thead {
-  background: linear-gradient(135deg, #f5f7fa 0%, #eef2f8 100%);
-  border-bottom: 2px solid #667eea;
-  position: sticky;
-  top: 0;
+  background: #f5f5f5;
+  border-bottom: 1px solid #ddd;
 }
 
 .invoice-table th {
-  padding: 15px 12px;
+  padding: 10px 12px;
   text-align: left;
   font-weight: 600;
-  color: #333;
+  color: #555;
   white-space: nowrap;
-  letter-spacing: 0.3px;
-  font-size: 0.85em;
+  font-size: 0.8em;
   text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .invoice-table td {
-  padding: 12px;
-  border-bottom: 1px solid #eee;
-  word-break: break-word;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .invoice-table tbody tr {
-  transition: all 0.2s ease;
+  transition: background 0.15s;
 }
 
 .invoice-table tbody tr:hover {
-  background: #f9f9f9;
-  box-shadow: inset 0 0 0 1px rgba(102, 126, 234, 0.1);
+  background: #fafafa;
 }
 
 .row-ok {
@@ -56,25 +52,21 @@
 }
 
 .row-duplicate {
-  background: #ffe0e0;
-  color: #800;
-  opacity: 0.7;
+  background: #fff5f5;
+  opacity: 0.6;
 }
 
 .row-unclassified {
-  background: #fff8e0;
-  color: #664d00;
+  background: #fffbf0;
 }
 
 .editable {
   cursor: pointer;
-  font-weight: 500;
   color: #667eea;
+  font-weight: 500;
 }
 
 .editable:hover {
-  background: #f0f0f0;
-  border-radius: 3px;
   text-decoration: underline;
 }
 
@@ -83,96 +75,64 @@
   user-select: none;
 }
 
-.copyable span:hover {
-  background: #f0f0f0;
-  border-radius: 3px;
-}
-
 .copyable span.copied {
-  background: #d4edda;
-  padding: 2px 4px;
-  border-radius: 3px;
-  animation: pulse 0.5s ease;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+  background: #c8e6c9;
+  padding: 1px 3px;
+  border-radius: 2px;
 }
 
 .inline-edit {
   width: 95%;
-  padding: 6px 8px;
-  border: 2px solid #667eea;
-  border-radius: 4px;
+  padding: 5px 6px;
+  border: 1px solid #667eea;
+  border-radius: 3px;
   font-size: 0.9em;
   font-family: inherit;
-  background: white;
 }
 
 .inline-edit:focus {
   outline: none;
-  box-shadow: 0 0 8px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
 }
 
 .actions {
   text-align: center;
-  white-space: nowrap;
 }
 
 .delete-btn {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 1.1em;
-  padding: 6px 8px;
-  transition: transform 0.2s;
-  border-radius: 4px;
+  padding: 4px 6px;
+  transition: transform 0.15s;
 }
 
 .delete-btn:hover {
-  transform: scale(1.3);
-  background: #ffe0e0;
+  transform: scale(1.2);
 }
 
 .table-footer {
-  background: #f9f9f9;
-  border-top: 1px solid #eee;
-  padding: 12px 15px;
+  background: #fafafa;
+  border-top: 1px solid #f0f0f0;
+  padding: 8px 12px;
 }
 
 .footer-text {
   margin: 0;
-  font-size: 0.8em;
-  color: #999;
+  font-size: 0.75em;
+  color: #aaa;
   text-align: center;
 }
 
-/* Scrollbar */
 .table-container::-webkit-scrollbar {
-  height: 8px;
-}
-
-.table-container::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  height: 6px;
 }
 
 .table-container::-webkit-scrollbar-thumb {
   background: #ddd;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 .table-container::-webkit-scrollbar-thumb:hover {
   background: #999;
-}
-
-@media (max-width: 768px) {
-  .invoice-table {
-    font-size: 0.85em;
-  }
-
-  .invoice-table th,
-  .invoice-table td {
-    padding: 10px 8px;
-  }
 }

@@ -20,21 +20,34 @@ class InvoiceUpdate(BaseModel):
 async def list_invoices(
     user_id: str = Depends(get_current_user),
     skip: int = 0,
-    limit: int = 50
+    limit: int = 20
 ):
     try:
         supabase = get_supabase_client()
+
+        # Get total count
+        count_response = supabase.table("invoices")\
+            .select("id", count="exact")\
+            .eq("user_id", user_id)\
+            .execute()
+        total = count_response.count or 0
+
+        # Get paginated data
         response = supabase.table("invoices")\
-            .select("*")\
+            .select("id,fecha,ruc_proveedor,nombre_proveedor,clasificacion,concepto,base_15,iva_15,total,estado")\
             .eq("user_id", user_id)\
             .order("created_at", desc=True)\
             .range(skip, skip + limit - 1)\
             .execute()
-        return response.data
+
+        return {
+            "data": response.data or [],
+            "total": total,
+            "page": skip // limit + 1,
+            "limit": limit
+        }
     except Exception as e:
         print(f"Error in list_invoices: {str(e)}")
-        import traceback
-        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 @router.post("/process-txt")
