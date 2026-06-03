@@ -32,7 +32,10 @@ async def list_invoices(
             .execute()
         return response.data
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in list_invoices: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 @router.post("/process-txt")
 async def process_txt(
