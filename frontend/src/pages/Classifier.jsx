@@ -57,27 +57,31 @@ export default function Classifier({ user, onLogout }) {
 
   const handleExportExcel = async () => {
     try {
-      const blob = await classificationAPI.exportExcel()
-      const url = window.URL.createObjectURL(blob)
+      const response = await classificationAPI.exportExcel()
+      const url = window.URL.createObjectURL(new Blob([response.data]))
       const a = document.createElement('a')
       a.href = url
       a.download = 'clasificador.xlsx'
+      document.body.appendChild(a)
       a.click()
+      document.body.removeChild(a)
     } catch (error) {
-      console.error('Error exporting:', error)
+      alert('Error al exportar Excel: ' + (error.response?.data?.detail || error.message))
     }
   }
 
   const handleExportPdf = async () => {
     try {
-      const blob = await classificationAPI.exportPdf()
-      const url = window.URL.createObjectURL(blob)
+      const response = await classificationAPI.exportPdf()
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
       const a = document.createElement('a')
       a.href = url
       a.download = 'clasificador.pdf'
+      document.body.appendChild(a)
       a.click()
+      document.body.removeChild(a)
     } catch (error) {
-      console.error('Error exporting:', error)
+      alert('Error al exportar PDF: ' + (error.response?.data?.detail || error.message))
     }
   }
 

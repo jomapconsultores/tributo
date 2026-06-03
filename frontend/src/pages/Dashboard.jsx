@@ -61,27 +61,31 @@ export default function Dashboard({ user, onLogout }) {
 
   const handleExportExcel = async () => {
     try {
-      const blob = await invoicesAPI.exportExcel()
-      const url = window.URL.createObjectURL(blob)
+      const response = await invoicesAPI.exportExcel()
+      const url = window.URL.createObjectURL(new Blob([response.data]))
       const a = document.createElement('a')
       a.href = url
       a.download = `facturas_${new Date().toISOString().split('T')[0]}.xlsx`
+      document.body.appendChild(a)
       a.click()
+      document.body.removeChild(a)
     } catch (error) {
-      console.error('Error:', error)
+      alert('Error al exportar Excel: ' + (error.response?.data?.detail || error.message))
     }
   }
 
   const handleExportPdf = async () => {
     try {
-      const blob = await invoicesAPI.exportPdf()
-      const url = window.URL.createObjectURL(blob)
+      const response = await invoicesAPI.exportPdf()
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
       const a = document.createElement('a')
       a.href = url
       a.download = `resumen_${new Date().toISOString().split('T')[0]}.pdf`
+      document.body.appendChild(a)
       a.click()
+      document.body.removeChild(a)
     } catch (error) {
-      console.error('Error:', error)
+      alert('Error al exportar PDF: ' + (error.response?.data?.detail || error.message))
     }
   }
 

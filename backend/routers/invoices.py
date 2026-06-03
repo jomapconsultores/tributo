@@ -173,6 +173,18 @@ async def process_xml(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.delete("/clear")
+async def clear_invoices(user_id: str = Depends(get_current_user)):
+    try:
+        supabase = get_supabase_client()
+        supabase.table("invoices")\
+            .delete()\
+            .eq("user_id", user_id)\
+            .execute()
+        return {"message": "All invoices cleared"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @router.put("/{invoice_id}")
 async def update_invoice(
     invoice_id: str,
@@ -182,13 +194,11 @@ async def update_invoice(
     try:
         supabase = get_supabase_client()
         update_data = {k: v for k, v in update.dict().items() if v is not None}
-
         response = supabase.table("invoices")\
             .update(update_data)\
             .eq("user_id", user_id)\
             .eq("id", invoice_id)\
             .execute()
-
         return response.data[0] if response.data else None
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -206,18 +216,6 @@ async def delete_invoice(
             .eq("id", invoice_id)\
             .execute()
         return {"message": "Deleted"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@router.delete("/clear")
-async def clear_invoices(user_id: str = Depends(get_current_user)):
-    try:
-        supabase = get_supabase_client()
-        supabase.table("invoices")\
-            .delete()\
-            .eq("user_id", user_id)\
-            .execute()
-        return {"message": "All invoices cleared"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
