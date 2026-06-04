@@ -9,10 +9,24 @@ const GASTOS_PERSONALES = [
 
 const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
 
+// Filtro por tipo de valor: muestra solo facturas con monto > 0 en esa columna.
+const VALOR_OPCIONES = [
+  { key: 'no_objeto_iva', label: 'No Objeto IVA' },
+  { key: 'exento_iva', label: 'Exento IVA' },
+  { key: 'base_0', label: 'Base 0%' },
+  { key: 'base_15', label: 'Base 15%' },
+  { key: 'iva_15', label: 'IVA 15%' },
+  { key: 'base_5', label: 'Base 5%' },
+  { key: 'iva_5', label: 'IVA 5%' },
+]
+
 export default function InvoiceTable({ invoices, onInvoicesChange }) {
   const [edit, setEdit] = useState({ id: null, field: null })
   const [value, setValue] = useState('')
   const [search, setSearch] = useState('')
+  const [fClasif, setFClasif] = useState('')
+  const [fForma, setFForma] = useState('')
+  const [fValor, setFValor] = useState('')
 
   const categorias = useMemo(() => {
     const set = new Set(GASTOS_PERSONALES)
@@ -20,14 +34,36 @@ export default function InvoiceTable({ invoices, onInvoicesChange }) {
     return Array.from(set).sort()
   }, [invoices])
 
+  // Opciones de los desplegables, según los datos presentes
+  const clasifOpciones = useMemo(() => {
+    const set = new Set()
+    invoices.forEach((i) => set.add(i.clasificacion || 'SIN CLASIFICAR'))
+    return Array.from(set).sort()
+  }, [invoices])
+
+  const formaOpciones = useMemo(() => {
+    const set = new Set()
+    invoices.forEach((i) => { if (i.forma_pago) set.add(i.forma_pago) })
+    return Array.from(set).sort()
+  }, [invoices])
+
+  const hayFiltros = search.trim() || fClasif || fForma || fValor
+
+  const limpiarFiltros = () => {
+    setSearch(''); setFClasif(''); setFForma(''); setFValor('')
+  }
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return invoices
-    const q = search.toLowerCase()
-    return invoices.filter((i) =>
-      [i.fecha, i.ruc_proveedor, i.nombre_proveedor, i.clasificacion, i.concepto, i.factura_numero]
-        .some((f) => String(f || '').toLowerCase().includes(q))
-    )
-  }, [invoices, search])
+    const q = search.trim().toLowerCase()
+    return invoices.filter((i) => {
+      if (q && ![i.fecha, i.ruc_proveedor, i.nombre_proveedor, i.clasificacion, i.concepto, i.factura_numero]
+        .some((f) => String(f || '').toLowerCase().includes(q))) return false
+      if (fClasif && (i.clasificacion || 'SIN CLASIFICAR') !== fClasif) return false
+      if (fForma && i.forma_pago !== fForma) return false
+      if (fValor && !((parseFloat(i[fValor]) || 0) > 0)) return false
+      return true
+    })
+  }, [invoices, search, fClasif, fForma, fValor])
 
   const startEdit = (id, field, current) => {
     setEdit({ id, field })
@@ -113,10 +149,25 @@ export default function InvoiceTable({ invoices, onInvoicesChange }) {
       <div className="it-toolbar">
         <input
           className="it-search"
-          placeholder="🔍 Buscar (proveedor, RUC, concepto…)"
+          placeholder="🔍 Proveedor, RUC, concepto…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        <select className="it-filter" value={fClasif} onChange={(e) => setFClasif(e.target.value)}>
+          <option value="">Clasificación: todas</option>
+          {clasifOpciones.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select className="it-filter" value={fForma} onChange={(e) => setFForma(e.target.value)}>
+          <option value="">Forma de pago: todas</option>
+          {formaOpciones.map((f) => <option key={f} value={f}>{f}</option>)}
+        </select>
+        <select className="it-filter" value={fValor} onChange={(e) => setFValor(e.target.value)}>
+          <option value="">Tipo de valor: todos</option>
+          {VALOR_OPCIONES.map((v) => <option key={v.key} value={v.key}>Con {v.label}</option>)}
+        </select>
+        {hayFiltros && (
+          <button className="it-clear" onClick={limpiarFiltros}>✕ Limpiar</button>
+        )}
         <span className="it-hint">
           {filtered.length} de {invoices.length} · clic para editar Clasificación / Desc. Manual / Tarjeta
         </span>

@@ -29,6 +29,33 @@
 
 .it-search:focus { border-color: #6366f1; }
 
+.it-filter {
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  font-size: 0.83rem;
+  color: #334155;
+  background: #fff;
+  outline: none;
+  cursor: pointer;
+  max-width: 220px;
+}
+
+.it-filter:focus { border-color: #6366f1; }
+
+.it-clear {
+  padding: 7px 11px;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.it-clear:hover { background: #fee2e2; }
+
 .it-hint { font-size: 0.78rem; color: #94a3b8; }
 
 .it-scroll {
