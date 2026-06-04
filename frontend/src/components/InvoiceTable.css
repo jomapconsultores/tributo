@@ -1,138 +1,135 @@
-.table-wrapper {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+.invoice-table-wrap {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
-.table-container {
-  overflow-x: auto;
+.it-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #eef2f6;
+  flex-wrap: wrap;
+}
+
+.it-search {
   flex: 1;
+  min-width: 220px;
+  max-width: 360px;
+  padding: 7px 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.it-search:focus { border-color: #6366f1; }
+
+.it-hint { font-size: 0.78rem; color: #94a3b8; }
+
+.it-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
 }
 
 .invoice-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85em;
-}
-
-.invoice-table thead {
-  background: #f5f5f5;
-  border-bottom: 1px solid #ddd;
+  font-size: 0.8rem;
+  white-space: nowrap;
 }
 
 .invoice-table th {
-  padding: 10px 12px;
-  text-align: left;
-  font-weight: 600;
-  color: #555;
-  white-space: nowrap;
-  font-size: 0.8em;
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.3px;
+  padding: 9px 10px;
+  text-align: left;
+  border-bottom: 2px solid #e2e8f0;
+  z-index: 1;
 }
+
+.invoice-table th.r, .invoice-table td.r { text-align: right; }
 
 .invoice-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 7px 10px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
 }
 
-.invoice-table tbody tr {
-  transition: background 0.15s;
+.invoice-table tr:hover td { background: #f8fafc; }
+
+.prov, .concepto, .fpago {
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.invoice-table tbody tr:hover {
-  background: #fafafa;
+.concepto { max-width: 150px; color: #64748b; }
+.fpago { max-width: 130px; color: #64748b; font-size: 0.76rem; }
+
+.total { font-weight: 700; }
+.desc { color: #b45309; }
+
+.estado { font-size: 0.72rem; font-weight: 600; color: #64748b; }
+
+.tag-yanbal {
+  display: inline-block;
+  margin-left: 4px;
+  background: #7c3aed;
+  color: #fff;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  padding: 1px 4px;
+  font-weight: 700;
 }
 
-.row-ok {
-  background: white;
-}
+/* Filas con color de estado */
+.row-dup td { background: #fef2f2; }
+.row-dup:hover td { background: #fee2e2; }
+.row-yanbal td { background: #f5f3ff; }
+.row-yanbal:hover td { background: #ede9fe; }
+.row-mod td { background: #eff6ff; }
+.row-desc td { background: #fffbeb; }
+.row-unclass td { background: #fffdf5; }
 
-.row-duplicate {
-  background: #fff5f5;
-  opacity: 0.6;
-}
-
-.row-unclassified {
-  background: #fffbf0;
-}
-
-.editable {
+/* Edición */
+.editable-cell {
   cursor: pointer;
-  color: #667eea;
-  font-weight: 500;
+  border-bottom: 1px dashed #cbd5e1;
+  padding-bottom: 1px;
 }
 
-.editable:hover {
-  text-decoration: underline;
-}
+.editable-cell:hover { color: #4f46e5; }
 
-.copyable {
-  cursor: copy;
-  user-select: none;
-}
+.clasif .unclass { color: #d97706; font-weight: 600; }
+.clasif .classed { color: #4338ca; font-weight: 600; }
 
-.copyable span.copied {
-  background: #c8e6c9;
-  padding: 1px 3px;
-  border-radius: 2px;
-}
-
-.inline-edit {
-  width: 95%;
-  padding: 5px 6px;
-  border: 1px solid #667eea;
-  border-radius: 3px;
-  font-size: 0.9em;
-  font-family: inherit;
-}
-
-.inline-edit:focus {
+.cell-edit {
+  width: 130px;
+  padding: 3px 6px;
+  border: 1px solid #6366f1;
+  border-radius: 5px;
+  font-size: 0.8rem;
   outline: none;
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
 }
 
-.actions {
-  text-align: center;
-}
+td.r .cell-edit { width: 80px; text-align: right; }
 
-.delete-btn {
+.del-btn {
   background: none;
   border: none;
+  color: #ef4444;
   cursor: pointer;
-  padding: 4px 6px;
-  transition: transform 0.15s;
+  font-size: 0.9rem;
 }
 
-.delete-btn:hover {
-  transform: scale(1.2);
-}
-
-.table-footer {
-  background: #fafafa;
-  border-top: 1px solid #f0f0f0;
-  padding: 8px 12px;
-}
-
-.footer-text {
-  margin: 0;
-  font-size: 0.75em;
-  color: #aaa;
-  text-align: center;
-}
-
-.table-container::-webkit-scrollbar {
-  height: 6px;
-}
-
-.table-container::-webkit-scrollbar-thumb {
-  background: #ddd;
-  border-radius: 3px;
-}
-
-.table-container::-webkit-scrollbar-thumb:hover {
-  background: #999;
-}
+.del-btn:hover { color: #b91c1c; }

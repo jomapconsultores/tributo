@@ -1,23 +1,21 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { classificationAPI } from '../services/api'
+import { useState, useEffect, useMemo } from 'react'
+import { classificationAPI, downloadBlob } from '../services/api'
 import ClassifierTable from '../components/ClassifierTable'
 import './Classifier.css'
 
-export default function Classifier({ user, onLogout }) {
-  const navigate = useNavigate()
+export default function Classifier() {
   const [classifications, setClassifications] = useState([])
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
   const [newEntry, setNewEntry] = useState({ ruc: '', nombre_proveedor: '', categoria: '' })
 
-  useEffect(() => {
-    loadClassifications()
-  }, [])
+  useEffect(() => { loadClassifications() }, [])
 
   const loadClassifications = async () => {
+    setLoading(true)
     try {
       const response = await classificationAPI.list()
-      setClassifications(response.data)
+      setClassifications(response.data || [])
     } catch (error) {
       console.error('Error loading classifications:', error)
     } finally {
@@ -25,46 +23,46 @@ export default function Classifier({ user, onLogout }) {
     }
   }
 
+  const filtered = useMemo(() => {
+    if (!search.trim()) return classifications
+    const q = search.toLowerCase()
+    return classifications.filter((c) =>
+      [c.ruc, c.nombre_proveedor, c.categoria].some((f) => String(f || '').toLowerCase().includes(q))
+    )
+  }, [classifications, search])
+
   const handleAddEntry = async (e) => {
     e.preventDefault()
     if (!newEntry.ruc || !newEntry.categoria) {
       alert('RUC y Categoría son obligatorios')
       return
     }
-
     try {
-      await classificationAPI.create(
-        newEntry.ruc,
-        newEntry.nombre_proveedor,
-        newEntry.categoria
-      )
+      const res = await classificationAPI.create(newEntry.ruc, newEntry.nombre_proveedor, newEntry.categoria)
+      const n = res?.data?.reclasificadas
       setNewEntry({ ruc: '', nombre_proveedor: '', categoria: '' })
       loadClassifications()
+      if (n > 0) alert(`✔ ${n} factura(s) SIN CLASIFICAR de este RUC se actualizaron a "${newEntry.categoria.toUpperCase()}"`)
     } catch (error) {
-      console.error('Error adding entry:', error)
+      alert('Error: ' + (error.response?.data?.detail || error.message))
     }
   }
 
   const handleImportExcel = async (file) => {
     try {
       const response = await classificationAPI.import(file)
-      alert(`Se importaron ${response.data.imported} registros`)
+      const recl = response.data.reclasificadas ? ` · ${response.data.reclasificadas} factura(s) reclasificadas` : ''
+      alert(`Importados: ${response.data.imported} · Actualizados: ${response.data.updated}${recl}`)
       loadClassifications()
     } catch (error) {
-      console.error('Error importing:', error)
+      alert('Error al importar: ' + (error.response?.data?.detail || error.message))
     }
   }
 
   const handleExportExcel = async () => {
     try {
       const response = await classificationAPI.exportExcel()
-      const url = window.URL.createObjectURL(new Blob([response.data]))
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'clasificador.xlsx'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
+      downloadBlob(response.data, 'clasificador.xlsx')
     } catch (error) {
       alert('Error al exportar Excel: ' + (error.response?.data?.detail || error.message))
     }
@@ -73,106 +71,77 @@ export default function Classifier({ user, onLogout }) {
   const handleExportPdf = async () => {
     try {
       const response = await classificationAPI.exportPdf()
-      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'clasificador.pdf'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
+      downloadBlob(response.data, 'clasificador.pdf', 'application/pdf')
     } catch (error) {
       alert('Error al exportar PDF: ' + (error.response?.data?.detail || error.message))
     }
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('userId')
-    localStorage.removeItem('email')
-    onLogout()
-  }
-
   return (
     <div className="classifier">
       <header className="classifier-header">
-        <div className="header-left">
-          <h1>📋 Clasificador de RUCs</h1>
-        </div>
-        <div className="header-right">
-          <button onClick={() => navigate('/')} className="nav-btn">
-            Dashboard
-          </button>
-          <button onClick={handleLogout} className="logout-btn">
-            Cerrar sesión
-          </button>
+        <div>
+          <h1>🏷️ Clasificador de Gastos</h1>
+          <p className="classifier-sub">{classifications.length} RUCs · clic en cualquier celda (incluido el RUC) para editar</p>
         </div>
       </header>
 
-      <main className="classifier-content">
-        <div className="add-entry-section">
-          <h2>Agregar Nueva Entrada</h2>
-          <form onSubmit={handleAddEntry} className="add-entry-form">
-            <input
-              type="text"
-              placeholder="RUC (13 dígitos)"
-              value={newEntry.ruc}
-              onChange={(e) => setNewEntry({ ...newEntry, ruc: e.target.value })}
-              maxLength="13"
-            />
-            <input
-              type="text"
-              placeholder="Nombre Proveedor"
-              value={newEntry.nombre_proveedor}
-              onChange={(e) => setNewEntry({ ...newEntry, nombre_proveedor: e.target.value })}
-            />
-            <input
-              type="text"
-              placeholder="Categoría"
-              value={newEntry.categoria}
-              onChange={(e) => setNewEntry({ ...newEntry, categoria: e.target.value })}
-            />
-            <button type="submit" className="add-btn">
-              ➕ Agregar
-            </button>
-          </form>
-        </div>
-
-        <div className="toolbar">
-          <div className="toolbar-left">
-            <label htmlFor="file-import" className="import-label">
-              📥 Importar Excel
-            </label>
-            <input
-              id="file-import"
-              type="file"
-              accept=".xlsx"
-              onChange={(e) => {
-                if (e.target.files?.[0]) {
-                  handleImportExcel(e.target.files[0])
-                }
-              }}
-              style={{ display: 'none' }}
-            />
-          </div>
-          <div className="toolbar-right">
-            <button onClick={handleExportExcel} className="export-btn">
-              📥 Exportar Excel
-            </button>
-            <button onClick={handleExportPdf} className="export-btn">
-              📄 Exportar PDF
-            </button>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="loading">Cargando clasificador...</div>
-        ) : (
-          <ClassifierTable
-            classifications={classifications}
-            onClassificationsChange={loadClassifications}
+      <div className="add-entry-section">
+        <form onSubmit={handleAddEntry} className="add-entry-form">
+          <input
+            type="text"
+            placeholder="RUC (13 dígitos)"
+            value={newEntry.ruc}
+            onChange={(e) => setNewEntry({ ...newEntry, ruc: e.target.value })}
+            maxLength="13"
           />
-        )}
-      </main>
+          <input
+            type="text"
+            placeholder="Nombre Proveedor"
+            value={newEntry.nombre_proveedor}
+            onChange={(e) => setNewEntry({ ...newEntry, nombre_proveedor: e.target.value })}
+          />
+          <input
+            type="text"
+            placeholder="Categoría"
+            value={newEntry.categoria}
+            onChange={(e) => setNewEntry({ ...newEntry, categoria: e.target.value })}
+          />
+          <button type="submit" className="add-btn">➕ Agregar</button>
+        </form>
+      </div>
+
+      <div className="toolbar">
+        <div className="toolbar-left">
+          <input
+            className="classifier-search"
+            placeholder="🔍 Buscar RUC, proveedor o categoría…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <label htmlFor="file-import" className="import-label">📥 Importar Excel</label>
+          <input
+            id="file-import"
+            type="file"
+            accept=".xlsx"
+            onChange={(e) => { if (e.target.files?.[0]) handleImportExcel(e.target.files[0]) }}
+            style={{ display: 'none' }}
+          />
+        </div>
+        <div className="toolbar-right">
+          <button onClick={handleExportExcel} className="export-btn">📥 Exportar Excel</button>
+          <button onClick={handleExportPdf} className="export-btn">📄 Exportar PDF</button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="loading">Cargando clasificador…</div>
+      ) : (
+        <ClassifierTable
+          classifications={filtered}
+          onClassificationsChange={loadClassifications}
+        />
+      )}
     </div>
   )
 }

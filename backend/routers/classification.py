@@ -18,6 +18,30 @@ class ClassificationEntry(BaseModel):
     nombre_proveedor: str
     categoria: str
 
+
+def _propagate_classification(supabase, ruc: str, categoria: str) -> int:
+    """Aplica la categoría a las facturas de ese RUC que estén SIN CLASIFICAR
+    (no pisa las que ya tienen una clasificación manual). Devuelve cuántas
+    facturas se actualizaron."""
+    ruc = (ruc or "").strip()
+    categoria = (categoria or "").strip().upper()
+    if not ruc or not categoria:
+        return 0
+    updated = 0
+    try:
+        r = supabase.table("invoices").update({"clasificacion": categoria})\
+            .eq("ruc_proveedor", ruc).eq("clasificacion", "SIN CLASIFICAR").execute()
+        updated += len(r.data or [])
+    except Exception as e:
+        print(f"Error propagando clasificación (SIN CLASIFICAR) {ruc}: {e}")
+    try:
+        r = supabase.table("invoices").update({"clasificacion": categoria})\
+            .eq("ruc_proveedor", ruc).is_("clasificacion", "null").execute()
+        updated += len(r.data or [])
+    except Exception as e:
+        print(f"Error propagando clasificación (null) {ruc}: {e}")
+    return updated
+
 @router.get("/")
 async def list_classifications(_: str = Depends(get_current_user)):
     try:
@@ -48,9 +72,34 @@ async def create_classification(
                 "nombre_proveedor": entry.nombre_proveedor.upper(),
                 "categoria": entry.categoria.upper()
             }).execute()
-        return response.data[0] if response.data else None
+        reclasificadas = _propagate_classification(supabase, ruc, entry.categoria)
+        result = response.data[0] if response.data else {}
+        return {**result, "reclasificadas": reclasificadas}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.put("/by-id/{entry_id}")
+async def update_classification_by_id(
+    entry_id: str,
+    entry: ClassificationEntry,
+    _: str = Depends(get_current_user)
+):
+    """Actualiza un registro por id, permitiendo cambiar el RUC."""
+    try:
+        supabase = get_supabase_client()
+        new_ruc = entry.ruc.strip().replace("'", "")
+        response = supabase.table("classification_map").update({
+            "ruc": new_ruc,
+            "nombre_proveedor": entry.nombre_proveedor.upper(),
+            "categoria": entry.categoria.upper(),
+            "updated_at": "now()"
+        }).eq("id", entry_id).execute()
+        reclasificadas = _propagate_classification(supabase, new_ruc, entry.categoria)
+        result = response.data[0] if response.data else {}
+        return {**result, "reclasificadas": reclasificadas}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 @router.put("/{ruc}")
 async def update_classification(
@@ -64,7 +113,9 @@ async def update_classification(
             "nombre_proveedor": entry.nombre_proveedor.upper(),
             "categoria": entry.categoria.upper()
         }).eq("ruc", ruc.strip()).execute()
-        return response.data[0] if response.data else None
+        reclasificadas = _propagate_classification(supabase, ruc, entry.categoria)
+        result = response.data[0] if response.data else {}
+        return {**result, "reclasificadas": reclasificadas}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -89,6 +140,7 @@ async def import_classifications(
         supabase = get_supabase_client()
         new_count = 0
         updated = 0
+        reclasificadas = 0
 
         for _, row in df.iterrows():
             try:
@@ -114,10 +166,11 @@ async def import_classifications(
                         "categoria": categoria
                     }).execute()
                     new_count += 1
+                reclasificadas += _propagate_classification(supabase, ruc, categoria)
             except Exception as row_e:
                 print(f"Error row {ruc}: {row_e}")
 
-        return {"imported": new_count, "updated": updated}
+        return {"imported": new_count, "updated": updated, "reclasificadas": reclasificadas}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

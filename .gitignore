@@ -32,6 +32,10 @@ dist/
 .env.local
 .env.*.local
 
+# Vite temp config files
+vite.config.js.timestamp-*.mjs
+vite.config.ts.timestamp-*.mjs
+
 # IDE
 .vscode/
 .idea/

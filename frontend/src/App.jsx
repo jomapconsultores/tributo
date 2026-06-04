@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
+import Database from './pages/Database'
 import Classifier from './pages/Classifier'
+import SavedData from './pages/SavedData'
+import Layout from './components/Layout'
+import { ClientProvider } from './context/ClientContext'
 import './App.css'
 
 function App() {
@@ -13,7 +16,6 @@ function App() {
     const token = localStorage.getItem('token')
     const userId = localStorage.getItem('userId')
     const email = localStorage.getItem('email')
-
     if (token && userId) {
       setUser({ token, userId, email })
     }
@@ -31,6 +33,7 @@ function App() {
     localStorage.removeItem('token')
     localStorage.removeItem('userId')
     localStorage.removeItem('email')
+    localStorage.removeItem('selectedClientId')
     setUser(null)
   }
 
@@ -45,14 +48,22 @@ function App() {
           path="/login"
           element={user ? <Navigate to="/" /> : <Login onLogin={handleLogin} />}
         />
-        <Route
-          path="/"
-          element={user ? <Dashboard user={user} onLogout={handleLogout} /> : <Navigate to="/login" />}
-        />
-        <Route
-          path="/clasificador"
-          element={user ? <Classifier user={user} onLogout={handleLogout} /> : <Navigate to="/login" />}
-        />
+        {user ? (
+          <Route
+            element={
+              <ClientProvider>
+                <Layout user={user} onLogout={handleLogout} />
+              </ClientProvider>
+            }
+          >
+            <Route path="/" element={<Database />} />
+            <Route path="/datos" element={<SavedData />} />
+            <Route path="/clasificador" element={<Classifier />} />
+            <Route path="*" element={<Navigate to="/" />} />
+          </Route>
+        ) : (
+          <Route path="*" element={<Navigate to="/login" />} />
+        )}
       </Routes>
     </Router>
   )

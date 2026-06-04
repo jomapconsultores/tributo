@@ -1,25 +1,40 @@
 .classifier {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  background: #f5f5f5;
+  min-height: 100vh;
+  background: #f1f5f9;
+  padding: 26px 30px;
+  gap: 18px;
 }
 
 .classifier-header {
-  background: white;
-  border-bottom: 1px solid #ddd;
-  padding: 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .classifier-header h1 {
   margin: 0;
-  color: #333;
-  font-size: 1.5em;
+  color: #0f172a;
+  font-size: 1.5rem;
 }
+
+.classifier-sub {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 0.88rem;
+}
+
+.classifier-search {
+  padding: 9px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  font-size: 0.88rem;
+  min-width: 260px;
+  outline: none;
+}
+
+.classifier-search:focus { border-color: #6366f1; }
 
 .header-left, .header-right {
   display: flex;

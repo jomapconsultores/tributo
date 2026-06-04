@@ -149,8 +149,23 @@ def parse_xml_invoice(
         except:
             total = 0.0
 
+        # Valores originales (antes de aplicar cualquier descuento)
+        base_15_original = round(base_15, 2)
+        total_original = round(total, 2)
+
+        # Regla Yanbal: el descuento del XML se resta de la Base 15% SOLO para
+        # proveedores Yanbal; en los demás el descuento queda informativo.
+        es_yanbal = "YANBAL" in (nombre or "").upper()
+        if es_yanbal and total_descuento_xml > 0:
+            base_15 = max(0.0, base_15_original - total_descuento_xml)
+            iva_15 = round(base_15 * 0.15, 2)
+            total = round(
+                base_0 + base_5 + iva_5 + base_exento + base_no_objeto + base_15 + iva_15,
+                2
+            )
+
         # Memoria de tarjeta
-        mem_key = f"{nombre}|{total:.2f}"
+        mem_key = f"{nombre}|{total_original:.2f}"
         tarjeta_credito = card_memory.get(mem_key, "")
 
         return {
@@ -173,12 +188,13 @@ def parse_xml_invoice(
             "iva_5": round(iva_5, 2),
             "desc_info": round(total_descuento_xml, 2),
             "desc_manual": 0.00,
-            "total": total,
+            "total": round(total, 2),
             "destinatario": destinatario,
             "ruc_comprador": ruc_comprador,
             "xml_content": xml_content,
-            "base_15_original": base_15,
-            "total_original": total
+            "base_15_original": base_15_original,
+            "total_original": total_original,
+            "es_yanbal": es_yanbal
         }
     except Exception as e:
         print(f"Error parseando XML: {e}")

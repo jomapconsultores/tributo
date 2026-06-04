@@ -3,40 +3,64 @@ import { classificationAPI } from '../services/api'
 import './ClassifierTable.css'
 
 export default function ClassifierTable({ classifications, onClassificationsChange }) {
-  const [editingRuc, setEditingRuc] = useState(null)
-  const [editField, setEditField] = useState(null)
-  const [editValue, setEditValue] = useState('')
+  const [edit, setEdit] = useState({ id: null, field: null })
+  const [value, setValue] = useState('')
 
-  const handleCellClick = (ruc, field, value) => {
-    setEditingRuc(ruc)
-    setEditField(field)
-    setEditValue(value || '')
+  const startEdit = (id, field, current) => {
+    setEdit({ id, field })
+    setValue(current ?? '')
   }
 
-  const handleSave = async (ruc) => {
-    const original = classifications.find(c => c.ruc === ruc)
-    try {
-      const nombre = editField === 'nombre_proveedor' ? editValue : original.nombre_proveedor
-      const categoria = editField === 'categoria' ? editValue : original.categoria
+  const cancel = () => setEdit({ id: null, field: null })
 
-      await classificationAPI.update(ruc, nombre, categoria)
-      setEditingRuc(null)
-      setEditField(null)
+  const handleSave = async (item) => {
+    const { field } = edit
+    const ruc = field === 'ruc' ? value.trim() : item.ruc
+    const nombre = field === 'nombre_proveedor' ? value : item.nombre_proveedor
+    const categoria = field === 'categoria' ? value : item.categoria
+    try {
+      const res = await classificationAPI.updateById(item.id, ruc, nombre, categoria)
+      cancel()
       onClassificationsChange()
+      const n = res?.data?.reclasificadas
+      if (n > 0) alert(`✔ ${n} factura(s) SIN CLASIFICAR de este RUC se actualizaron a "${categoria.toUpperCase()}"`)
     } catch (error) {
-      console.error('Error saving:', error)
+      alert('Error al guardar: ' + (error.response?.data?.detail || error.message))
     }
   }
 
   const handleDelete = async (ruc) => {
-    if (window.confirm(`¿Está seguro de eliminar ${ruc}?`)) {
-      try {
-        await classificationAPI.delete(ruc)
-        onClassificationsChange()
-      } catch (error) {
-        console.error('Error deleting:', error)
-      }
+    if (!window.confirm(`¿Eliminar el RUC ${ruc}?`)) return
+    try {
+      await classificationAPI.delete(ruc)
+      onClassificationsChange()
+    } catch (error) {
+      alert('Error al eliminar: ' + (error.response?.data?.detail || error.message))
     }
+  }
+
+  const cell = (item, field, extraClass = '') => {
+    const isEditing = edit.id === item.id && edit.field === field
+    if (isEditing) {
+      return (
+        <input
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={() => handleSave(item)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSave(item)
+            if (e.key === 'Escape') cancel()
+          }}
+          className="inline-edit"
+        />
+      )
+    }
+    return (
+      <span className={`editable ${extraClass}`} onClick={() => startEdit(item.id, field, item[field])}>
+        {item[field] || '-'}
+      </span>
+    )
   }
 
   return (
@@ -53,62 +77,16 @@ export default function ClassifierTable({ classifications, onClassificationsChan
         <tbody>
           {classifications.length === 0 ? (
             <tr>
-              <td colSpan="4" className="empty">
-                No hay clasificaciones. Agrega una nueva o importa desde Excel.
-              </td>
+              <td colSpan="4" className="empty">No hay clasificaciones. Agrega una nueva o importa desde Excel.</td>
             </tr>
           ) : (
             classifications.map((item) => (
-              <tr key={item.ruc}>
-                <td className="ruc-cell">{item.ruc}</td>
-                <td
-                  onClick={() => handleCellClick(item.ruc, 'nombre_proveedor', item.nombre_proveedor)}
-                  className="editable"
-                >
-                  {editingRuc === item.ruc && editField === 'nombre_proveedor' ? (
-                    <input
-                      autoFocus
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      onBlur={() => handleSave(item.ruc)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleSave(item.ruc)
-                        if (e.key === 'Escape') setEditingRuc(null)
-                      }}
-                      className="inline-edit"
-                    />
-                  ) : (
-                    item.nombre_proveedor || '-'
-                  )}
-                </td>
-                <td
-                  onClick={() => handleCellClick(item.ruc, 'categoria', item.categoria)}
-                  className="editable"
-                >
-                  {editingRuc === item.ruc && editField === 'categoria' ? (
-                    <input
-                      autoFocus
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      onBlur={() => handleSave(item.ruc)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleSave(item.ruc)
-                        if (e.key === 'Escape') setEditingRuc(null)
-                      }}
-                      className="inline-edit"
-                    />
-                  ) : (
-                    item.categoria
-                  )}
-                </td>
+              <tr key={item.id}>
+                <td className="ruc-cell">{cell(item, 'ruc', 'ruc-edit')}</td>
+                <td>{cell(item, 'nombre_proveedor')}</td>
+                <td>{cell(item, 'categoria')}</td>
                 <td className="actions">
-                  <button
-                    onClick={() => handleDelete(item.ruc)}
-                    className="delete-btn"
-                    title="Eliminar"
-                  >
-                    🗑
-                  </button>
+                  <button onClick={() => handleDelete(item.ruc)} className="delete-btn" title="Eliminar">🗑</button>
                 </td>
               </tr>
             ))
