@@ -7,7 +7,7 @@ from database import get_supabase_client
 from services.ice_parser import parse_ice_invoice
 from services.ice_calc import full_report
 from services.ice_export import generate_ice_excel, generate_ice_pdf
-from services.ice_anexo import generar_anexo_ice
+from services.ice_anexo import generar_anexo_ice, anexo_rows, catalogo_con_codigos
 from services.ice_data import TAX_DB
 
 router = APIRouter(prefix="/api/ice", tags=["ice"])
@@ -154,6 +154,27 @@ async def delete_ice(ice_id: str, _: str = Depends(get_current_user)):
 def _cliente(supabase, client_id):
     c = supabase.table("clients").select("identificacion,nombre,periodo_mes,periodo_anio").eq("id", client_id).execute()
     return c.data[0] if c.data else {}
+
+
+@router.get("/catalog")
+async def catalog(_: str = Depends(get_current_user)):
+    return {"catalogo": catalogo_con_codigos()}
+
+
+@router.get("/anexo-rows")
+async def get_anexo_rows(
+    client_id: str = Query(...),
+    act_import: str = Query("02"),
+    _: str = Depends(get_current_user),
+):
+    """Filas del anexo ICE de un cliente, listas para el editor de Anexo PVP+ICE."""
+    try:
+        supabase = get_supabase_client()
+        rows = supabase.table("ice_sales").select("*").eq("client_id", client_id).execute().data or []
+        c = _cliente(supabase, client_id)
+        return anexo_rows(rows, c, c.get("periodo_anio") or 2026, c.get("periodo_mes") or 1, act_import)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/anexo")

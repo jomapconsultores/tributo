@@ -108,6 +108,9 @@ export const iceAPI = {
     api.get('/api/ice/export/pdf', { params: { client_id: clientId, anio }, responseType: 'blob' }),
   anexo: (clientId, actImport) =>
     api.get('/api/ice/anexo', { params: { client_id: clientId, act_import: actImport } }),
+  catalog: () => api.get('/api/ice/catalog'),
+  anexoRows: (clientId, actImport) =>
+    api.get('/api/ice/anexo-rows', { params: { client_id: clientId, act_import: actImport } }),
 }
 
 // Cálculo ICE manual (por cliente)

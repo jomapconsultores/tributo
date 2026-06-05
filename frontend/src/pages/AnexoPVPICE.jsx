@@ -1,4 +1,6 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
+import { iceAPI } from '../services/api'
+import { useClients } from '../context/ClientContext'
 import './AnexoPVPICE.css'
 
 // Columnas de detalle (ventas/vta) según el esquema SRI
@@ -34,10 +36,42 @@ const childEl = (parent, tag) => {
 }
 
 export default function AnexoPVPICE() {
+  const { clients } = useClients()
   const [tipo, setTipo] = useState(null) // 'ICE' | 'PVP'
   const [header, setHeader] = useState({})
   const [rows, setRows] = useState([])
+  const [clientSel, setClientSel] = useState('')
+  const [catalogo, setCatalogo] = useState([])
+  const [catSel, setCatSel] = useState('')
   const fileRef = useRef(null)
+
+  useEffect(() => { iceAPI.catalog().then((r) => setCatalogo(r.data.catalogo || [])).catch(() => {}) }, [])
+
+  const importarICEXML = async () => {
+    if (!clientSel) { alert('Elige un cliente.'); return }
+    try {
+      const res = await iceAPI.anexoRows(clientSel, header.actImport || '02')
+      const d = res.data
+      setTipo('ICE')
+      setHeader(d.header || {})
+      setRows((d.rows || []).map((v) => ({ ...DEFAULT_ROW('ICE'), ...v })))
+      if (d.advertencias?.length) alert('⚠ ' + d.advertencias.join(' '))
+    } catch (e) {
+      alert('Error al importar: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+
+  const agregarDelCatalogo = (nombre) => {
+    const p = catalogo.find((c) => c.nombre === nombre)
+    if (!p) return
+    const t = tipo || 'ICE'
+    if (!tipo) initVacio('ICE')
+    const r = DEFAULT_ROW(t)
+    if (t === 'ICE') r.codProdICE = p.codProdICE || '3031'
+    else r.codProdPVP = p.codProdSRI || ''
+    setRows((rs) => [...rs, r])
+    setCatSel('')
+  }
 
   const initVacio = (t) => {
     const h = {}
@@ -123,6 +157,25 @@ export default function AnexoPVPICE() {
         <button className="ax-btn green" onClick={addRow} disabled={!tipo}>➕ Añadir producto</button>
         <button className="ax-btn red" onClick={limpiar}>🧹 Limpiar todo</button>
         <button className="ax-btn yellow" onClick={descargar} disabled={!tipo}>💾 Generar XML SRI</button>
+      </div>
+
+      {/* Relacionar productos */}
+      <div className="ax-relate">
+        <div className="ax-relate-group">
+          <span className="ax-relate-lbl">Desde ICE-XML:</span>
+          <select value={clientSel} onChange={(e) => setClientSel(e.target.value)}>
+            <option value="">Cliente…</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.identificacion} — {c.nombre}</option>)}
+          </select>
+          <button className="ax-btn teal" onClick={importarICEXML}>↪ Importar ventas ICE</button>
+        </div>
+        <div className="ax-relate-group">
+          <span className="ax-relate-lbl">Desde catálogo:</span>
+          <select value={catSel} onChange={(e) => { setCatSel(e.target.value); if (e.target.value) agregarDelCatalogo(e.target.value) }}>
+            <option value="">Agregar producto…</option>
+            {catalogo.map((p) => <option key={p.nombre} value={p.nombre}>{p.nombre}{p.codProdICE ? '' : ' (sin código)'}</option>)}
+          </select>
+        </div>
       </div>
 
       {!tipo ? (

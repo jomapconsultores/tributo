@@ -15,6 +15,12 @@
 .ax-btn.red { background: #e74c3c; }
 .ax-btn.yellow { background: #f1c40f; color: #1f2937; }
 
+.ax-relate { display: flex; gap: 18px; flex-wrap: wrap; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 14px; }
+.ax-relate-group { display: flex; align-items: center; gap: 8px; }
+.ax-relate-lbl { font-size: 0.78rem; font-weight: 700; color: #475569; }
+.ax-relate select { padding: 6px 9px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 0.82rem; max-width: 260px; }
+.ax-btn.teal { background: #0d9488; }
+
 .ax-init { background: #fff; border-radius: 12px; padding: 40px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.06); color: #64748b; }
 .ax-init-btns { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
 

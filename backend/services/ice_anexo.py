@@ -78,10 +78,8 @@ def grupo_por_cliente(rows):
             for v in ag.values()]
 
 
-def generar_anexo_ice(rows, contribuyente, anio, mes, act_import="02"):
-    """Genera el XML del anexo ICE. Agrupa ventas por idCliente + codProdICE.
-    Devuelve {xml, ventas, advertencias}."""
-    # Agrupar bottles por (idCliente, codProdICE)
+def _build_vtas(rows):
+    """Agrupa ventas por (idCliente, codProdICE). Devuelve (lista_vtas, advertencias)."""
     dedup = OrderedDict()
     no_reconocidos = set()
     for r in rows:
@@ -105,6 +103,54 @@ def generar_anexo_ice(rows, contribuyente, anio, mes, act_import="02"):
                 "devICE": "0",
                 "cantProdBajaICE": "0",
             }
+    advertencias = []
+    if no_reconocidos:
+        advertencias.append(
+            "Productos sin código SRI (usarán '3031', inválido para el SRI): "
+            + "; ".join(sorted(p for p in no_reconocidos if p))
+        )
+    return list(dedup.values()), advertencias
+
+
+def anexo_rows(rows, contribuyente, anio, mes, act_import="02"):
+    """Filas del anexo ICE listas para editar en el editor."""
+    vtas, advertencias = _build_vtas(rows)
+    for v in vtas:
+        v["ventaICE"] = str(v["ventaICE"])
+    c = contribuyente or {}
+    header = {
+        "TipoIDInformante": "R",
+        "IdInformante": c.get("identificacion", ""),
+        "razonSocial": c.get("nombre", ""),
+        "Anio": str(anio),
+        "Mes": str(mes).zfill(2),
+        "actImport": str(act_import)[:2],
+        "codigoOperativo": "ICE",
+    }
+    return {"tipo": "ICE", "header": header, "rows": vtas, "advertencias": advertencias}
+
+
+def catalogo_con_codigos():
+    """Catálogo de productos con su codProdICE resuelto, para insertar en el anexo."""
+    from services.ice_data import CATALOGO_BASE
+    out = []
+    for nombre, d in CATALOGO_BASE.items():
+        cod_ice, ok = _resolver_cod_prod_ice(nombre)
+        out.append({
+            "nombre": nombre,
+            "codProdSRI": d.get("codProdSRI", ""),
+            "codProdICE": cod_ice if ok else "",
+            "capacidad": d.get("capacidad", ""),
+            "grado": d.get("grado", ""),
+        })
+    return out
+
+
+def generar_anexo_ice(rows, contribuyente, anio, mes, act_import="02"):
+    """Genera el XML del anexo ICE. Agrupa ventas por idCliente + codProdICE.
+    Devuelve {xml, ventas, advertencias}."""
+    vtas, no_reconocidos_adv = _build_vtas(rows)
+    dedup = {(v["idCliente"], v["codProdICE"]): v for v in vtas}
 
     mes_str = str(mes).zfill(2)
     ruc = (contribuyente or {}).get("identificacion", "")
@@ -131,11 +177,4 @@ def generar_anexo_ice(rows, contribuyente, anio, mes, act_import="02"):
     lines.append('  </ventas>')
     lines.append('</ice>')
 
-    advertencias = []
-    if no_reconocidos:
-        advertencias.append(
-            "Productos sin código SRI (usarán '3031', inválido para el SRI): "
-            + "; ".join(sorted(p for p in no_reconocidos if p))
-        )
-
-    return {"xml": "\n".join(lines), "ventas": len(dedup), "advertencias": advertencias}
+    return {"xml": "\n".join(lines), "ventas": len(dedup), "advertencias": no_reconocidos_adv}
