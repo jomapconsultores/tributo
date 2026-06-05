@@ -13,6 +13,14 @@
   gap: 16px;
 }
 
+.db-nav-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.db-nav-head h1 { margin: 0; font-size: 1.5rem; color: #0f172a; }
+
 .db-header h1 {
   margin: 0;
   font-size: 1.5rem;

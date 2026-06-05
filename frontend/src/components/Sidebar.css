@@ -247,6 +247,21 @@
   font-style: italic;
 }
 
+.client-search {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  color: #e2e8f0;
+  padding: 7px 10px;
+  font-size: 0.8rem;
+  outline: none;
+  margin-bottom: 6px;
+}
+.client-search::placeholder { color: #94a3b8; }
+.client-search:focus { border-color: #818cf8; }
+
 .add-client {
   color: #818cf8;
   font-size: 0.82rem;

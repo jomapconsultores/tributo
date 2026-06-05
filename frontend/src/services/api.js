@@ -28,6 +28,7 @@ export const authAPI = {
 // Clientes (contribuyentes)
 export const clientsAPI = {
   list: () => api.get('/api/clients/'),
+  contribuyentes: () => api.get('/api/clients/contribuyentes'),
   get: (id) => api.get(`/api/clients/${id}`),
   create: (data) => api.post('/api/clients/', data),
   update: (id, data) => api.put(`/api/clients/${id}`, data),

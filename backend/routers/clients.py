@@ -60,6 +60,57 @@ async def list_clients(_: str = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/contribuyentes")
+async def contribuyentes(_: str = Depends(get_current_user)):
+    """Árbol para Base de Datos: contribuyentes (por identificación) → períodos
+    (año, mes) → conteo de datos por tipo (gastos/retenciones/ice/calculo)."""
+    try:
+        supabase = get_supabase_client()
+        clients = supabase.table("clients").select(
+            "id,identificacion,nombre,tipo_identificacion,periodo_mes,periodo_anio"
+        ).execute().data or []
+
+        def counts(table):
+            rows = supabase.table(table).select("client_id").execute().data or []
+            m = {}
+            for r in rows:
+                cid = r.get("client_id")
+                if cid:
+                    m[cid] = m.get(cid, 0) + 1
+            return m
+
+        inv = counts("invoices")
+        ret = counts("retentions")
+        ice = counts("ice_sales")
+        cal = counts("ice_calc")
+
+        ag = {}
+        for c in clients:
+            ident = c["identificacion"]
+            g = ag.setdefault(ident, {
+                "identificacion": ident, "nombre": c["nombre"],
+                "tipo_identificacion": c.get("tipo_identificacion", "RUC"),
+                "periodos": [], "totales": {"gastos": 0, "retenciones": 0, "ice": 0, "calculo_ice": 0},
+            })
+            cid = c["id"]
+            datos = {"gastos": inv.get(cid, 0), "retenciones": ret.get(cid, 0),
+                     "ice": ice.get(cid, 0), "calculo_ice": cal.get(cid, 0)}
+            g["periodos"].append({"client_id": cid, "anio": c.get("periodo_anio"),
+                                  "mes": c.get("periodo_mes"), "datos": datos})
+            for k in datos:
+                g["totales"][k] += datos[k]
+            g["nombre"] = c["nombre"]
+
+        out = []
+        for g in ag.values():
+            g["periodos"].sort(key=lambda p: (-(p["anio"] or 0), -(p["mes"] or 0)))
+            out.append(g)
+        out.sort(key=lambda g: (g["nombre"] or "").upper())
+        return out
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/summary/{identificacion}")
 async def client_summary(identificacion: str, _: str = Depends(get_current_user)):
     """Resumen de TODO lo trabajado para un contribuyente, agregado por

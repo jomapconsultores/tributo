@@ -5,6 +5,7 @@ import { useClients } from '../context/ClientContext'
 import InvoiceTabs from '../components/InvoiceTabs'
 import UploadPanel from '../components/UploadPanel'
 import NewClientModal from '../components/NewClientModal'
+import ClientNavigator from '../components/ClientNavigator'
 import { periodoLargo } from '../utils/periodo'
 import './Database.css'
 
@@ -104,34 +105,18 @@ export default function Database() {
     await deleteClient(selectedClientId)
   }
 
-  // ---------- Vista: ningún cliente seleccionado ----------
+  // ---------- Vista: ningún cliente seleccionado (navegador) ----------
   if (!selectedClient) {
     return (
       <div className="db-page">
-        <div className="db-welcome">
-          <h1>🗄️ Base de Datos</h1>
-          <p>Selecciona un cliente para ver sus gastos clasificados, o crea uno nuevo.</p>
+        <div className="db-nav-head">
+          <div>
+            <h1>🗄️ Base de Datos</h1>
+            <p className="db-subhead">Elige un contribuyente y abre su año, mes y tipo de datos.</p>
+          </div>
           <button className="db-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
         </div>
-
-        {clients.length > 0 && (
-          <div className="client-grid">
-            {clients.map((c) => (
-              <button key={c.id} className="client-card" onClick={() => selectClient(c.id)}>
-                <div className="cc-periodo">{periodoLargo(c)}</div>
-                <div className="cc-name">{c.nombre}</div>
-                <div className="cc-id">{c.tipo_identificacion}: {c.identificacion}</div>
-                <div className="cc-stats">
-                  <span>{c.num_facturas || 0} facturas</span>
-                  <span>${(c.monto_total || 0).toFixed(2)}</span>
-                </div>
-                {c.sin_clasificar > 0 && (
-                  <div className="cc-warn">{c.sin_clasificar} sin clasificar</div>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
+        <ClientNavigator />
       </div>
     )
   }

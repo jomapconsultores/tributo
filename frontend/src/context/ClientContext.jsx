@@ -10,6 +10,7 @@ export function ClientProvider({ children }) {
   )
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [focusIdent, setFocusIdent] = useState(null) // contribuyente a enfocar en Base de Datos
 
   const refreshClients = useCallback(async () => {
     setLoading(true)
@@ -69,6 +70,8 @@ export function ClientProvider({ children }) {
         createClient,
         updateClient,
         deleteClient,
+        focusIdent,
+        setFocusIdent,
       }}
     >
       {children}

@@ -1,17 +1,36 @@
 import { useRef, useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useClients } from '../context/ClientContext'
-import { periodoCorto } from '../utils/periodo'
 import bajadorBookmarklet from '../utils/bajador-facturas.bookmarklet.txt?raw'
 import './Sidebar.css'
 
 export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { clients, selectedClientId, selectClient } = useClients()
+  const { clients, selectedClientId, selectClient, setFocusIdent } = useClients()
   const bajadorRef = useRef(null)
   const [clientsOpen, setClientsOpen] = useState(true)
   const [ingresosOpen, setIngresosOpen] = useState(true)
+  const [clientSearch, setClientSearch] = useState('')
+
+  // Contribuyentes únicos (por identificación) para el listado por nombre
+  const contribuyentes = []
+  const vistos = new Set()
+  for (const c of clients) {
+    if (vistos.has(c.identificacion)) continue
+    vistos.add(c.identificacion)
+    contribuyentes.push({ identificacion: c.identificacion, nombre: c.nombre })
+  }
+  contribuyentes.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
+  const contribFiltrados = clientSearch.trim()
+    ? contribuyentes.filter((c) => [c.nombre, c.identificacion].some((f) => String(f || '').toLowerCase().includes(clientSearch.toLowerCase())))
+    : contribuyentes
+
+  const verContribuyente = (ident) => {
+    setFocusIdent(ident)
+    selectClient(null)
+    navigate('/')
+  }
 
   // El href "javascript:" se fija por ref para que React no lo sanitice y el
   // enlace pueda arrastrarse a la barra de marcadores.
@@ -34,12 +53,6 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const isSaved = path === '/datos'
 
   const moduleHome = isRetenciones ? '/retenciones' : isCalculo ? '/calculo-ice' : isIceXml ? '/ice' : '/'
-
-  // Al elegir un cliente, navega dentro del módulo activo
-  const goToClient = (id) => {
-    selectClient(id)
-    navigate(isIngresos ? '/ice' : moduleHome)
-  }
 
   return (
     <aside className="sidebar">
@@ -134,34 +147,39 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
           <span>BASE DE DATOS</span>
         </button>
 
-        {/* Clientes (desplegable) */}
+        {/* Clientes (desplegable, por nombre, con buscador) */}
         <button
           className="nav-item clients-toggle"
           onClick={() => setClientsOpen((o) => !o)}
         >
           <span className={`caret ${clientsOpen ? 'open' : ''}`}>▸</span>
           <span>Clientes</span>
-          {clients.length > 0 && <span className="client-badge">{clients.length}</span>}
+          {contribuyentes.length > 0 && <span className="client-badge">{contribuyentes.length}</span>}
         </button>
 
         {clientsOpen && (
           <div className="client-list">
-            {clients.length === 0 && (
-              <div className="client-empty">Sin clientes aún</div>
+            <input
+              className="client-search"
+              placeholder="🔍 Buscar cliente…"
+              value={clientSearch}
+              onChange={(e) => setClientSearch(e.target.value)}
+            />
+            {contribFiltrados.length === 0 && (
+              <div className="client-empty">{clients.length === 0 ? 'Sin clientes aún' : 'Sin coincidencias'}</div>
             )}
-            {clients.map((c) => (
+            {contribFiltrados.map((c) => (
               <button
-                key={c.id}
-                className={`nav-item client-item ${selectedClientId === c.id ? 'active' : ''}`}
-                onClick={() => goToClient(c.id)}
-                title={`${c.identificacion} — ${c.nombre} — ${periodoCorto(c)}`}
+                key={c.identificacion}
+                className="nav-item client-item"
+                onClick={() => verContribuyente(c.identificacion)}
+                title={`${c.identificacion} — ${c.nombre}`}
               >
                 <span className="client-dot" />
                 <span className="client-info">
                   <span className="client-name">{c.nombre}</span>
-                  <span className="client-periodo">{periodoCorto(c)}</span>
+                  <span className="client-periodo">{c.identificacion}</span>
                 </span>
-                {c.num_facturas > 0 && <span className="client-badge">{c.num_facturas}</span>}
               </button>
             ))}
             <button className="nav-item add-client" onClick={onNewClient}>
