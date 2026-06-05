@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
-import { iceAPI } from '../services/api'
+import { iceAPI, productsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import './AnexoPVPICE.css'
 
@@ -45,7 +45,11 @@ export default function AnexoPVPICE() {
   const [catSel, setCatSel] = useState('')
   const fileRef = useRef(null)
 
-  useEffect(() => { iceAPI.catalog().then((r) => setCatalogo(r.data.catalogo || [])).catch(() => {}) }, [])
+  // El catálogo "desde catálogo" es el del cliente elegido (sus productos guardados)
+  useEffect(() => {
+    if (!clientSel) { setCatalogo([]); return }
+    productsAPI.byClient(clientSel).then((r) => setCatalogo(r.data?.data || [])).catch(() => setCatalogo([]))
+  }, [clientSel])
 
   const importarICEXML = async () => {
     if (!clientSel) { alert('Elige un cliente.'); return }
@@ -61,14 +65,14 @@ export default function AnexoPVPICE() {
     }
   }
 
-  const agregarDelCatalogo = (nombre) => {
-    const p = catalogo.find((c) => c.nombre === nombre)
+  const agregarDelCatalogo = (id) => {
+    const p = catalogo.find((c) => c.id === id)
     if (!p) return
     const t = tipo || 'ICE'
     if (!tipo) initVacio('ICE')
     const r = DEFAULT_ROW(t)
-    if (t === 'ICE') r.codProdICE = p.codProdICE || '3031'
-    else r.codProdPVP = p.codProdSRI || ''
+    if (t === 'ICE') r.codProdICE = p.cod_prod_ice || '3031'
+    else r.codProdPVP = p.cod_prod_pvp || ''
     setRows((rs) => [...rs, r])
     setCatSel('')
   }
@@ -170,10 +174,13 @@ export default function AnexoPVPICE() {
           <button className="ax-btn teal" onClick={importarICEXML}>↪ Importar ventas ICE</button>
         </div>
         <div className="ax-relate-group">
-          <span className="ax-relate-lbl">Desde catálogo:</span>
-          <select value={catSel} onChange={(e) => { setCatSel(e.target.value); if (e.target.value) agregarDelCatalogo(e.target.value) }}>
-            <option value="">Agregar producto…</option>
-            {catalogo.map((p) => <option key={p.nombre} value={p.nombre}>{p.nombre}{p.codProdICE ? '' : ' (sin código)'}</option>)}
+          <span className="ax-relate-lbl">Desde catálogo del cliente:</span>
+          <select value={catSel} disabled={!clientSel} onChange={(e) => { setCatSel(e.target.value); if (e.target.value) agregarDelCatalogo(e.target.value) }}>
+            <option value="">{clientSel ? (catalogo.length ? 'Agregar producto…' : 'Sin productos en su catálogo') : 'Elige un cliente primero'}</option>
+            {catalogo.map((p) => {
+              const cod = tipo === 'PVP' ? p.cod_prod_pvp : p.cod_prod_ice
+              return <option key={p.id} value={p.id}>{p.nombre}{cod ? '' : ' (sin código)'}</option>
+            })}
           </select>
         </div>
       </div>

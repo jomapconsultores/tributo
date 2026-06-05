@@ -125,6 +125,15 @@ export const iceCalcAPI = {
   exportPdf: (clientId) => api.get('/api/ice-calc/export/pdf', { params: { client_id: clientId }, responseType: 'blob' }),
 }
 
+// Catálogo de productos por contribuyente
+export const productsAPI = {
+  list: (identificacion) => api.get('/api/products/', { params: { identificacion } }),
+  byClient: (clientId) => api.get(`/api/products/by-client/${clientId}`),
+  create: (p) => api.post('/api/products/', p),
+  update: (id, data) => api.put(`/api/products/${id}`, data),
+  delete: (id) => api.delete(`/api/products/${id}`),
+}
+
 // Declaraciones (IVA / ICE)
 export const declaracionesAPI = {
   calcular: (clientId, tipo) => api.get('/api/declaraciones/calcular', { params: { client_id: clientId, tipo } }),

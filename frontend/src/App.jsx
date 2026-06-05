@@ -10,6 +10,7 @@ import CalculoICE from './pages/CalculoICE'
 import AnexoPVPICE from './pages/AnexoPVPICE'
 import RecursosICE from './pages/RecursosICE'
 import Declaraciones from './pages/Declaraciones'
+import CatalogoProductos from './pages/CatalogoProductos'
 import Layout from './components/Layout'
 import { ClientProvider } from './context/ClientContext'
 import './App.css'
@@ -70,6 +71,7 @@ function App() {
             <Route path="/anexo-pvp-ice" element={<AnexoPVPICE />} />
             <Route path="/recursos-ice" element={<RecursosICE />} />
             <Route path="/ice" element={<ICE />} />
+            <Route path="/catalogo-productos" element={<CatalogoProductos />} />
             <Route path="/datos" element={<SavedData />} />
             <Route path="/clasificador" element={<Classifier />} />
             <Route path="*" element={<Navigate to="/" />} />

@@ -51,8 +51,9 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const isIceXml = path === '/ice'
   const isCalculo = path === '/calculo-ice'
   const isAnexo = path === '/anexo-pvp-ice'
+  const isCatalogo = path === '/catalogo-productos'
   const isRecursos = path === '/recursos-ice'
-  const isIngresos = isIceXml || isCalculo || isAnexo || isRecursos
+  const isIngresos = isIceXml || isCalculo || isAnexo || isCatalogo || isRecursos
   const isGastos = !isRetenciones && !isIngresos && !isDeclaraciones // todo lo demás pertenece al proceso de Gastos
   const isDatabase = path === '/'
   const isClassifier = path === '/clasificador'
@@ -102,6 +103,13 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
             >
               <span className="nav-ico">🥃</span>
               <span>ICE - XML</span>
+            </button>
+            <button
+              className={`nav-item submodule ${isCatalogo ? 'active' : ''}`}
+              onClick={() => navigate('/catalogo-productos')}
+            >
+              <span className="nav-ico">📚</span>
+              <span>Catálogo de productos</span>
             </button>
 
             {/* Información útil (menú pequeño) */}
