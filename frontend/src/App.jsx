@@ -4,6 +4,11 @@ import Login from './pages/Login'
 import Database from './pages/Database'
 import Classifier from './pages/Classifier'
 import SavedData from './pages/SavedData'
+import Retenciones from './pages/Retenciones'
+import ICE from './pages/ICE'
+import CalculoICE from './pages/CalculoICE'
+import AnexoPVPICE from './pages/AnexoPVPICE'
+import RecursosICE from './pages/RecursosICE'
 import Layout from './components/Layout'
 import { ClientProvider } from './context/ClientContext'
 import './App.css'
@@ -57,6 +62,11 @@ function App() {
             }
           >
             <Route path="/" element={<Database />} />
+            <Route path="/retenciones" element={<Retenciones />} />
+            <Route path="/calculo-ice" element={<CalculoICE />} />
+            <Route path="/anexo-pvp-ice" element={<AnexoPVPICE />} />
+            <Route path="/recursos-ice" element={<RecursosICE />} />
+            <Route path="/ice" element={<ICE />} />
             <Route path="/datos" element={<SavedData />} />
             <Route path="/clasificador" element={<Classifier />} />
             <Route path="*" element={<Navigate to="/" />} />

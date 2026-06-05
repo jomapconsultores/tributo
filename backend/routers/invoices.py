@@ -30,6 +30,15 @@ class InvoiceUpdate(BaseModel):
     fecha: Optional[str] = None
 
 
+class BulkMove(BaseModel):
+    ids: List[str]
+    client_id: str
+
+
+class BulkIds(BaseModel):
+    ids: List[str]
+
+
 def _load_maps(supabase):
     class_response = supabase.table("classification_map").select("ruc, categoria").execute()
     classification_map = {row['ruc']: row['categoria'] for row in class_response.data or []}
@@ -179,6 +188,38 @@ async def clear_invoices(
             q = q.neq("id", "00000000-0000-0000-0000-000000000000")
         q.execute()
         return {"message": "Facturas eliminadas"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/bulk-move")
+async def bulk_move(payload: BulkMove, _: str = Depends(get_current_user)):
+    """Reasigna varias facturas a otro cliente. Omite las que chocarían con una
+    factura ya existente (misma clave) en el cliente destino."""
+    try:
+        supabase = get_supabase_client()
+        moved = skipped = 0
+        for iid in payload.ids:
+            try:
+                supabase.table("invoices").update({"client_id": payload.client_id}).eq("id", iid).execute()
+                moved += 1
+            except Exception as e:
+                print(f"No se pudo mover factura {iid}: {e}")
+                skipped += 1
+        return {"moved": moved, "skipped": skipped}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/bulk-delete")
+async def bulk_delete(payload: BulkIds, _: str = Depends(get_current_user)):
+    """Elimina varias facturas por id."""
+    try:
+        if not payload.ids:
+            return {"deleted": 0}
+        supabase = get_supabase_client()
+        supabase.table("invoices").delete().in_("id", payload.ids).execute()
+        return {"deleted": len(payload.ids)}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

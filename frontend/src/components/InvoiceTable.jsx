@@ -1,5 +1,7 @@
-import { useState, useMemo } from 'react'
-import { invoicesAPI, memoryAPI } from '../services/api'
+import { useState, useMemo, useEffect } from 'react'
+import { invoicesAPI, memoryAPI, classificationAPI } from '../services/api'
+import ClasifEditor from './ClasifEditor'
+import BulkBar from './BulkBar'
 import './InvoiceTable.css'
 
 const GASTOS_PERSONALES = [
@@ -27,12 +29,27 @@ export default function InvoiceTable({ invoices, onInvoicesChange }) {
   const [fClasif, setFClasif] = useState('')
   const [fForma, setFForma] = useState('')
   const [fValor, setFValor] = useState('')
+  const [selected, setSelected] = useState(() => new Set())
+
+  // Catálogo maestro de categorías (las definidas en el Clasificador de Gastos)
+  const [catalog, setCatalog] = useState([])
+  useEffect(() => {
+    classificationAPI.list()
+      .then((res) => {
+        const cats = (res.data || [])
+          .map((c) => (c.categoria || '').toUpperCase().trim())
+          .filter(Boolean)
+        setCatalog([...new Set(cats)])
+      })
+      .catch(() => {})
+  }, [])
 
   const categorias = useMemo(() => {
     const set = new Set(GASTOS_PERSONALES)
-    invoices.forEach((i) => i.clasificacion && set.add(i.clasificacion))
+    catalog.forEach((c) => set.add(c))
+    invoices.forEach((i) => i.clasificacion && i.clasificacion !== 'SIN CLASIFICAR' && set.add(i.clasificacion))
     return Array.from(set).sort()
-  }, [invoices])
+  }, [invoices, catalog])
 
   // Opciones de los desplegables, según los datos presentes
   const clasifOpciones = useMemo(() => {
@@ -64,6 +81,49 @@ export default function InvoiceTable({ invoices, onInvoicesChange }) {
       return true
     })
   }, [invoices, search, fClasif, fForma, fValor])
+
+  // ---- Selección múltiple ----
+  const toggleSel = (id) => setSelected((prev) => {
+    const n = new Set(prev)
+    n.has(id) ? n.delete(id) : n.add(id)
+    return n
+  })
+  const allSelected = filtered.length > 0 && filtered.every((i) => selected.has(i.id))
+  const toggleAll = () => setSelected((prev) => {
+    if (filtered.every((i) => prev.has(i.id))) {
+      const n = new Set(prev)
+      filtered.forEach((i) => n.delete(i.id))
+      return n
+    }
+    return new Set([...prev, ...filtered.map((i) => i.id)])
+  })
+  const clearSel = () => setSelected(new Set())
+
+  const bulkMove = async (clientId) => {
+    const ids = [...selected]
+    try {
+      const res = await invoicesAPI.bulkMove(ids, clientId)
+      clearSel()
+      await onInvoicesChange()
+      const m = res.data?.moved ?? ids.length
+      const s = res.data?.skipped ?? 0
+      alert(`Movidas: ${m}${s ? ` · Omitidas (duplicadas en destino): ${s}` : ''}`)
+    } catch (e) {
+      alert('Error al mover: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+
+  const bulkDelete = async () => {
+    const ids = [...selected]
+    if (!window.confirm(`¿Eliminar ${ids.length} factura(s) seleccionada(s)?`)) return
+    try {
+      await invoicesAPI.bulkDelete(ids)
+      clearSel()
+      await onInvoicesChange()
+    } catch (e) {
+      alert('Error al eliminar: ' + (e.response?.data?.detail || e.message))
+    }
+  }
 
   const startEdit = (id, field, current) => {
     setEdit({ id, field })
@@ -102,8 +162,29 @@ export default function InvoiceTable({ invoices, onInvoicesChange }) {
     }
   }
 
+  // Guarda la clasificación con un valor explícito (desde el combo de búsqueda)
+  const saveClasif = async (inv, v) => {
+    try {
+      await invoicesAPI.update(inv.id, { clasificacion: v })
+      cancel()
+      onInvoicesChange()
+    } catch (e) {
+      alert('Error al guardar: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+
   const renderEditable = (inv, field, display, type = 'text') => {
     const isEditing = edit.id === inv.id && edit.field === field
+    if (isEditing && field === 'clasificacion') {
+      return (
+        <ClasifEditor
+          initial={inv.clasificacion}
+          options={categorias}
+          onCommit={(v) => saveClasif(inv, v)}
+          onCancel={cancel}
+        />
+      )
+    }
     if (isEditing) {
       return (
         <>
@@ -112,7 +193,7 @@ export default function InvoiceTable({ invoices, onInvoicesChange }) {
             type={type}
             value={value}
             list={field === 'clasificacion' ? 'categorias-list' : undefined}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => setValue(field === 'clasificacion' ? e.target.value.toUpperCase() : e.target.value)}
             onBlur={() => save(inv)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') save(inv)
@@ -173,10 +254,13 @@ export default function InvoiceTable({ invoices, onInvoicesChange }) {
         </span>
       </div>
 
+      <BulkBar count={selected.size} onMove={bulkMove} onDelete={bulkDelete} onClear={clearSel} />
+
       <div className="it-scroll">
         <table className="invoice-table">
           <thead>
             <tr>
+              <th className="sel-col"><input type="checkbox" checked={allSelected} onChange={toggleAll} title="Seleccionar todo" /></th>
               <th>Estado</th>
               <th>Fecha</th>
               <th>RUC</th>
@@ -201,7 +285,10 @@ export default function InvoiceTable({ invoices, onInvoicesChange }) {
           </thead>
           <tbody>
             {filtered.map((inv) => (
-              <tr key={inv.id} className={rowClass(inv)}>
+              <tr key={inv.id} className={`${rowClass(inv)} ${selected.has(inv.id) ? 'row-sel' : ''}`}>
+                <td className="sel-col">
+                  <input type="checkbox" checked={selected.has(inv.id)} onChange={() => toggleSel(inv.id)} />
+                </td>
                 <td className="estado">
                   {inv.estado}
                   {inv.es_yanbal && <span className="tag-yanbal">Y</span>}

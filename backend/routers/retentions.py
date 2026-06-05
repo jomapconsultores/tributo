@@ -1,0 +1,178 @@
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi.responses import StreamingResponse
+from typing import Optional, List
+from pydantic import BaseModel
+from auth import get_current_user
+from database import get_supabase_client
+from services.retention_parser import parse_retention_xml
+from services.retention_export import generate_retention_excel
+
+router = APIRouter(prefix="/api/retentions", tags=["retentions"])
+
+
+class BulkMove(BaseModel):
+    ids: List[str]
+    client_id: str
+
+
+class BulkIds(BaseModel):
+    ids: List[str]
+
+RETENTION_COLUMNS = (
+    "id,client_id,unique_id,estado,fecha,ruc_emisor,agente_retencion,"
+    "nro_comprobante,periodo_fiscal,base_renta,porc_renta,ret_renta,"
+    "base_iva,porc_iva,ret_iva,ret_isd,total_retenido,ruc_sujeto"
+)
+
+
+def _store_retention(supabase, client_id: str, user_id: str, ret: dict) -> str:
+    try:
+        supabase.table("retentions").insert({
+            "client_id": client_id,
+            "user_id": user_id,
+            **ret,
+        }).execute()
+        return "new"
+    except Exception as e:
+        if "duplicate" in str(e).lower() or "unique" in str(e).lower():
+            return "duplicate"
+        print(f"Error insertando retención {ret.get('unique_id')}: {e}")
+        return "error"
+
+
+@router.get("/")
+async def list_retentions(
+    _: str = Depends(get_current_user),
+    client_id: Optional[str] = Query(None),
+):
+    try:
+        supabase = get_supabase_client()
+        q = supabase.table("retentions").select(RETENTION_COLUMNS)
+        if client_id:
+            q = q.eq("client_id", client_id)
+        res = q.order("fecha", desc=True).execute()
+        return {"data": res.data or []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/process-xml")
+async def process_xml(
+    files: List[UploadFile] = File(...),
+    client_id: str = Form(...),
+    user_id: str = Depends(get_current_user),
+):
+    try:
+        supabase = get_supabase_client()
+        new_count = dup_count = err_count = 0
+        for file in files:
+            xml_content = (await file.read()).decode("utf-8", errors="ignore")
+            ret = parse_retention_xml(xml_content)
+            if not ret:
+                err_count += 1
+                continue
+            result = _store_retention(supabase, client_id, user_id, ret)
+            if result == "new":
+                new_count += 1
+            elif result == "duplicate":
+                dup_count += 1
+            else:
+                err_count += 1
+        return {"new": new_count, "duplicates": dup_count, "errors": err_count}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/clear")
+async def clear_retentions(
+    client_id: Optional[str] = Query(None),
+    _: str = Depends(get_current_user),
+):
+    try:
+        supabase = get_supabase_client()
+        q = supabase.table("retentions").delete()
+        if client_id:
+            q = q.eq("client_id", client_id)
+        else:
+            q = q.neq("id", "00000000-0000-0000-0000-000000000000")
+        q.execute()
+        return {"message": "Retenciones eliminadas"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/bulk-move")
+async def bulk_move(payload: BulkMove, _: str = Depends(get_current_user)):
+    """Reasigna varias retenciones a otro cliente. Omite las que chocarían con
+    una retención ya existente (misma clave) en el cliente destino."""
+    try:
+        supabase = get_supabase_client()
+        moved = skipped = 0
+        for rid in payload.ids:
+            try:
+                supabase.table("retentions").update({"client_id": payload.client_id}).eq("id", rid).execute()
+                moved += 1
+            except Exception as e:
+                print(f"No se pudo mover retención {rid}: {e}")
+                skipped += 1
+        return {"moved": moved, "skipped": skipped}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/bulk-delete")
+async def bulk_delete(payload: BulkIds, _: str = Depends(get_current_user)):
+    """Elimina varias retenciones por id."""
+    try:
+        if not payload.ids:
+            return {"deleted": 0}
+        supabase = get_supabase_client()
+        supabase.table("retentions").delete().in_("id", payload.ids).execute()
+        return {"deleted": len(payload.ids)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/{retention_id}")
+async def delete_retention(retention_id: str, _: str = Depends(get_current_user)):
+    try:
+        supabase = get_supabase_client()
+        supabase.table("retentions").delete().eq("id", retention_id).execute()
+        return {"message": "Eliminada"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/export/excel")
+async def export_excel_endpoint(
+    client_id: Optional[str] = Query(None),
+    _: str = Depends(get_current_user),
+):
+    try:
+        supabase = get_supabase_client()
+        q = supabase.table("retentions").select("*")
+        if client_id:
+            q = q.eq("client_id", client_id)
+        rows = q.order("fecha", desc=True).execute().data or []
+        excel_bytes = generate_retention_excel(rows)
+
+        label = "retenciones"
+        if client_id:
+            c = supabase.table("clients").select("identificacion,nombre,periodo_mes,periodo_anio").eq("id", client_id).execute()
+            if c.data:
+                row = c.data[0]
+                mes = str(row.get('periodo_mes') or '').zfill(2)
+                anio = str(row.get('periodo_anio') or '')
+                periodo = f"{anio}-{mes}" if anio and mes != '00' else ''
+                label = f"{row.get('identificacion','')}_{row.get('nombre','')}_RET"
+                if periodo:
+                    label = f"{label}_{periodo}"
+                label = label.replace(" ", "_")
+
+        return StreamingResponse(
+            iter([excel_bytes]),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={label}.xlsx"},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

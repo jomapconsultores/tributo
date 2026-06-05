@@ -11,7 +11,7 @@ const EMPTY = {
   periodo_mes: '', periodo_anio: '',
 }
 
-export default function NewClientModal({ open, onClose, editClient = null }) {
+export default function NewClientModal({ open, onClose, editClient = null, selectAfter = true, onCreated }) {
   const { createClient, updateClient } = useClients()
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
@@ -54,10 +54,12 @@ export default function NewClientModal({ open, onClose, editClient = null }) {
       }
       if (editClient) {
         await updateClient(editClient.id, payload)
+        onClose()
       } else {
-        await createClient(payload)
+        const created = await createClient(payload, { select: selectAfter })
+        onClose()
+        if (created) onCreated?.(created)
       }
-      onClose()
     } catch (err) {
       setError(err.response?.data?.detail || err.message)
     } finally {

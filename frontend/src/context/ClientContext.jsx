@@ -36,10 +36,10 @@ export function ClientProvider({ children }) {
     else localStorage.removeItem('selectedClientId')
   }, [])
 
-  const createClient = useCallback(async (data) => {
+  const createClient = useCallback(async (data, opts = {}) => {
     const res = await clientsAPI.create(data)
     await refreshClients()
-    if (res.data?.id) selectClient(res.data.id)
+    if (res.data?.id && opts.select !== false) selectClient(res.data.id)
     return res.data
   }, [refreshClients, selectClient])
 

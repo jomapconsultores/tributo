@@ -58,6 +58,43 @@
 
 .it-hint { font-size: 0.78rem; color: #94a3b8; }
 
+.sel-col { width: 34px; text-align: center; }
+.sel-col input { cursor: pointer; }
+.invoice-table tr.row-sel { background: #eef2ff !important; }
+
+/* Combo de clasificación con búsqueda */
+.clasif-combo { position: relative; display: inline-block; min-width: 160px; }
+
+.clasif-combo .cell-edit { width: 100%; box-sizing: border-box; }
+
+.clasif-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 50;
+  margin: 2px 0 0;
+  padding: 4px;
+  list-style: none;
+  min-width: 200px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.clasif-list li {
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  color: #334155;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.clasif-list li.active { background: #eef2ff; color: #4338ca; }
+
 .it-scroll {
   overflow-x: auto;
   overflow-y: auto;

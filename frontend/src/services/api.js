@@ -58,10 +58,78 @@ export const invoicesAPI = {
   update: (id, data) => api.put(`/api/invoices/${id}`, data),
   delete: (id) => api.delete(`/api/invoices/${id}`),
   clear: (clientId) => api.delete('/api/invoices/clear', { params: { client_id: clientId } }),
+  bulkMove: (ids, clientId) => api.post('/api/invoices/bulk-move', { ids, client_id: clientId }),
+  bulkDelete: (ids) => api.post('/api/invoices/bulk-delete', { ids }),
   exportExcel: (clientId) =>
     api.get('/api/invoices/export/excel', { params: { client_id: clientId }, responseType: 'blob' }),
   exportPdf: (clientId) =>
     api.get('/api/invoices/export/pdf', { params: { client_id: clientId }, responseType: 'blob' }),
+}
+
+// Retenciones (por cliente)
+export const retentionsAPI = {
+  list: (clientId) => api.get('/api/retentions/', { params: { client_id: clientId } }),
+  processXml: (clientId, files) => {
+    const formData = new FormData()
+    files.forEach((file) => formData.append('files', file))
+    formData.append('client_id', clientId)
+    return api.post('/api/retentions/process-xml', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  delete: (id) => api.delete(`/api/retentions/${id}`),
+  clear: (clientId) => api.delete('/api/retentions/clear', { params: { client_id: clientId } }),
+  bulkMove: (ids, clientId) => api.post('/api/retentions/bulk-move', { ids, client_id: clientId }),
+  bulkDelete: (ids) => api.post('/api/retentions/bulk-delete', { ids }),
+  exportExcel: (clientId) =>
+    api.get('/api/retentions/export/excel', { params: { client_id: clientId }, responseType: 'blob' }),
+}
+
+// ICE (ventas de licor por cliente)
+export const iceAPI = {
+  list: (clientId) => api.get('/api/ice/', { params: { client_id: clientId } }),
+  taxYears: () => api.get('/api/ice/tax-years'),
+  report: (clientId, anio) => api.get('/api/ice/report', { params: { client_id: clientId, anio } }),
+  processXml: (clientId, files) => {
+    const formData = new FormData()
+    files.forEach((file) => formData.append('files', file))
+    formData.append('client_id', clientId)
+    return api.post('/api/ice/process-xml', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  delete: (id) => api.delete(`/api/ice/${id}`),
+  clear: (clientId) => api.delete('/api/ice/clear', { params: { client_id: clientId } }),
+  bulkMove: (ids, clientId) => api.post('/api/ice/bulk-move', { ids, client_id: clientId }),
+  bulkDelete: (ids) => api.post('/api/ice/bulk-delete', { ids }),
+  exportExcel: (clientId, anio) =>
+    api.get('/api/ice/export/excel', { params: { client_id: clientId, anio }, responseType: 'blob' }),
+  exportPdf: (clientId, anio) =>
+    api.get('/api/ice/export/pdf', { params: { client_id: clientId, anio }, responseType: 'blob' }),
+  anexo: (clientId, actImport) =>
+    api.get('/api/ice/anexo', { params: { client_id: clientId, act_import: actImport } }),
+}
+
+// Cálculo ICE manual (por cliente)
+export const iceCalcAPI = {
+  list: (clientId) => api.get('/api/ice-calc/', { params: { client_id: clientId } }),
+  create: (row) => api.post('/api/ice-calc/', row),
+  update: (id, data) => api.put(`/api/ice-calc/${id}`, data),
+  delete: (id) => api.delete(`/api/ice-calc/${id}`),
+  clear: (clientId) => api.delete('/api/ice-calc/clear', { params: { client_id: clientId } }),
+  exportExcel: (clientId) => api.get('/api/ice-calc/export/excel', { params: { client_id: clientId }, responseType: 'blob' }),
+  exportPdf: (clientId) => api.get('/api/ice-calc/export/pdf', { params: { client_id: clientId }, responseType: 'blob' }),
+}
+
+// Recursos (Códigos ICE reemplazable)
+export const resourcesAPI = {
+  codigosInfo: () => api.get('/api/resources/codigos-ice/info'),
+  getCodigos: () => api.get('/api/resources/codigos-ice', { responseType: 'blob' }),
+  replaceCodigos: (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return api.post('/api/resources/codigos-ice', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
 }
 
 // Classification

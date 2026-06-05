@@ -36,6 +36,9 @@ dist/
 vite.config.js.timestamp-*.mjs
 vite.config.ts.timestamp-*.mjs
 
+# Recursos mutables del backend (Códigos ICE reemplazable)
+backend/resources/
+
 # IDE
 .vscode/
 .idea/

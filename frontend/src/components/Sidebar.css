@@ -71,23 +71,77 @@
   text-align: center;
 }
 
-/* Botón superior: datos guardados */
-.saved-data {
-  font-weight: 600;
-  background: rgba(99, 102, 241, 0.15);
-  color: #c7d2fe;
-  margin-bottom: 10px;
+/* Botones remarcados de módulo: GASTOS y RETENCIONES */
+.module-btn {
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  font-size: 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  margin-bottom: 8px;
+  padding: 12px 14px;
 }
 
-.saved-data:hover {
-  background: rgba(99, 102, 241, 0.28);
-  color: #fff;
+.module-btn.gastos { background: rgba(16, 185, 129, 0.16); color: #6ee7b7; }
+.module-btn.gastos:hover { background: rgba(16, 185, 129, 0.28); color: #fff; }
+.module-btn.gastos.active { background: #059669; color: #fff; border-color: #10b981; }
+
+.module-btn.retenciones { background: rgba(14, 165, 233, 0.16); color: #7dd3fc; }
+.module-btn.retenciones:hover { background: rgba(14, 165, 233, 0.28); color: #fff; }
+.module-btn.retenciones.active { background: #0284c7; color: #fff; border-color: #0ea5e9; }
+
+.module-btn.ice { background: rgba(217, 119, 6, 0.18); color: #fcd34d; }
+.module-btn.ice:hover { background: rgba(217, 119, 6, 0.3); color: #fff; }
+.module-btn.ice.active { background: #d97706; color: #fff; border-color: #f59e0b; }
+
+.module-btn.ingresos { background: rgba(217, 119, 6, 0.18); color: #fcd34d; }
+.module-btn.ingresos:hover { background: rgba(217, 119, 6, 0.3); color: #fff; }
+.module-btn.ingresos.active { background: rgba(217, 119, 6, 0.32); color: #fff; border-color: #f59e0b; }
+.module-btn.ingresos .caret { font-size: 0.7rem; transition: transform 0.15s; }
+.module-btn.ingresos .caret.open { transform: rotate(90deg); }
+
+/* Submódulos de INGRESOS+ICE */
+.submodule-list {
+  margin: 2px 0 8px 14px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.submodule { font-size: 0.85rem; color: #cbd5e1; padding: 8px 12px; }
+.submodule.active { background: #d97706; color: #fff; }
+
+/* Menú pequeño de información útil */
+.info-title {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  padding: 8px 12px 3px;
+}
+.info-item {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  padding: 6px 12px;
+  text-decoration: none;
+}
+.info-item:hover { color: #fff; }
+.info-item.active { background: #334155; color: #fff; }
+
+/* Toggle de clientes (desplegable) */
+.clients-toggle {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin-left: 6px;
 }
 
-.saved-data.active {
-  background: #4f46e5;
-  color: #fff;
+.clients-toggle .caret {
+  display: inline-block;
+  transition: transform 0.15s;
+  font-size: 0.7rem;
 }
+
+.clients-toggle .caret.open { transform: rotate(90deg); }
 
 .level-1 {
   font-weight: 700;
