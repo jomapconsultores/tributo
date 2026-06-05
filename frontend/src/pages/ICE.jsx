@@ -4,6 +4,7 @@ import { iceAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import BulkBar from '../components/BulkBar'
+import ClientSwitcher from '../components/ClientSwitcher'
 import './ICE.css'
 
 const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
@@ -217,6 +218,8 @@ export default function ICE() {
         </div>
       </header>
 
+      <ClientSwitcher onNewClient={openNewClient} />
+
       {error && <div className="ice-error">⚠ {error}</div>}
 
       <div className="ice-stats">
@@ -288,6 +291,18 @@ export default function ICE() {
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr className="ice-foot">
+                  <td></td><td></td><td></td><td></td><td>TOTALES</td>
+                  <td className="r">{filtered.reduce((s, r) => s + (parseFloat(r.cantidad_cajas) || 0), 0).toFixed(0)}</td>
+                  <td className="r">{filtered.reduce((s, r) => s + (parseInt(r.unidades_botellas) || 0), 0)}</td>
+                  <td className="r"></td><td className="r"></td>
+                  <td className="r">{money(filtered.reduce((s, r) => s + (parseFloat(r.base_ice) || 0), 0))}</td>
+                  <td className="r">{money(filtered.reduce((s, r) => s + (parseFloat(r.valor_ice) || 0), 0))}</td>
+                  <td className="r">{money(filtered.reduce((s, r) => s + (parseFloat(r.importe_total) || 0), 0))}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>

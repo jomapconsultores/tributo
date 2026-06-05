@@ -1,0 +1,13 @@
+.cs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.cs-back {
+  background: #e2e8f0; color: #334155; border: none; border-radius: 8px;
+  padding: 8px 13px; font-weight: 600; font-size: 0.83rem; cursor: pointer;
+}
+.cs-back:hover { background: #cbd5e1; }
+
+.cs-sel {
+  border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 11px;
+  font-size: 0.84rem; background: #fff; color: #334155; cursor: pointer; max-width: 360px;
+}
+.cs-sel:focus { outline: none; border-color: #4f46e5; }

@@ -6,6 +6,7 @@ import InvoiceTabs from '../components/InvoiceTabs'
 import UploadPanel from '../components/UploadPanel'
 import NewClientModal from '../components/NewClientModal'
 import ClientNavigator from '../components/ClientNavigator'
+import ClientSwitcher from '../components/ClientSwitcher'
 import { periodoLargo } from '../utils/periodo'
 import './Database.css'
 
@@ -130,16 +131,15 @@ export default function Database() {
     <div className="db-page">
       <header className="db-header">
         <div>
-          <h1>{selectedClient.nombre} <span className="db-periodo-tag">{periodoLargo(selectedClient)}</span></h1>
-          <p className="db-subhead">
-            {selectedClient.tipo_identificacion}: {selectedClient.identificacion}
-          </p>
+          <h1><span className="db-ruc">{selectedClient.identificacion}</span> {selectedClient.nombre} <span className="db-periodo-tag">{periodoLargo(selectedClient)}</span></h1>
         </div>
         <div className="db-header-actions">
           <button className="db-btn ghost" onClick={() => setEditClient(selectedClient)}>✏️ Editar</button>
           <button className="db-btn danger-ghost" onClick={handleDeleteClient}>🗑 Eliminar cliente</button>
         </div>
       </header>
+
+      <ClientSwitcher onNewClient={openNewClient} />
 
       {error && <div className="db-error">⚠ {error}</div>}
 

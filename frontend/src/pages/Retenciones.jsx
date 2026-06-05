@@ -5,6 +5,7 @@ import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import BulkBar from '../components/BulkBar'
 import RetentionReport from '../components/RetentionReport'
+import ClientSwitcher from '../components/ClientSwitcher'
 import './Retenciones.css'
 
 const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
@@ -178,9 +179,11 @@ export default function Retenciones() {
       <header className="ret-header">
         <div>
           <h1>🧾 Retenciones <span className="ret-periodo-tag">{periodoLargo(selectedClient)}</span></h1>
-          <p className="ret-subhead">{selectedClient.nombre} · {selectedClient.tipo_identificacion}: {selectedClient.identificacion}</p>
+          <p className="ret-subhead"><strong>{selectedClient.identificacion}</strong> — {selectedClient.nombre}</p>
         </div>
       </header>
+
+      <ClientSwitcher onNewClient={openNewClient} />
 
       {error && <div className="ret-error">⚠ {error}</div>}
 

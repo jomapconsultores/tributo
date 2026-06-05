@@ -4,6 +4,7 @@ import { iceCalcAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import { calcRow, ivaRate, CATEGORIAS, CAT_LABEL } from '../utils/iceCalc'
+import ClientSwitcher from '../components/ClientSwitcher'
 import './CalculoICE.css'
 
 const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
@@ -125,29 +126,34 @@ export default function CalculoICE() {
         <span className="ci-iva">IVA {Math.round(iva * 100)}%</span>
       </header>
 
-      {/* Formulario de producto */}
+      <ClientSwitcher onNewClient={openNewClient} />
+
+      {/* Formulario de producto (con títulos) */}
       <div className="ci-form">
-        <input className="ci-in wide" placeholder="Producto (opcional)" value={form.producto}
-          onChange={(e) => setForm({ ...form, producto: e.target.value.toUpperCase() })} />
-        <select className="ci-in" value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })}>
-          {CATEGORIAS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-        </select>
-        <label className="ci-check"><input type="checkbox" checked={form.por_cajas} onChange={(e) => setForm({ ...form, por_cajas: e.target.checked })} /> ¿Por cajas?</label>
+        <label className="ci-field wide"><span>Producto (opcional)</span>
+          <input className="ci-in" placeholder="Nombre del producto" value={form.producto}
+            onChange={(e) => setForm({ ...form, producto: e.target.value.toUpperCase() })} /></label>
+        <label className="ci-field"><span>Categoría</span>
+          <select className="ci-in" value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })}>
+            {CATEGORIAS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+          </select></label>
+        <label className="ci-field"><span>¿Vende por cajas?</span>
+          <span className="ci-check"><input type="checkbox" checked={form.por_cajas} onChange={(e) => setForm({ ...form, por_cajas: e.target.checked })} /> {form.por_cajas ? 'Sí' : 'No'}</span></label>
         {form.por_cajas ? (
           <>
-            <input className="ci-in s" type="number" placeholder="Cajas" value={form.cajas} onChange={(e) => setForm({ ...form, cajas: e.target.value })} />
-            <input className="ci-in s" type="number" placeholder="Bot/Caja" value={form.botellas_por_caja} onChange={(e) => setForm({ ...form, botellas_por_caja: e.target.value })} />
-            <input className="ci-in s" type="number" step="0.01" placeholder="Precio/Caja" value={form.precio} onChange={(e) => setForm({ ...form, precio: e.target.value })} />
+            <label className="ci-field"><span>Cajas</span><input className="ci-in s" type="number" value={form.cajas} onChange={(e) => setForm({ ...form, cajas: e.target.value })} /></label>
+            <label className="ci-field"><span>Botellas por caja</span><input className="ci-in s" type="number" value={form.botellas_por_caja} onChange={(e) => setForm({ ...form, botellas_por_caja: e.target.value })} /></label>
+            <label className="ci-field"><span>Precio por caja ($)</span><input className="ci-in s" type="number" step="0.01" value={form.precio} onChange={(e) => setForm({ ...form, precio: e.target.value })} /></label>
           </>
         ) : (
           <>
-            <input className="ci-in s" type="number" placeholder="Botellas" value={form.unidades} onChange={(e) => setForm({ ...form, unidades: e.target.value })} />
-            <input className="ci-in s" type="number" step="0.01" placeholder="Precio/Bot." value={form.precio} onChange={(e) => setForm({ ...form, precio: e.target.value })} />
+            <label className="ci-field"><span>Botellas</span><input className="ci-in s" type="number" value={form.unidades} onChange={(e) => setForm({ ...form, unidades: e.target.value })} /></label>
+            <label className="ci-field"><span>Precio por botella ($)</span><input className="ci-in s" type="number" step="0.01" value={form.precio} onChange={(e) => setForm({ ...form, precio: e.target.value })} /></label>
           </>
         )}
-        <input className="ci-in s" type="number" placeholder="Grado %" value={form.grado} onChange={(e) => setForm({ ...form, grado: e.target.value })} />
-        <input className="ci-in s" type="number" placeholder="Cap. ml" value={form.capacidad} onChange={(e) => setForm({ ...form, capacidad: e.target.value })} />
-        <button className="ci-btn primary" onClick={agregar} disabled={saving}>＋ Agregar</button>
+        <label className="ci-field"><span>Grado alcohólico (%)</span><input className="ci-in s" type="number" value={form.grado} onChange={(e) => setForm({ ...form, grado: e.target.value })} /></label>
+        <label className="ci-field"><span>Capacidad (ml)</span><input className="ci-in s" type="number" value={form.capacidad} onChange={(e) => setForm({ ...form, capacidad: e.target.value })} /></label>
+        <button className="ci-btn primary ci-add" onClick={agregar} disabled={saving}>＋ Agregar</button>
       </div>
 
       <div className="ci-toolbar">

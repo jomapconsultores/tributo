@@ -70,6 +70,7 @@
 .ice-table .ice-cli, .ice-table .ice-prod, .ice-rep-table .ice-prod { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
 .ice-table .total { font-weight: 700; color: #d97706; }
 .ice-table tbody tr:hover, .ice-rep-table tbody tr:hover { background: #f8fafc; }
+.ice-table tfoot .ice-foot td { font-weight: 700; color: #1e293b; background: #fef3c7; border-top: 2px solid #fcd34d; }
 .ice-table tr.row-sel { background: #fef3c7; }
 .ice-table .sel-col { width: 34px; text-align: center; }
 .ice-del { border: none; background: transparent; color: #cbd5e1; cursor: pointer; font-size: 0.9rem; }
