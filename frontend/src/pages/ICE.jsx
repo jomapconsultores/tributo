@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
 import { iceAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
@@ -15,6 +15,7 @@ export default function ICE() {
   const { clients, selectedClient, selectedClientId, selectClient } = useClients()
   const navigate = useNavigate()
   const [anexo, setAnexo] = useState(null) // { actImport, xml, advertencias, ventas } | 'open'
+  const [difOpen, setDifOpen] = useState(null) // producto cuya explicación está abierta
 
   const [rows, setRows] = useState([])
   const [report, setReport] = useState(null)
@@ -508,38 +509,56 @@ export default function ICE() {
         </div>
       )}
 
-      {/* Análisis de diferencias (solo si las hay) */}
+      {/* Análisis de diferencias (solo si las hay) — tabla con explicación al hacer clic */}
       {diferencias.length > 0 && (
         <div className="ice-report">
           <h2 className="ice-report-title">🧠 Análisis de diferencias (factura vs cálculo)</h2>
-          <p className="ice-verif-note">Se detectaron diferencias en {diferencias.length} producto(s). Para cada uno se explica el origen probable:</p>
-          {diferencias.map((d) => {
-            const mas = d.dif > 0
-            const pctEsp = d.audIce > 0 ? (d.iceEsp / d.audIce) * 100 : 0
-            return (
-              <div key={d.producto} className="ice-dif-card">
-                <div className="ice-dif-head">
-                  <span className="ice-dif-prod">{d.producto}</span>
-                  <span className={`ice-dif-tag ${mas ? 'mas' : 'menos'}`}>
-                    {mas ? 'Facturado de MÁS' : 'Facturado de MENOS'} {money(Math.abs(d.dif))}
-                  </span>
-                </div>
-                <div className="ice-dif-nums">
-                  <span>ICE facturado (XML): <b>{money(d.facIce)}</b></span>
-                  <span>ICE calculado: <b>{money(d.audIce)}</b> = Específico {money(d.iceEsp)} + Ad-Valorem {money(d.iceAdv)}</span>
-                  <span>Botellas: <b>{(parseFloat(d.botellas) || 0).toFixed(0)}</b></span>
-                </div>
-                <p className="ice-dif-text">
-                  El comprobante registra <b>{money(d.facIce)}</b> de ICE, pero el cálculo según la ley arroja <b>{money(d.audIce)}</b>
-                  {' '}(específico {money(d.iceEsp)}{d.aplicaAdv ? ` + ad-valorem ${money(d.iceAdv)}` : ', sin ad-valorem porque el precio/litro no supera el umbral'}),
-                  una diferencia de <b>{money(Math.abs(d.dif))}</b> {mas ? 'a favor de lo facturado' : 'que faltaría facturar'}.
-                  {' '}Causas probables: (1) el <b>grado alcohólico</b> o la <b>capacidad</b> del producto no coinciden con los reales
-                  {' '}(si el producto no se reconoció, se usan 15% y 750 ml por defecto); (2) la <b>tarifa del año</b> o el <b>umbral ad-valorem</b> aplicados; (3) redondeos.
-                  {' '}Verifica el grado, la capacidad y el código en el <b>Catálogo de productos</b> de este cliente.
-                </p>
-              </div>
-            )
-          })}
+          <p className="ice-verif-note">{diferencias.length} producto(s) con diferencia. Haz clic en una fila para ver la explicación.</p>
+          <div className="ice-scroll">
+            <table className="ice-rep-table ice-dif-table">
+              <thead><tr>
+                <th>Producto</th><th className="r">ICE facturado</th><th className="r">ICE calculado</th>
+                <th className="r">Diferencia</th><th></th>
+              </tr></thead>
+              <tbody>
+                {diferencias.map((d) => {
+                  const mas = d.dif > 0
+                  const abierto = difOpen === d.producto
+                  return (
+                    <Fragment key={d.producto}>
+                      <tr className="ice-dif-row" onClick={() => setDifOpen(abierto ? null : d.producto)}>
+                        <td className="ice-prod" title={d.producto}>{d.producto}</td>
+                        <td className="r">{money(d.facIce)}</td>
+                        <td className="r">{money(d.audIce)}</td>
+                        <td className={`r strong ${mas ? 'dif-mas' : 'dif-menos'}`}>{money(d.dif)}</td>
+                        <td className="r ice-dif-caret">{abierto ? '▾' : '▸'}</td>
+                      </tr>
+                      {abierto && (
+                        <tr className="ice-dif-detail">
+                          <td colSpan={5}>
+                            <div className="ice-dif-nums">
+                              <span>ICE facturado (XML): <b>{money(d.facIce)}</b></span>
+                              <span>ICE calculado: <b>{money(d.audIce)}</b> = Específico {money(d.iceEsp)} + Ad-Valorem {money(d.iceAdv)}</span>
+                              <span>Botellas: <b>{(parseFloat(d.botellas) || 0).toFixed(0)}</b></span>
+                              <span className={`ice-dif-tag ${mas ? 'mas' : 'menos'}`}>{mas ? 'Facturado de MÁS' : 'Facturado de MENOS'} {money(Math.abs(d.dif))}</span>
+                            </div>
+                            <p className="ice-dif-text">
+                              El comprobante registra <b>{money(d.facIce)}</b> de ICE, pero el cálculo según la ley arroja <b>{money(d.audIce)}</b>
+                              {' '}(específico {money(d.iceEsp)}{d.aplicaAdv ? ` + ad-valorem ${money(d.iceAdv)}` : ', sin ad-valorem porque el precio/litro no supera el umbral'}),
+                              una diferencia de <b>{money(Math.abs(d.dif))}</b> {mas ? 'a favor de lo facturado' : 'que faltaría facturar'}.
+                              {' '}Causas probables: (1) el <b>grado alcohólico</b> o la <b>capacidad</b> del producto no coinciden con los reales
+                              {' '}(si el producto no se reconoció, se usan 15% y 750 ml por defecto); (2) la <b>tarifa del año</b> o el <b>umbral ad-valorem</b> aplicados; (3) redondeos.
+                              {' '}Verifica el grado, la capacidad y el código en el <b>Catálogo de productos</b> de este cliente.
+                            </p>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
