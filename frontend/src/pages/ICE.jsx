@@ -162,6 +162,27 @@ export default function ICE() {
     ].map((x) => ({ ...x, dif: x.factura - x.audit }))
   }, [okRows, report])
 
+  // Diagnóstico de diferencias por producto (factura vs cálculo)
+  const diferencias = useMemo(() => {
+    if (!report?.por_producto) return []
+    const fac = {}
+    cuadroProducto.forEach((p) => { fac[p.producto] = p })
+    const out = []
+    report.por_producto.forEach((a) => {
+      const f = fac[a.producto] || {}
+      const facIce = parseFloat(f.valor_ice) || 0
+      const audIce = parseFloat(a.total_ice) || 0
+      const dif = facIce - audIce
+      if (Math.abs(dif) > 0.01) {
+        out.push({
+          producto: a.producto, botellas: a.botellas, facIce, audIce, dif,
+          iceEsp: a.ice_especifico, iceAdv: a.ice_advalorem, aplicaAdv: a.aplica_adv,
+        })
+      }
+    })
+    return out
+  }, [report, cuadroProducto])
+
   const filtered = useMemo(() => {
     if (!search.trim()) return rows
     const q = search.toLowerCase()
@@ -484,6 +505,41 @@ export default function ICE() {
             </table>
           </div>
           <p className="ice-verif-note">Las filas resaltadas tienen diferencia entre lo facturado y lo calculado. Una diferencia en ICE puede indicar tarifas o grados mal cargados.</p>
+        </div>
+      )}
+
+      {/* Análisis de diferencias (solo si las hay) */}
+      {diferencias.length > 0 && (
+        <div className="ice-report">
+          <h2 className="ice-report-title">🧠 Análisis de diferencias (factura vs cálculo)</h2>
+          <p className="ice-verif-note">Se detectaron diferencias en {diferencias.length} producto(s). Para cada uno se explica el origen probable:</p>
+          {diferencias.map((d) => {
+            const mas = d.dif > 0
+            const pctEsp = d.audIce > 0 ? (d.iceEsp / d.audIce) * 100 : 0
+            return (
+              <div key={d.producto} className="ice-dif-card">
+                <div className="ice-dif-head">
+                  <span className="ice-dif-prod">{d.producto}</span>
+                  <span className={`ice-dif-tag ${mas ? 'mas' : 'menos'}`}>
+                    {mas ? 'Facturado de MÁS' : 'Facturado de MENOS'} {money(Math.abs(d.dif))}
+                  </span>
+                </div>
+                <div className="ice-dif-nums">
+                  <span>ICE facturado (XML): <b>{money(d.facIce)}</b></span>
+                  <span>ICE calculado: <b>{money(d.audIce)}</b> = Específico {money(d.iceEsp)} + Ad-Valorem {money(d.iceAdv)}</span>
+                  <span>Botellas: <b>{(parseFloat(d.botellas) || 0).toFixed(0)}</b></span>
+                </div>
+                <p className="ice-dif-text">
+                  El comprobante registra <b>{money(d.facIce)}</b> de ICE, pero el cálculo según la ley arroja <b>{money(d.audIce)}</b>
+                  {' '}(específico {money(d.iceEsp)}{d.aplicaAdv ? ` + ad-valorem ${money(d.iceAdv)}` : ', sin ad-valorem porque el precio/litro no supera el umbral'}),
+                  una diferencia de <b>{money(Math.abs(d.dif))}</b> {mas ? 'a favor de lo facturado' : 'que faltaría facturar'}.
+                  {' '}Causas probables: (1) el <b>grado alcohólico</b> o la <b>capacidad</b> del producto no coinciden con los reales
+                  {' '}(si el producto no se reconoció, se usan 15% y 750 ml por defecto); (2) la <b>tarifa del año</b> o el <b>umbral ad-valorem</b> aplicados; (3) redondeos.
+                  {' '}Verifica el grado, la capacidad y el código en el <b>Catálogo de productos</b> de este cliente.
+                </p>
+              </div>
+            )
+          })}
         </div>
       )}
 

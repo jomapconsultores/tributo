@@ -83,3 +83,12 @@
 .ice-verif-note { font-size: 0.78rem; color: #64748b; margin: 0 0 10px; }
 .ice-rep-table tr.ice-dif td { background: #fef2f2; color: #b91c1c; }
 .ice-rep-table tr.ice-dif .strong { color: #b91c1c; }
+
+.ice-dif-card { border: 1px solid #fde68a; background: #fffbeb; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+.ice-dif-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ice-dif-prod { font-weight: 700; color: #0f172a; }
+.ice-dif-tag { font-size: 0.74rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+.ice-dif-tag.mas { background: #fee2e2; color: #b91c1c; }
+.ice-dif-tag.menos { background: #fef3c7; color: #92400e; }
+.ice-dif-nums { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.8rem; color: #475569; margin: 6px 0; }
+.ice-dif-text { font-size: 0.84rem; color: #334155; line-height: 1.5; margin: 0; }
