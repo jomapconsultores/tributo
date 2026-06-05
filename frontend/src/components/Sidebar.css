@@ -93,6 +93,12 @@
 .module-btn.ice:hover { background: rgba(217, 119, 6, 0.3); color: #fff; }
 .module-btn.ice.active { background: #d97706; color: #fff; border-color: #f59e0b; }
 
+.module-btn.declaraciones { background: rgba(37, 99, 235, 0.16); color: #93c5fd; }
+.module-btn.declaraciones:hover { background: rgba(37, 99, 235, 0.28); color: #fff; }
+.module-btn.declaraciones.active { background: #2563eb; color: #fff; border-color: #3b82f6; }
+.module-btn.declaraciones .caret { font-size: 0.7rem; transition: transform 0.15s; }
+.module-btn.declaraciones .caret.open { transform: rotate(90deg); }
+
 .module-btn.ingresos { background: rgba(217, 119, 6, 0.18); color: #fcd34d; }
 .module-btn.ingresos:hover { background: rgba(217, 119, 6, 0.3); color: #fff; }
 .module-btn.ingresos.active { background: rgba(217, 119, 6, 0.32); color: #fff; border-color: #f59e0b; }

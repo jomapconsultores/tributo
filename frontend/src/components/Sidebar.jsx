@@ -13,6 +13,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const [ingresosOpen, setIngresosOpen] = useState(true)
   const [gastosOpen, setGastosOpen] = useState(true)
   const [retencionesOpen, setRetencionesOpen] = useState(true)
+  const [declaracionesOpen, setDeclaracionesOpen] = useState(true)
   const [clientSearch, setClientSearch] = useState('')
 
   // Contribuyentes únicos (por identificación) para el listado por nombre
@@ -44,12 +45,15 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
 
   const path = location.pathname
   const isRetenciones = path === '/retenciones'
+  const isDeclIva = path === '/declaracion-iva'
+  const isDeclIce = path === '/declaracion-ice'
+  const isDeclaraciones = isDeclIva || isDeclIce
   const isIceXml = path === '/ice'
   const isCalculo = path === '/calculo-ice'
   const isAnexo = path === '/anexo-pvp-ice'
   const isRecursos = path === '/recursos-ice'
   const isIngresos = isIceXml || isCalculo || isAnexo || isRecursos
-  const isGastos = !isRetenciones && !isIngresos // todo lo demás pertenece al proceso de Gastos
+  const isGastos = !isRetenciones && !isIngresos && !isDeclaraciones // todo lo demás pertenece al proceso de Gastos
   const isDatabase = path === '/'
   const isClassifier = path === '/clasificador'
   const isSaved = path === '/datos'
@@ -174,6 +178,26 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
           <div className="submodule-list">
             <button className={`nav-item submodule ${isRetenciones ? 'active' : ''}`} onClick={() => navigate('/retenciones')}>
               <span className="nav-ico">🧾</span><span>Retenciones</span>
+            </button>
+          </div>
+        )}
+
+        {/* Módulo DECLARACIONES (desplegable) */}
+        <button
+          className={`nav-item module-btn declaraciones ${isDeclaraciones ? 'active' : ''}`}
+          onClick={() => setDeclaracionesOpen((o) => !o)}
+        >
+          <span className={`caret ${declaracionesOpen ? 'open' : ''}`}>▸</span>
+          <span className="nav-ico">📋</span>
+          <span>DECLARACIONES</span>
+        </button>
+        {declaracionesOpen && (
+          <div className="submodule-list">
+            <button className={`nav-item submodule ${isDeclIce ? 'active' : ''}`} onClick={() => navigate('/declaracion-ice')}>
+              <span className="nav-ico">🥃</span><span>Declaración ICE</span>
+            </button>
+            <button className={`nav-item submodule ${isDeclIva ? 'active' : ''}`} onClick={() => navigate('/declaracion-iva')}>
+              <span className="nav-ico">🧾</span><span>Declaración IVA</span>
             </button>
           </div>
         )}

@@ -9,6 +9,7 @@ import ICE from './pages/ICE'
 import CalculoICE from './pages/CalculoICE'
 import AnexoPVPICE from './pages/AnexoPVPICE'
 import RecursosICE from './pages/RecursosICE'
+import Declaraciones from './pages/Declaraciones'
 import Layout from './components/Layout'
 import { ClientProvider } from './context/ClientContext'
 import './App.css'
@@ -63,6 +64,8 @@ function App() {
           >
             <Route path="/" element={<Database />} />
             <Route path="/retenciones" element={<Retenciones />} />
+            <Route path="/declaracion-iva" element={<Declaraciones tipo="IVA" />} />
+            <Route path="/declaracion-ice" element={<Declaraciones tipo="ICE" />} />
             <Route path="/calculo-ice" element={<CalculoICE />} />
             <Route path="/anexo-pvp-ice" element={<AnexoPVPICE />} />
             <Route path="/recursos-ice" element={<RecursosICE />} />

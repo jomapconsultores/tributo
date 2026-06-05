@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from config import get_settings
-from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc
+from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones
 import os
 from dotenv import load_dotenv
 
@@ -44,6 +44,7 @@ app.include_router(invoices.router)
 app.include_router(retentions.router)
 app.include_router(ice.router)
 app.include_router(ice_calc.router)
+app.include_router(declaraciones.router)
 app.include_router(resources.router)
 app.include_router(memory.router)
 
