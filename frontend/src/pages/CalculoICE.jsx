@@ -176,9 +176,11 @@ export default function CalculoICE() {
       {/* Cálculo en vivo del producto que se está ingresando */}
       <div className="ci-preview">
         <span className="ci-preview-lbl">Cálculo en vivo:</span>
+        <span>ICE / Botella <b>{money(preview.icePorBotella)}</b></span>
+        {form.por_cajas && <span>ICE / Caja <b>{money(preview.icePorCaja)}</b></span>}
         <span>Botellas <b>{preview.totalBot.toFixed(0)}</b></span>
-        <span>ICE Específico <b>{money(preview.iceEsp)}</b></span>
-        <span>ICE Ad-Valorem <b>{money(preview.iceAdv)}</b>{preview.aplicaAdv ? ' ▲' : ''}</span>
+        <span>ICE Esp. <b>{money(preview.iceEsp)}</b></span>
+        <span>ICE AdV <b>{money(preview.iceAdv)}</b>{preview.aplicaAdv ? ' ▲' : ''}</span>
         <span>Total ICE <b className="ci-preview-hi">{money(preview.totalIce)}</b></span>
         <span>IVA <b>{money(preview.iva)}</b></span>
         <span>PVP <b>{money(preview.pvp)}</b></span>
@@ -216,6 +218,7 @@ export default function CalculoICE() {
             <table className="ci-table">
               <thead><tr>
                 <th>Período</th><th>Producto</th><th>Categoría</th><th className="r">Botellas</th><th className="r">$/Bot</th>
+                <th className="r">ICE/Botella</th><th className="r">ICE/Caja</th>
                 <th className="r">ICE Esp.</th><th className="r">ICE AdV</th><th className="r">Total ICE</th>
                 <th className="r">Base IVA</th><th className="r">IVA</th><th className="r">PVP</th><th></th>
               </tr></thead>
@@ -227,6 +230,8 @@ export default function CalculoICE() {
                     <td>{CAT_LABEL[c.cat]}</td>
                     <td className="r">{c.totalBot.toFixed(0)}</td>
                     <td className="r">{c.precioBot.toFixed(4)}</td>
+                    <td className="r">{money(c.icePorBotella)}</td>
+                    <td className="r">{r.por_cajas ? money(c.icePorCaja) : '—'}</td>
                     <td className="r">{money(c.iceEsp)}</td>
                     <td className="r">{money(c.iceAdv)}</td>
                     <td className="r strong">{money(c.totalIce)}</td>
@@ -246,15 +251,21 @@ export default function CalculoICE() {
       {calc.some(({ r }) => r.por_cajas) && (
         <div className="ci-section">
           <h2 className="ci-h2">Por caja</h2>
+          <p className="ci-percaja-note">El ICE se calcula por botella individual y se multiplica por las botellas de la caja.</p>
           <div className="ci-scroll">
             <table className="ci-table">
-              <thead><tr><th>Producto</th><th>Categoría</th><th className="r">Cajas</th><th className="r">ICE / Caja</th><th className="r">Total ICE</th></tr></thead>
+              <thead><tr>
+                <th>Producto</th><th>Categoría</th><th className="r">Bot/Caja</th><th className="r">ICE / Botella</th>
+                <th className="r">ICE / Caja</th><th className="r">Cajas</th><th className="r">Total ICE</th>
+              </tr></thead>
               <tbody>
                 {calc.filter(({ r }) => r.por_cajas).map(({ r, c }) => (
                   <tr key={r.id}>
                     <td>{r.producto || '—'}</td><td>{CAT_LABEL[c.cat]}</td>
-                    <td className="r">{(parseFloat(r.cajas) || 0).toFixed(0)}</td>
+                    <td className="r">{(parseFloat(r.botellas_por_caja) || 0).toFixed(0)}</td>
+                    <td className="r">{money(c.icePorBotella)}</td>
                     <td className="r">{money(c.icePorCaja)}</td>
+                    <td className="r">{(parseFloat(r.cajas) || 0).toFixed(0)}</td>
                     <td className="r strong">{money(c.totalIce)}</td>
                   </tr>
                 ))}

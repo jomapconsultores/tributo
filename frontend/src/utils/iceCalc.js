@@ -55,10 +55,16 @@ export function calcRow(r, anio, mes) {
   const ivaVal = baseIva * iva
   const pvp = baseIva + ivaVal
 
+  // ICE calculado por botella individual (base del cálculo) → caja → total
+  const iceEspBot = tarifa * litrosPb
+  const iceAdvBot = aplicaAdv ? (precioLitro - umbral) * 0.75 * (cap / 1000) : 0
+  const icePorBotella = iceEspBot + iceAdvBot
+
   return {
     cat, totalBot, precioBot, precioLitro, aplicaAdv,
     iceEsp, iceAdv, totalIce, subtotal, baseIva, iva: ivaVal, pvp,
-    icePorCaja: porCajas && cajas > 0 ? totalIce / cajas : totalIce,
+    iceEspBot, iceAdvBot, icePorBotella,
+    icePorCaja: icePorBotella * bpc,
     ivaTasa: iva,
   }
 }
