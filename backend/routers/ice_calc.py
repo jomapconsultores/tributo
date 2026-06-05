@@ -11,7 +11,7 @@ from services.ice_calc_data import TARIFAS
 router = APIRouter(prefix="/api/ice-calc", tags=["ice-calc"])
 
 COLUMNS = ("id,client_id,producto,categoria,por_cajas,cajas,botellas_por_caja,"
-           "unidades,grado,capacidad,precio,created_at")
+           "unidades,grado,capacidad,precio,anio,mes,created_at")
 
 
 class CalcRow(BaseModel):
@@ -25,6 +25,8 @@ class CalcRow(BaseModel):
     grado: Optional[float] = 0
     capacidad: Optional[float] = 750
     precio: Optional[float] = 0
+    anio: Optional[int] = None
+    mes: Optional[int] = None
 
 
 class CalcUpdate(BaseModel):
@@ -75,6 +77,10 @@ async def create_calc(entry: CalcRow, user_id: str = Depends(get_current_user)):
         supabase = get_supabase_client()
         data = entry.dict()
         data["user_id"] = user_id
+        if data.get("anio") is None or data.get("mes") is None:
+            c = _period(supabase, entry.client_id)
+            data["anio"] = data.get("anio") or c.get("periodo_anio")
+            data["mes"] = data.get("mes") or c.get("periodo_mes")
         res = supabase.table("ice_calc").insert(data).execute()
         return res.data[0] if res.data else None
     except Exception as e:

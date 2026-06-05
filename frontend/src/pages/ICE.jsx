@@ -147,6 +147,21 @@ export default function ICE() {
     return Object.values(ag).sort((x, y) => (x.nombre || '').localeCompare(y.nombre || ''))
   }, [okRows])
 
+  // Revisión / cuadre: compara los valores de la factura (XML) vs la auditoría (cálculo)
+  const cuadre = useMemo(() => {
+    const facturaIce = okRows.reduce((s, r) => s + (parseFloat(r.valor_ice) || 0), 0)
+    const facturaIva = okRows.reduce((s, r) => s + (parseFloat(r.valor_iva) || 0), 0)
+    const facturaSub = okRows.reduce((s, r) => s + (parseFloat(r.precio_total_sin_impuesto) || 0), 0)
+    const facturaTotal = okRows.reduce((s, r) => s + (parseFloat(r.importe_total) || 0), 0)
+    const g = report?.general || {}
+    return [
+      { concepto: 'Subtotal (sin impuestos)', factura: facturaSub, audit: g.subtotal || 0 },
+      { concepto: 'ICE', factura: facturaIce, audit: g.total_ice || 0 },
+      { concepto: 'IVA', factura: facturaIva, audit: g.iva || 0 },
+      { concepto: 'Total (con impuestos)', factura: facturaTotal, audit: (g.base_iva || 0) + (g.iva || 0) },
+    ].map((x) => ({ ...x, dif: x.factura - x.audit }))
+  }, [okRows, report])
+
   const filtered = useMemo(() => {
     if (!search.trim()) return rows
     const q = search.toLowerCase()
@@ -407,6 +422,68 @@ export default function ICE() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Cuadro de verificación: recálculo de ICE por línea */}
+      {report?.detalle?.length > 0 && (
+        <div className="ice-report">
+          <h2 className="ice-report-title">✅ Verificación del cálculo ICE por producto ({anio})</h2>
+          <p className="ice-verif-note">ICE Específico = Litros de alcohol puro × Tarifa · ICE Ad-Valorem = (Precio/Litro − Umbral {money(report.params?.umbral)}) × 75% × Litros, si Precio/Litro &gt; Umbral.</p>
+          <div className="ice-scroll">
+            <table className="ice-rep-table">
+              <thead><tr>
+                <th>Producto</th><th className="r">Botellas</th><th className="r">Vol. (cc)</th><th className="r">Grado %</th>
+                <th className="r">Litros Alcohol</th><th className="r">Tarifa</th><th className="r">ICE Esp.</th>
+                <th className="r">Precio/Litro</th><th>¿AdV?</th><th className="r">ICE AdV</th><th className="r">Total ICE</th>
+              </tr></thead>
+              <tbody>
+                {report.detalle.map((d, i) => {
+                  const litrosAlc = (parseFloat(d.botellas) || 0) * (parseFloat(d.volumen) || 0) / 1000 * (parseFloat(d.grado) || 0) / 100
+                  return (
+                    <tr key={i}>
+                      <td className="ice-prod" title={d.producto_individual}>{d.producto_individual}</td>
+                      <td className="r">{(parseFloat(d.botellas) || 0).toFixed(0)}</td>
+                      <td className="r">{(parseFloat(d.volumen) || 0).toFixed(0)}</td>
+                      <td className="r">{(parseFloat(d.grado) || 0).toFixed(1)}</td>
+                      <td className="r">{litrosAlc.toFixed(4)}</td>
+                      <td className="r">{report.params?.esp}</td>
+                      <td className="r strong">{money(d.ice_especifico)}</td>
+                      <td className="r">{(parseFloat(d.precio_litro) || 0).toFixed(4)}</td>
+                      <td>{d.aplica_adv ? 'SÍ' : 'NO'}</td>
+                      <td className="r">{money(d.ice_advalorem)}</td>
+                      <td className="r">{money(d.total_ice)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Revisión / cuadre: factura vs auditoría */}
+      {report?.general && rows.length > 0 && (
+        <div className="ice-report">
+          <h2 className="ice-report-title">🔎 Revisión de valores (factura vs cálculo)</h2>
+          <div className="ice-scroll">
+            <table className="ice-rep-table">
+              <thead><tr>
+                <th>Concepto</th><th className="r">Según factura (XML)</th><th className="r">Según cálculo (auditoría)</th><th className="r">Diferencia</th>
+              </tr></thead>
+              <tbody>
+                {cuadre.map((x) => (
+                  <tr key={x.concepto} className={Math.abs(x.dif) > 0.01 ? 'ice-dif' : ''}>
+                    <td>{x.concepto}</td>
+                    <td className="r">{money(x.factura)}</td>
+                    <td className="r">{money(x.audit)}</td>
+                    <td className="r strong">{money(x.dif)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="ice-verif-note">Las filas resaltadas tienen diferencia entre lo facturado y lo calculado. Una diferencia en ICE puede indicar tarifas o grados mal cargados.</p>
         </div>
       )}
 

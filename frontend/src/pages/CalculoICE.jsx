@@ -2,16 +2,19 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { iceCalcAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
-import { periodoLargo } from '../utils/periodo'
+import { periodoLargo, MESES } from '../utils/periodo'
 import { calcRow, ivaRate, CATEGORIAS, CAT_LABEL } from '../utils/iceCalc'
 import ClientSwitcher from '../components/ClientSwitcher'
 import './CalculoICE.css'
 
 const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
 
+const ANIOS = ['2021', '2022', '2023', '2024', '2025', '2026']
+
 const EMPTY = {
   producto: '', categoria: 'ALCOHOLICA', por_cajas: true,
   cajas: 1, botellas_por_caja: 12, unidades: 0, grado: 15, capacidad: 750, precio: 0,
+  anio: 2026, mes: 1,
 }
 
 export default function CalculoICE() {
@@ -25,7 +28,7 @@ export default function CalculoICE() {
 
   const anio = selectedClient?.periodo_anio || 2026
   const mes = selectedClient?.periodo_mes || 1
-  const iva = ivaRate(anio, mes)
+  const iva = ivaRate(form.anio, form.mes)
 
   const load = useCallback(async () => {
     if (!selectedClientId) { setRows([]); return }
@@ -38,11 +41,16 @@ export default function CalculoICE() {
 
   useEffect(() => { load() }, [load])
 
+  // El período del formulario arranca con el del cliente, pero se puede cambiar
+  useEffect(() => {
+    if (selectedClient) setForm((f) => ({ ...f, anio: selectedClient.periodo_anio || 2026, mes: selectedClient.periodo_mes || 1 }))
+  }, [selectedClientId, selectedClient])
+
   const agregar = async () => {
     setSaving(true)
     try {
       await iceCalcAPI.create({ client_id: selectedClientId, ...form })
-      setForm((f) => ({ ...EMPTY, categoria: f.categoria, por_cajas: f.por_cajas }))
+      setForm((f) => ({ ...EMPTY, categoria: f.categoria, por_cajas: f.por_cajas, anio: f.anio, mes: f.mes }))
       await load()
     } catch (e) {
       alert('Error: ' + (e.response?.data?.detail || e.message))
@@ -65,7 +73,7 @@ export default function CalculoICE() {
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
 
-  const calc = useMemo(() => rows.map((r) => ({ r, c: calcRow(r, anio, mes) })), [rows, anio, mes])
+  const calc = useMemo(() => rows.map((r) => ({ r, c: calcRow(r, r.anio || anio, r.mes || mes) })), [rows, anio, mes])
 
   const porCategoria = useMemo(() => {
     const ag = {}
@@ -130,6 +138,14 @@ export default function CalculoICE() {
 
       {/* Formulario de producto (con títulos) */}
       <div className="ci-form">
+        <label className="ci-field"><span>Año</span>
+          <select className="ci-in" value={form.anio} onChange={(e) => setForm({ ...form, anio: parseInt(e.target.value, 10) })}>
+            {ANIOS.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select></label>
+        <label className="ci-field"><span>Mes</span>
+          <select className="ci-in" value={form.mes} onChange={(e) => setForm({ ...form, mes: parseInt(e.target.value, 10) })}>
+            {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+          </select></label>
         <label className="ci-field wide"><span>Producto (opcional)</span>
           <input className="ci-in" placeholder="Nombre del producto" value={form.producto}
             onChange={(e) => setForm({ ...form, producto: e.target.value.toUpperCase() })} /></label>
@@ -187,13 +203,14 @@ export default function CalculoICE() {
           <div className="ci-scroll">
             <table className="ci-table">
               <thead><tr>
-                <th>Producto</th><th>Categoría</th><th className="r">Botellas</th><th className="r">$/Bot</th>
+                <th>Período</th><th>Producto</th><th>Categoría</th><th className="r">Botellas</th><th className="r">$/Bot</th>
                 <th className="r">ICE Esp.</th><th className="r">ICE AdV</th><th className="r">Total ICE</th>
                 <th className="r">Base IVA</th><th className="r">IVA</th><th className="r">PVP</th><th></th>
               </tr></thead>
               <tbody>
                 {calc.map(({ r, c }) => (
                   <tr key={r.id}>
+                    <td>{(MESES[(r.mes || mes) - 1] || '').slice(0, 3)} {r.anio || anio}</td>
                     <td>{r.producto || '—'}</td>
                     <td>{CAT_LABEL[c.cat]}</td>
                     <td className="r">{c.totalBot.toFixed(0)}</td>

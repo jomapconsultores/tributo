@@ -5,7 +5,10 @@ from services.ice_calc_data import calcular_fila, CATEGORIAS, CAT_LABEL
 def enrich(rows, anio, mes):
     out = []
     for r in rows:
-        c = calcular_fila(r, anio, mes)
+        # cada fila usa su propio período si lo tiene; si no, el del cliente
+        ra = r.get("anio") or anio
+        rm = r.get("mes") or mes
+        c = calcular_fila(r, ra, rm)
         out.append({**r, **c})
     return out
 

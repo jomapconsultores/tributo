@@ -80,3 +80,6 @@
 .ice-report-title { margin: 0 0 12px; font-size: 1rem; color: #0f172a; }
 .ice-rep-table .strong { font-weight: 700; color: #d97706; }
 .ice-rep-total td { font-weight: 700; color: #1e293b; background: #fef3c7; border-top: 2px solid #fcd34d; }
+.ice-verif-note { font-size: 0.78rem; color: #64748b; margin: 0 0 10px; }
+.ice-rep-table tr.ice-dif td { background: #fef2f2; color: #b91c1c; }
+.ice-rep-table tr.ice-dif .strong { color: #b91c1c; }

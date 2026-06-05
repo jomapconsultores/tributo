@@ -122,4 +122,5 @@ def full_report(rows: List[Dict], anio: str) -> Dict:
         "params": {"esp": tax["esp"], "umbral": tax["umb"], "iva": tax["iva"], "advalorem": 0.75},
         "por_producto": resumen_por_producto(rows, anio),
         "general": resumen_general(rows, anio),
+        "detalle": audit_detail(rows, anio),
     }
