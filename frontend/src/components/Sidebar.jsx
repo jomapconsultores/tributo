@@ -11,6 +11,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const bajadorRef = useRef(null)
   const [clientsOpen, setClientsOpen] = useState(true)
   const [ingresosOpen, setIngresosOpen] = useState(true)
+  const [gastosOpen, setGastosOpen] = useState(true)
+  const [retencionesOpen, setRetencionesOpen] = useState(true)
   const [clientSearch, setClientSearch] = useState('')
 
   // Contribuyentes únicos (por identificación) para el listado por nombre
@@ -38,7 +40,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
     if (bajadorRef.current) {
       bajadorRef.current.setAttribute('href', bajadorBookmarklet.trim())
     }
-  }, [])
+  }, [gastosOpen])
 
   const path = location.pathname
   const isRetenciones = path === '/retenciones'
@@ -119,22 +121,62 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
           </div>
         )}
 
-        {/* Botones remarcados de módulo */}
+        {/* Módulo GASTOS (desplegable) */}
         <button
           className={`nav-item module-btn gastos ${isGastos ? 'active' : ''}`}
-          onClick={() => navigate('/')}
+          onClick={() => setGastosOpen((o) => !o)}
         >
+          <span className={`caret ${gastosOpen ? 'open' : ''}`}>▸</span>
           <span className="nav-ico">💸</span>
           <span>GASTOS</span>
         </button>
+        {gastosOpen && (
+          <div className="submodule-list">
+            <button className={`nav-item submodule ${isDatabase ? 'active' : ''}`} onClick={() => navigate('/')}>
+              <span className="nav-ico">💸</span><span>Gastos</span>
+            </button>
+            <button className={`nav-item submodule ${isClassifier ? 'active' : ''}`} onClick={() => navigate('/clasificador')}>
+              <span className="nav-ico">🏷️</span><span>Clasificador de Gastos</span>
+            </button>
+            <button className={`nav-item submodule ${isSaved ? 'active' : ''}`} onClick={() => navigate('/datos')}>
+              <span className="nav-ico">📊</span><span>Datos guardados</span>
+            </button>
+            <a
+              ref={bajadorRef}
+              className="nav-item submodule bajador-item"
+              href="#"
+              draggable="true"
+              title="Arrástralo a tu barra de marcadores para instalarlo"
+              onClick={(e) => {
+                e.preventDefault()
+                alert(
+                  '📥 Bajador de facturas\n\n' +
+                  'Para instalarlo: ARRÁSTRA este botón hacia la barra de marcadores (favoritos) de tu navegador.\n\n' +
+                  'Luego, dentro del portal del SRI, haz clic en el marcador para detectar y descargar los XML.'
+                )
+              }}
+            >
+              <span className="nav-ico">📥</span><span>Bajador de facturas</span>
+            </a>
+          </div>
+        )}
 
+        {/* Módulo RETENCIONES (desplegable) */}
         <button
           className={`nav-item module-btn retenciones ${isRetenciones ? 'active' : ''}`}
-          onClick={() => navigate('/retenciones')}
+          onClick={() => setRetencionesOpen((o) => !o)}
         >
+          <span className={`caret ${retencionesOpen ? 'open' : ''}`}>▸</span>
           <span className="nav-ico">🧾</span>
           <span>RETENCIONES</span>
         </button>
+        {retencionesOpen && (
+          <div className="submodule-list">
+            <button className={`nav-item submodule ${isRetenciones ? 'active' : ''}`} onClick={() => navigate('/retenciones')}>
+              <span className="nav-ico">🧾</span><span>Retenciones</span>
+            </button>
+          </div>
+        )}
 
         <div className="nav-divider" />
 
@@ -188,46 +230,6 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
             </button>
           </div>
         )}
-
-        {/* Datos guardados (consolidado del proceso de Gastos) */}
-        <button
-          className={`nav-item level-2 ${isSaved ? 'active' : ''}`}
-          onClick={() => navigate('/datos')}
-        >
-          <span className="nav-ico">📊</span>
-          <span>Datos guardados</span>
-        </button>
-
-        <div className="nav-divider" />
-
-        {/* Nivel 2: Clasificador */}
-        <button
-          className={`nav-item level-2 ${isClassifier ? 'active' : ''}`}
-          onClick={() => navigate('/clasificador')}
-        >
-          <span className="nav-ico">🏷️</span>
-          <span>Clasificador de Gastos</span>
-        </button>
-
-        {/* Nivel 2: Bajador de facturas (bookmarklet arrastrable) */}
-        <a
-          ref={bajadorRef}
-          className="nav-item level-2 bajador-item"
-          href="#"
-          draggable="true"
-          title="Arrástralo a tu barra de marcadores para instalarlo"
-          onClick={(e) => {
-            e.preventDefault()
-            alert(
-              '📥 Bajador de facturas\n\n' +
-              'Para instalarlo: ARRÁSTRA este botón hacia la barra de marcadores (favoritos) de tu navegador.\n\n' +
-              'Luego, dentro del portal del SRI, haz clic en el marcador para detectar y descargar los XML.'
-            )
-          }}
-        >
-          <span className="nav-ico">📥</span>
-          <span>Bajador de facturas</span>
-        </a>
       </nav>
 
       <div className="sidebar-footer">
