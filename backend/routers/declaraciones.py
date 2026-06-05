@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client
 from services.declaracion import declaracion_iva, declaracion_ice
+from services.declaracion_oficial import llenar_oficial
 
 router = APIRouter(prefix="/api/declaraciones", tags=["declaraciones"])
 
@@ -82,6 +83,30 @@ async def eliminar(decl_id: str, _: str = Depends(get_current_user)):
         return {"message": "Eliminada"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/export/oficial")
+async def export_oficial(client_id: str = Query(...), tipo: str = Query("IVA"), _: str = Depends(get_current_user)):
+    """Llena el formulario oficial del SRI (borrador) con los valores calculados."""
+    try:
+        supabase = get_supabase_client()
+        decl = _calcular(supabase, client_id, tipo)
+        c = decl.get("cliente", {})
+        data, llenados, omitidos = llenar_oficial(tipo, decl)
+        label = f"Formulario_{tipo.upper()}_{c.get('identificacion','')}_{decl.get('anio')}{str(decl.get('mes') or '').zfill(2)}".replace(" ", "_")
+        return StreamingResponse(
+            iter([data]),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f"attachment; filename={label}.xlsx",
+                "X-Codigos-Llenados": ",".join(llenados),
+                "X-Codigos-Omitidos": ",".join(omitidos),
+            },
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/export/excel")

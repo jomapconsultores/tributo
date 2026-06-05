@@ -46,6 +46,18 @@ export default function Declaraciones({ tipo }) {
       downloadBlob(res.data, `Declaracion_${tipo}_${selectedClient?.nombre || ''}.xlsx`)
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
+  const exportarOficial = async () => {
+    try {
+      const res = await declaracionesAPI.exportOficial(selectedClientId, tipo)
+      downloadBlob(res.data, `Formulario_${tipo}_${selectedClient?.nombre || ''}.xlsx`)
+      const ll = res.headers['x-codigos-llenados']
+      const om = res.headers['x-codigos-omitidos']
+      let msg = `📄 Formulario oficial ${tipo} generado (borrador).\nCódigos llenados: ${ll || '—'}`
+      if (om) msg += `\nOmitidos (los calcula el formulario): ${om}`
+      msg += '\n\n⚠ Verifica los valores y casilleros antes de presentar al SRI.'
+      alert(msg)
+    } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
+  }
   const borrar = async (id) => {
     if (!window.confirm('¿Eliminar esta declaración guardada?')) return
     try { await declaracionesAPI.delete(id); await load() }
@@ -92,7 +104,8 @@ export default function Declaraciones({ tipo }) {
 
       <div className="dc-toolbar">
         <button className="dc-btn primary" onClick={guardar} disabled={!decl}>💾 Guardar declaración</button>
-        <button className="dc-btn small" onClick={exportar} disabled={!decl}>⬇ Exportar Excel</button>
+        <button className="dc-btn small" onClick={exportar} disabled={!decl}>⬇ Excel (código/valor)</button>
+        <button className="dc-btn oficial" onClick={exportarOficial} disabled={!decl}>📄 Formulario oficial SRI</button>
       </div>
 
       {loading ? (

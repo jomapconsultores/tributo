@@ -132,6 +132,7 @@ export const declaracionesAPI = {
   save: (clientId, tipo, datos) => api.post('/api/declaraciones/', { client_id: clientId, tipo, datos }),
   delete: (id) => api.delete(`/api/declaraciones/${id}`),
   exportExcel: (clientId, tipo) => api.get('/api/declaraciones/export/excel', { params: { client_id: clientId, tipo }, responseType: 'blob' }),
+  exportOficial: (clientId, tipo) => api.get('/api/declaraciones/export/oficial', { params: { client_id: clientId, tipo }, responseType: 'blob' }),
 }
 
 // Recursos (Códigos ICE reemplazable)

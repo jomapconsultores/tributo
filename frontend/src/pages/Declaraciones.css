@@ -16,6 +16,8 @@
 .dc-btn.primary { background: #2563eb; color: #fff; }
 .dc-btn.primary:disabled { opacity: 0.5; cursor: not-allowed; }
 .dc-btn.small { background: #fff; color: #334155; border: 1px solid #cbd5e1; }
+.dc-btn.oficial { background: #16a34a; color: #fff; }
+.dc-btn.oficial:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .dc-toolbar { display: flex; gap: 8px; }
 .dc-empty { background: #fff; border-radius: 10px; padding: 30px; text-align: center; color: #94a3b8; }
