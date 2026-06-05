@@ -156,6 +156,13 @@ def _cliente(supabase, client_id):
     return c.data[0] if c.data else {}
 
 
+def _catalogo_cliente(supabase, identificacion):
+    if not identificacion:
+        return []
+    r = supabase.table("client_products").select("nombre,cod_prod_ice").eq("identificacion", identificacion).execute()
+    return r.data or []
+
+
 @router.get("/catalog")
 async def catalog(_: str = Depends(get_current_user)):
     return {"catalogo": catalogo_con_codigos()}
@@ -172,7 +179,8 @@ async def get_anexo_rows(
         supabase = get_supabase_client()
         rows = supabase.table("ice_sales").select("*").eq("client_id", client_id).execute().data or []
         c = _cliente(supabase, client_id)
-        return anexo_rows(rows, c, c.get("periodo_anio") or 2026, c.get("periodo_mes") or 1, act_import)
+        cat = _catalogo_cliente(supabase, c.get("identificacion"))
+        return anexo_rows(rows, c, c.get("periodo_anio") or 2026, c.get("periodo_mes") or 1, act_import, cat)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -190,7 +198,8 @@ async def generar_anexo(
         c = _cliente(supabase, client_id)
         anio = c.get("periodo_anio") or 2026
         mes = c.get("periodo_mes") or 1
-        return generar_anexo_ice(rows, c, anio, mes, act_import)
+        cat = _catalogo_cliente(supabase, c.get("identificacion"))
+        return generar_anexo_ice(rows, c, anio, mes, act_import, cat)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

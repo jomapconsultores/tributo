@@ -31,6 +31,11 @@
 .ci-check { font-size: 0.84rem; color: #334155; display: flex; align-items: center; gap: 5px; padding: 7px 0; }
 .ci-add { align-self: flex-end; }
 
+.ci-preview { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 10px; padding: 10px 14px; font-size: 0.84rem; color: #334155; }
+.ci-preview-lbl { font-weight: 700; color: #92400e; }
+.ci-preview b { color: #1e293b; }
+.ci-preview .ci-preview-hi { color: #d97706; }
+
 .ci-toolbar { display: flex; gap: 8px; }
 
 .ci-cats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }

@@ -6,15 +6,17 @@ from database import get_supabase_client
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
-COLUMNS = ("id,identificacion,nombre,cod_prod_ice,cod_prod_pvp,capacidad,grado,"
-           "presentacion,unidad,botellas_por_caja")
+COLUMNS = ("id,identificacion,nombre,cod_prod_sri,cod_prod_ice,cod_prod_pvp,cod_impuesto,"
+           "capacidad,grado,presentacion,unidad,botellas_por_caja")
 
 
 class ProductIn(BaseModel):
     identificacion: str
     nombre: str
+    cod_prod_sri: Optional[str] = ""
     cod_prod_ice: Optional[str] = ""
     cod_prod_pvp: Optional[str] = ""
+    cod_impuesto: Optional[str] = "3031"
     capacidad: Optional[str] = "750"
     grado: Optional[str] = "15"
     presentacion: Optional[str] = "13"
@@ -24,8 +26,10 @@ class ProductIn(BaseModel):
 
 class ProductUpdate(BaseModel):
     nombre: Optional[str] = None
+    cod_prod_sri: Optional[str] = None
     cod_prod_ice: Optional[str] = None
     cod_prod_pvp: Optional[str] = None
+    cod_impuesto: Optional[str] = None
     capacidad: Optional[str] = None
     grado: Optional[str] = None
     presentacion: Optional[str] = None

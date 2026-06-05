@@ -12,8 +12,16 @@ def _map_tipo_id(t):
     return _TIPO_ID.get(str(t or '').strip(), 'F')
 
 
-def _resolver_cod_prod_ice(nombre_producto):
-    """Devuelve (codProdICE, reconocido)."""
+def _resolver_cod_prod_ice(nombre_producto, catalogo_cliente=None):
+    """Devuelve (codProdICE, reconocido). Primero busca en el catálogo del
+    cliente (por coincidencia de nombre); si no, usa el catálogo base."""
+    desc = (nombre_producto or "").upper()
+    if catalogo_cliente:
+        for p in catalogo_cliente:
+            pn = (p.get("nombre") or "").upper().strip()
+            cod = (p.get("cod_prod_ice") or "").strip()
+            if pn and cod and pn in desc:
+                return cod, True
     cat = buscar_en_catalogo(nombre_producto)
     cod_sri = (cat.get('codProdSRI', '') or '').strip()
     if not cod_sri:
@@ -78,13 +86,13 @@ def grupo_por_cliente(rows):
             for v in ag.values()]
 
 
-def _build_vtas(rows):
+def _build_vtas(rows, catalogo_cliente=None):
     """Agrupa ventas por (idCliente, codProdICE). Devuelve (lista_vtas, advertencias)."""
     dedup = OrderedDict()
     no_reconocidos = set()
     for r in rows:
         idc = r.get("id_cliente") or ""
-        cod_ice, ok = _resolver_cod_prod_ice(r.get("nombre_producto"))
+        cod_ice, ok = _resolver_cod_prod_ice(r.get("nombre_producto"), catalogo_cliente)
         if not ok:
             no_reconocidos.add((r.get("nombre_producto") or "")[:80])
         clave = (idc, cod_ice)
@@ -112,9 +120,9 @@ def _build_vtas(rows):
     return list(dedup.values()), advertencias
 
 
-def anexo_rows(rows, contribuyente, anio, mes, act_import="02"):
+def anexo_rows(rows, contribuyente, anio, mes, act_import="02", catalogo_cliente=None):
     """Filas del anexo ICE listas para editar en el editor."""
-    vtas, advertencias = _build_vtas(rows)
+    vtas, advertencias = _build_vtas(rows, catalogo_cliente)
     for v in vtas:
         v["ventaICE"] = str(v["ventaICE"])
     c = contribuyente or {}
@@ -146,10 +154,10 @@ def catalogo_con_codigos():
     return out
 
 
-def generar_anexo_ice(rows, contribuyente, anio, mes, act_import="02"):
+def generar_anexo_ice(rows, contribuyente, anio, mes, act_import="02", catalogo_cliente=None):
     """Genera el XML del anexo ICE. Agrupa ventas por idCliente + codProdICE.
     Devuelve {xml, ventas, advertencias}."""
-    vtas, no_reconocidos_adv = _build_vtas(rows)
+    vtas, no_reconocidos_adv = _build_vtas(rows, catalogo_cliente)
     dedup = {(v["idCliente"], v["codProdICE"]): v for v in vtas}
 
     mes_str = str(mes).zfill(2)

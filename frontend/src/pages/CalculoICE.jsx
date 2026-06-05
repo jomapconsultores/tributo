@@ -74,6 +74,7 @@ export default function CalculoICE() {
   }
 
   const calc = useMemo(() => rows.map((r) => ({ r, c: calcRow(r, r.anio || anio, r.mes || mes) })), [rows, anio, mes])
+  const preview = useMemo(() => calcRow(form, form.anio, form.mes), [form])
 
   const porCategoria = useMemo(() => {
     const ag = {}
@@ -170,6 +171,17 @@ export default function CalculoICE() {
         <label className="ci-field"><span>Grado alcohólico (%)</span><input className="ci-in s" type="number" value={form.grado} onChange={(e) => setForm({ ...form, grado: e.target.value })} /></label>
         <label className="ci-field"><span>Capacidad (ml)</span><input className="ci-in s" type="number" value={form.capacidad} onChange={(e) => setForm({ ...form, capacidad: e.target.value })} /></label>
         <button className="ci-btn primary ci-add" onClick={agregar} disabled={saving}>＋ Agregar</button>
+      </div>
+
+      {/* Cálculo en vivo del producto que se está ingresando */}
+      <div className="ci-preview">
+        <span className="ci-preview-lbl">Cálculo en vivo:</span>
+        <span>Botellas <b>{preview.totalBot.toFixed(0)}</b></span>
+        <span>ICE Específico <b>{money(preview.iceEsp)}</b></span>
+        <span>ICE Ad-Valorem <b>{money(preview.iceAdv)}</b>{preview.aplicaAdv ? ' ▲' : ''}</span>
+        <span>Total ICE <b className="ci-preview-hi">{money(preview.totalIce)}</b></span>
+        <span>IVA <b>{money(preview.iva)}</b></span>
+        <span>PVP <b>{money(preview.pvp)}</b></span>
       </div>
 
       <div className="ci-toolbar">

@@ -3,10 +3,11 @@ import { useOutletContext } from 'react-router-dom'
 import { productsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
+import { buildCodProdICE } from '../utils/codigoICE'
 import './CatalogoProductos.css'
 
 const EMPTY = {
-  nombre: '', cod_prod_ice: '', cod_prod_pvp: '',
+  nombre: '', cod_prod_sri: '', cod_prod_ice: '', cod_prod_pvp: '', cod_impuesto: '3031',
   capacidad: '750', grado: '15', presentacion: '13', unidad: '66', botellas_por_caja: 12,
 }
 
@@ -30,11 +31,17 @@ export default function CatalogoProductos() {
   }, [ident])
   useEffect(() => { load() }, [load])
 
+  const codIce = buildCodProdICE({
+    codSri: form.cod_prod_sri, presentacion: form.presentacion, capacidad: form.capacidad,
+    unidad: form.unidad, grado: form.grado, codImpuesto: form.cod_impuesto,
+  })
+
   const guardar = async () => {
     if (!form.nombre.trim()) { alert('El nombre del producto es obligatorio.'); return }
+    const payload = { ...form, cod_prod_ice: codIce, cod_prod_pvp: form.cod_prod_pvp || form.cod_prod_sri }
     try {
-      if (editId) await productsAPI.update(editId, form)
-      else await productsAPI.create({ identificacion: ident, ...form })
+      if (editId) await productsAPI.update(editId, payload)
+      else await productsAPI.create({ identificacion: ident, ...payload })
       setForm(EMPTY); setEditId(null)
       await load()
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
@@ -86,10 +93,10 @@ export default function CatalogoProductos() {
       <div className="cp-form">
         <label className="cp-f wide"><span>Producto *</span>
           <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value.toUpperCase() })} placeholder="Nombre del producto" /></label>
-        <label className="cp-f"><span>Cód. Prod. ICE</span>
-          <input value={form.cod_prod_ice} onChange={(e) => setForm({ ...form, cod_prod_ice: e.target.value })} placeholder="3031-057-…" /></label>
+        <label className="cp-f"><span>Cód. SRI individual</span>
+          <input value={form.cod_prod_sri} onChange={(e) => setForm({ ...form, cod_prod_sri: e.target.value })} placeholder="6 dígitos" /></label>
         <label className="cp-f"><span>Cód. Prod. PVP</span>
-          <input value={form.cod_prod_pvp} onChange={(e) => setForm({ ...form, cod_prod_pvp: e.target.value })} /></label>
+          <input value={form.cod_prod_pvp} onChange={(e) => setForm({ ...form, cod_prod_pvp: e.target.value })} placeholder={form.cod_prod_sri || '—'} /></label>
         <label className="cp-f s"><span>Cap. (ml)</span>
           <input value={form.capacidad} onChange={(e) => setForm({ ...form, capacidad: e.target.value })} /></label>
         <label className="cp-f s"><span>Grado %</span>
@@ -104,6 +111,12 @@ export default function CatalogoProductos() {
         {editId && <button className="cp-btn ghost" onClick={cancelar}>Cancelar</button>}
       </div>
 
+      {/* Vista previa del código (se arma solo) */}
+      <div className="cp-codes">
+        <div><span className="cp-codes-lbl">Código individual:</span> <code>{form.cod_prod_sri || '—'}</code></div>
+        <div><span className="cp-codes-lbl">Código completo ICE:</span> <code className="cp-full">{codIce || '— ingresa el código individual —'}</code></div>
+      </div>
+
       {/* Tabla */}
       <div className="cp-table-wrap">
         {loading ? <div className="cp-empty">Cargando…</div> : rows.length === 0 ? (
@@ -112,13 +125,14 @@ export default function CatalogoProductos() {
           <div className="cp-scroll">
             <table className="cp-table">
               <thead><tr>
-                <th>Producto</th><th>Cód. ICE</th><th>Cód. PVP</th><th className="r">Cap.</th><th className="r">Grado</th>
+                <th>Producto</th><th>Cód. SRI</th><th>Cód. completo ICE</th><th>Cód. PVP</th><th className="r">Cap.</th><th className="r">Grado</th>
                 <th className="r">Pres.</th><th className="r">Und</th><th className="r">Bot/Caja</th><th></th>
               </tr></thead>
               <tbody>
                 {rows.map((p) => (
                   <tr key={p.id} className={editId === p.id ? 'cp-editing' : ''}>
                     <td>{p.nombre}</td>
+                    <td className="cp-cod">{p.cod_prod_sri || '—'}</td>
                     <td className="cp-cod">{p.cod_prod_ice || <span className="cp-falta">— falta —</span>}</td>
                     <td className="cp-cod">{p.cod_prod_pvp || '—'}</td>
                     <td className="r">{p.capacidad}</td><td className="r">{p.grado}</td>
