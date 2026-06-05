@@ -134,6 +134,13 @@ export const productsAPI = {
   delete: (id) => api.delete(`/api/products/${id}`),
 }
 
+// Rebajas y exenciones ICE (ingredientes por producto)
+export const rebajasAPI = {
+  list: (identificacion, producto) => api.get('/api/rebajas/', { params: { identificacion, producto } }),
+  create: (entry) => api.post('/api/rebajas/', entry),
+  delete: (id) => api.delete(`/api/rebajas/${id}`),
+}
+
 // Declaraciones (IVA / ICE)
 export const declaracionesAPI = {
   calcular: (clientId, tipo) => api.get('/api/declaraciones/calcular', { params: { client_id: clientId, tipo } }),

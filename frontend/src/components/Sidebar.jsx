@@ -52,8 +52,9 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const isCalculo = path === '/calculo-ice'
   const isAnexo = path === '/anexo-pvp-ice'
   const isCatalogo = path === '/catalogo-productos'
+  const isRebajas = path === '/rebajas-exenciones'
   const isRecursos = path === '/recursos-ice'
-  const isIngresos = isIceXml || isCalculo || isAnexo || isCatalogo || isRecursos
+  const isIngresos = isIceXml || isCalculo || isAnexo || isCatalogo || isRebajas || isRecursos
   const isGastos = !isRetenciones && !isIngresos && !isDeclaraciones // todo lo demás pertenece al proceso de Gastos
   const isDatabase = path === '/'
   const isClassifier = path === '/clasificador'
@@ -110,6 +111,13 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
             >
               <span className="nav-ico">📚</span>
               <span>Catálogo de productos</span>
+            </button>
+            <button
+              className={`nav-item submodule ${isRebajas ? 'active' : ''}`}
+              onClick={() => navigate('/rebajas-exenciones')}
+            >
+              <span className="nav-ico">⚖️</span>
+              <span>Rebajas y exenciones</span>
             </button>
 
             {/* Información útil (menú pequeño) */}
