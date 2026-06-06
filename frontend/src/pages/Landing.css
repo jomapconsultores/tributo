@@ -79,7 +79,7 @@
   position: relative;
   display: inline-flex; align-items: center; justify-content: center;
   background: #fff; border: 1px solid rgba(255,255,255,.85); border-radius: 22px;
-  padding: 20px 40px; margin: 0 auto 26px;
+  padding: 20px 40px; margin: 0 auto 16px;
   box-shadow: 0 28px 64px rgba(0,0,0,.42), 0 6px 16px rgba(0,0,0,.22);
   animation: lpFloatUp .7s both;
 }
@@ -94,6 +94,12 @@
   .lp-hero-logo img { height: 44px; }
 }
 
+.lp-hero-legend {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  color: rgba(255,255,255,.78); font-size: .98rem; font-weight: 600;
+  letter-spacing: .005em; margin: 0 auto 24px; max-width: 560px;
+  animation: lpFloatUp .7s .06s both;
+}
 .lp-badge {
   display: inline-flex; align-items: center; gap: 8px;
   background: rgba(96,165,250,.12); border: 1px solid rgba(96,165,250,.3);

@@ -143,7 +143,7 @@ export default function Landing() {
           <div className="lp-hero-logo">
             <img src="/capsa-horizontal.png" alt="CAPSA" />
           </div>
-          <div className="lp-badge"><span className="lp-dot" /> Soluciones tributarias inteligentes para el Ecuador · SRI 2026</div>
+          <div className="lp-hero-legend"><span className="lp-dot" /> Soluciones tributarias inteligentes para el Ecuador · SRI 2026</div>
           <h1>Tu gestión tributaria del <span className="lp-grad">SRI</span>, automatizada de punta a punta</h1>
           <p>Clasifica gastos, controla retenciones, calcula el ICE y genera tus declaraciones —
             contribuyentes (RUC) <strong>ilimitados</strong>, en un solo lugar.</p>
