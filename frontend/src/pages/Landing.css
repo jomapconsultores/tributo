@@ -172,9 +172,23 @@
 .lp-ok { background: #dcfce7; color: #166534; border-radius: 12px; padding: 22px; text-align: center; font-weight: 600; }
 
 /* ── Footer ── */
-.lp-footer { background: #0a1224; color: #e2e8f0; padding: 32px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+.lp-footer { background: #0a1224; color: #e2e8f0; padding: 30px 32px; }
+.lp-footer-main { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
 .lp-footer .lp-brand { color: #fff; }
 .lp-footer p { margin: 0; color: #94a3b8; font-size: .88rem; }
+.lp-footer-dev {
+  margin-top: 22px; padding-top: 22px; border-top: 1px solid rgba(255,255,255,.08);
+  display: flex; align-items: center; justify-content: center; gap: 18px; flex-wrap: wrap;
+}
+.lp-dev-text { text-align: right; line-height: 1.3; }
+.lp-dev-text span { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: #64748b; }
+.lp-dev-text strong { font-size: .95rem; color: #e2e8f0; font-weight: 700; }
+.lp-dev-logo { background: #fff; border-radius: 12px; padding: 9px 16px; display: inline-flex; align-items: center; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+.lp-dev-logo img { height: 34px; display: block; }
+@media (max-width: 560px) {
+  .lp-footer-dev { flex-direction: column; gap: 12px; }
+  .lp-dev-text { text-align: center; }
+}
 
 @media (max-width: 620px) {
   .lp-hero { padding: 60px 20px 70px; }

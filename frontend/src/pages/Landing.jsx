@@ -234,9 +234,20 @@ export default function Landing() {
       </section>
 
       <footer className="lp-footer">
-        <div className="lp-brand"><span className="lp-brand-badge">📑</span> Gestor SRI</div>
-        <p>Gastos · Retenciones · ICE · Declaraciones — Hecho en Ecuador 🇪🇨</p>
-        <button className="lp-btn lp-btn-login" onClick={() => navigate('/login')}>Ingresar</button>
+        <div className="lp-footer-main">
+          <div className="lp-brand"><span className="lp-brand-badge">📑</span> Gestor SRI</div>
+          <p>Gastos · Retenciones · ICE · Declaraciones — Hecho en Ecuador 🇪🇨</p>
+          <button className="lp-btn lp-btn-login" onClick={() => navigate('/login')}>Ingresar</button>
+        </div>
+        <div className="lp-footer-dev">
+          <div className="lp-dev-text">
+            <span>Desarrollado por</span>
+            <strong>Marco Antonio Posligua San Martín</strong>
+          </div>
+          <div className="lp-dev-logo">
+            <img src="/capsa-horizontal.png" alt="CAPSA" />
+          </div>
+        </div>
       </footer>
     </div>
   )
