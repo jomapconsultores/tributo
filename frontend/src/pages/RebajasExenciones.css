@@ -51,9 +51,21 @@
 .re-res-lbl { font-size: 0.72rem; color: #64748b; text-transform: uppercase; font-weight: 700; }
 .re-res-val { font-size: 1.6rem; font-weight: 800; color: #2563eb; }
 .re-res-sub { font-size: 0.8rem; color: #475569; margin-left: auto; }
-.re-cumple { font-weight: 800; font-size: 0.95rem; padding: 6px 14px; border-radius: 20px; }
+.re-cumple { font-weight: 800; font-size: 0.85rem; padding: 4px 12px; border-radius: 20px; }
 .re-cumple.ok { background: #dcfce7; color: #166534; }
 .re-cumple.no { background: #fee2e2; color: #b91c1c; }
+
+.re-table-wrap { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow-x: auto; }
+.re-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+.re-table th, .re-table td { padding: 9px 12px; text-align: left; border-bottom: 1px solid #f1f5f9; }
+.re-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.3px; color: #64748b; font-weight: 700; background: #f8fafc; }
+.re-table .r { text-align: right; }
+.re-table .strong { font-weight: 700; color: #2563eb; }
+.re-table tbody tr:hover { background: #f8fafc; }
+.re-table tr.agua { opacity: 0.6; }
+.re-table tr.agua em { color: #94a3b8; font-style: italic; font-size: 0.78rem; }
+.re-vlink { margin-left: 6px; text-decoration: none; }
+.re-foot td { font-weight: 700; color: #1e293b; background: #eff6ff; border-top: 2px solid #bfdbfe; }
 
 .re-verif { align-self: flex-end; background: #1e293b; color: #fff; text-decoration: none; border-radius: 7px; padding: 8px 12px; font-size: 0.8rem; font-weight: 600; }
 .re-verif:hover { background: #0f172a; }

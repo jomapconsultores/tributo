@@ -5,7 +5,7 @@ import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import './RebajasExenciones.css'
 
-const EMPTY = { ingrediente: '', ruc_proveedor: '', cantidad: '', unidad: 'ml', origen: 'NACIONAL', calificado: false }
+const EMPTY = { ingrediente: '', ruc_proveedor: '', proveedor_nombre: '', cantidad: '', unidad: 'ml', origen: 'NACIONAL', calificado: false }
 const esAgua = (nombre) => (nombre || '').trim().toUpperCase() === 'AGUA'
 const MINPROD = 'https://servicios.produccion.gob.ec/rum/publico/consultaCategorizacion.jsf'
 const UMBRAL = 70 // % mínimo de materia prima nacional calificada
@@ -48,23 +48,19 @@ export default function RebajasExenciones() {
   }
 
   const resumen = useMemo(() => {
-    const noAgua = ings.filter((i) => !esAgua(i.ingrediente))
     const sum = (arr) => arr.reduce((s, i) => s + (parseFloat(i.cantidad) || 0), 0)
+    const noAgua = ings.filter((i) => !esAgua(i.ingrediente))
     const total = sum(noAgua)
-    const nacional = sum(noAgua.filter((i) => i.origen === 'NACIONAL'))
-    const nacCalif = sum(noAgua.filter((i) => i.origen === 'NACIONAL' && i.calificado))
-    const externo = sum(noAgua.filter((i) => i.origen === 'EXTERNO'))
-    const pctNacCalif = total ? (nacCalif / total) * 100 : 0
-    return {
-      total, nacional, nacCalif, externo,
-      pctNac: total ? (nacional / total) * 100 : 0,
-      pctNacCalif,
-      cumple: pctNacCalif >= UMBRAL,
-    }
+    const calif = sum(noAgua.filter((i) => i.calificado))
+    const pct = total ? (calif / total) * 100 : 0
+    return { total, calif, pct, cumple: pct >= UMBRAL }
   }, [ings])
 
-  const nacionales = ings.filter((i) => i.origen === 'NACIONAL')
-  const externos = ings.filter((i) => i.origen === 'EXTERNO')
+  // Incidencia (%) de cada fila: agua = 0, no calificado = 0, resto = cantidad/total
+  const incidencia = (i) => {
+    if (esAgua(i.ingrediente) || !i.calificado || !resumen.total) return 0
+    return (parseFloat(i.cantidad) || 0) / resumen.total * 100
+  }
 
   if (!selectedClient) {
     return (
@@ -108,91 +104,83 @@ export default function RebajasExenciones() {
         {productos.length === 0 && <span className="re-hint">Agrega productos en "Catálogo de productos" primero.</span>}
       </div>
 
-      {producto && (
-        <>
-          <p className="re-note">Ingresa los ingredientes <strong>por botella/envase</strong> con su origen. El <strong>agua no se considera</strong> en el cálculo (escribe "AGUA" para excluirla).</p>
-
-          <div className="re-form">
-            <label className="re-f wide"><span>Ingrediente</span>
-              <input value={form.ingrediente} onChange={(e) => setForm({ ...form, ingrediente: e.target.value.toUpperCase() })} placeholder="Ej. ALCOHOL, JUGO…" /></label>
-            <label className="re-f"><span>RUC proveedor</span>
-              <input value={form.ruc_proveedor} onChange={(e) => setForm({ ...form, ruc_proveedor: e.target.value })} placeholder="RUC del proveedor" /></label>
-            <a className="re-verif" href={MINPROD} target="_blank" rel="noreferrer" title="Verificar categorización en el Ministerio de Producción">🔎 Verificar</a>
-            <label className="re-f s"><span>Cantidad</span>
-              <input type="number" step="0.01" value={form.cantidad} onChange={(e) => setForm({ ...form, cantidad: e.target.value })} /></label>
-            <label className="re-f s"><span>Unidad</span>
-              <input value={form.unidad} onChange={(e) => setForm({ ...form, unidad: e.target.value })} /></label>
-            <label className="re-f"><span>Origen</span>
-              <select value={form.origen} onChange={(e) => setForm({ ...form, origen: e.target.value })}>
-                <option value="NACIONAL">Nacional</option>
-                <option value="EXTERNO">Externo</option>
-              </select></label>
-            {form.origen === 'NACIONAL' && (
-              <label className="re-f"><span>¿Calificado?</span>
-                <span className="re-check"><input type="checkbox" checked={form.calificado} onChange={(e) => setForm({ ...form, calificado: e.target.checked })} /> {form.calificado ? 'Sí' : 'No'}</span></label>
-            )}
-            <button className="re-btn primary" onClick={agregar}>＋ Agregar</button>
-          </div>
-
-          {/* Dos columnas: nacionales / externos */}
-          <div className="re-cols">
-            <div className="re-col nac">
-              <h3>🟢 Productos nacionales</h3>
-              {nacionales.length === 0 ? <div className="re-empty">—</div> : nacionales.map((i) => (
-                <div key={i.id} className={`re-ing ${esAgua(i.ingrediente) ? 'agua' : ''}`}>
-                  <span className="re-ing-name">{i.ingrediente}{esAgua(i.ingrediente) && <em> (no cuenta)</em>}
-                    {i.ruc_proveedor && <span className="re-ruc">RUC {i.ruc_proveedor} <a href={MINPROD} target="_blank" rel="noreferrer" title="Verificar en Min. Producción">🔎</a></span>}
-                  </span>
-                  <span className="re-ing-cant">{(parseFloat(i.cantidad) || 0).toFixed(2)} {i.unidad}</span>
-                  <span className={`re-badge ${i.calificado ? 'ok' : 'no'}`}>{i.calificado ? 'Calificado' : 'No calificado'}</span>
-                  <button className="re-del" onClick={() => borrar(i.id)}>✕</button>
-                </div>
-              ))}
-            </div>
-            <div className="re-col ext">
-              <h3>🔴 Productos externos</h3>
-              {externos.length === 0 ? <div className="re-empty">—</div> : externos.map((i) => (
-                <div key={i.id} className={`re-ing ${esAgua(i.ingrediente) ? 'agua' : ''}`}>
-                  <span className="re-ing-name">{i.ingrediente}{esAgua(i.ingrediente) && <em> (no cuenta)</em>}
-                    {i.ruc_proveedor && <span className="re-ruc">RUC {i.ruc_proveedor} <a href={MINPROD} target="_blank" rel="noreferrer" title="Verificar en Min. Producción">🔎</a></span>}
-                  </span>
-                  <span className="re-ing-cant">{(parseFloat(i.cantidad) || 0).toFixed(2)} {i.unidad}</span>
-                  <button className="re-del" onClick={() => borrar(i.id)}>✕</button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Resultado */}
-          <div className="re-result">
-            <div className="re-res-box"><span className="re-res-lbl">% Nacional</span><span className="re-res-val">{resumen.pctNac.toFixed(2)}%</span></div>
-            <div className="re-res-box hi"><span className="re-res-lbl">% Nacional calificado</span><span className="re-res-val">{resumen.pctNacCalif.toFixed(2)}%</span></div>
-            <div className={`re-cumple ${resumen.cumple ? 'ok' : 'no'}`}>
-              {resumen.cumple ? `✔ Cumple la norma (≥ ${UMBRAL}%)` : `✗ No cumple (mínimo ${UMBRAL}%)`}
-            </div>
-            <div className="re-res-sub">
-              Total (sin agua): {resumen.total.toFixed(2)} · Nacional: {resumen.nacional.toFixed(2)} · Nacional calificado: {resumen.nacCalif.toFixed(2)} · Externo: {resumen.externo.toFixed(2)}
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Normas de aplicación */}
-      <details className="re-normas">
-        <summary>📖 Normas de aplicación y tablas</summary>
+      {/* Normas de aplicación (arriba) */}
+      <details className="re-normas" open>
+        <summary>📖 Normas de aplicación</summary>
         <div className="re-normas-body">
           <p><strong>Rebaja / exención de ICE por componente nacional.</strong> Para acceder al beneficio, el producto debe elaborarse con al menos <strong>{UMBRAL}%</strong> de materia prima nacional proveniente de <strong>proveedores categorizados (calificados)</strong> por el Ministerio de Producción.</p>
           <ul>
             <li>Los ingredientes se ingresan <strong>por botella/envase</strong> con su cantidad.</li>
-            <li>El <strong>agua no se contabiliza</strong> en el cálculo.</li>
-            <li>Un ingrediente nacional <strong>no calificado</strong> no suma como nacional calificado.</li>
-            <li>El <strong>% nacional calificado</strong> = (nacional y calificado, sin agua) ÷ (total sin agua).</li>
+            <li>El <strong>agua no se contabiliza</strong> (incidencia 0%).</li>
+            <li>Un ingrediente <strong>no calificado</strong> tiene incidencia <strong>0%</strong>.</li>
+            <li>El <strong>%</strong> de cada fila = cantidad ÷ total (sin agua); la suma es el <strong>% nacional calificado</strong>.</li>
           </ul>
           <p>La categorización del proveedor (empresa o persona natural) se verifica por RUC en el Ministerio de Producción:
             {' '}<a href={MINPROD} target="_blank" rel="noreferrer">Consulta de categorización ↗</a></p>
           <p className="re-normas-nota">Nota: los porcentajes y la regla son configurables; verifica la normativa vigente del SRI/Ministerio antes de aplicar el beneficio.</p>
         </div>
       </details>
+
+      {producto && (
+        <>
+          <div className="re-form">
+            <label className="re-f"><span>RUC proveedor</span>
+              <input value={form.ruc_proveedor} onChange={(e) => setForm({ ...form, ruc_proveedor: e.target.value })} placeholder="RUC" /></label>
+            <a className="re-verif" href={MINPROD} target="_blank" rel="noreferrer" title="Verificar categorización en el Ministerio de Producción">🔎 Verificar</a>
+            <label className="re-f"><span>¿Calificado?</span>
+              <span className="re-check"><input type="checkbox" checked={form.calificado} onChange={(e) => setForm({ ...form, calificado: e.target.checked })} /> {form.calificado ? 'Sí' : 'No'}</span></label>
+            <label className="re-f wide"><span>Empresa / Persona</span>
+              <input value={form.proveedor_nombre} onChange={(e) => setForm({ ...form, proveedor_nombre: e.target.value.toUpperCase() })} placeholder="Nombre del proveedor" /></label>
+            <label className="re-f wide"><span>Producto / Ingrediente</span>
+              <input value={form.ingrediente} onChange={(e) => setForm({ ...form, ingrediente: e.target.value.toUpperCase() })} placeholder="Ej. ALCOHOL, JUGO, AGUA…" /></label>
+            <label className="re-f s"><span>Cantidad</span>
+              <input type="number" step="0.01" value={form.cantidad} onChange={(e) => setForm({ ...form, cantidad: e.target.value })} /></label>
+            <label className="re-f s"><span>Unidad</span>
+              <input value={form.unidad} onChange={(e) => setForm({ ...form, unidad: e.target.value })} /></label>
+            <button className="re-btn primary" onClick={agregar}>＋ Agregar</button>
+          </div>
+
+          <div className="re-table-wrap">
+            <table className="re-table">
+              <thead><tr>
+                <th>RUC</th><th>Calificado</th><th>Empresa / Persona</th><th>Producto</th>
+                <th className="r">Cantidad</th><th className="r">%</th><th></th>
+              </tr></thead>
+              <tbody>
+                {ings.length === 0 ? (
+                  <tr><td colSpan={7} className="re-empty">Sin ingredientes. Agrega el primero con el formulario.</td></tr>
+                ) : ings.map((i) => {
+                  const agua = esAgua(i.ingrediente)
+                  return (
+                    <tr key={i.id} className={agua ? 'agua' : ''}>
+                      <td>{i.ruc_proveedor || '—'}</td>
+                      <td>
+                        <span className={`re-badge ${i.calificado ? 'ok' : 'no'}`}>{i.calificado ? 'Calificado' : 'No calificado'}</span>
+                        {i.ruc_proveedor && <a className="re-vlink" href={MINPROD} target="_blank" rel="noreferrer" title="Verificar en Min. Producción">🔎</a>}
+                      </td>
+                      <td>{i.proveedor_nombre || '—'}</td>
+                      <td>{i.ingrediente}{agua && <em> (no cuenta)</em>}</td>
+                      <td className="r">{(parseFloat(i.cantidad) || 0).toFixed(2)} {i.unidad}</td>
+                      <td className="r strong">{incidencia(i).toFixed(2)}%</td>
+                      <td><button className="re-del" onClick={() => borrar(i.id)}>✕</button></td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="re-foot">
+                  <td colSpan={4}>
+                    TOTAL · <span className={`re-cumple ${resumen.cumple ? 'ok' : 'no'}`}>{resumen.cumple ? `✔ Cumple (≥ ${UMBRAL}%)` : `✗ No cumple (mín. ${UMBRAL}%)`}</span>
+                  </td>
+                  <td className="r">{resumen.total.toFixed(2)}</td>
+                  <td className="r">{resumen.pct.toFixed(2)}%</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   )
 }
