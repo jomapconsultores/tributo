@@ -10,3 +10,7 @@
   height: 100vh;
   overflow-y: auto;
 }
+
+.sub-banner { padding: 10px 18px; font-size: 0.85rem; font-weight: 600; text-align: center; }
+.sub-banner.warn { background: #fef3c7; color: #92400e; }
+.sub-banner.danger { background: #fee2e2; color: #b91c1c; }

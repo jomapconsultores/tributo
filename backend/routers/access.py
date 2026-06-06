@@ -22,9 +22,30 @@ def es_admin(user_id: str) -> bool:
         return False
 
 
+def suscripcion(user_id: str):
+    """Devuelve la suscripción del usuario con un flag 'vigente'.
+    Sin suscripción registrada => vigente=True (no bloquea, compatibilidad)."""
+    try:
+        r = get_supabase_client().table("subscriptions").select("*").eq("user_id", user_id).execute().data
+    except Exception:
+        r = None
+    if not r:
+        return {"estado": None, "plan": None, "proximo_pago": None, "precio_mensual": None, "vigente": True}
+    s = r[0]
+    hoy = date.today().isoformat()
+    vencida = bool(s.get("proximo_pago")) and str(s["proximo_pago"]) < hoy
+    vigente = s.get("estado") != "suspendido" and not vencida
+    s["vigente"] = vigente
+    s["vencida"] = vencida
+    return s
+
+
 def modulos_de(user_id: str):
     if es_admin(user_id):
         return list(MODULOS)
+    # Bloqueo por cobro: si la suscripción no está vigente, sin módulos
+    if not suscripcion(user_id).get("vigente", True):
+        return []
     try:
         rows = get_supabase_client().table("user_modules").select("modulo,activo,valid_until")\
             .eq("user_id", user_id).eq("activo", True).execute().data or []
@@ -50,5 +71,17 @@ def require_module(modulo: str):
 
 @router.get("/me")
 async def me(user_id: str = Depends(get_current_user)):
-    """Módulos del usuario actual + si es administrador."""
-    return {"modules": modulos_de(user_id), "is_admin": es_admin(user_id)}
+    """Módulos del usuario actual + si es administrador + estado de suscripción."""
+    sub = suscripcion(user_id)
+    return {
+        "modules": modulos_de(user_id),
+        "is_admin": es_admin(user_id),
+        "subscription": {
+            "estado": sub.get("estado"),
+            "plan": sub.get("plan"),
+            "proximo_pago": sub.get("proximo_pago"),
+            "precio_mensual": sub.get("precio_mensual"),
+            "vigente": sub.get("vigente", True),
+            "vencida": sub.get("vencida", False),
+        },
+    }

@@ -1,5 +1,6 @@
 """Panel de administración (Fase 3). Solo para admins (app_admins).
 Permite listar/crear usuarios y asignar módulos/planes con vigencia."""
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
@@ -8,6 +9,15 @@ from database import get_supabase_client
 from routers.access import es_admin, MODULOS
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+def _add_month(d: date) -> date:
+    y, m = d.year, d.month + 1
+    if m > 12:
+        y, m = y + 1, 1
+    bisiesto = y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)
+    dias = [31, 29 if bisiesto else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1]
+    return date(y, m, min(d.day, dias))
 
 # Paquetes → módulos que activan
 PLANES = {
@@ -41,6 +51,22 @@ class PlanIn(BaseModel):
     valid_until: Optional[str] = None
 
 
+class SubIn(BaseModel):
+    plan: Optional[str] = None
+    precio_mensual: Optional[float] = None
+    estado: Optional[str] = None          # prueba | activo | suspendido
+    proximo_pago: Optional[str] = None    # YYYY-MM-DD
+
+
+class PagoIn(BaseModel):
+    monto: float = 0
+    fecha: Optional[str] = None
+    periodo: Optional[str] = None
+    metodo: Optional[str] = None
+    nota: Optional[str] = None
+    avanzar_mes: bool = True
+
+
 def _aplicar_modulos(uid: str, modules: List[str], valid_until: Optional[str]):
     """Activa los módulos de la lista y desactiva el resto, para un usuario."""
     sb = get_supabase_client()
@@ -65,22 +91,82 @@ async def list_users(_: str = Depends(require_admin)):
 
     mods = sb.table("user_modules").select("user_id,modulo,activo,valid_until").execute().data or []
     admins = {a["user_id"] for a in (sb.table("app_admins").select("user_id").execute().data or [])}
+    subs = {s["user_id"]: s for s in (sb.table("subscriptions").select("*").execute().data or [])}
     by_user = {}
     for m in mods:
         by_user.setdefault(m["user_id"], {})[m["modulo"]] = {"activo": m["activo"], "valid_until": m.get("valid_until")}
 
+    hoy = date.today().isoformat()
     out = []
     for u in users:
         uid = str(u.id)
+        s = subs.get(uid)
+        if s:
+            vencida = bool(s.get("proximo_pago")) and str(s["proximo_pago"]) < hoy
+            sub = {"plan": s.get("plan"), "precio_mensual": s.get("precio_mensual"),
+                   "estado": s.get("estado"), "proximo_pago": s.get("proximo_pago"), "vencida": vencida}
+        else:
+            sub = None
         out.append({
             "user_id": uid,
             "email": u.email,
             "created_at": str(u.created_at)[:10],
             "is_admin": uid in admins,
             "modules": by_user.get(uid, {}),
+            "subscription": sub,
         })
     out.sort(key=lambda x: x["email"] or "")
     return out
+
+
+def _upsert_sub(uid: str, data: dict):
+    sb = get_supabase_client()
+    data = {k: v for k, v in data.items() if v is not None}
+    data["updated_at"] = "now()"
+    existing = sb.table("subscriptions").select("user_id").eq("user_id", uid).execute().data
+    if existing:
+        sb.table("subscriptions").update(data).eq("user_id", uid).execute()
+    else:
+        data["user_id"] = uid
+        sb.table("subscriptions").insert(data).execute()
+
+
+@router.put("/users/{uid}/subscription")
+async def set_subscription(uid: str, body: SubIn, _: str = Depends(require_admin)):
+    _upsert_sub(uid, body.dict())
+    return {"ok": True}
+
+
+@router.post("/users/{uid}/pago")
+async def registrar_pago(uid: str, body: PagoIn, _: str = Depends(require_admin)):
+    sb = get_supabase_client()
+    fecha = body.fecha or date.today().isoformat()
+    sb.table("pagos").insert({
+        "user_id": uid, "monto": body.monto, "fecha": fecha,
+        "periodo": body.periodo, "metodo": body.metodo, "nota": body.nota,
+    }).execute()
+    sub_upd = {"estado": "activo"}
+    if body.avanzar_mes:
+        cur = sb.table("subscriptions").select("proximo_pago").eq("user_id", uid).execute().data
+        base = None
+        if cur and cur[0].get("proximo_pago"):
+            try:
+                y, m, d = map(int, str(cur[0]["proximo_pago"]).split("-"))
+                base = date(y, m, d)
+            except Exception:
+                base = None
+        hoy = date.today()
+        if not base or base < hoy:
+            base = hoy
+        sub_upd["proximo_pago"] = _add_month(base).isoformat()
+    _upsert_sub(uid, sub_upd)
+    return {"ok": True, "proximo_pago": sub_upd.get("proximo_pago")}
+
+
+@router.get("/users/{uid}/pagos")
+async def historial_pagos(uid: str, _: str = Depends(require_admin)):
+    sb = get_supabase_client()
+    return {"data": sb.table("pagos").select("*").eq("user_id", uid).order("fecha", desc=True).execute().data or []}
 
 
 @router.post("/users")

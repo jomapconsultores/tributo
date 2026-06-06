@@ -2,7 +2,31 @@ import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import NewClientModal from './NewClientModal'
+import { useAccess } from '../context/AccessContext'
 import './Layout.css'
+
+function diasHasta(fecha) {
+  if (!fecha) return null
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
+  const d = new Date(fecha + 'T00:00:00')
+  return Math.round((d - hoy) / 86400000)
+}
+
+function SubBanner() {
+  const { isAdmin, subscription } = useAccess()
+  if (isAdmin || !subscription || !subscription.estado) return null
+  const dias = diasHasta(subscription.proximo_pago)
+  if (subscription.estado === 'suspendido') {
+    return <div className="sub-banner danger">Tu suscripción está <strong>suspendida</strong>. Contacta al administrador para reactivarla.</div>
+  }
+  if (subscription.vencida) {
+    return <div className="sub-banner danger">Tu suscripción <strong>venció</strong> el {subscription.proximo_pago}. Regulariza el pago para recuperar el acceso.</div>
+  }
+  if (dias !== null && dias <= 5) {
+    return <div className="sub-banner warn">Tu próximo pago vence en <strong>{dias} día(s)</strong> ({subscription.proximo_pago}).</div>
+  }
+  return null
+}
 
 export default function Layout({ user, onLogout }) {
   const [modalOpen, setModalOpen] = useState(false)
@@ -13,6 +37,7 @@ export default function Layout({ user, onLogout }) {
     <div className="layout">
       <Sidebar onNewClient={openNewClient} onLogout={onLogout} userEmail={user?.email} />
       <main className="layout-content">
+        <SubBanner />
         <Outlet context={{ openNewClient }} />
       </main>
       <NewClientModal open={modalOpen} onClose={() => setModalOpen(false)} />

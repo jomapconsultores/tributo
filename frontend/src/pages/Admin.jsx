@@ -4,20 +4,21 @@ import './Admin.css'
 
 const MODS = [
   { key: 'gastos', label: 'Gastos' },
-  { key: 'retenciones', label: 'Retenciones' },
-  { key: 'ingresos_ice', label: 'INGRESOS+ICE' },
-  { key: 'declaraciones', label: 'Declaraciones' },
+  { key: 'retenciones', label: 'Retenc.' },
+  { key: 'ingresos_ice', label: 'ICE' },
+  { key: 'declaraciones', label: 'Declar.' },
 ]
 const PLANES = [
   { key: 'basico', label: 'Básico (Gastos+Ret.)' },
   { key: 'profesional', label: 'Profesional (+Decl.)' },
   { key: 'premium', label: 'Premium / ICE (todo)' },
 ]
+const ESTADOS = ['prueba', 'activo', 'suspendido']
 
 export default function Admin() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
-  const [edit, setEdit] = useState({}) // uid -> { mods:Set, valid_until }
+  const [edit, setEdit] = useState({})
   const [nuevo, setNuevo] = useState({ email: '', password: '', plan: 'premium' })
   const [busy, setBusy] = useState(false)
 
@@ -29,8 +30,14 @@ export default function Admin() {
       const e = {}
       for (const u of list) {
         const activos = new Set(Object.entries(u.modules || {}).filter(([, v]) => v.activo).map(([k]) => k))
-        const vu = Object.values(u.modules || {}).map((v) => v.valid_until).find(Boolean) || ''
-        e[u.user_id] = { mods: activos, valid_until: vu }
+        const s = u.subscription || {}
+        e[u.user_id] = {
+          mods: activos,
+          plan: s.plan || '',
+          precio: s.precio_mensual ?? '',
+          estado: s.estado || 'prueba',
+          proximo_pago: s.proximo_pago || '',
+        }
       }
       setEdit(e)
     }).catch((err) => alert('Error: ' + (err.response?.data?.detail || err.message)))
@@ -38,27 +45,40 @@ export default function Admin() {
   }
   useEffect(load, [])
 
+  const upd = (uid, patch) => setEdit((e) => ({ ...e, [uid]: { ...e[uid], ...patch } }))
   const toggle = (uid, key) => {
-    setEdit((e) => {
-      const s = new Set(e[uid].mods)
-      s.has(key) ? s.delete(key) : s.add(key)
-      return { ...e, [uid]: { ...e[uid], mods: s } }
-    })
+    const s = new Set(edit[uid].mods)
+    s.has(key) ? s.delete(key) : s.add(key)
+    upd(uid, { mods: s })
   }
-  const setVU = (uid, v) => setEdit((e) => ({ ...e, [uid]: { ...e[uid], valid_until: v } }))
 
   const guardar = async (uid) => {
     setBusy(true)
     try {
-      await adminAPI.setModules(uid, [...edit[uid].mods], edit[uid].valid_until || null)
+      const e = edit[uid]
+      await adminAPI.setModules(uid, [...e.mods], null)
+      await adminAPI.setSubscription(uid, {
+        plan: e.plan || null, precio_mensual: e.precio === '' ? null : parseFloat(e.precio),
+        estado: e.estado || null, proximo_pago: e.proximo_pago || null,
+      })
       await load()
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy(false) }
   }
   const aplicarPlan = async (uid, plan) => {
     if (!plan) return
     setBusy(true)
-    try { await adminAPI.setPlan(uid, plan, edit[uid].valid_until || null); await load() }
+    try { await adminAPI.setPlan(uid, plan, null); await adminAPI.setSubscription(uid, { plan }); await load() }
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy(false) }
+  }
+  const registrarPago = async (uid) => {
+    const monto = prompt('Monto del pago recibido (USD):', edit[uid].precio || '')
+    if (monto === null) return
+    setBusy(true)
+    try {
+      const r = await adminAPI.registrarPago(uid, { monto: parseFloat(monto) || 0, avanzar_mes: true })
+      await load()
+      alert(`✔ Pago registrado. Próximo pago: ${r.data.proximo_pago || '—'}`)
+    } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy(false) }
   }
   const crear = async () => {
     if (!nuevo.email.trim() || nuevo.password.length < 6) { alert('Email válido y contraseña de 6+ caracteres.'); return }
@@ -74,11 +94,10 @@ export default function Admin() {
   return (
     <div className="adm-page">
       <header className="adm-header">
-        <h1>🛠️ Administración de usuarios</h1>
-        <p className="adm-sub">Crea cuentas con su clave y asigna los módulos contratados.</p>
+        <h1>🛠️ Administración de usuarios y cobros</h1>
+        <p className="adm-sub">Crea cuentas, asigna módulos contratados y gestiona la suscripción mensual.</p>
       </header>
 
-      {/* Crear usuario */}
       <div className="adm-new">
         <h2>Crear usuario</h2>
         <div className="adm-new-row">
@@ -91,36 +110,45 @@ export default function Admin() {
         </div>
       </div>
 
-      {/* Usuarios */}
       {loading ? <div className="adm-loading">Cargando…</div> : (
         <div className="adm-table-wrap">
           <table className="adm-table">
             <thead><tr>
               <th>Usuario</th>{MODS.map((m) => <th key={m.key} className="c">{m.label}</th>)}
-              <th>Vigencia (hasta)</th><th>Plan rápido</th><th></th>
+              <th>Estado</th><th>Precio</th><th>Próx. pago</th><th>Plan rápido</th><th></th>
             </tr></thead>
             <tbody>
               {users.map((u) => {
-                const e = edit[u.user_id] || { mods: new Set(), valid_until: '' }
+                const e = edit[u.user_id] || { mods: new Set() }
+                const venc = u.subscription?.vencida
                 return (
-                  <tr key={u.user_id}>
+                  <tr key={u.user_id} className={venc ? 'vencida' : ''}>
                     <td>
                       <div className="adm-email">{u.email}</div>
-                      <div className="adm-meta">{u.is_admin ? '👑 admin' : ''} · alta {u.created_at}</div>
+                      <div className="adm-meta">{u.is_admin ? '👑 admin' : ''} · alta {u.created_at}{venc ? ' · ⚠ vencida' : ''}</div>
                     </td>
                     {MODS.map((m) => (
                       <td key={m.key} className="c">
                         <input type="checkbox" disabled={u.is_admin} checked={u.is_admin || e.mods.has(m.key)} onChange={() => toggle(u.user_id, m.key)} />
                       </td>
                     ))}
-                    <td><input type="date" value={e.valid_until || ''} onChange={(ev) => setVU(u.user_id, ev.target.value)} disabled={u.is_admin} /></td>
+                    <td>
+                      <select disabled={u.is_admin} value={e.estado} onChange={(ev) => upd(u.user_id, { estado: ev.target.value })}>
+                        {ESTADOS.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </td>
+                    <td><input className="adm-precio" type="number" step="0.01" disabled={u.is_admin} value={e.precio} onChange={(ev) => upd(u.user_id, { precio: ev.target.value })} /></td>
+                    <td><input type="date" disabled={u.is_admin} value={e.proximo_pago || ''} onChange={(ev) => upd(u.user_id, { proximo_pago: ev.target.value })} /></td>
                     <td>
                       <select disabled={u.is_admin} defaultValue="" onChange={(ev) => { aplicarPlan(u.user_id, ev.target.value); ev.target.value = '' }}>
                         <option value="">Plan…</option>
                         {PLANES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
                       </select>
                     </td>
-                    <td><button className="adm-btn" disabled={busy || u.is_admin} onClick={() => guardar(u.user_id)}>💾 Guardar</button></td>
+                    <td className="adm-acts">
+                      <button className="adm-btn" disabled={busy || u.is_admin} onClick={() => guardar(u.user_id)}>💾</button>
+                      <button className="adm-btn pay" disabled={busy || u.is_admin} onClick={() => registrarPago(u.user_id)}>💵 Pago</button>
+                    </td>
                   </tr>
                 )
               })}
@@ -128,7 +156,7 @@ export default function Admin() {
           </table>
         </div>
       )}
-      <p className="adm-note">Los administradores tienen todos los módulos automáticamente. La vigencia opcional desactiva el acceso después de esa fecha.</p>
+      <p className="adm-note">Al <strong>registrar un pago</strong> se marca la suscripción como <em>activa</em> y se adelanta un mes el próximo pago. Si el próximo pago vence, el usuario queda <strong>suspendido automáticamente</strong> (sin acceso a los módulos) hasta el siguiente pago. Los administradores no se cobran.</p>
     </div>
   )
 }
