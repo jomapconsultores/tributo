@@ -30,9 +30,9 @@ const PAQUETES = [
 
 const STATS = [
   { target: 4, suffix: '', label: 'Módulos integrados' },
-  { target: 100, suffix: '%', label: 'Apegado al SRI' },
-  { target: 0, text: '∞', label: 'Contribuyentes (RUC)' },
-  { target: 15, suffix: '%', label: 'IVA calculado automático' },
+  { target: 100, suffix: '%', label: 'Apegado a la normativa SRI' },
+  { target: 0, text: '∞', label: 'Contribuyentes (RUC) por cuenta' },
+  { target: 90, suffix: '%', label: 'Menos tiempo en cada declaración' },
 ]
 
 const money = (n) => n.toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
