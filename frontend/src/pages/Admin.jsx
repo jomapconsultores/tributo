@@ -21,6 +21,9 @@ export default function Admin() {
   const [edit, setEdit] = useState({})
   const [nuevo, setNuevo] = useState({ email: '', password: '', plan: 'premium' })
   const [busy, setBusy] = useState(false)
+  const [contactos, setContactos] = useState([])
+
+  useEffect(() => { adminAPI.contactos().then((r) => setContactos(r.data?.data || [])).catch(() => {}) }, [])
 
   const load = () => {
     setLoading(true)
@@ -157,6 +160,29 @@ export default function Admin() {
         </div>
       )}
       <p className="adm-note">Al <strong>registrar un pago</strong> se marca la suscripción como <em>activa</em> y se adelanta un mes el próximo pago. Si el próximo pago vence, el usuario queda <strong>suspendido automáticamente</strong> (sin acceso a los módulos) hasta el siguiente pago. Los administradores no se cobran.</p>
+
+      {/* Mensajes de contacto */}
+      <div className="adm-contactos">
+        <h2>📨 Mensajes de contacto ({contactos.length})</h2>
+        {contactos.length === 0 ? <p className="adm-note">Sin mensajes todavía.</p> : (
+          <div className="adm-table-wrap">
+            <table className="adm-table">
+              <thead><tr><th>Fecha</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Mensaje</th></tr></thead>
+              <tbody>
+                {contactos.map((c) => (
+                  <tr key={c.id}>
+                    <td>{String(c.created_at).slice(0, 10)}</td>
+                    <td>{c.nombre}</td>
+                    <td>{c.email}</td>
+                    <td>{c.telefono || '—'}</td>
+                    <td>{c.mensaje || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

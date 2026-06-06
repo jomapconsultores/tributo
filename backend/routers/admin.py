@@ -169,6 +169,12 @@ async def historial_pagos(uid: str, _: str = Depends(require_admin)):
     return {"data": sb.table("pagos").select("*").eq("user_id", uid).order("fecha", desc=True).execute().data or []}
 
 
+@router.get("/contactos")
+async def listar_contactos(_: str = Depends(require_admin)):
+    sb = get_supabase_client()
+    return {"data": sb.table("contactos").select("*").order("created_at", desc=True).execute().data or []}
+
+
 @router.post("/users")
 async def create_user(body: UserIn, _: str = Depends(require_admin)):
     sb = get_supabase_client()

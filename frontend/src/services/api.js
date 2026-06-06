@@ -30,6 +30,11 @@ export const accessAPI = {
   me: () => api.get('/api/access/me'),
 }
 
+// Formulario de contacto (público)
+export const contactoAPI = {
+  enviar: (data) => api.post('/api/contacto/', data),
+}
+
 // Administración (solo admins)
 export const adminAPI = {
   listUsers: () => api.get('/api/admin/users'),
@@ -39,6 +44,7 @@ export const adminAPI = {
   setSubscription: (uid, data) => api.put(`/api/admin/users/${uid}/subscription`, data),
   registrarPago: (uid, data) => api.post(`/api/admin/users/${uid}/pago`, data),
   pagos: (uid) => api.get(`/api/admin/users/${uid}/pagos`),
+  contactos: () => api.get('/api/admin/contactos'),
 }
 
 // Clientes (contribuyentes)

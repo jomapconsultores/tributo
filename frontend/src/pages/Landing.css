@@ -48,6 +48,17 @@
 .lp-plan li { font-size: 0.88rem; color: #334155; padding: 5px 0; }
 .lp-plan-btn { width: 100%; text-align: center; }
 
+.lp-sub-h { text-align: center; font-size: 1.1rem; color: #334155; margin: 28px 0 14px; }
+.lp-planes-2 { max-width: 720px; }
+
+/* Contacto */
+.lp-contacto { max-width: 620px; }
+.lp-form { display: flex; flex-direction: column; gap: 12px; }
+.lp-form input, .lp-form textarea { border: 1px solid #cbd5e1; border-radius: 9px; padding: 12px 14px; font-size: 0.95rem; outline: none; font-family: inherit; }
+.lp-form input:focus, .lp-form textarea:focus { border-color: #2563eb; }
+.lp-form .lp-btn { align-self: flex-start; padding: 12px 26px; }
+.lp-ok { background: #dcfce7; color: #166534; border-radius: 12px; padding: 20px; text-align: center; font-weight: 600; }
+
 .lp-extras { max-width: 1080px; margin: 36px auto 0; background: #f1f5f9; border-radius: 14px; padding: 20px 24px; }
 .lp-extras h4 { margin: 0 0 10px; }
 .lp-extras ul { margin: 0; padding-left: 20px; color: #475569; font-size: 0.9rem; line-height: 1.8; }
