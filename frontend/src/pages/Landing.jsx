@@ -12,17 +12,20 @@ const MODULOS = [
   { icon: '📋', titulo: 'Declaraciones', desc: 'Cálculo y generación de la Declaración de IVA y de ICE con los formularios oficiales listos para presentar.' },
 ]
 
-// Precios POR SERVICIO (contribuyentes ilimitados)
-const SERVICIOS = [
-  { key: 'gastos', icon: '💸', titulo: 'Gastos', neto: 20 },
-  { key: 'retenciones', icon: '🧾', titulo: 'Retenciones', neto: 15 },
-  { key: 'declaraciones', icon: '📋', titulo: 'Declaraciones', neto: 20 },
-  { key: 'ice', icon: '📈', titulo: 'Ingresos + ICE', neto: 35 },
-]
-
+// 3 paquetes (contribuyentes ilimitados)
 const PAQUETES = [
-  { nombre: 'Combo Contador', neto: 45, destacado: false, sueltos: 55, incluye: ['Gastos', 'Retenciones', 'Declaraciones', 'Sin Ingresos+ICE'] },
-  { nombre: 'Suite Completa', neto: 75, destacado: true, sueltos: 90, incluye: ['Los 4 servicios', 'Ingresos + ICE incluido', 'Mejor precio'] },
+  {
+    nombre: 'Cálculo del ICE', icon: '📈', neto: 40, destacado: false,
+    incluye: ['Cálculo de ICE (botella y caja)', 'Anexo PVP+ICE', 'ICE-XML con auditoría', 'Catálogo con códigos del SRI', 'Rebajas y exenciones', 'Información útil (Códigos ICE)', 'Contribuyentes ilimitados'],
+  },
+  {
+    nombre: 'Gastos y Retenciones', icon: '💸', neto: 40, destacado: false,
+    incluye: ['Bajador de facturas del SRI', 'Clasificación automática de gastos', 'Retenciones (XML) y reportes', 'Datos guardados y exportes', 'Contribuyentes ilimitados'],
+  },
+  {
+    nombre: 'Sistema Completo', icon: '⭐', neto: 150, destacado: true,
+    incluye: ['TODOS los módulos', 'Gastos + Retenciones', 'Ingresos + ICE completo', 'Declaraciones IVA e ICE', 'Multiusuario y soporte prioritario', 'Contribuyentes ilimitados'],
+  },
 ]
 
 const money = (n) => n.toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -83,52 +86,32 @@ export default function Landing() {
         <p className="lp-section-note">Manejo <strong>multi-contribuyente</strong> y <strong>multi-período</strong> (mes/año), con acceso seguro y aislado por usuario.</p>
       </section>
 
-      {/* Precios POR SERVICIO */}
+      {/* Precios — 3 paquetes */}
       <section id="precios" className="lp-section lp-precios">
-        <h2>Paga solo por los servicios que usas</h2>
-        <p className="lp-section-sub">Contrata servicios por separado o en paquete. <strong>Contribuyentes ilimitados</strong>. Valores mensuales en USD, incluyen <strong>IVA {Math.round(IVA * 100)}%</strong>.</p>
-
-        <h3 className="lp-sub-h">Por servicio</h3>
-        <div className="lp-planes">
-          {SERVICIOS.map((s) => {
-            const { iva, total } = conIva(s.neto)
-            return (
-              <div key={s.key} className="lp-plan">
-                <div className="lp-card-icon">{s.icon}</div>
-                <h3>{s.titulo}</h3>
-                <div className="lp-precio"><span className="lp-precio-total">${money(total)}</span><span className="lp-precio-mes">/mes</span></div>
-                <div className="lp-precio-desg">${money(s.neto)} + IVA ${money(iva)}</div>
-                <button className="lp-btn lp-btn-ghost lp-plan-btn" onClick={() => navigate('/login')}>Contratar</button>
-              </div>
-            )
-          })}
-        </div>
-
-        <h3 className="lp-sub-h">Paquetes (con descuento)</h3>
-        <div className="lp-planes lp-planes-2">
+        <h2>Planes</h2>
+        <p className="lp-section-sub">Elige el paquete que necesitas. <strong>Contribuyentes ilimitados</strong>. Valores mensuales en USD, incluyen <strong>IVA {Math.round(IVA * 100)}%</strong>.</p>
+        <div className="lp-planes lp-planes-3">
           {PAQUETES.map((p) => {
             const { iva, total } = conIva(p.neto)
-            const ahorro = conIva(p.sueltos).total - total
             return (
               <div key={p.nombre} className={`lp-plan ${p.destacado ? 'destacado' : ''}`}>
-                {p.destacado && <div className="lp-plan-tag">Mejor valor</div>}
+                {p.destacado && <div className="lp-plan-tag">Todo incluido</div>}
+                <div className="lp-card-icon">{p.icon}</div>
                 <h3>{p.nombre}</h3>
                 <div className="lp-precio"><span className="lp-precio-total">${money(total)}</span><span className="lp-precio-mes">/mes</span></div>
-                <div className="lp-precio-desg">${money(p.neto)} + IVA ${money(iva)} · ahorras ${money(ahorro)}/mes</div>
+                <div className="lp-precio-desg">${money(p.neto)} + IVA ${money(iva)}</div>
                 <ul>{p.incluye.map((f) => <li key={f}>✓ {f}</li>)}</ul>
                 <button className="lp-btn lp-btn-primary lp-plan-btn" onClick={() => navigate('/login')}>Contratar</button>
               </div>
             )
           })}
         </div>
-
         <div className="lp-extras">
-          <h4>Complementos y beneficios</h4>
+          <h4>Beneficios</h4>
           <ul>
-            <li>Usuario adicional (estudio contable): <strong>$12,00 + IVA</strong> /mes</li>
             <li>Plan anual: <strong>2 meses gratis</strong></li>
             <li>Prueba gratis: <strong>14 días</strong></li>
-            <li><strong>Contribuyentes (RUC) ilimitados</strong> en todos los servicios</li>
+            <li><strong>Contribuyentes (RUC) ilimitados</strong> en todos los paquetes</li>
           </ul>
         </div>
       </section>

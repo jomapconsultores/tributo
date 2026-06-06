@@ -21,11 +21,12 @@ def _add_month(d: date) -> date:
 
 # Paquetes → módulos que activan
 PLANES = {
-    "basico": ["gastos", "retenciones"],
-    "profesional": ["gastos", "retenciones", "declaraciones"],
-    "premium": ["gastos", "retenciones", "ingresos_ice", "declaraciones"],
-    "estudio": ["gastos", "retenciones", "ingresos_ice", "declaraciones"],
+    "ice": ["ingresos_ice"],
+    "gastos_ret": ["gastos", "retenciones"],
+    "completo": ["gastos", "retenciones", "ingresos_ice", "declaraciones"],
 }
+# Precio neto mensual (sin IVA) por plan
+PLAN_PRECIO = {"ice": 40, "gastos_ret": 40, "completo": 150}
 
 
 async def require_admin(user_id: str = Depends(get_current_user)):
@@ -188,8 +189,11 @@ async def create_user(body: UserIn, _: str = Depends(require_admin)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"No se pudo crear el usuario: {e}")
 
-    mods = body.modules if body.modules is not None else PLANES.get((body.plan or "").lower(), [])
+    plan = (body.plan or "").lower()
+    mods = body.modules if body.modules is not None else PLANES.get(plan, [])
     _aplicar_modulos(uid, mods, None)
+    if plan in PLANES:
+        _upsert_sub(uid, {"plan": plan, "precio_mensual": PLAN_PRECIO.get(plan), "estado": "prueba"})
     return {"user_id": uid, "email": body.email}
 
 
@@ -201,8 +205,10 @@ async def set_modules(uid: str, body: ModulesIn, _: str = Depends(require_admin)
 
 @router.post("/users/{uid}/plan")
 async def set_plan(uid: str, body: PlanIn, _: str = Depends(require_admin)):
-    mods = PLANES.get(body.plan.lower())
+    plan = body.plan.lower()
+    mods = PLANES.get(plan)
     if mods is None:
         raise HTTPException(status_code=400, detail="Plan inválido")
     _aplicar_modulos(uid, mods, body.valid_until)
+    _upsert_sub(uid, {"plan": plan, "precio_mensual": PLAN_PRECIO.get(plan)})
     return {"ok": True, "modules": mods}

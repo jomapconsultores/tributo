@@ -9,9 +9,9 @@ const MODS = [
   { key: 'declaraciones', label: 'Declar.' },
 ]
 const PLANES = [
-  { key: 'basico', label: 'Básico (Gastos+Ret.)' },
-  { key: 'profesional', label: 'Profesional (+Decl.)' },
-  { key: 'premium', label: 'Premium / ICE (todo)' },
+  { key: 'ice', label: 'Cálculo ICE ($40)' },
+  { key: 'gastos_ret', label: 'Gastos y Retenciones ($40)' },
+  { key: 'completo', label: 'Sistema Completo ($150)' },
 ]
 const ESTADOS = ['prueba', 'activo', 'suspendido']
 
@@ -19,7 +19,7 @@ export default function Admin() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState({})
-  const [nuevo, setNuevo] = useState({ email: '', password: '', plan: 'premium' })
+  const [nuevo, setNuevo] = useState({ email: '', password: '', plan: 'completo' })
   const [busy, setBusy] = useState(false)
   const [contactos, setContactos] = useState([])
 
@@ -88,7 +88,7 @@ export default function Admin() {
     setBusy(true)
     try {
       await adminAPI.createUser({ email: nuevo.email.trim(), password: nuevo.password, plan: nuevo.plan })
-      setNuevo({ email: '', password: '', plan: 'premium' })
+      setNuevo({ email: '', password: '', plan: 'completo' })
       await load()
       alert('✔ Usuario creado con su clave y plan asignado.')
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy(false) }
