@@ -41,26 +41,51 @@ export default function AnexoPVPICE() {
   const [tipo, setTipo] = useState(null) // 'ICE' | 'PVP'
   const [header, setHeader] = useState({})
   const [rows, setRows] = useState([])
+  const [rucSel, setRucSel] = useState('')
   const [clientSel, setClientSel] = useState('')
   const [catalogo, setCatalogo] = useState([])
   const [catSel, setCatSel] = useState('')
   const [saved, setSaved] = useState([])
   const fileRef = useRef(null)
 
-  // El catálogo "desde catálogo" es el del cliente elegido (sus productos guardados)
+  // Contribuyentes únicos (RUC) y períodos del RUC elegido
+  const contribs = []
+  const vistosR = new Set()
+  for (const c of clients) { if (!vistosR.has(c.identificacion)) { vistosR.add(c.identificacion); contribs.push(c) } }
+  contribs.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
+  const periodosRuc = clients.filter((c) => c.identificacion === rucSel)
+    .sort((a, b) => (b.periodo_anio - a.periodo_anio) || (b.periodo_mes - a.periodo_mes))
+  const clientIdsRuc = new Set(periodosRuc.map((c) => c.id))
+
+  const cambiarRuc = (ident) => {
+    setRucSel(ident)
+    const list = clients.filter((c) => c.identificacion === ident)
+      .sort((a, b) => (b.periodo_anio - a.periodo_anio) || (b.periodo_mes - a.periodo_mes))
+    setClientSel(list[0]?.id || '')
+  }
+
+  // Catálogo del cliente (período) elegido
   useEffect(() => {
-    if (!clientSel) { setCatalogo([]); setSaved([]); return }
+    if (!clientSel) { setCatalogo([]); return }
     productsAPI.byClient(clientSel).then((r) => setCatalogo(r.data?.data || [])).catch(() => setCatalogo([]))
-    anexosAPI.list(clientSel).then((r) => setSaved(r.data?.data || [])).catch(() => setSaved([]))
   }, [clientSel])
+
+  // Anexos del RUC (todos sus períodos) → "ver por RUC los anexos en general"
+  const cargarAnexos = () => {
+    if (!rucSel) { setSaved([]); return }
+    anexosAPI.list().then((r) => {
+      const all = r.data?.data || []
+      setSaved(all.filter((a) => clientIdsRuc.has(a.client_id)))
+    }).catch(() => setSaved([]))
+  }
+  useEffect(() => { cargarAnexos() }, [rucSel, clients.length])
 
   const guardarAnexo = async () => {
     if (!clientSel) { alert('Elige un cliente (RUC y período) para guardar.'); return }
     if (!tipo) { alert('No hay anexo para guardar.'); return }
     try {
       await anexosAPI.save(clientSel, tipo, { tipo, header, rows })
-      const r = await anexosAPI.list(clientSel)
-      setSaved(r.data?.data || [])
+      cargarAnexos()
       alert('✔ Anexo guardado para el período seleccionado.')
     } catch (e) { alert('Error al guardar: ' + (e.response?.data?.detail || e.message)) }
   }
@@ -74,7 +99,7 @@ export default function AnexoPVPICE() {
 
   const borrarAnexo = async (id) => {
     if (!window.confirm('¿Eliminar este anexo guardado?')) return
-    try { await anexosAPI.delete(id); const r = await anexosAPI.list(clientSel); setSaved(r.data?.data || []) }
+    try { await anexosAPI.delete(id); cargarAnexos() }
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
 
@@ -194,10 +219,15 @@ export default function AnexoPVPICE() {
       {/* Relacionar productos */}
       <div className="ax-relate">
         <div className="ax-relate-group">
-          <span className="ax-relate-lbl">Cliente / período:</span>
-          <select value={clientSel} onChange={(e) => setClientSel(e.target.value)}>
-            <option value="">Cliente…</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.identificacion} — {c.nombre} · {periodoCorto(c)}</option>)}
+          <span className="ax-relate-lbl">RUC:</span>
+          <select value={rucSel} onChange={(e) => cambiarRuc(e.target.value)}>
+            <option value="">Contribuyente…</option>
+            {contribs.map((c) => <option key={c.identificacion} value={c.identificacion}>{c.identificacion} — {c.nombre}</option>)}
+          </select>
+          <span className="ax-relate-lbl">Mes/Año:</span>
+          <select value={clientSel} onChange={(e) => setClientSel(e.target.value)} disabled={!rucSel}>
+            <option value="">Período…</option>
+            {periodosRuc.map((c) => <option key={c.id} value={c.id}>{periodoCorto(c)}</option>)}
           </select>
           <button className="ax-btn teal" onClick={importarICEXML} disabled={!clientSel}>↪ Importar ventas ICE</button>
         </div>
@@ -213,18 +243,21 @@ export default function AnexoPVPICE() {
         </div>
       </div>
 
-      {/* Anexos guardados del cliente/período */}
-      {clientSel && saved.length > 0 && (
+      {/* Anexos guardados del RUC (todos sus períodos) */}
+      {rucSel && saved.length > 0 && (
         <div className="ax-saved">
-          <span className="ax-saved-lbl">Anexos guardados:</span>
-          {saved.map((a) => (
-            <span key={a.id} className="ax-saved-item">
-              <button className="ax-saved-load" onClick={() => recuperarAnexo(a)} title="Recuperar">
-                {a.tipo} · {(a.datos?.rows?.length ?? 0)} filas
-              </button>
-              <button className="ax-saved-del" onClick={() => borrarAnexo(a.id)} title="Eliminar">✕</button>
-            </span>
-          ))}
+          <span className="ax-saved-lbl">Anexos guardados del RUC:</span>
+          {saved.map((a) => {
+            const cli = clients.find((c) => c.id === a.client_id)
+            return (
+              <span key={a.id} className="ax-saved-item">
+                <button className="ax-saved-load" onClick={() => recuperarAnexo(a)} title="Recuperar">
+                  {a.tipo} · {cli ? periodoCorto(cli) : '—'} · {(a.datos?.rows?.length ?? 0)} filas
+                </button>
+                <button className="ax-saved-del" onClick={() => borrarAnexo(a.id)} title="Eliminar">✕</button>
+              </span>
+            )
+          })}
         </div>
       )}
 

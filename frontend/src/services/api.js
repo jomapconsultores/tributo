@@ -131,6 +131,7 @@ export const productsAPI = {
   searchCodigos: (q, impuesto = '3031') => api.get('/api/products/codigos-ice/search', { params: { q, impuesto } }),
   countCodigos: () => api.get('/api/products/codigos-ice/count'),
   importCodigos: () => api.post('/api/products/codigos-ice/import'),
+  lookups: () => api.get('/api/products/codigos-ice/lookups'),
   byClient: (clientId) => api.get(`/api/products/by-client/${clientId}`),
   create: (p) => api.post('/api/products/', p),
   update: (id, data) => api.put(`/api/products/${id}`, data),

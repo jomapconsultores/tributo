@@ -37,15 +37,19 @@ export default function CatalogoProductos() {
     capacidad: form.capacidad, unidad: form.unidad, pais: form.cod_pais, grado: form.grado, codImpuesto: form.cod_impuesto,
   })
 
-  // Búsqueda en el catálogo oficial SRI (autocompletado)
+  // Listas auxiliares de la base (presentación, unidad, país, etc.)
+  const [lk, setLk] = useState({ presentacion: [], unidad: [], pais: [], capacidad: [], grado: [] })
+  useEffect(() => { productsAPI.lookups?.().then((r) => setLk(r.data || {})).catch(() => {}) }, [])
+
+  // Búsqueda en el catálogo oficial SRI (autocompletado, desde 1 letra)
   const [busqueda, setBusqueda] = useState('')
   const [resultados, setResultados] = useState([])
   useEffect(() => {
     const q = busqueda.trim()
-    if (q.length < 2) { setResultados([]); return }
+    if (q.length < 1) { setResultados([]); return }
     const t = setTimeout(() => {
       productsAPI.searchCodigos(q).then((r) => setResultados(r.data?.data || [])).catch(() => setResultados([]))
-    }, 250)
+    }, 200)
     return () => clearTimeout(t)
   }, [busqueda])
 
@@ -132,24 +136,35 @@ export default function CatalogoProductos() {
         )}
       </div>
 
-      {/* Formulario */}
+      {/* Formulario — 8 espacios del código (leídos de la base) en orden */}
       <div className="cp-form">
         <label className="cp-f wide"><span>Producto *</span>
           <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value.toUpperCase() })} placeholder="Nombre del producto" /></label>
-        <label className="cp-f"><span>Cód. SRI individual</span>
-          <input value={form.cod_prod_sri} onChange={(e) => setForm({ ...form, cod_prod_sri: e.target.value })} placeholder="6 dígitos" /></label>
-        <label className="cp-f"><span>Cód. Prod. PVP</span>
-          <input value={form.cod_prod_pvp} onChange={(e) => setForm({ ...form, cod_prod_pvp: e.target.value })} placeholder={form.cod_prod_sri || '—'} /></label>
-        <label className="cp-f s"><span>Cap. (ml)</span>
-          <input value={form.capacidad} onChange={(e) => setForm({ ...form, capacidad: e.target.value })} /></label>
-        <label className="cp-f s"><span>Grado %</span>
-          <input value={form.grado} onChange={(e) => setForm({ ...form, grado: e.target.value })} /></label>
-        <label className="cp-f s"><span>Present.</span>
-          <input value={form.presentacion} onChange={(e) => setForm({ ...form, presentacion: e.target.value })} /></label>
-        <label className="cp-f s"><span>Unidad</span>
-          <input value={form.unidad} onChange={(e) => setForm({ ...form, unidad: e.target.value })} /></label>
+        <label className="cp-f s"><span>1. Cód. Impuesto</span>
+          <input value={form.cod_impuesto} onChange={(e) => setForm({ ...form, cod_impuesto: e.target.value })} /></label>
+        <label className="cp-f s"><span>2. Clasificación</span>
+          <input value={form.cod_clasificacion} onChange={(e) => setForm({ ...form, cod_clasificacion: e.target.value })} /></label>
+        <label className="cp-f s"><span>3. Marca</span>
+          <input value={form.cod_prod_sri} onChange={(e) => setForm({ ...form, cod_prod_sri: e.target.value })} placeholder="código" /></label>
+        <label className="cp-f"><span>4. Presentación</span>
+          <input list="lk-pres" value={form.presentacion} onChange={(e) => setForm({ ...form, presentacion: e.target.value })} /></label>
+        <label className="cp-f"><span>5. Capacidad (ml)</span>
+          <input list="lk-cap" value={form.capacidad} onChange={(e) => setForm({ ...form, capacidad: e.target.value })} /></label>
+        <label className="cp-f"><span>6. Unidad</span>
+          <input list="lk-und" value={form.unidad} onChange={(e) => setForm({ ...form, unidad: e.target.value })} /></label>
+        <label className="cp-f"><span>7. País</span>
+          <input list="lk-pais" value={form.cod_pais} onChange={(e) => setForm({ ...form, cod_pais: e.target.value })} /></label>
+        <label className="cp-f s"><span>8. Grado %</span>
+          <input list="lk-grado" value={form.grado} onChange={(e) => setForm({ ...form, grado: e.target.value })} /></label>
         <label className="cp-f s"><span>Bot/Caja</span>
           <input type="number" value={form.botellas_por_caja} onChange={(e) => setForm({ ...form, botellas_por_caja: e.target.value })} /></label>
+        <label className="cp-f"><span>Cód. PVP</span>
+          <input value={form.cod_prod_pvp} onChange={(e) => setForm({ ...form, cod_prod_pvp: e.target.value })} placeholder={form.cod_prod_sri || '—'} /></label>
+        <datalist id="lk-pres">{(lk.presentacion || []).slice(0, 400).map((x) => <option key={x.codigo} value={x.codigo}>{x.descripcion}</option>)}</datalist>
+        <datalist id="lk-cap">{(lk.capacidad || []).slice(0, 600).map((x) => <option key={x.codigo} value={x.codigo}>{x.descripcion}</option>)}</datalist>
+        <datalist id="lk-und">{(lk.unidad || []).map((x) => <option key={x.codigo} value={x.codigo}>{x.descripcion}</option>)}</datalist>
+        <datalist id="lk-pais">{(lk.pais || []).map((x) => <option key={x.codigo} value={x.codigo}>{x.descripcion}</option>)}</datalist>
+        <datalist id="lk-grado">{(lk.grado || []).slice(0, 400).map((x) => <option key={x.codigo} value={x.codigo}>{x.descripcion}</option>)}</datalist>
         <button className="cp-btn primary" onClick={guardar}>{editId ? '💾 Guardar' : '＋ Agregar'}</button>
         {editId && <button className="cp-btn ghost" onClick={cancelar}>Cancelar</button>}
       </div>
