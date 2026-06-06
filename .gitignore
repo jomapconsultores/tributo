@@ -36,8 +36,11 @@ dist/
 vite.config.js.timestamp-*.mjs
 vite.config.ts.timestamp-*.mjs
 
-# Recursos mutables del backend (Códigos ICE reemplazable)
-backend/resources/
+# Recursos mutables del backend (Códigos ICE reemplazable) — se ignora todo
+# salvo las plantillas oficiales, necesarias en producción
+backend/resources/*
+!backend/resources/templates/
+!backend/resources/templates/**
 
 # IDE
 .vscode/

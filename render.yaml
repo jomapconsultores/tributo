@@ -1,29 +1,39 @@
 services:
+  # ---------- Backend (FastAPI) ----------
   - type: web
     name: tributos-api
-    env: python
+    runtime: python
+    rootDir: backend
+    plan: starter
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
-    rootDir: backend
+    healthCheckPath: /health
     envVars:
       - key: SUPABASE_URL
-        scope: build
+        sync: false           # se define en el dashboard
       - key: SUPABASE_SERVICE_KEY
-        scope: build
+        sync: false
       - key: SUPABASE_ANON_KEY
-        scope: build
+        sync: false
       - key: JWT_SECRET
-        scope: build
+        sync: false
+      - key: ENVIRONMENT
+        value: production
       - key: CORS_ORIGINS
-        value: http://localhost:5173,http://localhost:3000
-        scope: build
+        sync: false           # ej: https://tributos-web.onrender.com
+      - key: FRONTEND_URL
+        sync: false           # ej: https://tributos-web.onrender.com
 
+  # ---------- Frontend (React/Vite, sitio estático) ----------
   - type: static
     name: tributos-web
+    rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
-    rootDir: frontend
     envVars:
       - key: VITE_API_URL
-        value: https://tributos-api.onrender.com
-        scope: build
+        sync: false           # ej: https://tributos-api.onrender.com
+    routes:
+      - type: rewrite         # SPA: todas las rutas → index.html
+        source: /*
+        destination: /index.html
