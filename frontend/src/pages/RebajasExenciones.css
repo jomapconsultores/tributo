@@ -18,7 +18,8 @@
 
 .re-prodsel { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .re-prodsel label { font-size: 0.8rem; font-weight: 700; color: #475569; }
-.re-prodsel select { padding: 8px 11px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.86rem; min-width: 220px; }
+.re-prodsel select, .re-prodsel input { padding: 8px 11px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.86rem; min-width: 260px; outline: none; }
+.re-prodsel input:focus { border-color: #2563eb; }
 
 .re-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; background: #fff; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
 .re-f { display: flex; flex-direction: column; gap: 3px; }

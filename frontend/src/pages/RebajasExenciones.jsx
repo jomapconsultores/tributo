@@ -96,12 +96,17 @@ export default function RebajasExenciones() {
       <ClientSwitcher onNewClient={openNewClient} />
 
       <div className="re-prodsel">
-        <label>Producto (del catálogo)</label>
-        <select value={producto} onChange={(e) => setProducto(e.target.value)}>
-          <option value="">{productos.length ? 'Elige un producto…' : 'Sin productos en el catálogo'}</option>
-          {productos.map((p) => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
-        </select>
-        {productos.length === 0 && <span className="re-hint">Agrega productos en "Catálogo de productos" primero.</span>}
+        <label>Producto</label>
+        <input
+          list="re-prod-list"
+          value={producto}
+          onChange={(e) => setProducto(e.target.value.toUpperCase())}
+          placeholder="Escribe el producto o elígelo del catálogo…"
+        />
+        <datalist id="re-prod-list">
+          {productos.map((p) => <option key={p.id} value={p.nombre} />)}
+        </datalist>
+        <span className="re-hint">Puedes elegir uno del catálogo del cliente o escribir el nombre.</span>
       </div>
 
       {/* Normas de aplicación (arriba) */}
