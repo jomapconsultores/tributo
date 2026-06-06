@@ -141,7 +141,7 @@ export default function Landing() {
         <span className="lp-orb a" /><span className="lp-orb b" /><span className="lp-orb c" />
         <div className="lp-hero-inner">
           <div className="lp-hero-logo">
-            <img src="/capsa-horizontal.png" alt="CAPSA" />
+            <img src="/capsa-emblema.png" alt="CAPSA" />
           </div>
           <div className="lp-hero-legend"><span className="lp-dot" /> Soluciones tributarias inteligentes para el Ecuador · SRI 2026</div>
           <h1>Tu gestión tributaria del <span className="lp-grad">SRI</span>, automatizada de punta a punta</h1>
