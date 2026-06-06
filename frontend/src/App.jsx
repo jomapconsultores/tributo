@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
+import Landing from './pages/Landing'
 import Database from './pages/Database'
 import Classifier from './pages/Classifier'
 import SavedData from './pages/SavedData'
@@ -88,6 +89,7 @@ function App() {
           path="/login"
           element={user ? <Navigate to="/" /> : <Login onLogin={handleLogin} />}
         />
+        {!user && <Route path="/" element={<Landing />} />}
         {user ? (
           <Route
             element={
@@ -115,7 +117,7 @@ function App() {
             <Route path="*" element={<HomeRedirect />} />
           </Route>
         ) : (
-          <Route path="*" element={<Navigate to="/login" />} />
+          <Route path="*" element={<Navigate to="/" />} />
         )}
       </Routes>
     </Router>
