@@ -174,6 +174,12 @@ export default function Landing() {
               <div className="lp-fcard-sub">IVA + ICE del período</div>
               <div className="lp-fbar"><span style={{ width: '88%', background: 'linear-gradient(90deg,#7c3aed,#a78bfa)' }} /></div>
             </div>
+            <div className="lp-fcard fc-4">
+              <div className="lp-fcard-label">💸 Gastos clasificados</div>
+              <div className="lp-fcard-value">1.240 XML</div>
+              <div className="lp-fcard-sub">automático por catálogo</div>
+              <div className="lp-fbar"><span style={{ width: '64%', background: 'linear-gradient(90deg,#0ea5e9,#38bdf8)' }} /></div>
+            </div>
           </div>
         </div>
       </section>

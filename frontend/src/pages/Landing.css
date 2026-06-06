@@ -107,7 +107,7 @@
 .lp-sri-txt strong { display: block; color: rgba(255,255,255,.88); font-size: .82rem; font-weight: 700; }
 
 /* Tarjetas flotantes */
-.lp-hero-visual { position: relative; max-width: 860px; margin: 52px auto 0; height: 220px; animation: lpFloatUp .8s .4s both; }
+.lp-hero-visual { position: relative; max-width: 920px; margin: 52px auto 0; height: 240px; animation: lpFloatUp .8s .4s both; }
 .lp-fcard {
   position: absolute; background: rgba(255,255,255,.97); border-radius: 14px;
   padding: 15px 17px; text-align: left; border: 1px solid rgba(255,255,255,.6);
@@ -116,9 +116,10 @@
 .lp-fcard-label { font-size: .64rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; margin-bottom: 6px; }
 .lp-fcard-value { font-size: 1.3rem; font-weight: 900; color: #0f172a; letter-spacing: -.5px; }
 .lp-fcard-sub { font-size: .68rem; color: #64748b; margin-top: 2px; }
-.fc-1 { left: 3%; top: 28px; width: 205px; animation: lpBob 6s ease-in-out infinite; }
-.fc-2 { left: 50%; transform: translateX(-50%); top: 0; width: 240px; z-index: 3; animation: lpBob2 7s ease-in-out infinite; }
-.fc-3 { right: 3%; top: 46px; width: 205px; animation: lpBob 6.5s ease-in-out infinite .5s; }
+.fc-1 { left: 0; top: 48px; width: 200px; animation: lpBob 6s ease-in-out infinite; }
+.fc-2 { left: 24%; top: 6px; width: 220px; z-index: 3; animation: lpBob2 7s ease-in-out infinite; }
+.fc-3 { left: 48%; top: 44px; width: 206px; z-index: 2; animation: lpBob 6.5s ease-in-out infinite .5s; }
+.fc-4 { left: 72%; top: 12px; width: 204px; animation: lpBob2 7.5s ease-in-out infinite .3s; }
 .lp-fchip { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; font-size: .62rem; font-weight: 800; padding: 3px 9px; border-radius: 6px; background: #dcfce7; color: #15803d; }
 .lp-fbar { height: 6px; border-radius: 4px; background: #eef2f7; margin-top: 10px; overflow: hidden; }
 .lp-fbar > span { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg,#2563eb,#60a5fa); }
