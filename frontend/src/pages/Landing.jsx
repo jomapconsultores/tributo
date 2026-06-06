@@ -15,11 +15,11 @@ const MODULOS = [
 // 3 paquetes (contribuyentes ilimitados)
 const PAQUETES = [
   {
-    nombre: 'Cálculo del ICE', icon: '📈', neto: 40, destacado: false,
+    nombre: 'Cálculo del ICE', icon: '📈', neto: 50, destacado: false,
     incluye: ['Cálculo de ICE (botella y caja)', 'Anexo PVP+ICE', 'ICE-XML con auditoría', 'Catálogo con códigos del SRI', 'Rebajas y exenciones', 'Información útil (Códigos ICE)', 'Contribuyentes ilimitados'],
   },
   {
-    nombre: 'Gastos y Retenciones', icon: '💸', neto: 40, destacado: false,
+    nombre: 'Gastos y Retenciones', icon: '💸', neto: 50, destacado: false,
     incluye: ['Bajador de facturas del SRI', 'Clasificación automática de gastos', 'Retenciones (XML) y reportes', 'Datos guardados y exportes', 'Contribuyentes ilimitados'],
   },
   {

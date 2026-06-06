@@ -21,7 +21,7 @@ PLANES = {
     "completo": ["gastos", "retenciones", "ingresos_ice", "declaraciones"],
 }
 # Precio neto mensual (sin IVA) por plan
-PLAN_PRECIO = {"ice": 40, "gastos_ret": 40, "completo": 150}
+PLAN_PRECIO = {"ice": 50, "gastos_ret": 50, "completo": 150}
 
 
 async def require_admin(user_id: str = Depends(get_current_user)):

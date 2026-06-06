@@ -9,8 +9,8 @@ const MODS = [
   { key: 'declaraciones', label: 'Declar.' },
 ]
 const PLANES = [
-  { key: 'ice', label: 'Cálculo ICE ($40)' },
-  { key: 'gastos_ret', label: 'Gastos y Retenciones ($40)' },
+  { key: 'ice', label: 'Cálculo ICE ($50)' },
+  { key: 'gastos_ret', label: 'Gastos y Retenciones ($50)' },
   { key: 'completo', label: 'Sistema Completo ($150)' },
 ]
 const ESTADOS = ['prueba', 'activo', 'suspendido']
