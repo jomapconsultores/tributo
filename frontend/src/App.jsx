@@ -12,6 +12,7 @@ import RecursosICE from './pages/RecursosICE'
 import Declaraciones from './pages/Declaraciones'
 import CatalogoProductos from './pages/CatalogoProductos'
 import RebajasExenciones from './pages/RebajasExenciones'
+import Admin from './pages/Admin'
 import Layout from './components/Layout'
 import { ClientProvider } from './context/ClientContext'
 import { AccessProvider, useAccess, homeFor } from './context/AccessContext'
@@ -38,6 +39,13 @@ function HomeRedirect() {
   const { has, loading } = useAccess()
   if (loading) return <div className="loading">Cargando…</div>
   return <Navigate to={homeFor(has)} replace />
+}
+
+function RequireAdmin({ children }) {
+  const { isAdmin, loading, has } = useAccess()
+  if (loading) return <div className="loading">Cargando…</div>
+  if (!isAdmin) return <Navigate to={homeFor(has)} replace />
+  return children
 }
 
 function App() {
@@ -102,6 +110,7 @@ function App() {
             <Route path="/ice" element={<RequireModule modulo="ingresos_ice"><ICE /></RequireModule>} />
             <Route path="/catalogo-productos" element={<RequireModule modulo="ingresos_ice"><CatalogoProductos /></RequireModule>} />
             <Route path="/rebajas-exenciones" element={<RequireModule modulo="ingresos_ice"><RebajasExenciones /></RequireModule>} />
+            <Route path="/admin" element={<RequireAdmin><Admin /></RequireAdmin>} />
             <Route path="/sin-acceso" element={<SinAcceso />} />
             <Route path="*" element={<HomeRedirect />} />
           </Route>

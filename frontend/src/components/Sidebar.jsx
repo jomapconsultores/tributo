@@ -230,6 +230,17 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
 
         <div className="nav-divider" />
 
+        {/* Panel de administración (solo admins) */}
+        {isAdmin && (
+          <button
+            className={`nav-item module-btn ${path === '/admin' ? 'active' : ''}`}
+            onClick={() => navigate('/admin')}
+          >
+            <span className="nav-ico">🛠️</span>
+            <span>ADMINISTRACIÓN</span>
+          </button>
+        )}
+
         {/* Nivel 1: BASE DE DATOS */}
         <button
           className={`nav-item level-1 ${isDatabase && !selectedClientId ? 'active' : ''}`}

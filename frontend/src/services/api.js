@@ -30,6 +30,14 @@ export const accessAPI = {
   me: () => api.get('/api/access/me'),
 }
 
+// Administración (solo admins)
+export const adminAPI = {
+  listUsers: () => api.get('/api/admin/users'),
+  createUser: (data) => api.post('/api/admin/users', data),
+  setModules: (uid, modules, valid_until = null) => api.put(`/api/admin/users/${uid}/modules`, { modules, valid_until }),
+  setPlan: (uid, plan, valid_until = null) => api.post(`/api/admin/users/${uid}/plan`, { plan, valid_until }),
+}
+
 // Clientes (contribuyentes)
 export const clientsAPI = {
   list: () => api.get('/api/clients/'),
