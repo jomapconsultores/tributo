@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { contactoAPI } from '../services/api'
 import './Landing.css'
@@ -28,14 +28,71 @@ const PAQUETES = [
   },
 ]
 
+const STATS = [
+  { target: 4, suffix: '', label: 'Módulos integrados' },
+  { target: 100, suffix: '%', label: 'Apegado al SRI' },
+  { target: 0, text: '∞', label: 'Contribuyentes (RUC)' },
+  { target: 15, suffix: '%', label: 'IVA calculado automático' },
+]
+
 const money = (n) => n.toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const conIva = (neto) => ({ iva: neto * IVA, total: neto * (1 + IVA) })
+
+// Contador animado al entrar en viewport
+function Counter({ target, suffix = '', text }) {
+  const ref = useRef(null)
+  const [val, setVal] = useState(0)
+  useEffect(() => {
+    if (text) return
+    const el = ref.current
+    if (!el || !('IntersectionObserver' in window)) { setVal(target); return }
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        if (en.isIntersecting) {
+          const dur = 1400; let start = null
+          const step = (ts) => {
+            if (!start) start = ts
+            const p = Math.min((ts - start) / dur, 1)
+            const eased = 1 - Math.pow(1 - p, 3)
+            setVal(Math.round(eased * target))
+            if (p < 1) requestAnimationFrame(step)
+          }
+          requestAnimationFrame(step)
+          io.unobserve(el)
+        }
+      })
+    }, { threshold: 0.6 })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [target, text])
+  return <span ref={ref}>{text || val}{!text && suffix}</span>
+}
 
 export default function Landing() {
   const navigate = useNavigate()
   const [form, setForm] = useState({ nombre: '', email: '', telefono: '', mensaje: '' })
   const [enviando, setEnviando] = useState(false)
   const [enviado, setEnviado] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
+
+  // Sombra del nav al hacer scroll
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 12)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  // Animación de aparición al hacer scroll
+  useEffect(() => {
+    const els = document.querySelectorAll('.reveal')
+    if (!('IntersectionObserver' in window)) { els.forEach((e) => e.classList.add('in')); return }
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((en) => { if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target) } })
+    }, { threshold: 0.12 })
+    els.forEach((e) => io.observe(e))
+    return () => io.disconnect()
+  }, [])
 
   const enviar = async (e) => {
     e.preventDefault()
@@ -51,8 +108,10 @@ export default function Landing() {
 
   return (
     <div className="lp">
-      <header className="lp-nav">
-        <div className="lp-brand"><span>📑</span> Gestor SRI</div>
+      <div className="lp-ec-bar" />
+
+      <header className={`lp-nav ${scrolled ? 'scrolled' : ''}`}>
+        <div className="lp-brand"><span className="lp-brand-badge">📑</span> Gestor SRI</div>
         <nav className="lp-nav-links">
           <a href="#modulos">Módulos</a>
           <a href="#precios">Precios</a>
@@ -62,39 +121,77 @@ export default function Landing() {
       </header>
 
       <section className="lp-hero">
-        <h1>Gestión tributaria del SRI, automatizada</h1>
-        <p>Clasifica gastos, controla retenciones, calcula el ICE y genera tus declaraciones —
-          contribuyentes (RUC) <strong>ilimitados</strong>, en un solo lugar.</p>
-        <div className="lp-hero-cta">
-          <button className="lp-btn lp-btn-primary" onClick={() => navigate('/login')}>Ingresar al sistema</button>
-          <a className="lp-btn lp-btn-ghost" href="#precios">Ver servicios y precios</a>
+        <span className="lp-orb a" /><span className="lp-orb b" /><span className="lp-orb c" />
+        <div className="lp-hero-inner">
+          <div className="lp-badge"><span className="lp-dot" /> Plataforma tributaria para Ecuador · Actualizada 2026</div>
+          <h1>Tu gestión tributaria del <span className="lp-grad">SRI</span>, automatizada de punta a punta</h1>
+          <p>Clasifica gastos, controla retenciones, calcula el ICE y genera tus declaraciones —
+            contribuyentes (RUC) <strong>ilimitados</strong>, en un solo lugar.</p>
+          <div className="lp-hero-cta">
+            <button className="lp-btn lp-btn-primary lp-btn-lg" onClick={() => navigate('/login')}>Ingresar al sistema</button>
+            <a className="lp-btn lp-btn-ghost lp-btn-lg" href="#precios">Ver servicios y precios</a>
+          </div>
+          <p className="lp-hero-note">Especializado en <strong>ICE de bebidas alcohólicas</strong> — cálculo, anexos y auditoría que casi nadie automatiza.</p>
+
+          <div className="lp-hero-visual">
+            <div className="lp-fcard fc-1">
+              <div className="lp-fcard-label">📊 ICE por botella</div>
+              <div className="lp-fcard-value">$12.45</div>
+              <div className="lp-fcard-sub">específico + ad-valorem</div>
+              <div className="lp-fbar"><span style={{ width: '72%' }} /></div>
+            </div>
+            <div className="lp-fcard fc-2">
+              <div className="lp-fcard-label">🧾 Anexo PVP + ICE</div>
+              <div className="lp-fcard-value">ICE-XML 2026-06</div>
+              <div className="lp-fcard-sub">Auditado y sin diferencias</div>
+              <span className="lp-fchip">✓ Listo para el SRI</span>
+            </div>
+            <div className="lp-fcard fc-3">
+              <div className="lp-fcard-label">📈 Total declaración</div>
+              <div className="lp-fcard-value">$3,847.20</div>
+              <div className="lp-fcard-sub">IVA + ICE del período</div>
+              <div className="lp-fbar"><span style={{ width: '88%', background: 'linear-gradient(90deg,#7c3aed,#a78bfa)' }} /></div>
+            </div>
+          </div>
         </div>
-        <p className="lp-hero-note">Especializado en <strong>ICE de bebidas alcohólicas</strong> — cálculo, anexos y auditoría que casi nadie automatiza.</p>
+      </section>
+
+      <section className="lp-stats">
+        <div className="lp-stats-inner">
+          {STATS.map((s, i) => (
+            <div key={s.label} className={`lp-stat reveal d${i}`}>
+              <div className="lp-stat-num"><Counter target={s.target} suffix={s.suffix} text={s.text} /></div>
+              <div className="lp-stat-lbl">{s.label}</div>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section id="modulos" className="lp-section">
-        <h2>Todo lo que incluye el sistema</h2>
+        <div className="lp-eyebrow reveal">Todo en una sola plataforma</div>
+        <h2 className="reveal d1">Todo lo que incluye el sistema</h2>
         <div className="lp-grid">
-          {MODULOS.map((m) => (
-            <div key={m.titulo} className="lp-card">
+          {MODULOS.map((m, i) => (
+            <div key={m.titulo} className={`lp-card reveal d${i}`}>
               <div className="lp-card-icon">{m.icon}</div>
               <h3>{m.titulo}</h3>
               <p>{m.desc}</p>
             </div>
           ))}
         </div>
-        <p className="lp-section-note">Manejo <strong>multi-contribuyente</strong> y <strong>multi-período</strong> (mes/año), con acceso seguro y aislado por usuario.</p>
+        <p className="lp-section-note reveal">Manejo <strong>multi-contribuyente</strong> y <strong>multi-período</strong> (mes/año), con acceso seguro y aislado por usuario.</p>
       </section>
 
       {/* Precios — 3 paquetes */}
       <section id="precios" className="lp-section lp-precios">
-        <h2>Planes</h2>
-        <p className="lp-section-sub">Elige el paquete que necesitas. <strong>Contribuyentes ilimitados</strong>. Valores mensuales en USD, incluyen <strong>IVA {Math.round(IVA * 100)}%</strong>.</p>
+        <div className="lp-eyebrow reveal">Precios transparentes</div>
+        <h2 className="reveal d1">Planes</h2>
+        <p className="lp-section-sub reveal d2">Elige el paquete que necesitas. <strong>Contribuyentes ilimitados</strong>. Valores mensuales en USD, incluyen <strong>IVA {Math.round(IVA * 100)}%</strong>.</p>
         <div className="lp-planes lp-planes-3">
-          {PAQUETES.map((p) => {
+          {PAQUETES.map((p, i) => {
             const { iva, total } = conIva(p.neto)
             return (
-              <div key={p.nombre} className={`lp-plan ${p.destacado ? 'destacado' : ''}`}>
+              <div key={p.nombre} className={`lp-plan reveal d${i} ${p.destacado ? 'destacado' : ''}`}>
                 {p.destacado && <div className="lp-plan-tag">Todo incluido</div>}
                 <div className="lp-card-icon">{p.icon}</div>
                 <h3>{p.nombre}</h3>
@@ -106,7 +203,7 @@ export default function Landing() {
             )
           })}
         </div>
-        <div className="lp-extras">
+        <div className="lp-extras reveal">
           <h4>Pago mensual y descuentos por anticipo</h4>
           <p className="lp-extras-p">El cobro es <strong>mensual</strong>: cada pago habilita el sistema por <strong>30 días exactos</strong>. Paga por adelantado y ahorra:</p>
           <ul>
@@ -120,12 +217,13 @@ export default function Landing() {
 
       {/* Contacto */}
       <section id="contacto" className="lp-section lp-contacto">
-        <h2>Contáctanos</h2>
-        <p className="lp-section-sub">¿Dudas o quieres contratar? Déjanos tus datos y te escribimos.</p>
+        <div className="lp-eyebrow reveal">Hablemos</div>
+        <h2 className="reveal d1">Contáctanos</h2>
+        <p className="lp-section-sub reveal d2">¿Dudas o quieres contratar? Déjanos tus datos y te escribimos.</p>
         {enviado ? (
           <div className="lp-ok">✅ ¡Gracias! Recibimos tu mensaje y te contactaremos pronto.</div>
         ) : (
-          <form className="lp-form" onSubmit={enviar}>
+          <form className="lp-form reveal" onSubmit={enviar}>
             <input placeholder="Nombre *" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
             <input placeholder="Correo electrónico *" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
             <input placeholder="Teléfono / WhatsApp" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} />
@@ -136,8 +234,8 @@ export default function Landing() {
       </section>
 
       <footer className="lp-footer">
-        <div className="lp-brand"><span>📑</span> Gestor SRI</div>
-        <p>Gastos · Retenciones · ICE · Declaraciones — Ecuador</p>
+        <div className="lp-brand"><span className="lp-brand-badge">📑</span> Gestor SRI</div>
+        <p>Gastos · Retenciones · ICE · Declaraciones — Hecho en Ecuador 🇪🇨</p>
         <button className="lp-btn lp-btn-login" onClick={() => navigate('/login')}>Ingresar</button>
       </footer>
     </div>
