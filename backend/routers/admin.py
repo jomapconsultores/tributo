@@ -89,6 +89,10 @@ async def list_users(_: str = Depends(require_admin)):
     mods = sb.table("user_modules").select("user_id,modulo,activo,valid_until").execute().data or []
     admins = {a["user_id"] for a in (sb.table("app_admins").select("user_id").execute().data or [])}
     subs = {s["user_id"]: s for s in (sb.table("subscriptions").select("*").execute().data or [])}
+    ip_rows = sb.table("user_ips").select("user_id").execute().data or []
+    ip_count = {}
+    for r in ip_rows:
+        ip_count[r["user_id"]] = ip_count.get(r["user_id"], 0) + 1
     by_user = {}
     for m in mods:
         by_user.setdefault(m["user_id"], {})[m["modulo"]] = {"activo": m["activo"], "valid_until": m.get("valid_until")}
@@ -111,6 +115,7 @@ async def list_users(_: str = Depends(require_admin)):
             "is_admin": uid in admins,
             "modules": by_user.get(uid, {}),
             "subscription": sub,
+            "ips": ip_count.get(uid, 0),
         })
     out.sort(key=lambda x: x["email"] or "")
     return out
@@ -180,6 +185,13 @@ async def precio_sugerido(plan: str, meses: int = 1, _: str = Depends(require_ad
 async def historial_pagos(uid: str, _: str = Depends(require_admin)):
     sb = get_supabase_client()
     return {"data": sb.table("pagos").select("*").eq("user_id", uid).order("fecha", desc=True).execute().data or []}
+
+
+@router.delete("/users/{uid}/ips")
+async def reset_ips(uid: str, _: str = Depends(require_admin)):
+    """Borra las IPs registradas de un usuario (para que pueda entrar desde otra)."""
+    get_supabase_client().table("user_ips").delete().eq("user_id", uid).execute()
+    return {"ok": True}
 
 
 @router.get("/contactos")

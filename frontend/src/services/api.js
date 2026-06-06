@@ -23,6 +23,8 @@ export const authAPI = {
   login: (email, password) => api.post('/auth/login', { email, password }),
   signup: (email, password) => api.post('/auth/signup', { email, password }),
   logout: () => api.post('/auth/logout'),
+  forgot: (email) => api.post('/auth/forgot', { email }),
+  reset: (access_token, password) => api.post('/auth/reset', { access_token, password }),
 }
 
 // Acceso por módulos contratados
@@ -45,6 +47,7 @@ export const adminAPI = {
   registrarPago: (uid, data) => api.post(`/api/admin/users/${uid}/pago`, data),
   pagos: (uid) => api.get(`/api/admin/users/${uid}/pagos`),
   contactos: () => api.get('/api/admin/contactos'),
+  resetIps: (uid) => api.delete(`/api/admin/users/${uid}/ips`),
 }
 
 // Clientes (contribuyentes)

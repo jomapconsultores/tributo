@@ -142,7 +142,7 @@ export default function Admin() {
                   <tr key={u.user_id} className={venc ? 'vencida' : ''}>
                     <td>
                       <div className="adm-email">{u.email}</div>
-                      <div className="adm-meta">{u.is_admin ? '👑 admin' : ''} · alta {u.created_at}{venc ? ' · ⚠ vencida' : ''} · IPs {u.ips ?? 0}/3</div>
+                      <div className="adm-meta">{u.is_admin ? '👑 admin' : ''} · alta {u.created_at}{venc ? ' · ⚠ vencida' : ''}</div>
                     </td>
                     {MODS.map((m) => (
                       <td key={m.key} className="c">
@@ -165,7 +165,6 @@ export default function Admin() {
                     <td className="adm-acts">
                       <button className="adm-btn" disabled={busy || u.is_admin} onClick={() => guardar(u.user_id)}>💾</button>
                       <button className="adm-btn pay" disabled={busy || u.is_admin} onClick={() => registrarPago(u.user_id)}>💵 Pago</button>
-                      <button className="adm-btn" disabled={busy || u.is_admin} title="Restablecer IPs" onClick={() => resetIps(u.user_id)}>🔓 IPs</button>
                     </td>
                   </tr>
                 )

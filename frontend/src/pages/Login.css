@@ -65,6 +65,16 @@
   text-align: center;
 }
 
+.info-message {
+  background: #dcfce7;
+  color: #166534;
+  padding: 12px;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  text-align: center;
+  font-size: 0.9em;
+}
+
 .login-btn {
   width: 100%;
   padding: 12px;

@@ -1,4 +1,6 @@
-from fastapi import FastAPI, Depends
+import time
+from fastapi import FastAPI, Depends, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
@@ -37,6 +39,40 @@ app.add_middleware(
 
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "*.onrender.com"])
 
+
+# --- Endurecimiento: cabeceras de seguridad ---
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    resp = await call_next(request)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    resp.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    return resp
+
+
+# --- Endurecimiento: límite de peticiones a rutas sensibles (anti fuerza bruta/spam) ---
+_RATE = {}
+_SENSIBLES = ("/auth/login", "/auth/signup", "/auth/forgot", "/auth/reset", "/api/contacto")
+_LIMITE, _VENTANA = 12, 60  # 12 intentos por minuto por IP
+
+
+@app.middleware("http")
+async def rate_limit(request: Request, call_next):
+    path = request.url.path
+    if request.method == "POST" and any(path.startswith(p) for p in _SENSIBLES):
+        xff = request.headers.get("x-forwarded-for", "")
+        ip = xff.split(",")[0].strip() or (request.client.host if request.client else "x")
+        now = time.time()
+        key = (ip, path)
+        arr = [t for t in _RATE.get(key, []) if now - t < _VENTANA]
+        if len(arr) >= _LIMITE:
+            return JSONResponse(status_code=429, content={"detail": "Demasiados intentos. Espera un momento."})
+        arr.append(now)
+        _RATE[key] = arr
+    return await call_next(request)
+
 # Include routers — núcleo (sin restricción de módulo)
 app.include_router(auth.router)
 app.include_router(access.router)
@@ -70,12 +106,13 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
-@app.get("/debug")
-async def debug():
-    from database import get_supabase_client
-    sb = get_supabase_client()
-    r = sb.table("invoices").select("id", count="exact").execute()
-    return {"invoices_in_db": r.count, "backend": "OK"}
+if settings.environment != "production":
+    @app.get("/debug")
+    async def debug():
+        from database import get_supabase_client
+        sb = get_supabase_client()
+        r = sb.table("invoices").select("id", count="exact").execute()
+        return {"invoices_in_db": r.count, "backend": "OK"}
 
 if __name__ == "__main__":
     import uvicorn
