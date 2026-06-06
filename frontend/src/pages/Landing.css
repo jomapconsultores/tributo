@@ -76,17 +76,22 @@
 .lp-hero-inner { position: relative; z-index: 1; max-width: 860px; margin: 0 auto; }
 
 .lp-hero-logo {
+  position: relative;
   display: inline-flex; align-items: center; justify-content: center;
-  background: rgba(255,255,255,.96); backdrop-filter: blur(6px);
-  border: 1px solid rgba(255,255,255,.7); border-radius: 18px;
-  padding: 16px 30px; margin-bottom: 26px;
-  box-shadow: 0 20px 48px rgba(0,0,0,.34), 0 2px 8px rgba(0,0,0,.18);
+  background: #fff; border: 1px solid rgba(255,255,255,.85); border-radius: 22px;
+  padding: 20px 40px; margin: 0 auto 26px;
+  box-shadow: 0 28px 64px rgba(0,0,0,.42), 0 6px 16px rgba(0,0,0,.22);
   animation: lpFloatUp .7s both;
 }
-.lp-hero-logo img { height: 48px; width: auto; display: block; }
+.lp-hero-logo::before {
+  content: ''; position: absolute; inset: -36px -28px; z-index: -1;
+  background: radial-gradient(ellipse at center, rgba(96,165,250,.5), rgba(167,139,250,.28) 45%, transparent 72%);
+  filter: blur(26px); border-radius: 50%;
+}
+.lp-hero-logo img { height: 60px; width: auto; display: block; position: relative; }
 @media (max-width: 560px) {
-  .lp-hero-logo { padding: 13px 22px; border-radius: 15px; }
-  .lp-hero-logo img { height: 38px; }
+  .lp-hero-logo { padding: 15px 26px; border-radius: 18px; }
+  .lp-hero-logo img { height: 44px; }
 }
 
 .lp-badge {
