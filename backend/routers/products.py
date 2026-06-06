@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client
 from services.codigos_ice import buscar_bd, lookups as codigos_lookups, importar_a_bd, contar_bd
+from tenancy import assert_client_owner
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
@@ -75,23 +76,24 @@ async def codigos_ice_lookups(_: str = Depends(get_current_user)):
 
 
 @router.get("/")
-async def list_products(identificacion: str = Query(...), _: str = Depends(get_current_user)):
+async def list_products(identificacion: str = Query(...), user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        res = supabase.table("client_products").select(COLUMNS).eq("identificacion", identificacion).order("nombre").execute()
+        res = supabase.table("client_products").select(COLUMNS).eq("identificacion", identificacion).eq("user_id", user_id).order("nombre").execute()
         return {"data": res.data or []}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/by-client/{client_id}")
-async def by_client(client_id: str, _: str = Depends(get_current_user)):
+async def by_client(client_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
+        assert_client_owner(client_id, user_id)
         ident = _ident_de_cliente(supabase, client_id)
         if not ident:
             return {"data": [], "identificacion": None}
-        res = supabase.table("client_products").select(COLUMNS).eq("identificacion", ident).order("nombre").execute()
+        res = supabase.table("client_products").select(COLUMNS).eq("identificacion", ident).eq("user_id", user_id).order("nombre").execute()
         return {"data": res.data or [], "identificacion": ident}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -107,9 +109,9 @@ async def create_product(entry: ProductIn, user_id: str = Depends(get_current_us
         if not data["nombre"]:
             raise HTTPException(status_code=400, detail="El nombre es obligatorio")
         existing = supabase.table("client_products").select("id")\
-            .eq("identificacion", data["identificacion"]).eq("nombre", data["nombre"]).execute()
+            .eq("identificacion", data["identificacion"]).eq("nombre", data["nombre"]).eq("user_id", user_id).execute()
         if existing.data:
-            res = supabase.table("client_products").update(data).eq("id", existing.data[0]["id"]).execute()
+            res = supabase.table("client_products").update(data).eq("id", existing.data[0]["id"]).eq("user_id", user_id).execute()
         else:
             res = supabase.table("client_products").insert(data).execute()
         return res.data[0] if res.data else None
@@ -120,23 +122,23 @@ async def create_product(entry: ProductIn, user_id: str = Depends(get_current_us
 
 
 @router.put("/{prod_id}")
-async def update_product(prod_id: str, entry: ProductUpdate, _: str = Depends(get_current_user)):
+async def update_product(prod_id: str, entry: ProductUpdate, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
         data = {k: v for k, v in entry.dict().items() if v is not None}
         if "nombre" in data:
             data["nombre"] = data["nombre"].strip().upper()
-        res = supabase.table("client_products").update(data).eq("id", prod_id).execute()
+        res = supabase.table("client_products").update(data).eq("id", prod_id).eq("user_id", user_id).execute()
         return res.data[0] if res.data else None
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/{prod_id}")
-async def delete_product(prod_id: str, _: str = Depends(get_current_user)):
+async def delete_product(prod_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("client_products").delete().eq("id", prod_id).execute()
+        supabase.table("client_products").delete().eq("id", prod_id).eq("user_id", user_id).execute()
         return {"message": "Eliminado"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

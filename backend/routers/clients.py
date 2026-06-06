@@ -26,18 +26,19 @@ class ClientUpdate(BaseModel):
 
 
 @router.get("/")
-async def list_clients(_: str = Depends(get_current_user)):
+async def list_clients(user_id: str = Depends(get_current_user)):
     """Lista los clientes con estadísticas (# facturas y monto total)."""
     try:
         supabase = get_supabase_client()
         clients = supabase.table("clients").select("*")\
+            .eq("user_id", user_id)\
             .order("nombre")\
             .order("periodo_anio", desc=True)\
             .order("periodo_mes", desc=True)\
             .execute().data or []
 
         # Estadísticas por cliente
-        invoices = supabase.table("invoices").select("client_id, total, clasificacion").execute().data or []
+        invoices = supabase.table("invoices").select("client_id, total, clasificacion").eq("user_id", user_id).execute().data or []
         stats = {}
         for inv in invoices:
             cid = inv.get("client_id")
@@ -61,17 +62,17 @@ async def list_clients(_: str = Depends(get_current_user)):
 
 
 @router.get("/contribuyentes")
-async def contribuyentes(_: str = Depends(get_current_user)):
+async def contribuyentes(user_id: str = Depends(get_current_user)):
     """Árbol para Base de Datos: contribuyentes (por identificación) → períodos
     (año, mes) → conteo de datos por tipo (gastos/retenciones/ice/calculo)."""
     try:
         supabase = get_supabase_client()
         clients = supabase.table("clients").select(
             "id,identificacion,nombre,tipo_identificacion,periodo_mes,periodo_anio"
-        ).execute().data or []
+        ).eq("user_id", user_id).execute().data or []
 
         def counts(table):
-            rows = supabase.table(table).select("client_id").execute().data or []
+            rows = supabase.table(table).select("client_id").eq("user_id", user_id).execute().data or []
             m = {}
             for r in rows:
                 cid = r.get("client_id")
@@ -112,13 +113,13 @@ async def contribuyentes(_: str = Depends(get_current_user)):
 
 
 @router.get("/summary/{identificacion}")
-async def client_summary(identificacion: str, _: str = Depends(get_current_user)):
+async def client_summary(identificacion: str, user_id: str = Depends(get_current_user)):
     """Resumen de TODO lo trabajado para un contribuyente, agregado por
     año → mes → producto (clasificación). Recorre todos sus períodos."""
     try:
         supabase = get_supabase_client()
         ident = identificacion.strip()
-        recs = supabase.table("clients").select("*").eq("identificacion", ident).execute().data or []
+        recs = supabase.table("clients").select("*").eq("identificacion", ident).eq("user_id", user_id).execute().data or []
         if not recs:
             raise HTTPException(status_code=404, detail="No hay registros para esa identificación")
 
@@ -167,10 +168,10 @@ async def client_summary(identificacion: str, _: str = Depends(get_current_user)
 
 
 @router.get("/{client_id}")
-async def get_client(client_id: str, _: str = Depends(get_current_user)):
+async def get_client(client_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        response = supabase.table("clients").select("*").eq("id", client_id).execute()
+        response = supabase.table("clients").select("*").eq("id", client_id).eq("user_id", user_id).execute()
         if not response.data:
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
         return response.data[0]
@@ -195,6 +196,7 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
             raise HTTPException(status_code=400, detail="Año inválido")
 
         existing = supabase.table("clients").select("*")\
+            .eq("user_id", user_id)\
             .eq("identificacion", identificacion)\
             .eq("periodo_mes", entry.periodo_mes)\
             .eq("periodo_anio", entry.periodo_anio)\
@@ -219,7 +221,7 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
 
 
 @router.put("/{client_id}")
-async def update_client(client_id: str, entry: ClientUpdate, _: str = Depends(get_current_user)):
+async def update_client(client_id: str, entry: ClientUpdate, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
         data = {k: v for k, v in entry.dict().items() if v is not None}
@@ -228,18 +230,18 @@ async def update_client(client_id: str, entry: ClientUpdate, _: str = Depends(ge
         if "nombre" in data:
             data["nombre"] = data["nombre"].strip().upper()
         data["updated_at"] = "now()"
-        response = supabase.table("clients").update(data).eq("id", client_id).execute()
+        response = supabase.table("clients").update(data).eq("id", client_id).eq("user_id", user_id).execute()
         return response.data[0] if response.data else None
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/{client_id}")
-async def delete_client(client_id: str, _: str = Depends(get_current_user)):
+async def delete_client(client_id: str, user_id: str = Depends(get_current_user)):
     """Elimina un cliente y todas sus facturas (cascade)."""
     try:
         supabase = get_supabase_client()
-        supabase.table("clients").delete().eq("id", client_id).execute()
+        supabase.table("clients").delete().eq("id", client_id).eq("user_id", user_id).execute()
         return {"message": "Cliente eliminado"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

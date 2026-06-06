@@ -7,6 +7,7 @@ from database import get_supabase_client
 from services.ice_calc_report import full_report
 from services.ice_calc_export import generate_calc_excel, generate_calc_pdf
 from services.ice_calc_data import TARIFAS
+from tenancy import assert_client_owner
 
 router = APIRouter(prefix="/api/ice-calc", tags=["ice-calc"])
 
@@ -58,11 +59,12 @@ async def get_tarifas(_: str = Depends(get_current_user)):
 
 
 @router.get("/")
-async def list_calc(_: str = Depends(get_current_user), client_id: Optional[str] = Query(None)):
+async def list_calc(user_id: str = Depends(get_current_user), client_id: Optional[str] = Query(None)):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("ice_calc").select(COLUMNS)
+        q = supabase.table("ice_calc").select(COLUMNS).eq("user_id", user_id)
         if client_id:
+            assert_client_owner(client_id, user_id)
             q = q.eq("client_id", client_id)
         rows = q.order("created_at").execute().data or []
         period = _period(supabase, client_id) if client_id else None
@@ -75,6 +77,7 @@ async def list_calc(_: str = Depends(get_current_user), client_id: Optional[str]
 async def create_calc(entry: CalcRow, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
+        assert_client_owner(entry.client_id, user_id)
         data = entry.dict()
         data["user_id"] = user_id
         if data.get("anio") is None or data.get("mes") is None:
@@ -88,22 +91,23 @@ async def create_calc(entry: CalcRow, user_id: str = Depends(get_current_user)):
 
 
 @router.put("/{row_id}")
-async def update_calc(row_id: str, entry: CalcUpdate, _: str = Depends(get_current_user)):
+async def update_calc(row_id: str, entry: CalcUpdate, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
         data = {k: v for k, v in entry.dict().items() if v is not None}
-        res = supabase.table("ice_calc").update(data).eq("id", row_id).execute()
+        res = supabase.table("ice_calc").update(data).eq("id", row_id).eq("user_id", user_id).execute()
         return res.data[0] if res.data else None
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/clear")
-async def clear_calc(client_id: Optional[str] = Query(None), _: str = Depends(get_current_user)):
+async def clear_calc(client_id: Optional[str] = Query(None), user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("ice_calc").delete()
+        q = supabase.table("ice_calc").delete().eq("user_id", user_id)
         if client_id:
+            assert_client_owner(client_id, user_id)
             q = q.eq("client_id", client_id)
         else:
             q = q.neq("id", "00000000-0000-0000-0000-000000000000")
@@ -114,29 +118,30 @@ async def clear_calc(client_id: Optional[str] = Query(None), _: str = Depends(ge
 
 
 @router.delete("/{row_id}")
-async def delete_calc(row_id: str, _: str = Depends(get_current_user)):
+async def delete_calc(row_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("ice_calc").delete().eq("id", row_id).execute()
+        supabase.table("ice_calc").delete().eq("id", row_id).eq("user_id", user_id).execute()
         return {"message": "Eliminado"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/report")
-async def report(_: str = Depends(get_current_user), client_id: str = Query(...)):
+async def report(user_id: str = Depends(get_current_user), client_id: str = Query(...)):
     try:
         supabase = get_supabase_client()
-        rows = supabase.table("ice_calc").select("*").eq("client_id", client_id).execute().data or []
+        assert_client_owner(client_id, user_id)
+        rows = supabase.table("ice_calc").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
         c = _period(supabase, client_id)
         return full_report(rows, c.get("periodo_anio") or 2026, c.get("periodo_mes") or 1)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _export(client_id, kind):
+def _export(client_id, kind, user_id):
     supabase = get_supabase_client()
-    rows = supabase.table("ice_calc").select("*").eq("client_id", client_id).execute().data or []
+    rows = supabase.table("ice_calc").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
     c = _period(supabase, client_id)
     anio = c.get("periodo_anio") or 2026
     mes = c.get("periodo_mes") or 1
@@ -147,18 +152,20 @@ def _export(client_id, kind):
 
 
 @router.get("/export/excel")
-async def export_excel(client_id: str = Query(...), _: str = Depends(get_current_user)):
+async def export_excel(client_id: str = Query(...), user_id: str = Depends(get_current_user)):
     try:
-        data, fname, media = _export(client_id, "excel")
+        assert_client_owner(client_id, user_id)
+        data, fname, media = _export(client_id, "excel", user_id)
         return StreamingResponse(iter([data]), media_type=media, headers={"Content-Disposition": f"attachment; filename={fname}"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/export/pdf")
-async def export_pdf(client_id: str = Query(...), _: str = Depends(get_current_user)):
+async def export_pdf(client_id: str = Query(...), user_id: str = Depends(get_current_user)):
     try:
-        data, fname, media = _export(client_id, "pdf")
+        assert_client_owner(client_id, user_id)
+        data, fname, media = _export(client_id, "pdf", user_id)
         return StreamingResponse(iter([data]), media_type=media, headers={"Content-Disposition": f"attachment; filename={fname}"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

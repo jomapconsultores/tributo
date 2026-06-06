@@ -7,6 +7,7 @@ from database import get_supabase_client
 from services.sri_service import extract_claves_from_txt, descargar_multiples_xmls
 from services.xml_parser import parse_xml_invoice
 from services.export_service import generate_excel, generate_pdf
+from tenancy import assert_client_owner
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
 
@@ -67,7 +68,7 @@ def _store_invoice(supabase, client_id: str, user_id: str, invoice: dict) -> str
 
 @router.get("/")
 async def list_invoices(
-    _: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
     client_id: Optional[str] = Query(None),
     skip: int = 0,
     limit: int = 500
@@ -75,10 +76,11 @@ async def list_invoices(
     try:
         supabase = get_supabase_client()
 
-        count_q = supabase.table("invoices").select("id", count="exact")
-        data_q = supabase.table("invoices").select(INVOICE_COLUMNS)
+        count_q = supabase.table("invoices").select("id", count="exact").eq("user_id", user_id)
+        data_q = supabase.table("invoices").select(INVOICE_COLUMNS).eq("user_id", user_id)
 
         if client_id:
+            assert_client_owner(client_id, user_id)
             count_q = count_q.eq("client_id", client_id)
             data_q = data_q.eq("client_id", client_id)
 
@@ -106,6 +108,9 @@ async def process_txt(
         content = await file.read()
         txt_content = content.decode('utf-8', errors='ignore')
 
+        supabase = get_supabase_client()
+        assert_client_owner(client_id, user_id)
+
         claves = extract_claves_from_txt(txt_content)
         if not claves:
             raise HTTPException(status_code=400, detail="No se encontraron claves válidas en el archivo")
@@ -113,7 +118,6 @@ async def process_txt(
         claves_list = list(claves)
         xmls, errores = descargar_multiples_xmls(claves_list, max_workers=10)
 
-        supabase = get_supabase_client()
         classification_map, card_memory = _load_maps(supabase)
 
         new_count = dup_count = err_count = 0
@@ -152,6 +156,7 @@ async def process_xml(
 ):
     try:
         supabase = get_supabase_client()
+        assert_client_owner(client_id, user_id)
         classification_map, card_memory = _load_maps(supabase)
 
         new_count = dup_count = err_count = 0
@@ -177,12 +182,13 @@ async def process_xml(
 @router.delete("/clear")
 async def clear_invoices(
     client_id: Optional[str] = Query(None),
-    _: str = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("invoices").delete()
+        q = supabase.table("invoices").delete().eq("user_id", user_id)
         if client_id:
+            assert_client_owner(client_id, user_id)
             q = q.eq("client_id", client_id)
         else:
             q = q.neq("id", "00000000-0000-0000-0000-000000000000")
@@ -193,15 +199,16 @@ async def clear_invoices(
 
 
 @router.post("/bulk-move")
-async def bulk_move(payload: BulkMove, _: str = Depends(get_current_user)):
+async def bulk_move(payload: BulkMove, user_id: str = Depends(get_current_user)):
     """Reasigna varias facturas a otro cliente. Omite las que chocarían con una
     factura ya existente (misma clave) en el cliente destino."""
     try:
         supabase = get_supabase_client()
+        assert_client_owner(payload.client_id, user_id)
         moved = skipped = 0
         for iid in payload.ids:
             try:
-                supabase.table("invoices").update({"client_id": payload.client_id}).eq("id", iid).execute()
+                supabase.table("invoices").update({"client_id": payload.client_id}).eq("id", iid).eq("user_id", user_id).execute()
                 moved += 1
             except Exception as e:
                 print(f"No se pudo mover factura {iid}: {e}")
@@ -212,13 +219,13 @@ async def bulk_move(payload: BulkMove, _: str = Depends(get_current_user)):
 
 
 @router.post("/bulk-delete")
-async def bulk_delete(payload: BulkIds, _: str = Depends(get_current_user)):
+async def bulk_delete(payload: BulkIds, user_id: str = Depends(get_current_user)):
     """Elimina varias facturas por id."""
     try:
         if not payload.ids:
             return {"deleted": 0}
         supabase = get_supabase_client()
-        supabase.table("invoices").delete().in_("id", payload.ids).execute()
+        supabase.table("invoices").delete().in_("id", payload.ids).eq("user_id", user_id).execute()
         return {"deleted": len(payload.ids)}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -228,7 +235,7 @@ async def bulk_delete(payload: BulkIds, _: str = Depends(get_current_user)):
 async def update_invoice(
     invoice_id: str,
     update: InvoiceUpdate,
-    _: str = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     try:
         supabase = get_supabase_client()
@@ -238,7 +245,7 @@ async def update_invoice(
         if "desc_manual" in update_data:
             current = supabase.table("invoices").select(
                 "base_15_original,base_0,base_5,iva_5,exento_iva,no_objeto_iva"
-            ).eq("id", invoice_id).execute()
+            ).eq("id", invoice_id).eq("user_id", user_id).execute()
             if current.data:
                 row = current.data[0]
                 base_15_orig = float(row.get("base_15_original") or 0)
@@ -259,24 +266,24 @@ async def update_invoice(
         if "clasificacion" in update_data and update_data["clasificacion"]:
             update_data["clasificacion"] = update_data["clasificacion"].upper()
 
-        response = supabase.table("invoices").update(update_data).eq("id", invoice_id).execute()
+        response = supabase.table("invoices").update(update_data).eq("id", invoice_id).eq("user_id", user_id).execute()
         return response.data[0] if response.data else None
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/{invoice_id}")
-async def delete_invoice(invoice_id: str, _: str = Depends(get_current_user)):
+async def delete_invoice(invoice_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("invoices").delete().eq("id", invoice_id).execute()
+        supabase.table("invoices").delete().eq("id", invoice_id).eq("user_id", user_id).execute()
         return {"message": "Deleted"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-def _fetch_for_export(supabase, client_id: Optional[str]):
-    q = supabase.table("invoices").select("*")
+def _fetch_for_export(supabase, client_id: Optional[str], user_id: str):
+    q = supabase.table("invoices").select("*").eq("user_id", user_id)
     if client_id:
         q = q.eq("client_id", client_id)
     return q.order("fecha", desc=True).execute().data or []
@@ -301,11 +308,13 @@ def _client_label(supabase, client_id: Optional[str]) -> str:
 @router.get("/export/excel")
 async def export_excel_endpoint(
     client_id: Optional[str] = Query(None),
-    _: str = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     try:
         supabase = get_supabase_client()
-        data = _fetch_for_export(supabase, client_id)
+        if client_id:
+            assert_client_owner(client_id, user_id)
+        data = _fetch_for_export(supabase, client_id, user_id)
         excel_bytes = generate_excel(data)
         label = _client_label(supabase, client_id)
         return StreamingResponse(
@@ -320,11 +329,13 @@ async def export_excel_endpoint(
 @router.get("/export/pdf")
 async def export_pdf_endpoint(
     client_id: Optional[str] = Query(None),
-    _: str = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     try:
         supabase = get_supabase_client()
-        data = _fetch_for_export(supabase, client_id)
+        if client_id:
+            assert_client_owner(client_id, user_id)
+        data = _fetch_for_export(supabase, client_id, user_id)
         pdf_bytes = generate_pdf(data)
         label = _client_label(supabase, client_id)
         return StreamingResponse(

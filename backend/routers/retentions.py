@@ -6,6 +6,7 @@ from auth import get_current_user
 from database import get_supabase_client
 from services.retention_parser import parse_retention_xml
 from services.retention_export import generate_retention_excel
+from tenancy import assert_client_owner
 
 router = APIRouter(prefix="/api/retentions", tags=["retentions"])
 
@@ -42,13 +43,14 @@ def _store_retention(supabase, client_id: str, user_id: str, ret: dict) -> str:
 
 @router.get("/")
 async def list_retentions(
-    _: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
     client_id: Optional[str] = Query(None),
 ):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("retentions").select(RETENTION_COLUMNS)
+        q = supabase.table("retentions").select(RETENTION_COLUMNS).eq("user_id", user_id)
         if client_id:
+            assert_client_owner(client_id, user_id)
             q = q.eq("client_id", client_id)
         res = q.order("fecha", desc=True).execute()
         return {"data": res.data or []}
@@ -64,6 +66,7 @@ async def process_xml(
 ):
     try:
         supabase = get_supabase_client()
+        assert_client_owner(client_id, user_id)
         new_count = dup_count = err_count = 0
         for file in files:
             xml_content = (await file.read()).decode("utf-8", errors="ignore")
@@ -86,12 +89,13 @@ async def process_xml(
 @router.delete("/clear")
 async def clear_retentions(
     client_id: Optional[str] = Query(None),
-    _: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("retentions").delete()
+        q = supabase.table("retentions").delete().eq("user_id", user_id)
         if client_id:
+            assert_client_owner(client_id, user_id)
             q = q.eq("client_id", client_id)
         else:
             q = q.neq("id", "00000000-0000-0000-0000-000000000000")
@@ -102,15 +106,16 @@ async def clear_retentions(
 
 
 @router.post("/bulk-move")
-async def bulk_move(payload: BulkMove, _: str = Depends(get_current_user)):
+async def bulk_move(payload: BulkMove, user_id: str = Depends(get_current_user)):
     """Reasigna varias retenciones a otro cliente. Omite las que chocarían con
     una retención ya existente (misma clave) en el cliente destino."""
     try:
         supabase = get_supabase_client()
+        assert_client_owner(payload.client_id, user_id)
         moved = skipped = 0
         for rid in payload.ids:
             try:
-                supabase.table("retentions").update({"client_id": payload.client_id}).eq("id", rid).execute()
+                supabase.table("retentions").update({"client_id": payload.client_id}).eq("id", rid).eq("user_id", user_id).execute()
                 moved += 1
             except Exception as e:
                 print(f"No se pudo mover retención {rid}: {e}")
@@ -121,23 +126,23 @@ async def bulk_move(payload: BulkMove, _: str = Depends(get_current_user)):
 
 
 @router.post("/bulk-delete")
-async def bulk_delete(payload: BulkIds, _: str = Depends(get_current_user)):
+async def bulk_delete(payload: BulkIds, user_id: str = Depends(get_current_user)):
     """Elimina varias retenciones por id."""
     try:
         if not payload.ids:
             return {"deleted": 0}
         supabase = get_supabase_client()
-        supabase.table("retentions").delete().in_("id", payload.ids).execute()
+        supabase.table("retentions").delete().in_("id", payload.ids).eq("user_id", user_id).execute()
         return {"deleted": len(payload.ids)}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/{retention_id}")
-async def delete_retention(retention_id: str, _: str = Depends(get_current_user)):
+async def delete_retention(retention_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("retentions").delete().eq("id", retention_id).execute()
+        supabase.table("retentions").delete().eq("id", retention_id).eq("user_id", user_id).execute()
         return {"message": "Eliminada"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -146,11 +151,13 @@ async def delete_retention(retention_id: str, _: str = Depends(get_current_user)
 @router.get("/export/excel")
 async def export_excel_endpoint(
     client_id: Optional[str] = Query(None),
-    _: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("retentions").select("*")
+        if client_id:
+            assert_client_owner(client_id, user_id)
+        q = supabase.table("retentions").select("*").eq("user_id", user_id)
         if client_id:
             q = q.eq("client_id", client_id)
         rows = q.order("fecha", desc=True).execute().data or []

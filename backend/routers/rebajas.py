@@ -32,11 +32,11 @@ class RebajaIn(BaseModel):
 async def list_rebajas(
     identificacion: str = Query(...),
     producto: Optional[str] = Query(None),
-    _: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("rebajas_ingredientes").select(COLUMNS).eq("identificacion", identificacion)
+        q = supabase.table("rebajas_ingredientes").select(COLUMNS).eq("identificacion", identificacion).eq("user_id", user_id)
         if producto:
             q = q.eq("producto", producto)
         return {"data": q.order("ingrediente").execute().data or []}
@@ -63,10 +63,10 @@ async def create_rebaja(entry: RebajaIn, user_id: str = Depends(get_current_user
 
 
 @router.delete("/{rid}")
-async def delete_rebaja(rid: str, _: str = Depends(get_current_user)):
+async def delete_rebaja(rid: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("rebajas_ingredientes").delete().eq("id", rid).execute()
+        supabase.table("rebajas_ingredientes").delete().eq("id", rid).eq("user_id", user_id).execute()
         return {"message": "Eliminado"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

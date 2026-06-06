@@ -19,7 +19,7 @@ class ClassificationEntry(BaseModel):
     categoria: str
 
 
-def _propagate_classification(supabase, ruc: str, categoria: str) -> int:
+def _propagate_classification(supabase, ruc: str, categoria: str, user_id: str) -> int:
     """Aplica la categoría a las facturas de ese RUC que estén SIN CLASIFICAR
     (no pisa las que ya tienen una clasificación manual). Devuelve cuántas
     facturas se actualizaron."""
@@ -30,23 +30,23 @@ def _propagate_classification(supabase, ruc: str, categoria: str) -> int:
     updated = 0
     try:
         r = supabase.table("invoices").update({"clasificacion": categoria})\
-            .eq("ruc_proveedor", ruc).eq("clasificacion", "SIN CLASIFICAR").execute()
+            .eq("ruc_proveedor", ruc).eq("clasificacion", "SIN CLASIFICAR").eq("user_id", user_id).execute()
         updated += len(r.data or [])
     except Exception as e:
         print(f"Error propagando clasificación (SIN CLASIFICAR) {ruc}: {e}")
     try:
         r = supabase.table("invoices").update({"clasificacion": categoria})\
-            .eq("ruc_proveedor", ruc).is_("clasificacion", "null").execute()
+            .eq("ruc_proveedor", ruc).is_("clasificacion", "null").eq("user_id", user_id).execute()
         updated += len(r.data or [])
     except Exception as e:
         print(f"Error propagando clasificación (null) {ruc}: {e}")
     return updated
 
 @router.get("/")
-async def list_classifications(_: str = Depends(get_current_user)):
+async def list_classifications(user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        response = supabase.table("classification_map").select("*").order("nombre_proveedor").execute()
+        response = supabase.table("classification_map").select("*").eq("user_id", user_id).order("nombre_proveedor").execute()
         return response.data or []
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -59,12 +59,12 @@ async def create_classification(
     try:
         supabase = get_supabase_client()
         ruc = entry.ruc.strip()
-        existing = supabase.table("classification_map").select("id").eq("ruc", ruc).execute()
+        existing = supabase.table("classification_map").select("id").eq("ruc", ruc).eq("user_id", user_id).execute()
         if existing.data:
             response = supabase.table("classification_map").update({
                 "nombre_proveedor": entry.nombre_proveedor.upper(),
                 "categoria": entry.categoria.upper()
-            }).eq("ruc", ruc).execute()
+            }).eq("ruc", ruc).eq("user_id", user_id).execute()
         else:
             response = supabase.table("classification_map").insert({
                 "user_id": user_id,
@@ -72,7 +72,7 @@ async def create_classification(
                 "nombre_proveedor": entry.nombre_proveedor.upper(),
                 "categoria": entry.categoria.upper()
             }).execute()
-        reclasificadas = _propagate_classification(supabase, ruc, entry.categoria)
+        reclasificadas = _propagate_classification(supabase, ruc, entry.categoria, user_id)
         result = response.data[0] if response.data else {}
         return {**result, "reclasificadas": reclasificadas}
     except Exception as e:
@@ -82,7 +82,7 @@ async def create_classification(
 async def update_classification_by_id(
     entry_id: str,
     entry: ClassificationEntry,
-    _: str = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """Actualiza un registro por id, permitiendo cambiar el RUC."""
     try:
@@ -93,8 +93,8 @@ async def update_classification_by_id(
             "nombre_proveedor": entry.nombre_proveedor.upper(),
             "categoria": entry.categoria.upper(),
             "updated_at": "now()"
-        }).eq("id", entry_id).execute()
-        reclasificadas = _propagate_classification(supabase, new_ruc, entry.categoria)
+        }).eq("id", entry_id).eq("user_id", user_id).execute()
+        reclasificadas = _propagate_classification(supabase, new_ruc, entry.categoria, user_id)
         result = response.data[0] if response.data else {}
         return {**result, "reclasificadas": reclasificadas}
     except Exception as e:
@@ -105,25 +105,25 @@ async def update_classification_by_id(
 async def update_classification(
     ruc: str,
     entry: ClassificationEntry,
-    _: str = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     try:
         supabase = get_supabase_client()
         response = supabase.table("classification_map").update({
             "nombre_proveedor": entry.nombre_proveedor.upper(),
             "categoria": entry.categoria.upper()
-        }).eq("ruc", ruc.strip()).execute()
-        reclasificadas = _propagate_classification(supabase, ruc, entry.categoria)
+        }).eq("ruc", ruc.strip()).eq("user_id", user_id).execute()
+        reclasificadas = _propagate_classification(supabase, ruc, entry.categoria, user_id)
         result = response.data[0] if response.data else {}
         return {**result, "reclasificadas": reclasificadas}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.delete("/{ruc}")
-async def delete_classification(ruc: str, _: str = Depends(get_current_user)):
+async def delete_classification(ruc: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("classification_map").delete().eq("ruc", ruc.strip()).execute()
+        supabase.table("classification_map").delete().eq("ruc", ruc.strip()).eq("user_id", user_id).execute()
         return {"message": "Deleted"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -151,12 +151,12 @@ async def import_classifications(
                 if not ruc or not categoria or ruc == "NAN":
                     continue
 
-                existing = supabase.table("classification_map").select("id").eq("ruc", ruc).execute()
+                existing = supabase.table("classification_map").select("id").eq("ruc", ruc).eq("user_id", user_id).execute()
                 if existing.data:
                     supabase.table("classification_map").update({
                         "nombre_proveedor": nombre,
                         "categoria": categoria
-                    }).eq("ruc", ruc).execute()
+                    }).eq("ruc", ruc).eq("user_id", user_id).execute()
                     updated += 1
                 else:
                     supabase.table("classification_map").insert({
@@ -166,7 +166,7 @@ async def import_classifications(
                         "categoria": categoria
                     }).execute()
                     new_count += 1
-                reclasificadas += _propagate_classification(supabase, ruc, categoria)
+                reclasificadas += _propagate_classification(supabase, ruc, categoria, user_id)
             except Exception as row_e:
                 print(f"Error row {ruc}: {row_e}")
 
@@ -175,10 +175,10 @@ async def import_classifications(
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/export/excel")
-async def export_excel_endpoint(_: str = Depends(get_current_user)):
+async def export_excel_endpoint(user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        response = supabase.table("classification_map").select("ruc, nombre_proveedor, categoria").order("nombre_proveedor").execute()
+        response = supabase.table("classification_map").select("ruc, nombre_proveedor, categoria").eq("user_id", user_id).order("nombre_proveedor").execute()
         data = response.data or []
 
         df = pd.DataFrame(data)
@@ -195,10 +195,10 @@ async def export_excel_endpoint(_: str = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/export/pdf")
-async def export_pdf_endpoint(_: str = Depends(get_current_user)):
+async def export_pdf_endpoint(user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        response = supabase.table("classification_map").select("ruc, nombre_proveedor, categoria").order("nombre_proveedor").execute()
+        response = supabase.table("classification_map").select("ruc, nombre_proveedor, categoria").eq("user_id", user_id).order("nombre_proveedor").execute()
         data = response.data or []
 
         output = io.BytesIO()

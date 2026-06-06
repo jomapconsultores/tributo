@@ -9,6 +9,7 @@ from services.ice_calc import full_report
 from services.ice_export import generate_ice_excel, generate_ice_pdf
 from services.ice_anexo import generar_anexo_ice, anexo_rows, catalogo_con_codigos
 from services.ice_data import TAX_DB
+from tenancy import assert_client_owner
 
 router = APIRouter(prefix="/api/ice", tags=["ice"])
 
@@ -36,11 +37,12 @@ async def tax_years(_: str = Depends(get_current_user)):
 
 
 @router.get("/")
-async def list_ice(_: str = Depends(get_current_user), client_id: Optional[str] = Query(None)):
+async def list_ice(user_id: str = Depends(get_current_user), client_id: Optional[str] = Query(None)):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("ice_sales").select(ICE_COLUMNS)
+        q = supabase.table("ice_sales").select(ICE_COLUMNS).eq("user_id", user_id)
         if client_id:
+            assert_client_owner(client_id, user_id)
             q = q.eq("client_id", client_id)
         res = q.order("fecha", desc=True).execute()
         return {"data": res.data or []}
@@ -56,6 +58,7 @@ async def process_xml(
 ):
     try:
         supabase = get_supabase_client()
+        assert_client_owner(client_id, user_id)
         new_count = dup_count = err_count = 0
         for file in files:
             xml_content = (await file.read()).decode("utf-8", errors="ignore")
@@ -82,14 +85,15 @@ async def process_xml(
 
 @router.get("/report")
 async def report(
-    _: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
     client_id: Optional[str] = Query(None),
     anio: str = Query("2026"),
 ):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("ice_sales").select("*")
+        q = supabase.table("ice_sales").select("*").eq("user_id", user_id)
         if client_id:
+            assert_client_owner(client_id, user_id)
             q = q.eq("client_id", client_id)
         rows = q.execute().data or []
         return full_report(rows, anio)
@@ -98,13 +102,14 @@ async def report(
 
 
 @router.post("/bulk-move")
-async def bulk_move(payload: BulkMove, _: str = Depends(get_current_user)):
+async def bulk_move(payload: BulkMove, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
+        assert_client_owner(payload.client_id, user_id)
         moved = skipped = 0
         for iid in payload.ids:
             try:
-                supabase.table("ice_sales").update({"client_id": payload.client_id}).eq("id", iid).execute()
+                supabase.table("ice_sales").update({"client_id": payload.client_id}).eq("id", iid).eq("user_id", user_id).execute()
                 moved += 1
             except Exception as e:
                 print(f"No se pudo mover ICE {iid}: {e}")
@@ -115,23 +120,24 @@ async def bulk_move(payload: BulkMove, _: str = Depends(get_current_user)):
 
 
 @router.post("/bulk-delete")
-async def bulk_delete(payload: BulkIds, _: str = Depends(get_current_user)):
+async def bulk_delete(payload: BulkIds, user_id: str = Depends(get_current_user)):
     try:
         if not payload.ids:
             return {"deleted": 0}
         supabase = get_supabase_client()
-        supabase.table("ice_sales").delete().in_("id", payload.ids).execute()
+        supabase.table("ice_sales").delete().in_("id", payload.ids).eq("user_id", user_id).execute()
         return {"deleted": len(payload.ids)}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/clear")
-async def clear_ice(client_id: Optional[str] = Query(None), _: str = Depends(get_current_user)):
+async def clear_ice(client_id: Optional[str] = Query(None), user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("ice_sales").delete()
+        q = supabase.table("ice_sales").delete().eq("user_id", user_id)
         if client_id:
+            assert_client_owner(client_id, user_id)
             q = q.eq("client_id", client_id)
         else:
             q = q.neq("id", "00000000-0000-0000-0000-000000000000")
@@ -142,10 +148,10 @@ async def clear_ice(client_id: Optional[str] = Query(None), _: str = Depends(get
 
 
 @router.delete("/{ice_id}")
-async def delete_ice(ice_id: str, _: str = Depends(get_current_user)):
+async def delete_ice(ice_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("ice_sales").delete().eq("id", ice_id).execute()
+        supabase.table("ice_sales").delete().eq("id", ice_id).eq("user_id", user_id).execute()
         return {"message": "Eliminado"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -156,10 +162,10 @@ def _cliente(supabase, client_id):
     return c.data[0] if c.data else {}
 
 
-def _catalogo_cliente(supabase, identificacion):
+def _catalogo_cliente(supabase, identificacion, user_id):
     if not identificacion:
         return []
-    r = supabase.table("client_products").select("nombre,cod_prod_ice").eq("identificacion", identificacion).execute()
+    r = supabase.table("client_products").select("nombre,cod_prod_ice").eq("identificacion", identificacion).eq("user_id", user_id).execute()
     return r.data or []
 
 
@@ -172,14 +178,15 @@ async def catalog(_: str = Depends(get_current_user)):
 async def get_anexo_rows(
     client_id: str = Query(...),
     act_import: str = Query("02"),
-    _: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ):
     """Filas del anexo ICE de un cliente, listas para el editor de Anexo PVP+ICE."""
     try:
         supabase = get_supabase_client()
-        rows = supabase.table("ice_sales").select("*").eq("client_id", client_id).execute().data or []
+        assert_client_owner(client_id, user_id)
+        rows = supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
         c = _cliente(supabase, client_id)
-        cat = _catalogo_cliente(supabase, c.get("identificacion"))
+        cat = _catalogo_cliente(supabase, c.get("identificacion"), user_id)
         return anexo_rows(rows, c, c.get("periodo_anio") or 2026, c.get("periodo_mes") or 1, act_import, cat)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -189,16 +196,17 @@ async def get_anexo_rows(
 async def generar_anexo(
     client_id: str = Query(...),
     act_import: str = Query("02"),
-    _: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ):
     """Genera el anexo ICE (XML) para subir al SRI, agrupado por cliente y producto."""
     try:
         supabase = get_supabase_client()
-        rows = supabase.table("ice_sales").select("*").eq("client_id", client_id).execute().data or []
+        assert_client_owner(client_id, user_id)
+        rows = supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
         c = _cliente(supabase, client_id)
         anio = c.get("periodo_anio") or 2026
         mes = c.get("periodo_mes") or 1
-        cat = _catalogo_cliente(supabase, c.get("identificacion"))
+        cat = _catalogo_cliente(supabase, c.get("identificacion"), user_id)
         return generar_anexo_ice(rows, c, anio, mes, act_import, cat)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -208,11 +216,13 @@ async def generar_anexo(
 async def export_pdf_endpoint(
     client_id: Optional[str] = Query(None),
     anio: str = Query("2026"),
-    _: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("ice_sales").select("*")
+        if client_id:
+            assert_client_owner(client_id, user_id)
+        q = supabase.table("ice_sales").select("*").eq("user_id", user_id)
         if client_id:
             q = q.eq("client_id", client_id)
         rows = q.execute().data or []
@@ -229,11 +239,13 @@ async def export_pdf_endpoint(
 async def export_excel_endpoint(
     client_id: Optional[str] = Query(None),
     anio: str = Query("2026"),
-    _: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("ice_sales").select("*")
+        if client_id:
+            assert_client_owner(client_id, user_id)
+        q = supabase.table("ice_sales").select("*").eq("user_id", user_id)
         if client_id:
             q = q.eq("client_id", client_id)
         rows = q.execute().data or []

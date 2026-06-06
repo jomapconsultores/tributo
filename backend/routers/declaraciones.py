@@ -7,6 +7,7 @@ from auth import get_current_user
 from database import get_supabase_client
 from services.declaracion import declaracion_iva, declaracion_ice
 from services.declaracion_oficial import llenar_oficial
+from tenancy import assert_client_owner
 
 router = APIRouter(prefix="/api/declaraciones", tags=["declaraciones"])
 
@@ -22,15 +23,15 @@ def _cliente(supabase, client_id):
     return c.data[0] if c.data else {}
 
 
-def _calcular(supabase, client_id, tipo):
+def _calcular(supabase, client_id, tipo, user_id):
     c = _cliente(supabase, client_id)
     anio = c.get("periodo_anio") or 2026
     if tipo.upper() == "ICE":
-        ice = supabase.table("ice_sales").select("*").eq("client_id", client_id).execute().data or []
+        ice = supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
         decl = declaracion_ice(ice, anio)
     else:
-        invoices = supabase.table("invoices").select("*").eq("client_id", client_id).execute().data or []
-        ventas = supabase.table("ice_sales").select("*").eq("client_id", client_id).execute().data or []
+        invoices = supabase.table("invoices").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
+        ventas = supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
         decl = declaracion_iva(invoices, ventas)
     decl["cliente"] = c
     decl["anio"] = anio
@@ -39,20 +40,22 @@ def _calcular(supabase, client_id, tipo):
 
 
 @router.get("/calcular")
-async def calcular(client_id: str = Query(...), tipo: str = Query("IVA"), _: str = Depends(get_current_user)):
+async def calcular(client_id: str = Query(...), tipo: str = Query("IVA"), user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        return _calcular(supabase, client_id, tipo)
+        assert_client_owner(client_id, user_id)
+        return _calcular(supabase, client_id, tipo, user_id)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/")
-async def listar(client_id: Optional[str] = Query(None), tipo: Optional[str] = Query(None), _: str = Depends(get_current_user)):
+async def listar(client_id: Optional[str] = Query(None), tipo: Optional[str] = Query(None), user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("declaraciones").select("*")
+        q = supabase.table("declaraciones").select("*").eq("user_id", user_id)
         if client_id:
+            assert_client_owner(client_id, user_id)
             q = q.eq("client_id", client_id)
         if tipo:
             q = q.eq("tipo", tipo.upper())
@@ -65,6 +68,7 @@ async def listar(client_id: Optional[str] = Query(None), tipo: Optional[str] = Q
 async def guardar(entry: SaveDecl, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
+        assert_client_owner(entry.client_id, user_id)
         c = _cliente(supabase, entry.client_id)
         res = supabase.table("declaraciones").insert({
             "client_id": entry.client_id, "user_id": user_id, "tipo": entry.tipo.upper(),
@@ -76,21 +80,22 @@ async def guardar(entry: SaveDecl, user_id: str = Depends(get_current_user)):
 
 
 @router.delete("/{decl_id}")
-async def eliminar(decl_id: str, _: str = Depends(get_current_user)):
+async def eliminar(decl_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("declaraciones").delete().eq("id", decl_id).execute()
+        supabase.table("declaraciones").delete().eq("id", decl_id).eq("user_id", user_id).execute()
         return {"message": "Eliminada"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/export/oficial")
-async def export_oficial(client_id: str = Query(...), tipo: str = Query("IVA"), _: str = Depends(get_current_user)):
+async def export_oficial(client_id: str = Query(...), tipo: str = Query("IVA"), user_id: str = Depends(get_current_user)):
     """Llena el formulario oficial del SRI (borrador) con los valores calculados."""
     try:
         supabase = get_supabase_client()
-        decl = _calcular(supabase, client_id, tipo)
+        assert_client_owner(client_id, user_id)
+        decl = _calcular(supabase, client_id, tipo, user_id)
         c = decl.get("cliente", {})
         data, llenados, omitidos = llenar_oficial(tipo, decl)
         label = f"Formulario_{tipo.upper()}_{c.get('identificacion','')}_{decl.get('anio')}{str(decl.get('mes') or '').zfill(2)}".replace(" ", "_")
@@ -110,11 +115,12 @@ async def export_oficial(client_id: str = Query(...), tipo: str = Query("IVA"), 
 
 
 @router.get("/export/excel")
-async def export_excel(client_id: str = Query(...), tipo: str = Query("IVA"), _: str = Depends(get_current_user)):
+async def export_excel(client_id: str = Query(...), tipo: str = Query("IVA"), user_id: str = Depends(get_current_user)):
     try:
         import xlsxwriter
         supabase = get_supabase_client()
-        decl = _calcular(supabase, client_id, tipo)
+        assert_client_owner(client_id, user_id)
+        decl = _calcular(supabase, client_id, tipo, user_id)
         c = decl.get("cliente", {})
         output = io.BytesIO()
         wb = xlsxwriter.Workbook(output, {"in_memory": True})
