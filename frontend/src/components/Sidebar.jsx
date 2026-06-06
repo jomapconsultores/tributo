@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useClients } from '../context/ClientContext'
+import { useAccess, homeFor } from '../context/AccessContext'
 import bajadorBookmarklet from '../utils/bajador-facturas.bookmarklet.txt?raw'
 import './Sidebar.css'
 
@@ -8,6 +9,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { clients, selectedClientId, selectClient, setFocusIdent } = useClients()
+  const { has, isAdmin } = useAccess()
   const bajadorRef = useRef(null)
   const [clientsOpen, setClientsOpen] = useState(true)
   const [ingresosOpen, setIngresosOpen] = useState(true)
@@ -60,7 +62,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const isClassifier = path === '/clasificador'
   const isSaved = path === '/datos'
 
-  const moduleHome = isRetenciones ? '/retenciones' : isCalculo ? '/calculo-ice' : isIceXml ? '/ice' : '/'
+  const moduleHome = isRetenciones ? '/retenciones' : isCalculo ? '/calculo-ice' : isIceXml ? '/ice' : homeFor(has)
 
   return (
     <aside className="sidebar">
@@ -74,6 +76,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
 
       <nav className="sidebar-nav">
         {/* Módulo INGRESOS+ICE (al inicio, desplegable) */}
+        {has('ingresos_ice') && (<>
         <button
           className={`nav-item module-btn ingresos ${isIngresos ? 'active' : ''}`}
           onClick={() => setIngresosOpen((o) => !o)}
@@ -140,8 +143,10 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
             </button>
           </div>
         )}
+        </>)}
 
         {/* Módulo GASTOS (desplegable) */}
+        {has('gastos') && (<>
         <button
           className={`nav-item module-btn gastos ${isGastos ? 'active' : ''}`}
           onClick={() => setGastosOpen((o) => !o)}
@@ -180,8 +185,10 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
             </a>
           </div>
         )}
+        </>)}
 
         {/* Módulo RETENCIONES (desplegable) */}
+        {has('retenciones') && (<>
         <button
           className={`nav-item module-btn retenciones ${isRetenciones ? 'active' : ''}`}
           onClick={() => setRetencionesOpen((o) => !o)}
@@ -197,8 +204,10 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
             </button>
           </div>
         )}
+        </>)}
 
         {/* Módulo DECLARACIONES (desplegable) */}
+        {has('declaraciones') && (<>
         <button
           className={`nav-item module-btn declaraciones ${isDeclaraciones ? 'active' : ''}`}
           onClick={() => setDeclaracionesOpen((o) => !o)}
@@ -217,6 +226,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
             </button>
           </div>
         )}
+        </>)}
 
         <div className="nav-divider" />
 

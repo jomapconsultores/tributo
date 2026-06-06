@@ -1,9 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from config import get_settings
-from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos
+from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access
+from routers.access import require_module
 import os
 from dotenv import load_dotenv
 
@@ -36,20 +37,28 @@ app.add_middleware(
 
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "*.onrender.com"])
 
-# Include routers
+# Include routers — núcleo (sin restricción de módulo)
 app.include_router(auth.router)
+app.include_router(access.router)
 app.include_router(clients.router)
-app.include_router(classification.router)
-app.include_router(invoices.router)
-app.include_router(retentions.router)
-app.include_router(ice.router)
-app.include_router(ice_calc.router)
-app.include_router(declaraciones.router)
-app.include_router(products.router)
-app.include_router(rebajas.router)
-app.include_router(anexos.router)
-app.include_router(resources.router)
 app.include_router(memory.router)
+
+# Módulos contratables (bloqueados si el usuario no los tiene)
+GASTOS = [Depends(require_module("gastos"))]
+RETEN = [Depends(require_module("retenciones"))]
+ICEMOD = [Depends(require_module("ingresos_ice"))]
+DECL = [Depends(require_module("declaraciones"))]
+
+app.include_router(classification.router, dependencies=GASTOS)
+app.include_router(invoices.router, dependencies=GASTOS)
+app.include_router(retentions.router, dependencies=RETEN)
+app.include_router(ice.router, dependencies=ICEMOD)
+app.include_router(ice_calc.router, dependencies=ICEMOD)
+app.include_router(products.router, dependencies=ICEMOD)
+app.include_router(rebajas.router, dependencies=ICEMOD)
+app.include_router(anexos.router, dependencies=ICEMOD)
+app.include_router(resources.router, dependencies=ICEMOD)
+app.include_router(declaraciones.router, dependencies=DECL)
 
 @app.get("/")
 async def root():

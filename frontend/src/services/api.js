@@ -25,6 +25,11 @@ export const authAPI = {
   logout: () => api.post('/auth/logout'),
 }
 
+// Acceso por módulos contratados
+export const accessAPI = {
+  me: () => api.get('/api/access/me'),
+}
+
 // Clientes (contribuyentes)
 export const clientsAPI = {
   list: () => api.get('/api/clients/'),
