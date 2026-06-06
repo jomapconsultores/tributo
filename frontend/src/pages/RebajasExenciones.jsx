@@ -126,7 +126,7 @@ export default function RebajasExenciones() {
         </div>
       </details>
 
-      {producto && (
+      {selectedClient && (
         <>
           <div className="re-form">
             <label className="re-f"><span>RUC proveedor</span>
