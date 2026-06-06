@@ -107,10 +107,12 @@ export default function Landing() {
           })}
         </div>
         <div className="lp-extras">
-          <h4>Beneficios</h4>
+          <h4>Pago mensual y descuentos por anticipo</h4>
+          <p className="lp-extras-p">El cobro es <strong>mensual</strong>: cada pago habilita el sistema por <strong>30 días exactos</strong>. Paga por adelantado y ahorra:</p>
           <ul>
-            <li>Plan anual: <strong>2 meses gratis</strong></li>
-            <li>Prueba gratis: <strong>14 días</strong></li>
+            <li><strong>3 meses</strong> — 5% de descuento</li>
+            <li><strong>6 meses</strong> — 10% de descuento</li>
+            <li><strong>12 meses</strong> — 25% de descuento</li>
             <li><strong>Contribuyentes (RUC) ilimitados</strong> en todos los paquetes</li>
           </ul>
         </div>

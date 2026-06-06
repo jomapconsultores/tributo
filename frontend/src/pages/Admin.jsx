@@ -14,6 +14,7 @@ const PLANES = [
   { key: 'completo', label: 'Sistema Completo ($150)' },
 ]
 const ESTADOS = ['prueba', 'activo', 'suspendido']
+const DESCUENTOS = { 1: 0, 3: 0.05, 6: 0.10, 12: 0.25 }
 
 export default function Admin() {
   const [users, setUsers] = useState([])
@@ -74,13 +75,20 @@ export default function Admin() {
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy(false) }
   }
   const registrarPago = async (uid) => {
-    const monto = prompt('Monto del pago recibido (USD):', edit[uid].precio || '')
+    const mStr = prompt('Meses a pagar por anticipado (1, 3, 6 o 12):', '1')
+    if (mStr === null) return
+    let meses = parseInt(mStr, 10)
+    if (![1, 3, 6, 12].includes(meses)) meses = 1
+    const precio = parseFloat(edit[uid].precio) || 0
+    const desc = DESCUENTOS[meses]
+    const sugerido = (precio * meses * (1 - desc)).toFixed(2)
+    const monto = prompt(`Monto recibido (USD) por ${meses} mes(es)${desc ? ` — ${desc * 100}% descuento` : ''}:`, sugerido)
     if (monto === null) return
     setBusy(true)
     try {
-      const r = await adminAPI.registrarPago(uid, { monto: parseFloat(monto) || 0, avanzar_mes: true })
+      const r = await adminAPI.registrarPago(uid, { monto: parseFloat(monto) || 0, meses, avanzar_mes: true })
       await load()
-      alert(`✔ Pago registrado. Próximo pago: ${r.data.proximo_pago || '—'}`)
+      alert(`✔ Pago registrado (${meses} mes(es) = ${meses * 30} días). Próximo pago: ${r.data.proximo_pago || '—'}`)
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy(false) }
   }
   const crear = async () => {
@@ -159,7 +167,7 @@ export default function Admin() {
           </table>
         </div>
       )}
-      <p className="adm-note">Al <strong>registrar un pago</strong> se marca la suscripción como <em>activa</em> y se adelanta un mes el próximo pago. Si el próximo pago vence, el usuario queda <strong>suspendido automáticamente</strong> (sin acceso a los módulos) hasta el siguiente pago. Los administradores no se cobran.</p>
+      <p className="adm-note">Al <strong>registrar un pago</strong> se marca la suscripción como <em>activa</em> y se adelanta el próximo pago <strong>30 días por cada mes</strong> pagado (1, 3, 6 o 12). Descuentos por anticipo: <strong>3m −5% · 6m −10% · 12m −25%</strong>. Si el próximo pago vence, el usuario queda <strong>suspendido automáticamente</strong> hasta el siguiente pago. Los administradores no se cobran.</p>
 
       {/* Mensajes de contacto */}
       <div className="adm-contactos">

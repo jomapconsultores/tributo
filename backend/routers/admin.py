@@ -1,6 +1,6 @@
 """Panel de administración (Fase 3). Solo para admins (app_admins).
 Permite listar/crear usuarios y asignar módulos/planes con vigencia."""
-from datetime import date
+from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
@@ -10,14 +10,9 @@ from routers.access import es_admin, MODULOS
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
-
-def _add_month(d: date) -> date:
-    y, m = d.year, d.month + 1
-    if m > 12:
-        y, m = y + 1, 1
-    bisiesto = y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)
-    dias = [31, 29 if bisiesto else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1]
-    return date(y, m, min(d.day, dias))
+# Cada "mes" = 30 días exactos. Descuentos por pago anticipado.
+DIAS_MES = 30
+DESCUENTOS = {1: 0.0, 3: 0.05, 6: 0.10, 12: 0.25}
 
 # Paquetes → módulos que activan
 PLANES = {
@@ -61,6 +56,7 @@ class SubIn(BaseModel):
 
 class PagoIn(BaseModel):
     monto: float = 0
+    meses: int = 1                 # 1, 3, 6 o 12 (pago anticipado)
     fecha: Optional[str] = None
     periodo: Optional[str] = None
     metodo: Optional[str] = None
@@ -141,10 +137,12 @@ async def set_subscription(uid: str, body: SubIn, _: str = Depends(require_admin
 @router.post("/users/{uid}/pago")
 async def registrar_pago(uid: str, body: PagoIn, _: str = Depends(require_admin)):
     sb = get_supabase_client()
+    meses = body.meses if body.meses in DESCUENTOS else 1
     fecha = body.fecha or date.today().isoformat()
+    periodo = body.periodo or (f"{meses} mes(es)")
     sb.table("pagos").insert({
         "user_id": uid, "monto": body.monto, "fecha": fecha,
-        "periodo": body.periodo, "metodo": body.metodo, "nota": body.nota,
+        "periodo": periodo, "metodo": body.metodo, "nota": body.nota,
     }).execute()
     sub_upd = {"estado": "activo"}
     if body.avanzar_mes:
@@ -159,9 +157,23 @@ async def registrar_pago(uid: str, body: PagoIn, _: str = Depends(require_admin)
         hoy = date.today()
         if not base or base < hoy:
             base = hoy
-        sub_upd["proximo_pago"] = _add_month(base).isoformat()
+        sub_upd["proximo_pago"] = (base + timedelta(days=DIAS_MES * meses)).isoformat()
     _upsert_sub(uid, sub_upd)
     return {"ok": True, "proximo_pago": sub_upd.get("proximo_pago")}
+
+
+@router.get("/precio")
+async def precio_sugerido(plan: str, meses: int = 1, _: str = Depends(require_admin)):
+    """Calcula el monto sugerido (neto, con descuento por anticipo)."""
+    neto = PLAN_PRECIO.get(plan.lower())
+    if neto is None:
+        raise HTTPException(status_code=400, detail="Plan inválido")
+    m = meses if meses in DESCUENTOS else 1
+    desc = DESCUENTOS[m]
+    base = neto * m
+    total = round(base * (1 - desc), 2)
+    return {"plan": plan, "meses": m, "neto_mensual": neto, "descuento": desc,
+            "subtotal": base, "total": total}
 
 
 @router.get("/users/{uid}/pagos")
