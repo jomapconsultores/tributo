@@ -3,8 +3,15 @@ from typing import Optional
 from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client
+from services.min_produccion import verificar_ruc
 
 router = APIRouter(prefix="/api/rebajas", tags=["rebajas"])
+
+
+@router.get("/verificar-ruc")
+async def verificar(ruc: str = Query(...), _: str = Depends(get_current_user)):
+    """Verifica en el Ministerio de Producción si el RUC está categorizado."""
+    return verificar_ruc(ruc)
 
 COLUMNS = "id,identificacion,producto,ingrediente,ruc_proveedor,proveedor_nombre,cantidad,unidad,origen,calificado"
 

@@ -68,8 +68,12 @@
 .re-vlink { margin-left: 6px; text-decoration: none; }
 .re-foot td { font-weight: 700; color: #1e293b; background: #eff6ff; border-top: 2px solid #bfdbfe; }
 
-.re-verif { align-self: flex-end; background: #1e293b; color: #fff; text-decoration: none; border-radius: 7px; padding: 8px 12px; font-size: 0.8rem; font-weight: 600; }
+.re-verif { align-self: flex-end; background: #1e293b; color: #fff; border: none; cursor: pointer; text-decoration: none; border-radius: 7px; padding: 8px 12px; font-size: 0.8rem; font-weight: 600; }
 .re-verif:hover { background: #0f172a; }
+.re-verif-res { border-radius: 8px; padding: 9px 13px; font-size: 0.86rem; font-weight: 600; }
+.re-verif-res.ok { background: #dcfce7; color: #166534; }
+.re-verif-res.no { background: #fee2e2; color: #b91c1c; }
+.re-verif-res.wait { background: #eff6ff; color: #1d4ed8; }
 .re-ruc { display: block; font-size: 0.72rem; color: #64748b; font-weight: 400; }
 .re-ruc a { text-decoration: none; }
 

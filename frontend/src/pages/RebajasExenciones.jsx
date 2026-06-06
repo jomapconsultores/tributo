@@ -19,6 +19,23 @@ export default function RebajasExenciones() {
   const [producto, setProducto] = useState('')
   const [ings, setIngs] = useState([])
   const [form, setForm] = useState(EMPTY)
+  const [verif, setVerif] = useState(null) // { calificado, texto }
+
+  const verificarRuc = async () => {
+    const ruc = (form.ruc_proveedor || '').trim()
+    if (!ruc) { alert('Ingresa el RUC del proveedor.'); return }
+    setVerif({ calificado: null, texto: 'Consultando al Ministerio de Producción…' })
+    try {
+      const r = await rebajasAPI.verificarRuc(ruc)
+      const d = r.data
+      setForm((f) => ({ ...f, calificado: d.calificado === true, proveedor_nombre: d.razon_social || f.proveedor_nombre }))
+      if (d.calificado === true) setVerif({ calificado: true, texto: `✔ Calificado · ${d.razon_social} · ${d.categoria}${d.vigencia ? ' · ' + d.vigencia : ''}` })
+      else if (d.calificado === false) setVerif({ calificado: false, texto: `✗ No calificado · ${d.mensaje}` })
+      else setVerif({ calificado: null, texto: `⚠ ${d.mensaje}` })
+    } catch (e) {
+      setVerif({ calificado: null, texto: 'Error al verificar: ' + (e.response?.data?.detail || e.message) })
+    }
+  }
 
   // Productos del catálogo del cliente
   useEffect(() => {
@@ -130,8 +147,8 @@ export default function RebajasExenciones() {
         <>
           <div className="re-form">
             <label className="re-f"><span>RUC proveedor</span>
-              <input value={form.ruc_proveedor} onChange={(e) => setForm({ ...form, ruc_proveedor: e.target.value })} placeholder="RUC" /></label>
-            <a className="re-verif" href={MINPROD} target="_blank" rel="noreferrer" title="Verificar categorización en el Ministerio de Producción">🔎 Verificar</a>
+              <input value={form.ruc_proveedor} onChange={(e) => { setForm({ ...form, ruc_proveedor: e.target.value }); setVerif(null) }} placeholder="RUC" /></label>
+            <button type="button" className="re-verif" onClick={verificarRuc} title="Verificar categorización en el Ministerio de Producción">🔎 Verificar</button>
             <label className="re-f"><span>¿Calificado?</span>
               <span className="re-check"><input type="checkbox" checked={form.calificado} onChange={(e) => setForm({ ...form, calificado: e.target.checked })} /> {form.calificado ? 'Sí' : 'No'}</span></label>
             <label className="re-f wide"><span>Empresa / Persona</span>
@@ -144,6 +161,12 @@ export default function RebajasExenciones() {
               <input value={form.unidad} onChange={(e) => setForm({ ...form, unidad: e.target.value })} /></label>
             <button className="re-btn primary" onClick={agregar}>＋ Agregar</button>
           </div>
+
+          {verif && (
+            <div className={`re-verif-res ${verif.calificado === true ? 'ok' : verif.calificado === false ? 'no' : 'wait'}`}>
+              {verif.texto}
+            </div>
+          )}
 
           <div className="re-table-wrap">
             <table className="re-table">

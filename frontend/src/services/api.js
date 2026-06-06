@@ -148,6 +148,7 @@ export const anexosAPI = {
 // Rebajas y exenciones ICE (ingredientes por producto)
 export const rebajasAPI = {
   list: (identificacion, producto) => api.get('/api/rebajas/', { params: { identificacion, producto } }),
+  verificarRuc: (ruc) => api.get('/api/rebajas/verificar-ruc', { params: { ruc } }),
   create: (entry) => api.post('/api/rebajas/', entry),
   delete: (id) => api.delete(`/api/rebajas/${id}`),
 }
