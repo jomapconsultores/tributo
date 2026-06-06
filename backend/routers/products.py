@@ -3,11 +3,12 @@ from typing import Optional
 from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client
+from services.codigos_ice import buscar as buscar_codigos, lookups as codigos_lookups
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
 COLUMNS = ("id,identificacion,nombre,cod_prod_sri,cod_prod_ice,cod_prod_pvp,cod_impuesto,"
-           "capacidad,grado,presentacion,unidad,botellas_por_caja")
+           "cod_clasificacion,cod_pais,capacidad,grado,presentacion,unidad,botellas_por_caja")
 
 
 class ProductIn(BaseModel):
@@ -17,6 +18,8 @@ class ProductIn(BaseModel):
     cod_prod_ice: Optional[str] = ""
     cod_prod_pvp: Optional[str] = ""
     cod_impuesto: Optional[str] = "3031"
+    cod_clasificacion: Optional[str] = ""
+    cod_pais: Optional[str] = "593"
     capacidad: Optional[str] = "750"
     grado: Optional[str] = "15"
     presentacion: Optional[str] = "13"
@@ -30,6 +33,8 @@ class ProductUpdate(BaseModel):
     cod_prod_ice: Optional[str] = None
     cod_prod_pvp: Optional[str] = None
     cod_impuesto: Optional[str] = None
+    cod_clasificacion: Optional[str] = None
+    cod_pais: Optional[str] = None
     capacidad: Optional[str] = None
     grado: Optional[str] = None
     presentacion: Optional[str] = None
@@ -40,6 +45,18 @@ class ProductUpdate(BaseModel):
 def _ident_de_cliente(supabase, client_id):
     c = supabase.table("clients").select("identificacion").eq("id", client_id).execute()
     return c.data[0]["identificacion"] if c.data else None
+
+
+@router.get("/codigos-ice/search")
+async def codigos_ice_search(q: str = Query(""), impuesto: Optional[str] = Query("3031"), _: str = Depends(get_current_user)):
+    """Busca marcas en el catálogo oficial de Códigos ICE (autocompletado)."""
+    return {"data": buscar_codigos(q, impuesto)}
+
+
+@router.get("/codigos-ice/lookups")
+async def codigos_ice_lookups(_: str = Depends(get_current_user)):
+    """Listas auxiliares (presentación, capacidad, unidad, grado, país)."""
+    return codigos_lookups()
 
 
 @router.get("/")

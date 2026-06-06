@@ -3,11 +3,14 @@
 const onlyDigits = (v) => String(v || '').replace(/\D/g, '')
 const pad = (v, n) => onlyDigits(v).padStart(n, '0')
 
-export function buildCodProdICE({ codSri, presentacion, capacidad, unidad, grado, codImpuesto }) {
+// Orden: impuesto - clasificación - marca - presentación - capacidad - unidad - país - grado
+export function buildCodProdICE({ codSri, clasificacion, presentacion, capacidad, unidad, pais, grado, codImpuesto }) {
   const s = String(codSri || '').trim()
   if (!s) return ''
   if (s.includes('-')) return s // ya es un código completo
   const cimp = (codImpuesto || '3031')
+  const cl = pad(clasificacion || '57', 3)
   const und = onlyDigits(unidad) || '66'
-  return `${cimp}-057-${pad(s, 6)}-${pad(presentacion || '13', 3)}-${pad(capacidad || '750', 6)}-${und}-593-${pad(grado || '15', 6)}`
+  const ps = pad(pais || '593', 3)
+  return `${cimp}-${cl}-${pad(s, 6)}-${pad(presentacion || '13', 3)}-${pad(capacidad || '750', 6)}-${und}-${ps}-${pad(grado || '15', 6)}`
 }

@@ -8,6 +8,7 @@ import './CatalogoProductos.css'
 
 const EMPTY = {
   nombre: '', cod_prod_sri: '', cod_prod_ice: '', cod_prod_pvp: '', cod_impuesto: '3031',
+  cod_clasificacion: '', cod_pais: '593',
   capacidad: '750', grado: '15', presentacion: '13', unidad: '66', botellas_por_caja: 12,
 }
 
@@ -32,9 +33,32 @@ export default function CatalogoProductos() {
   useEffect(() => { load() }, [load])
 
   const codIce = buildCodProdICE({
-    codSri: form.cod_prod_sri, presentacion: form.presentacion, capacidad: form.capacidad,
-    unidad: form.unidad, grado: form.grado, codImpuesto: form.cod_impuesto,
+    codSri: form.cod_prod_sri, clasificacion: form.cod_clasificacion, presentacion: form.presentacion,
+    capacidad: form.capacidad, unidad: form.unidad, pais: form.cod_pais, grado: form.grado, codImpuesto: form.cod_impuesto,
   })
+
+  // Búsqueda en el catálogo oficial SRI (autocompletado)
+  const [busqueda, setBusqueda] = useState('')
+  const [resultados, setResultados] = useState([])
+  useEffect(() => {
+    const q = busqueda.trim()
+    if (q.length < 2) { setResultados([]); return }
+    const t = setTimeout(() => {
+      productsAPI.searchCodigos(q).then((r) => setResultados(r.data?.data || [])).catch(() => setResultados([]))
+    }, 250)
+    return () => clearTimeout(t)
+  }, [busqueda])
+
+  const elegirCodigo = (m) => {
+    setForm((f) => ({
+      ...f,
+      nombre: (m.descripcion || '').toUpperCase(),
+      cod_prod_sri: m.marca,
+      cod_impuesto: m.impuesto || '3031',
+      cod_clasificacion: m.clasif_cod || '',
+    }))
+    setBusqueda(''); setResultados([])
+  }
 
   const guardar = async () => {
     if (!form.nombre.trim()) { alert('El nombre del producto es obligatorio.'); return }
@@ -88,6 +112,25 @@ export default function CatalogoProductos() {
       <ClientSwitcher onNewClient={openNewClient} />
 
       <p className="cp-note">Los productos se guardan por contribuyente (RUC) y se comparten entre todos sus períodos. Estos códigos se usan al emitir el Anexo PVP+ICE.</p>
+
+      {/* Buscador en el catálogo oficial SRI */}
+      <div className="cp-search">
+        <input
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          placeholder="🔍 Buscar marca en el catálogo oficial SRI (ICE bebidas alcohólicas)…"
+        />
+        {resultados.length > 0 && (
+          <ul className="cp-results">
+            {resultados.map((m) => (
+              <li key={`${m.impuesto}-${m.marca}`} onMouseDown={() => elegirCodigo(m)}>
+                <span className="cp-res-desc">{m.descripcion}</span>
+                <span className="cp-res-meta">{m.clasificacion} · marca {m.marca} · imp {m.impuesto}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       {/* Formulario */}
       <div className="cp-form">
