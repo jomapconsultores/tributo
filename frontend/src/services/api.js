@@ -129,6 +129,8 @@ export const iceCalcAPI = {
 export const productsAPI = {
   list: (identificacion) => api.get('/api/products/', { params: { identificacion } }),
   searchCodigos: (q, impuesto = '3031') => api.get('/api/products/codigos-ice/search', { params: { q, impuesto } }),
+  countCodigos: () => api.get('/api/products/codigos-ice/count'),
+  importCodigos: () => api.post('/api/products/codigos-ice/import'),
   byClient: (clientId) => api.get(`/api/products/by-client/${clientId}`),
   create: (p) => api.post('/api/products/', p),
   update: (id, data) => api.put(`/api/products/${id}`, data),

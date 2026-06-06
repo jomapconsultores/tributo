@@ -16,9 +16,9 @@ def _i(v):
         return str(v or "").strip()
 
 
-def _cargar_marcas():
+def _cargar_marcas(force=False):
     global _marcas_cache
-    if _marcas_cache is not None:
+    if _marcas_cache is not None and not force:
         return _marcas_cache
     out = []
     try:
@@ -46,6 +46,7 @@ def _cargar_marcas():
 
 
 def buscar(q, impuesto=None, limit=40):
+    """Búsqueda en memoria (archivo). Fallback cuando la BD está vacía."""
     data = _cargar_marcas()
     q = (q or "").strip().upper()
     res = []
@@ -60,6 +61,57 @@ def buscar(q, impuesto=None, limit=40):
         if len(res) >= limit:
             break
     return res
+
+
+def _sanitizar(q):
+    return "".join(c for c in (q or "") if c.isalnum() or c.isspace() or c in "ÁÉÍÓÚÑáéíóúñ").strip()
+
+
+def contar_bd(supabase):
+    try:
+        r = supabase.table("ice_codigos").select("id", count="exact").limit(1).execute()
+        return r.count or 0
+    except Exception:
+        return 0
+
+
+def buscar_bd(supabase, q, impuesto=None, limit=40):
+    """Búsqueda en la tabla ice_codigos. Si está vacía, cae al archivo."""
+    if contar_bd(supabase) == 0:
+        return buscar(q, impuesto, limit)
+    qq = _sanitizar(q)
+    query = supabase.table("ice_codigos").select(
+        "impuesto,impuesto_nombre,clasif_cod,clasificacion,marca,descripcion")
+    if impuesto:
+        query = query.eq("impuesto", str(impuesto))
+    if qq:
+        query = query.or_(f"descripcion.ilike.%{qq}%,clasificacion.ilike.%{qq}%,marca.ilike.%{qq}%")
+    return query.limit(limit).execute().data or []
+
+
+def importar_a_bd(supabase):
+    """Importa TODO el archivo a la tabla ice_codigos (reemplazo total:
+    borra lo existente e inserta lo del archivo). Devuelve cuántos códigos quedaron."""
+    marcas = _cargar_marcas(force=True)
+    # Borrar todo
+    supabase.table("ice_codigos").delete().neq("id", 0).execute()
+    # Insertar por lotes
+    lote = []
+    insertados = 0
+    for m in marcas:
+        lote.append({
+            "impuesto": m["impuesto"], "impuesto_nombre": m["impuesto_nombre"],
+            "clasif_cod": m["clasif_cod"], "clasificacion": m["clasificacion"],
+            "marca": m["marca"], "descripcion": m["descripcion"],
+        })
+        if len(lote) >= 1000:
+            supabase.table("ice_codigos").insert(lote).execute()
+            insertados += len(lote)
+            lote = []
+    if lote:
+        supabase.table("ice_codigos").insert(lote).execute()
+        insertados += len(lote)
+    return insertados
 
 
 def lookups():

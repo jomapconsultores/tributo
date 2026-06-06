@@ -3,7 +3,7 @@ from typing import Optional
 from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client
-from services.codigos_ice import buscar as buscar_codigos, lookups as codigos_lookups
+from services.codigos_ice import buscar_bd, lookups as codigos_lookups, importar_a_bd, contar_bd
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
@@ -49,8 +49,23 @@ def _ident_de_cliente(supabase, client_id):
 
 @router.get("/codigos-ice/search")
 async def codigos_ice_search(q: str = Query(""), impuesto: Optional[str] = Query("3031"), _: str = Depends(get_current_user)):
-    """Busca marcas en el catálogo oficial de Códigos ICE (autocompletado)."""
-    return {"data": buscar_codigos(q, impuesto)}
+    """Busca marcas en los Códigos ICE (desde la BD; cae al archivo si está vacía)."""
+    return {"data": buscar_bd(get_supabase_client(), q, impuesto)}
+
+
+@router.get("/codigos-ice/count")
+async def codigos_ice_count(_: str = Depends(get_current_user)):
+    return {"total": contar_bd(get_supabase_client())}
+
+
+@router.post("/codigos-ice/import")
+async def codigos_ice_import(_: str = Depends(get_current_user)):
+    """Importa/actualiza TODOS los códigos del archivo a la BD (reemplazo total)."""
+    try:
+        total = importar_a_bd(get_supabase_client())
+        return {"message": "Códigos importados", "total": total}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/codigos-ice/lookups")
