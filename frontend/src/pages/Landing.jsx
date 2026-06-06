@@ -111,7 +111,12 @@ export default function Landing() {
       <div className="lp-ec-bar" />
 
       <header className={`lp-nav ${scrolled ? 'scrolled' : ''}`}>
-        <div className="lp-brand"><span className="lp-brand-badge">📑</span> Gestor SRI</div>
+        <div className="lp-brand">
+          <span className="lp-brand-badge">📑</span>
+          <span className="lp-brand-name">Gestor SRI</span>
+          <span className="lp-brand-div" />
+          <img src="/capsa-horizontal.png" className="lp-nav-logo" alt="CAPSA" />
+        </div>
         <nav className="lp-nav-links">
           <a href="#modulos">Módulos</a>
           <a href="#precios">Precios</a>

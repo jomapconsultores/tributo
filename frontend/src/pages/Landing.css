@@ -32,8 +32,15 @@
 .lp-brand { font-weight: 800; font-size: 1.1rem; display: flex; align-items: center; gap: 9px; }
 .lp-brand-badge {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; border-radius: 9px;
+  width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
   background: linear-gradient(135deg,#1e3a5f,#0f172a); box-shadow: 0 4px 12px rgba(37,99,235,.25);
+}
+.lp-brand-name { white-space: nowrap; }
+.lp-brand-div { width: 1px; height: 24px; background: #cbd5e1; margin: 0 2px; flex-shrink: 0; }
+.lp-nav-logo { height: 26px; width: auto; display: block; }
+@media (max-width: 560px) {
+  .lp-brand-div, .lp-brand-name { display: none; }
+  .lp-nav-logo { height: 24px; }
 }
 .lp-nav-links { display: flex; align-items: center; gap: 22px; }
 .lp-nav-links a { text-decoration: none; color: #475569; font-weight: 600; font-size: 0.9rem; transition: color .15s; }
