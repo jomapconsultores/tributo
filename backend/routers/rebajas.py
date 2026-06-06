@@ -6,13 +6,14 @@ from database import get_supabase_client
 
 router = APIRouter(prefix="/api/rebajas", tags=["rebajas"])
 
-COLUMNS = "id,identificacion,producto,ingrediente,cantidad,unidad,origen,calificado"
+COLUMNS = "id,identificacion,producto,ingrediente,ruc_proveedor,cantidad,unidad,origen,calificado"
 
 
 class RebajaIn(BaseModel):
     identificacion: str
     producto: str
     ingrediente: str
+    ruc_proveedor: Optional[str] = ""
     cantidad: float = 0
     unidad: Optional[str] = "ml"
     origen: Optional[str] = "NACIONAL"

@@ -5,8 +5,10 @@ import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import './RebajasExenciones.css'
 
-const EMPTY = { ingrediente: '', cantidad: '', unidad: 'ml', origen: 'NACIONAL', calificado: false }
+const EMPTY = { ingrediente: '', ruc_proveedor: '', cantidad: '', unidad: 'ml', origen: 'NACIONAL', calificado: false }
 const esAgua = (nombre) => (nombre || '').trim().toUpperCase() === 'AGUA'
+const MINPROD = 'https://servicios.produccion.gob.ec/rum/publico/consultaCategorizacion.jsf'
+const UMBRAL = 70 // % mínimo de materia prima nacional calificada
 
 export default function RebajasExenciones() {
   const { openNewClient } = useOutletContext()
@@ -52,10 +54,12 @@ export default function RebajasExenciones() {
     const nacional = sum(noAgua.filter((i) => i.origen === 'NACIONAL'))
     const nacCalif = sum(noAgua.filter((i) => i.origen === 'NACIONAL' && i.calificado))
     const externo = sum(noAgua.filter((i) => i.origen === 'EXTERNO'))
+    const pctNacCalif = total ? (nacCalif / total) * 100 : 0
     return {
       total, nacional, nacCalif, externo,
       pctNac: total ? (nacional / total) * 100 : 0,
-      pctNacCalif: total ? (nacCalif / total) * 100 : 0,
+      pctNacCalif,
+      cumple: pctNacCalif >= UMBRAL,
     }
   }, [ings])
 
@@ -111,6 +115,9 @@ export default function RebajasExenciones() {
           <div className="re-form">
             <label className="re-f wide"><span>Ingrediente</span>
               <input value={form.ingrediente} onChange={(e) => setForm({ ...form, ingrediente: e.target.value.toUpperCase() })} placeholder="Ej. ALCOHOL, JUGO…" /></label>
+            <label className="re-f"><span>RUC proveedor</span>
+              <input value={form.ruc_proveedor} onChange={(e) => setForm({ ...form, ruc_proveedor: e.target.value })} placeholder="RUC del proveedor" /></label>
+            <a className="re-verif" href={MINPROD} target="_blank" rel="noreferrer" title="Verificar categorización en el Ministerio de Producción">🔎 Verificar</a>
             <label className="re-f s"><span>Cantidad</span>
               <input type="number" step="0.01" value={form.cantidad} onChange={(e) => setForm({ ...form, cantidad: e.target.value })} /></label>
             <label className="re-f s"><span>Unidad</span>
@@ -133,7 +140,9 @@ export default function RebajasExenciones() {
               <h3>🟢 Productos nacionales</h3>
               {nacionales.length === 0 ? <div className="re-empty">—</div> : nacionales.map((i) => (
                 <div key={i.id} className={`re-ing ${esAgua(i.ingrediente) ? 'agua' : ''}`}>
-                  <span className="re-ing-name">{i.ingrediente}{esAgua(i.ingrediente) && <em> (no cuenta)</em>}</span>
+                  <span className="re-ing-name">{i.ingrediente}{esAgua(i.ingrediente) && <em> (no cuenta)</em>}
+                    {i.ruc_proveedor && <span className="re-ruc">RUC {i.ruc_proveedor} <a href={MINPROD} target="_blank" rel="noreferrer" title="Verificar en Min. Producción">🔎</a></span>}
+                  </span>
                   <span className="re-ing-cant">{(parseFloat(i.cantidad) || 0).toFixed(2)} {i.unidad}</span>
                   <span className={`re-badge ${i.calificado ? 'ok' : 'no'}`}>{i.calificado ? 'Calificado' : 'No calificado'}</span>
                   <button className="re-del" onClick={() => borrar(i.id)}>✕</button>
@@ -144,7 +153,9 @@ export default function RebajasExenciones() {
               <h3>🔴 Productos externos</h3>
               {externos.length === 0 ? <div className="re-empty">—</div> : externos.map((i) => (
                 <div key={i.id} className={`re-ing ${esAgua(i.ingrediente) ? 'agua' : ''}`}>
-                  <span className="re-ing-name">{i.ingrediente}{esAgua(i.ingrediente) && <em> (no cuenta)</em>}</span>
+                  <span className="re-ing-name">{i.ingrediente}{esAgua(i.ingrediente) && <em> (no cuenta)</em>}
+                    {i.ruc_proveedor && <span className="re-ruc">RUC {i.ruc_proveedor} <a href={MINPROD} target="_blank" rel="noreferrer" title="Verificar en Min. Producción">🔎</a></span>}
+                  </span>
                   <span className="re-ing-cant">{(parseFloat(i.cantidad) || 0).toFixed(2)} {i.unidad}</span>
                   <button className="re-del" onClick={() => borrar(i.id)}>✕</button>
                 </div>
@@ -156,12 +167,32 @@ export default function RebajasExenciones() {
           <div className="re-result">
             <div className="re-res-box"><span className="re-res-lbl">% Nacional</span><span className="re-res-val">{resumen.pctNac.toFixed(2)}%</span></div>
             <div className="re-res-box hi"><span className="re-res-lbl">% Nacional calificado</span><span className="re-res-val">{resumen.pctNacCalif.toFixed(2)}%</span></div>
+            <div className={`re-cumple ${resumen.cumple ? 'ok' : 'no'}`}>
+              {resumen.cumple ? `✔ Cumple la norma (≥ ${UMBRAL}%)` : `✗ No cumple (mínimo ${UMBRAL}%)`}
+            </div>
             <div className="re-res-sub">
               Total (sin agua): {resumen.total.toFixed(2)} · Nacional: {resumen.nacional.toFixed(2)} · Nacional calificado: {resumen.nacCalif.toFixed(2)} · Externo: {resumen.externo.toFixed(2)}
             </div>
           </div>
         </>
       )}
+
+      {/* Normas de aplicación */}
+      <details className="re-normas">
+        <summary>📖 Normas de aplicación y tablas</summary>
+        <div className="re-normas-body">
+          <p><strong>Rebaja / exención de ICE por componente nacional.</strong> Para acceder al beneficio, el producto debe elaborarse con al menos <strong>{UMBRAL}%</strong> de materia prima nacional proveniente de <strong>proveedores categorizados (calificados)</strong> por el Ministerio de Producción.</p>
+          <ul>
+            <li>Los ingredientes se ingresan <strong>por botella/envase</strong> con su cantidad.</li>
+            <li>El <strong>agua no se contabiliza</strong> en el cálculo.</li>
+            <li>Un ingrediente nacional <strong>no calificado</strong> no suma como nacional calificado.</li>
+            <li>El <strong>% nacional calificado</strong> = (nacional y calificado, sin agua) ÷ (total sin agua).</li>
+          </ul>
+          <p>La categorización del proveedor (empresa o persona natural) se verifica por RUC en el Ministerio de Producción:
+            {' '}<a href={MINPROD} target="_blank" rel="noreferrer">Consulta de categorización ↗</a></p>
+          <p className="re-normas-nota">Nota: los porcentajes y la regla son configurables; verifica la normativa vigente del SRI/Ministerio antes de aplicar el beneficio.</p>
+        </div>
+      </details>
     </div>
   )
 }
