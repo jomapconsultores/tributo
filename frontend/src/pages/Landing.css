@@ -75,6 +75,20 @@
 .lp-orb.c { width: 280px; height: 280px; background: rgba(16,185,129,.18); top: 35%; left: 58%; animation: lpOrb 20s ease-in-out infinite; }
 .lp-hero-inner { position: relative; z-index: 1; max-width: 860px; margin: 0 auto; }
 
+.lp-hero-logo {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.96); backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,.7); border-radius: 18px;
+  padding: 16px 30px; margin-bottom: 26px;
+  box-shadow: 0 20px 48px rgba(0,0,0,.34), 0 2px 8px rgba(0,0,0,.18);
+  animation: lpFloatUp .7s both;
+}
+.lp-hero-logo img { height: 48px; width: auto; display: block; }
+@media (max-width: 560px) {
+  .lp-hero-logo { padding: 13px 22px; border-radius: 15px; }
+  .lp-hero-logo img { height: 38px; }
+}
+
 .lp-badge {
   display: inline-flex; align-items: center; gap: 8px;
   background: rgba(96,165,250,.12); border: 1px solid rgba(96,165,250,.3);

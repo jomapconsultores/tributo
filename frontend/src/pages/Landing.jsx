@@ -140,6 +140,9 @@ export default function Landing() {
       <section className="lp-hero">
         <span className="lp-orb a" /><span className="lp-orb b" /><span className="lp-orb c" />
         <div className="lp-hero-inner">
+          <div className="lp-hero-logo">
+            <img src="/capsa-horizontal.png" alt="CAPSA" />
+          </div>
           <div className="lp-badge"><span className="lp-dot" /> Plataforma tributaria para Ecuador · Actualizada 2026</div>
           <h1>Tu gestión tributaria del <span className="lp-grad">SRI</span>, automatizada de punta a punta</h1>
           <p>Clasifica gastos, controla retenciones, calcula el ICE y genera tus declaraciones —
