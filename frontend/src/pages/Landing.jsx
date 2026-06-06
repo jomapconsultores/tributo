@@ -138,6 +138,11 @@ export default function Landing() {
           </div>
           <p className="lp-hero-note">Especializado en <strong>ICE de bebidas alcohólicas</strong> — cálculo, anexos y auditoría que casi nadie automatiza.</p>
 
+          <div className="lp-sri-chip" title="Trabaja con los formatos y comprobantes oficiales del SRI">
+            <span className="lp-sri-ico">🏛️</span>
+            <span className="lp-sri-txt"><strong>Integrado con el SRI</strong>Formatos y comprobantes del Servicio de Rentas Internas</span>
+          </div>
+
           <div className="lp-hero-visual">
             <div className="lp-fcard fc-1">
               <div className="lp-fcard-label">📊 ICE por botella</div>
