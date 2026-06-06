@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { iceCalcAPI, downloadBlob } from '../services/api'
+import { iceCalcAPI, productsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, MESES } from '../utils/periodo'
 import { calcRow, ivaRate, CATEGORIAS, CAT_LABEL } from '../utils/iceCalc'
@@ -25,6 +25,15 @@ export default function CalculoICE() {
   const [form, setForm] = useState(EMPTY)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [catalogo, setCatalogo] = useState([])
+  const [editId, setEditId] = useState(null)
+
+  // Catálogo de productos del cliente
+  useEffect(() => {
+    const id = selectedClient?.identificacion
+    if (!id) { setCatalogo([]); return }
+    productsAPI.list(id).then((r) => setCatalogo(r.data?.data || [])).catch(() => setCatalogo([]))
+  }, [selectedClient])
 
   const anio = selectedClient?.periodo_anio || 2026
   const mes = selectedClient?.periodo_mes || 1
@@ -49,12 +58,35 @@ export default function CalculoICE() {
   const agregar = async () => {
     setSaving(true)
     try {
-      await iceCalcAPI.create({ client_id: selectedClientId, ...form })
+      if (editId) await iceCalcAPI.update(editId, form)
+      else await iceCalcAPI.create({ client_id: selectedClientId, ...form })
       setForm((f) => ({ ...EMPTY, categoria: f.categoria, por_cajas: f.por_cajas, anio: f.anio, mes: f.mes }))
+      setEditId(null)
       await load()
     } catch (e) {
       alert('Error: ' + (e.response?.data?.detail || e.message))
     } finally { setSaving(false) }
+  }
+  const editar = (r) => {
+    setEditId(r.id)
+    setForm({
+      producto: r.producto || '', categoria: r.categoria || 'ALCOHOLICA', por_cajas: r.por_cajas !== false,
+      cajas: r.cajas ?? 0, botellas_por_caja: r.botellas_por_caja ?? 12, unidades: r.unidades ?? 0,
+      grado: r.grado ?? 15, capacidad: r.capacidad ?? 750, precio: r.precio ?? 0,
+      anio: r.anio || anio, mes: r.mes || mes,
+    })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  const cancelarEdicion = () => { setEditId(null); setForm((f) => ({ ...EMPTY, anio: f.anio, mes: f.mes })) }
+
+  const elegirDelCatalogo = (nombre) => {
+    const p = catalogo.find((c) => c.nombre === nombre)
+    if (!p) return
+    setForm((f) => ({
+      ...f, producto: p.nombre,
+      grado: p.grado || f.grado, capacidad: p.capacidad || f.capacidad,
+      botellas_por_caja: p.botellas_por_caja || f.botellas_por_caja,
+    }))
   }
 
   const borrar = async (id) => {
@@ -147,6 +179,13 @@ export default function CalculoICE() {
           <select className="ci-in" value={form.mes} onChange={(e) => setForm({ ...form, mes: parseInt(e.target.value, 10) })}>
             {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
           </select></label>
+        {catalogo.length > 0 && (
+          <label className="ci-field"><span>Desde catálogo</span>
+            <select className="ci-in" value="" onChange={(e) => { if (e.target.value) elegirDelCatalogo(e.target.value) }}>
+              <option value="">Elegir producto…</option>
+              {catalogo.map((p) => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+            </select></label>
+        )}
         <label className="ci-field wide"><span>Producto (opcional)</span>
           <input className="ci-in" placeholder="Nombre del producto" value={form.producto}
             onChange={(e) => setForm({ ...form, producto: e.target.value.toUpperCase() })} /></label>
@@ -170,7 +209,8 @@ export default function CalculoICE() {
         )}
         <label className="ci-field"><span>Grado alcohólico (%)</span><input className="ci-in s" type="number" value={form.grado} onChange={(e) => setForm({ ...form, grado: e.target.value })} /></label>
         <label className="ci-field"><span>Capacidad (ml)</span><input className="ci-in s" type="number" value={form.capacidad} onChange={(e) => setForm({ ...form, capacidad: e.target.value })} /></label>
-        <button className="ci-btn primary ci-add" onClick={agregar} disabled={saving}>＋ Agregar</button>
+        <button className="ci-btn primary ci-add" onClick={agregar} disabled={saving}>{editId ? '💾 Guardar' : '＋ Agregar'}</button>
+        {editId && <button className="ci-btn small ci-add" onClick={cancelarEdicion}>Cancelar</button>}
       </div>
 
       {/* Cálculo en vivo del producto que se está ingresando */}
@@ -238,7 +278,10 @@ export default function CalculoICE() {
                     <td className="r">{money(c.baseIva)}</td>
                     <td className="r">{money(c.iva)}</td>
                     <td className="r">{money(c.pvp)}</td>
-                    <td><button className="ci-del" onClick={() => borrar(r.id)}>✕</button></td>
+                    <td className="ci-acts">
+                      <button className="ci-edit" onClick={() => editar(r)} title="Editar">✏️</button>
+                      <button className="ci-del" onClick={() => borrar(r.id)} title="Eliminar">✕</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

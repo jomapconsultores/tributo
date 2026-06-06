@@ -135,6 +135,13 @@ export const productsAPI = {
   delete: (id) => api.delete(`/api/products/${id}`),
 }
 
+// Anexos PVP/ICE guardados por cliente/período
+export const anexosAPI = {
+  list: (clientId) => api.get('/api/anexos/', { params: { client_id: clientId } }),
+  save: (clientId, tipo, datos) => api.post('/api/anexos/', { client_id: clientId, tipo, datos }),
+  delete: (id) => api.delete(`/api/anexos/${id}`),
+}
+
 // Rebajas y exenciones ICE (ingredientes por producto)
 export const rebajasAPI = {
   list: (identificacion, producto) => api.get('/api/rebajas/', { params: { identificacion, producto } }),

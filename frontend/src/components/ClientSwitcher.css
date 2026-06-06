@@ -11,3 +11,4 @@
   font-size: 0.84rem; background: #fff; color: #334155; cursor: pointer; max-width: 360px;
 }
 .cs-sel:focus { outline: none; border-color: #4f46e5; }
+.cs-per { max-width: 150px; font-weight: 600; }

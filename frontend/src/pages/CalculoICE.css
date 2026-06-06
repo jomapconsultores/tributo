@@ -61,5 +61,7 @@
 .ci-table .r { text-align: right; }
 .ci-table .strong { font-weight: 700; color: #d97706; }
 .ci-table tbody tr:hover { background: #f8fafc; }
+.ci-acts { white-space: nowrap; }
+.ci-edit { border: none; background: transparent; cursor: pointer; font-size: 0.85rem; padding: 2px 4px; }
 .ci-del { border: none; background: transparent; color: #cbd5e1; cursor: pointer; font-size: 0.9rem; }
 .ci-del:hover { color: #dc2626; }

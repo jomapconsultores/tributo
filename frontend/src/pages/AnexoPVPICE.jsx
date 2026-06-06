@@ -1,6 +1,7 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
-import { iceAPI, productsAPI } from '../services/api'
+import { iceAPI, productsAPI, anexosAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
+import { periodoCorto } from '../utils/periodo'
 import './AnexoPVPICE.css'
 
 // Columnas de detalle (ventas/vta) según el esquema SRI
@@ -43,13 +44,39 @@ export default function AnexoPVPICE() {
   const [clientSel, setClientSel] = useState('')
   const [catalogo, setCatalogo] = useState([])
   const [catSel, setCatSel] = useState('')
+  const [saved, setSaved] = useState([])
   const fileRef = useRef(null)
 
   // El catálogo "desde catálogo" es el del cliente elegido (sus productos guardados)
   useEffect(() => {
-    if (!clientSel) { setCatalogo([]); return }
+    if (!clientSel) { setCatalogo([]); setSaved([]); return }
     productsAPI.byClient(clientSel).then((r) => setCatalogo(r.data?.data || [])).catch(() => setCatalogo([]))
+    anexosAPI.list(clientSel).then((r) => setSaved(r.data?.data || [])).catch(() => setSaved([]))
   }, [clientSel])
+
+  const guardarAnexo = async () => {
+    if (!clientSel) { alert('Elige un cliente (RUC y período) para guardar.'); return }
+    if (!tipo) { alert('No hay anexo para guardar.'); return }
+    try {
+      await anexosAPI.save(clientSel, tipo, { tipo, header, rows })
+      const r = await anexosAPI.list(clientSel)
+      setSaved(r.data?.data || [])
+      alert('✔ Anexo guardado para el período seleccionado.')
+    } catch (e) { alert('Error al guardar: ' + (e.response?.data?.detail || e.message)) }
+  }
+
+  const recuperarAnexo = (a) => {
+    const d = a.datos || {}
+    setTipo(d.tipo || a.tipo)
+    setHeader(d.header || {})
+    setRows(d.rows || [])
+  }
+
+  const borrarAnexo = async (id) => {
+    if (!window.confirm('¿Eliminar este anexo guardado?')) return
+    try { await anexosAPI.delete(id); const r = await anexosAPI.list(clientSel); setSaved(r.data?.data || []) }
+    catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
+  }
 
   const importarICEXML = async () => {
     if (!clientSel) { alert('Elige un cliente.'); return }
@@ -161,17 +188,18 @@ export default function AnexoPVPICE() {
         <button className="ax-btn green" onClick={addRow} disabled={!tipo}>➕ Añadir producto</button>
         <button className="ax-btn red" onClick={limpiar}>🧹 Limpiar todo</button>
         <button className="ax-btn yellow" onClick={descargar} disabled={!tipo}>💾 Generar XML SRI</button>
+        <button className="ax-btn teal" onClick={guardarAnexo} disabled={!tipo || !clientSel}>🗄 Guardar anexo</button>
       </div>
 
       {/* Relacionar productos */}
       <div className="ax-relate">
         <div className="ax-relate-group">
-          <span className="ax-relate-lbl">Desde ICE-XML:</span>
+          <span className="ax-relate-lbl">Cliente / período:</span>
           <select value={clientSel} onChange={(e) => setClientSel(e.target.value)}>
             <option value="">Cliente…</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.identificacion} — {c.nombre}</option>)}
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.identificacion} — {c.nombre} · {periodoCorto(c)}</option>)}
           </select>
-          <button className="ax-btn teal" onClick={importarICEXML}>↪ Importar ventas ICE</button>
+          <button className="ax-btn teal" onClick={importarICEXML} disabled={!clientSel}>↪ Importar ventas ICE</button>
         </div>
         <div className="ax-relate-group">
           <span className="ax-relate-lbl">Desde catálogo del cliente:</span>
@@ -184,6 +212,21 @@ export default function AnexoPVPICE() {
           </select>
         </div>
       </div>
+
+      {/* Anexos guardados del cliente/período */}
+      {clientSel && saved.length > 0 && (
+        <div className="ax-saved">
+          <span className="ax-saved-lbl">Anexos guardados:</span>
+          {saved.map((a) => (
+            <span key={a.id} className="ax-saved-item">
+              <button className="ax-saved-load" onClick={() => recuperarAnexo(a)} title="Recuperar">
+                {a.tipo} · {(a.datos?.rows?.length ?? 0)} filas
+              </button>
+              <button className="ax-saved-del" onClick={() => borrarAnexo(a.id)} title="Eliminar">✕</button>
+            </span>
+          ))}
+        </div>
+      )}
 
       {!tipo ? (
         <div className="ax-init">
