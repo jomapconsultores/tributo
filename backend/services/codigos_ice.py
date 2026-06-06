@@ -3,10 +3,27 @@ Cada hoja con nombre numérico (3011, 3031, …) es un impuesto; sus filas tiene
 Código Impuesto | Impuesto | Código Clasificación | Clasificación | Código de Marca | Descripción.
 Las hojas de listas (Presentacion, Capacidad, Unidad, Grado_Alcoholico, País) son catálogos auxiliares."""
 import os
+from services.storage import descargar_codigos
 
 _PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resources", "codigos_ice.xls")
 _marcas_cache = None
 _lookups_cache = None
+
+
+def _abrir_wb():
+    """Abre el workbook de Códigos ICE desde Supabase Storage (o archivo local)."""
+    import xlrd
+    data = descargar_codigos()
+    if data:
+        return xlrd.open_workbook(file_contents=data)
+    return xlrd.open_workbook(_PATH)
+
+
+def limpiar_cache():
+    """Invalida las cachés tras reemplazar el archivo de Códigos ICE."""
+    global _marcas_cache, _lookups_cache
+    _marcas_cache = None
+    _lookups_cache = None
 
 
 def _i(v):
@@ -22,8 +39,7 @@ def _cargar_marcas(force=False):
         return _marcas_cache
     out = []
     try:
-        import xlrd
-        wb = xlrd.open_workbook(_PATH)
+        wb = _abrir_wb()
         for sh in wb.sheets():
             if not sh.name.strip().isdigit():
                 continue  # solo hojas de impuesto
@@ -123,7 +139,7 @@ def lookups():
               "Grado_Alcoholico": "grado", "País": "pais"}
     try:
         import xlrd
-        wb = xlrd.open_workbook(_PATH)
+        wb = _abrir_wb()
         for sname, key in sheets.items():
             try:
                 sh = wb.sheet_by_name(sname)
