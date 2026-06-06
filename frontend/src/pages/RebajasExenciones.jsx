@@ -19,21 +19,24 @@ export default function RebajasExenciones() {
   const [producto, setProducto] = useState('')
   const [ings, setIngs] = useState([])
   const [form, setForm] = useState(EMPTY)
-  const [verif, setVerif] = useState(null) // { calificado, texto }
+  const [verif, setVerif] = useState(null) // { estado, texto }
 
   const verificarRuc = async () => {
     const ruc = (form.ruc_proveedor || '').trim()
     if (!ruc) { alert('Ingresa el RUC del proveedor.'); return }
-    setVerif({ calificado: null, texto: 'Consultando al Ministerio de Producción…' })
+    setVerif({ estado: 'wait', texto: 'Consultando Ministerio de Producción y SRI…' })
     try {
       const r = await rebajasAPI.verificarRuc(ruc)
       const d = r.data
-      setForm((f) => ({ ...f, calificado: d.calificado === true, proveedor_nombre: d.razon_social || f.proveedor_nombre }))
-      if (d.calificado === true) setVerif({ calificado: true, texto: `✔ Calificado · ${d.razon_social} · ${d.categoria}${d.vigencia ? ' · ' + d.vigencia : ''}` })
-      else if (d.calificado === false) setVerif({ calificado: false, texto: `✗ No calificado · ${d.mensaje}` })
-      else setVerif({ calificado: null, texto: `⚠ ${d.mensaje}` })
+      const nombre = d.razon_social || '—'
+      setForm((f) => ({ ...f, calificado: d.cumple === true, proveedor_nombre: d.razon_social || f.proveedor_nombre }))
+      let estado = 'wait', texto = `⚠ ${d.mensaje}${nombre !== '—' ? ' · ' + nombre : ''}`
+      if (d.cumple) { estado = 'ok'; texto = `✔ Cumple · ${nombre} · ${d.categoria}${d.vigencia ? ' · ' + d.vigencia : ''}` }
+      else if (d.calificado === true) { estado = 'no'; texto = `✗ No cumple · ${nombre} · categorizado como ${d.categoria} (no es MIPYME)` }
+      else if (d.calificado === false) { estado = 'no'; texto = `✗ No cumple · ${nombre} · no categorizado en el Ministerio${d.tipo ? ' · ' + d.tipo : ''}` }
+      setVerif({ estado, texto })
     } catch (e) {
-      setVerif({ calificado: null, texto: 'Error al verificar: ' + (e.response?.data?.detail || e.message) })
+      setVerif({ estado: 'wait', texto: 'Error al verificar: ' + (e.response?.data?.detail || e.message) })
     }
   }
 
@@ -130,16 +133,14 @@ export default function RebajasExenciones() {
       <details className="re-normas" open>
         <summary>📖 Normas de aplicación</summary>
         <div className="re-normas-body">
-          <p><strong>Rebaja / exención de ICE por componente nacional.</strong> Para acceder al beneficio, el producto debe elaborarse con al menos <strong>{UMBRAL}%</strong> de materia prima nacional proveniente de <strong>proveedores categorizados (calificados)</strong> por el Ministerio de Producción.</p>
+          <p><strong>Rebaja / exención de ICE por componente nacional.</strong> El beneficio aplica cuando la bebida se elabora con al menos <strong>{UMBRAL}%</strong> de materia prima nacional adquirida a <strong>artesanos, micro, pequeñas o medianas empresas (MIPYME) u organizaciones de la economía popular y solidaria</strong>, categorizados por el Ministerio de Producción.</p>
           <ul>
-            <li>Los ingredientes se ingresan <strong>por botella/envase</strong> con su cantidad.</li>
-            <li>El <strong>agua no se contabiliza</strong> (incidencia 0%).</li>
-            <li>Un ingrediente <strong>no calificado</strong> tiene incidencia <strong>0%</strong>.</li>
-            <li>El <strong>%</strong> de cada fila = cantidad ÷ total (sin agua); la suma es el <strong>% nacional calificado</strong>.</li>
+            <li>Al pulsar <strong>🔎 Verificar</strong> se consulta el RUC en el Ministerio: si está categorizado como <strong>MIPYME/artesano</strong> → <strong>cumple</strong>; si es <strong>"NO MIPYME"</strong> (empresa grande) → <strong>no cumple</strong>, aunque esté categorizado.</li>
+            <li>Si el RUC <strong>no está</strong> en el Ministerio, se consulta el <strong>SRI</strong> para obtener la razón social/nombre (y queda como "no cumple").</li>
+            <li>El <strong>agua no se contabiliza</strong> (incidencia 0%); un proveedor que <strong>no cumple</strong> tiene incidencia <strong>0%</strong>.</li>
+            <li>El <strong>%</strong> de cada fila = cantidad ÷ total (sin agua); la suma debe ser ≥ {UMBRAL}%.</li>
           </ul>
-          <p>La categorización del proveedor (empresa o persona natural) se verifica por RUC en el Ministerio de Producción:
-            {' '}<a href={MINPROD} target="_blank" rel="noreferrer">Consulta de categorización ↗</a></p>
-          <p className="re-normas-nota">Nota: los porcentajes y la regla son configurables; verifica la normativa vigente del SRI/Ministerio antes de aplicar el beneficio.</p>
+          <p className="re-normas-nota">Fundamento: LRTI — rebaja de hasta 50% de la tarifa específica para bebidas con materia prima nacional de proveedores MIPYME/artesanos; la exención no aplica si el contenido nacional es menor al 70%. Verifica la normativa vigente antes de aplicar el beneficio.</p>
         </div>
       </details>
 
@@ -149,7 +150,7 @@ export default function RebajasExenciones() {
             <label className="re-f"><span>RUC proveedor</span>
               <input value={form.ruc_proveedor} onChange={(e) => { setForm({ ...form, ruc_proveedor: e.target.value }); setVerif(null) }} placeholder="RUC" /></label>
             <button type="button" className="re-verif" onClick={verificarRuc} title="Verificar categorización en el Ministerio de Producción">🔎 Verificar</button>
-            <label className="re-f"><span>¿Calificado?</span>
+            <label className="re-f"><span>¿Cumple?</span>
               <span className="re-check"><input type="checkbox" checked={form.calificado} onChange={(e) => setForm({ ...form, calificado: e.target.checked })} /> {form.calificado ? 'Sí' : 'No'}</span></label>
             <label className="re-f wide"><span>Empresa / Persona</span>
               <input value={form.proveedor_nombre} onChange={(e) => setForm({ ...form, proveedor_nombre: e.target.value.toUpperCase() })} placeholder="Nombre del proveedor" /></label>
@@ -163,7 +164,7 @@ export default function RebajasExenciones() {
           </div>
 
           {verif && (
-            <div className={`re-verif-res ${verif.calificado === true ? 'ok' : verif.calificado === false ? 'no' : 'wait'}`}>
+            <div className={`re-verif-res ${verif.estado}`}>
               {verif.texto}
             </div>
           )}
@@ -171,7 +172,7 @@ export default function RebajasExenciones() {
           <div className="re-table-wrap">
             <table className="re-table">
               <thead><tr>
-                <th>RUC</th><th>Calificado</th><th>Empresa / Persona</th><th>Producto</th>
+                <th>RUC</th><th>Cumple</th><th>Empresa / Persona</th><th>Producto</th>
                 <th className="r">Cantidad</th><th className="r">%</th><th></th>
               </tr></thead>
               <tbody>
@@ -183,7 +184,7 @@ export default function RebajasExenciones() {
                     <tr key={i.id} className={agua ? 'agua' : ''}>
                       <td>{i.ruc_proveedor || '—'}</td>
                       <td>
-                        <span className={`re-badge ${i.calificado ? 'ok' : 'no'}`}>{i.calificado ? 'Calificado' : 'No calificado'}</span>
+                        <span className={`re-badge ${i.calificado ? 'ok' : 'no'}`}>{i.calificado ? 'Cumple' : 'No cumple'}</span>
                         {i.ruc_proveedor && <a className="re-vlink" href={MINPROD} target="_blank" rel="noreferrer" title="Verificar en Min. Producción">🔎</a>}
                       </td>
                       <td>{i.proveedor_nombre || '—'}</td>
