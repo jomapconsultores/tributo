@@ -67,7 +67,11 @@ def cmd_list():
               help="Corre sin abrir ventana (no recomendado la primera vez).")
 def cmd_test_login(ruc: str, headless: bool):
     """Prueba el login Keycloak de un cliente. Útil para validar credenciales."""
-    cliente = buscar_cliente(ruc)
+    try:
+        cliente = buscar_cliente(ruc)
+    except (FileNotFoundError, ValueError) as e:
+        click.secho(f"[ERR] {e}", fg="red")
+        sys.exit(1)
     if not cliente:
         click.secho(f"[ERR] RUC {ruc} no está en clientes.local.json", fg="red")
         sys.exit(1)
