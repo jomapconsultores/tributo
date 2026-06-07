@@ -131,15 +131,20 @@ async def export_excel(client_id: str = Query(...), tipo: str = Query("IVA"), us
         money = wb.add_format({"border": 1, "num_format": "#,##0.00"})
         ws.write(0, 0, f"DECLARACIÓN {tipo.upper()} — {c.get('identificacion','')} {c.get('nombre','')} · {decl.get('mes')}/{decl.get('anio')}", title)
         ws.write(2, 0, "Sección", head); ws.write(2, 1, "Código SRI", head)
-        ws.write(2, 2, "Concepto", head); ws.write(2, 3, "Valor", head)
+        ws.write(2, 2, "Concepto", head); ws.write(2, 3, "# Fact.", head); ws.write(2, 4, "Valor", head)
         r = 3
         for f in decl["filas"]:
             ws.write(r, 0, f.get("seccion", ""), cell)
             ws.write(r, 1, f.get("codigo", ""), cell)
             ws.write(r, 2, f.get("concepto", ""), cell)
-            ws.write(r, 3, f.get("valor", 0), money)
+            n = f.get("num_comprobantes")
+            if n is not None:
+                ws.write(r, 3, n, cell)
+            else:
+                ws.write(r, 3, "", cell)
+            ws.write(r, 4, f.get("valor", 0), money)
             r += 1
-        ws.set_column(0, 0, 16); ws.set_column(1, 1, 11); ws.set_column(2, 2, 60); ws.set_column(3, 3, 16)
+        ws.set_column(0, 0, 26); ws.set_column(1, 1, 11); ws.set_column(2, 2, 60); ws.set_column(3, 3, 9); ws.set_column(4, 4, 16)
         wb.close()
         output.seek(0)
         label = f"Declaracion_{tipo.upper()}_{c.get('identificacion','')}_{decl.get('anio')}{str(decl.get('mes') or '').zfill(2)}".replace(" ", "_")

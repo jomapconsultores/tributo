@@ -115,15 +115,16 @@ export default function Declaraciones({ tipo }) {
       ) : (
         <div className="dc-card-box">
           <table className="dc-table">
-            <thead><tr><th>Código SRI</th><th>Concepto</th><th className="r">Valor</th></tr></thead>
+            <thead><tr><th>Código SRI</th><th>Concepto</th><th className="r"># Fact.</th><th className="r">Valor</th></tr></thead>
             <tbody>
               {secciones.map((sec) => (
                 <Fragment key={sec}>
-                  <tr className="dc-sec"><td colSpan={3}>{sec}</td></tr>
+                  <tr className="dc-sec"><td colSpan={4}>{sec}</td></tr>
                   {decl.filas.filter((f) => f.seccion === sec).map((f, i) => (
                     <tr key={sec + i} className={f.seccion === 'RESULTADO' ? 'dc-res' : ''}>
                       <td className="dc-cod">{f.codigo}</td>
                       <td>{f.concepto}</td>
+                      <td className="r">{f.num_comprobantes != null ? f.num_comprobantes : ''}</td>
                       <td className="r">{money(f.valor)}</td>
                     </tr>
                   ))}
