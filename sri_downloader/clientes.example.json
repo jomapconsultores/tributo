@@ -1,0 +1,14 @@
+{
+  "clientes": [
+    {
+      "ruc": "1791234567001",
+      "clave": "TU_CLAVE_SRI_AQUI",
+      "alias": "Mi Cliente S.A."
+    },
+    {
+      "ruc": "0102030405001",
+      "clave": "OTRA_CLAVE",
+      "alias": "Persona Natural Juan"
+    }
+  ]
+}

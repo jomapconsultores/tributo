@@ -1,0 +1,4 @@
+clientes.local.json
+descargas/
+playwright_state/
+.env.local
