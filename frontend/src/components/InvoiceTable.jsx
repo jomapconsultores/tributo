@@ -22,14 +22,58 @@ const VALOR_OPCIONES = [
   { key: 'iva_5', label: 'IVA 5%' },
 ]
 
+const FILTROS_KEY = 'gastos_filtros_v1'
+
+function readPersistedFiltros() {
+  try {
+    const raw = localStorage.getItem(FILTROS_KEY)
+    if (!raw) return null
+    const obj = JSON.parse(raw)
+    return obj && typeof obj === 'object' ? obj : null
+  } catch {
+    return null
+  }
+}
+
 export default function InvoiceTable({ invoices, onInvoicesChange }) {
   const [edit, setEdit] = useState({ id: null, field: null })
   const [value, setValue] = useState('')
-  const [search, setSearch] = useState('')
-  const [fClasif, setFClasif] = useState('')
-  const [fForma, setFForma] = useState('')
-  const [fValor, setFValor] = useState('')
+  const persisted = readPersistedFiltros() || {}
+  const [search, setSearch] = useState(persisted.search || '')
+  const [fClasif, setFClasif] = useState(persisted.fClasif || '')
+  const [fForma, setFForma] = useState(persisted.fForma || '')
+  const [fValor, setFValor] = useState(persisted.fValor || '')
   const [selected, setSelected] = useState(() => new Set())
+  const [copiedId, setCopiedId] = useState('')
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        FILTROS_KEY,
+        JSON.stringify({ search, fClasif, fForma, fValor })
+      )
+    } catch { /* localStorage lleno o deshabilitado: ignorar */ }
+  }, [search, fClasif, fForma, fValor])
+
+  const copyCell = async (text, cellId) => {
+    if (!text) return
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text)
+      } else {
+        const ta = document.createElement('textarea')
+        ta.value = text
+        ta.style.position = 'fixed'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+      }
+      setCopiedId(cellId)
+      setTimeout(() => setCopiedId((c) => (c === cellId ? '' : c)), 1100)
+    } catch { /* clipboard bloqueado: feedback omitido */ }
+  }
 
   // Catálogo maestro de categorías (las definidas en el Clasificador de Gastos)
   const [catalog, setCatalog] = useState([])
@@ -294,9 +338,27 @@ export default function InvoiceTable({ invoices, onInvoicesChange }) {
                   {inv.es_yanbal && <span className="tag-yanbal">Y</span>}
                 </td>
                 <td>{inv.fecha || '-'}</td>
-                <td>{inv.ruc_proveedor || '-'}</td>
-                <td>{inv.factura_numero || '-'}</td>
-                <td className="prov" title={inv.nombre_proveedor}>{inv.nombre_proveedor || '-'}</td>
+                <td
+                  className={`copyable${copiedId === `ruc-${inv.id}` ? ' copied' : ''}`}
+                  title={inv.ruc_proveedor ? 'Clic para copiar RUC' : ''}
+                  onClick={() => copyCell(inv.ruc_proveedor, `ruc-${inv.id}`)}
+                >
+                  {inv.ruc_proveedor || '-'}
+                </td>
+                <td
+                  className={`copyable${copiedId === `fac-${inv.id}` ? ' copied' : ''}`}
+                  title={inv.factura_numero ? 'Clic para copiar N° factura' : ''}
+                  onClick={() => copyCell(inv.factura_numero, `fac-${inv.id}`)}
+                >
+                  {inv.factura_numero || '-'}
+                </td>
+                <td
+                  className={`prov copyable${copiedId === `prov-${inv.id}` ? ' copied' : ''}`}
+                  title={inv.nombre_proveedor ? `Clic para copiar — ${inv.nombre_proveedor}` : ''}
+                  onClick={() => copyCell(inv.nombre_proveedor, `prov-${inv.id}`)}
+                >
+                  {inv.nombre_proveedor || '-'}
+                </td>
                 <td className="clasif">
                   {renderEditable(inv, 'clasificacion',
                     <span className={!inv.clasificacion || inv.clasificacion === 'SIN CLASIFICAR' ? 'unclass' : 'classed'}>

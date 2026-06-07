@@ -197,3 +197,32 @@ td.r .cell-edit { width: 80px; text-align: right; }
 }
 
 .del-btn:hover { color: #b91c1c; }
+
+.invoice-table td.copyable {
+  cursor: pointer;
+  position: relative;
+  transition: background-color 120ms ease;
+}
+
+.invoice-table td.copyable:hover {
+  background: #eef2ff;
+}
+
+.invoice-table td.copyable.copied {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.invoice-table td.copyable.copied::after {
+  content: '✓ Copiado';
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #16a34a;
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  pointer-events: none;
+}
