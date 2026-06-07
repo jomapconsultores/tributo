@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import InvoiceTable from './InvoiceTable'
-import { esPersonal } from '../utils/categorias'
+import { esPersonal, GASTOS_PERSONALES } from '../utils/categorias'
+import { classificationAPI } from '../services/api'
 import './InvoiceTabs.css'
 
 const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
@@ -65,6 +66,48 @@ function SummaryTable({ titulo, filas, color }) {
 
 export default function InvoiceTabs({ invoices, onInvoicesChange }) {
   const [tab, setTab] = useState('datos')
+  const [pendCatalog, setPendCatalog] = useState([])
+  const [pendInput, setPendInput] = useState({})
+  const [pendBusy, setPendBusy] = useState('')
+
+  useEffect(() => {
+    classificationAPI.list()
+      .then((res) => {
+        const cats = (res.data || [])
+          .map((c) => (c.categoria || '').toUpperCase().trim())
+          .filter(Boolean)
+        setPendCatalog([...new Set(cats)])
+      })
+      .catch(() => {})
+  }, [])
+
+  const pendOpciones = useMemo(() => {
+    const set = new Set([...GASTOS_PERSONALES].map((c) => c.toUpperCase()))
+    pendCatalog.forEach((c) => set.add(c))
+    return Array.from(set).sort()
+  }, [pendCatalog])
+
+  const aplicarPendiente = async (ruc, nombre) => {
+    const cat = (pendInput[ruc] || '').trim().toUpperCase()
+    if (!cat) {
+      alert('Selecciona una categoría primero.')
+      return
+    }
+    setPendBusy(ruc)
+    try {
+      const res = await classificationAPI.create(ruc, nombre, cat)
+      const n = res?.data?.reclasificadas ?? 0
+      setPendInput((prev) => { const o = { ...prev }; delete o[ruc]; return o })
+      await onInvoicesChange()
+      if (n > 0) {
+        alert(`✔ ${n} factura(s) de ${nombre || ruc} se actualizaron a "${cat}"`)
+      }
+    } catch (e) {
+      alert('Error al asignar: ' + (e.response?.data?.detail || e.message))
+    } finally {
+      setPendBusy('')
+    }
+  }
 
   // Solo facturas OK, igual que el Excel (rows_ok)
   const rowsOk = useMemo(() => invoices.filter((i) => i.estado === 'OK'), [invoices])
@@ -134,22 +177,57 @@ export default function InvoiceTabs({ invoices, onInvoicesChange }) {
           {pendientes.length === 0 ? (
             <div className="itabs-empty">🎉 No hay facturas sin clasificar.</div>
           ) : (
-            <table className="rs-table pend-table">
-              <thead>
-                <tr style={{ background: '#d97706' }}>
-                  <th>RUC</th>
-                  <th>Nombre</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pendientes.map((p) => (
-                  <tr key={`${p.ruc}|${p.nombre}`}>
-                    <td>{p.ruc || '-'}</td>
-                    <td>{p.nombre || '-'}</td>
+            <>
+              <datalist id="pend-cat-list">
+                {pendOpciones.map((c) => <option key={c} value={c} />)}
+              </datalist>
+              <table className="rs-table pend-table">
+                <thead>
+                  <tr style={{ background: '#d97706' }}>
+                    <th>RUC</th>
+                    <th>Nombre</th>
+                    <th>Asignar Categoría</th>
+                    <th></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {pendientes.map((p) => {
+                    const busy = pendBusy === p.ruc
+                    const val = pendInput[p.ruc] || ''
+                    return (
+                      <tr key={`${p.ruc}|${p.nombre}`}>
+                        <td>{p.ruc || '-'}</td>
+                        <td>{p.nombre || '-'}</td>
+                        <td>
+                          <input
+                            className="pend-cat-input"
+                            list="pend-cat-list"
+                            placeholder="Categoría…"
+                            value={val}
+                            disabled={busy}
+                            onChange={(e) =>
+                              setPendInput((prev) => ({ ...prev, [p.ruc]: e.target.value.toUpperCase() }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') aplicarPendiente(p.ruc, p.nombre)
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <button
+                            className="pend-apply-btn"
+                            disabled={busy || !val.trim()}
+                            onClick={() => aplicarPendiente(p.ruc, p.nombre)}
+                          >
+                            {busy ? '…' : '✔ Asignar'}
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </>
           )}
         </div>
       )}
