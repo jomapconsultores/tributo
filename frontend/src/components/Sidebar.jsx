@@ -16,6 +16,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const [gastosOpen, setGastosOpen] = useState(true)
   const [retencionesOpen, setRetencionesOpen] = useState(true)
   const [declaracionesOpen, setDeclaracionesOpen] = useState(true)
+  const [devolucionesOpen, setDevolucionesOpen] = useState(true)
   const [clientSearch, setClientSearch] = useState('')
 
   // Contribuyentes únicos (por identificación) para el listado por nombre
@@ -50,6 +51,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const isDeclIva = path === '/declaracion-iva'
   const isDeclIce = path === '/declaracion-ice'
   const isDeclaraciones = isDeclIva || isDeclIce
+  const isDevTerceraEdad = path === '/devoluciones-iva/tercera-edad'
+  const isDevoluciones = isDevTerceraEdad
   const isIceXml = path === '/ice'
   const isCalculo = path === '/calculo-ice'
   const isAnexo = path === '/anexo-pvp-ice'
@@ -57,7 +60,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const isRebajas = path === '/rebajas-exenciones'
   const isRecursos = path === '/recursos-ice'
   const isIngresos = isIceXml || isCalculo || isAnexo || isCatalogo || isRebajas || isRecursos
-  const isGastos = !isRetenciones && !isIngresos && !isDeclaraciones // todo lo demás pertenece al proceso de Gastos
+  const isGastos = !isRetenciones && !isIngresos && !isDeclaraciones && !isDevoluciones // todo lo demás pertenece al proceso de Gastos
   const isDatabase = path === '/'
   const isClassifier = path === '/clasificador'
   const isSaved = path === '/datos'
@@ -223,6 +226,25 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
             </button>
             <button className={`nav-item submodule ${isDeclIva ? 'active' : ''}`} onClick={() => navigate('/declaracion-iva')}>
               <span className="nav-ico">🧾</span><span>Declaración IVA</span>
+            </button>
+          </div>
+        )}
+        </>)}
+
+        {/* Módulo DEVOLUCIONES IVA (desplegable) */}
+        {has('declaraciones') && (<>
+        <button
+          className={`nav-item module-btn devoluciones ${isDevoluciones ? 'active' : ''}`}
+          onClick={() => setDevolucionesOpen((o) => !o)}
+        >
+          <span className={`caret ${devolucionesOpen ? 'open' : ''}`}>▸</span>
+          <span className="nav-ico">💰</span>
+          <span>DEVOLUCIONES IVA</span>
+        </button>
+        {devolucionesOpen && (
+          <div className="submodule-list">
+            <button className={`nav-item submodule ${isDevTerceraEdad ? 'active' : ''}`} onClick={() => navigate('/devoluciones-iva/tercera-edad')}>
+              <span className="nav-ico">👵</span><span>Adultos mayores</span>
             </button>
           </div>
         )}

@@ -69,3 +69,4 @@ Si Keycloak rechaza credenciales, ves `Credenciales rechazadas por el SRI`. Si e
 | 2 | 📋 | Scraper de Comprobantes Recibidos (gastos + retenciones) |
 | 3 | 📋 | Scraper de Facturas Emitidas (Facturador SRI) |
 | 4 | 📋 | Upload + clasificación automática al tributos-api |
+| 5 | 📋 | Scraper de Devolución IVA Tercera Edad (alimenta el módulo DEVOLUCIONES IVA del frontend) |
