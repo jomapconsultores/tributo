@@ -29,29 +29,61 @@ def _agg(invoices, key):
     return total, n
 
 
-def declaracion_iva(invoices, ventas_ice):
-    """Formulario 104. Solo se reportan los gastos del EJERCICIO (giro del
-    negocio): son los que dan derecho a crédito tributario. Los gastos
-    PERSONALES quedan fuera de esta declaración (van al Impuesto a la Renta
-    como deducción personal, no al 104)."""
+def declaracion_iva(invoices, ventas_ice, ventas_iva=None):
+    """Formulario 104.
+
+    Compras: solo gastos del EJERCICIO (con derecho a crédito). Personales van al IR.
+
+    Ventas: dos fuentes que se SUMAN — ambas declaran al mismo formulario pero
+    se llevan en tablas distintas porque son impuestos distintos:
+    - ventas_ice (tabla ice_sales): facturas con ICE. base_iva ya incluye el ICE
+      en la base imponible (regla SRI ICE+IVA).
+    - ventas_iva (tabla sales_iva): facturas SIN ICE, solo IVA. Resumen por
+      factura con desglose por tarifa.
+    """
+    if ventas_iva is None:
+        ventas_iva = []
+
     invoices = [i for i in invoices if (i.get("estado") or "OK") == "OK"]
     ejercicio = [i for i in invoices if not _es_personal(i)]
     personales_excluidos = sum(1 for i in invoices if _es_personal(i))
 
-    # ── Gastos del EJERCICIO (con derecho a crédito) ────────────────────
-    base_15, n_base_15 = _agg(ejercicio, "base_15")
-    iva_15, _          = _agg(ejercicio, "iva_15")
-    base_5, n_base_5   = _agg(ejercicio, "base_5")
-    iva_5, _           = _agg(ejercicio, "iva_5")
-    base_0, n_base_0   = _agg(ejercicio, "base_0")
-    no_obj, n_no_obj   = _agg(ejercicio, "no_objeto_iva")
-    exento, n_exento   = _agg(ejercicio, "exento_iva")
-    iva_compras = iva_15 + iva_5
+    # ── Compras del EJERCICIO (con derecho a crédito) ────────────────────
+    c_base_15, c_n_base_15 = _agg(ejercicio, "base_15")
+    c_iva_15, _            = _agg(ejercicio, "iva_15")
+    c_base_5, c_n_base_5   = _agg(ejercicio, "base_5")
+    c_iva_5, _             = _agg(ejercicio, "iva_5")
+    c_base_0, c_n_base_0   = _agg(ejercicio, "base_0")
+    c_no_obj, c_n_no_obj   = _agg(ejercicio, "no_objeto_iva")
+    c_exento, c_n_exento   = _agg(ejercicio, "exento_iva")
+    iva_compras = c_iva_15 + c_iva_5
 
-    # ── Ventas ──────────────────────────────────────────────────────────
-    base_ventas = sum(_f(v.get("base_iva")) for v in ventas_ice)
-    iva_ventas = sum(_f(v.get("valor_iva")) for v in ventas_ice)
-    n_ventas = sum(1 for v in ventas_ice if _f(v.get("base_iva")) > 0 or _f(v.get("valor_iva")) > 0)
+    # ── Ventas con ICE (tabla ice_sales) ─────────────────────────────────
+    # base_iva ya incluye el ICE en la base; valor_iva es 15% sobre esa base.
+    v_ice_solo_ok = [v for v in ventas_ice if (v.get("estado") or "OK") == "OK"]
+    v_ice_base_15 = sum(_f(v.get("base_iva")) for v in v_ice_solo_ok)
+    v_ice_iva_15  = sum(_f(v.get("valor_iva")) for v in v_ice_solo_ok)
+    n_ventas_ice  = sum(1 for v in v_ice_solo_ok if _f(v.get("base_iva")) > 0 or _f(v.get("valor_iva")) > 0)
+
+    # ── Ventas sin ICE (tabla sales_iva) ─────────────────────────────────
+    v_iva_solo_ok = [v for v in ventas_iva if (v.get("estado") or "OK") == "OK"]
+    v_base_15, v_n_base_15 = _agg(v_iva_solo_ok, "base_15")
+    v_iva_15,  _           = _agg(v_iva_solo_ok, "iva_15")
+    v_base_5,  v_n_base_5  = _agg(v_iva_solo_ok, "base_5")
+    v_iva_5,   _           = _agg(v_iva_solo_ok, "iva_5")
+    v_base_0,  v_n_base_0  = _agg(v_iva_solo_ok, "base_0")
+    v_no_obj,  v_n_no_obj  = _agg(v_iva_solo_ok, "no_objeto_iva")
+    v_exento,  v_n_exento  = _agg(v_iva_solo_ok, "exento_iva")
+
+    # ── Totales de ventas (suma ambas fuentes) ───────────────────────────
+    t_base_15 = v_ice_base_15 + v_base_15      # 411: ICE incluye su parte, IVA puro suma 15%
+    t_iva_15  = v_ice_iva_15 + v_iva_15        # 421
+    t_base_5  = v_base_5                       # 412 (ICE casi siempre es 15%)
+    t_iva_5   = v_iva_5                        # 422
+    t_base_0  = v_base_0                       # 413
+    t_exento  = v_exento                       # 414
+    t_no_obj  = v_no_obj                       # 415
+    iva_ventas = t_iva_15 + t_iva_5
     iva_pagar = max(0.0, iva_ventas - iva_compras)
 
     def fila(seccion, codigo, concepto, valor, n=None):
@@ -62,21 +94,26 @@ def declaracion_iva(invoices, ventas_ice):
 
     filas = [
         # ── VENTAS ──
-        fila("VENTAS", "411", "Ventas locales gravadas tarifa dif. de 0% (valor neto)", base_ventas, n_ventas),
-        fila("VENTAS", "421", "IVA generado en ventas", iva_ventas),
+        fila("VENTAS", "411", "Ventas locales gravadas 15% (valor neto, ICE+IVA incluido en base)", t_base_15, n_ventas_ice + v_n_base_15),
+        fila("VENTAS", "412", "Ventas locales gravadas 5% (valor neto)", t_base_5, v_n_base_5),
+        fila("VENTAS", "413", "Ventas locales con tarifa 0%", t_base_0, v_n_base_0),
+        fila("VENTAS", "414", "Ventas exentas de IVA", t_exento, v_n_exento),
+        fila("VENTAS", "415", "Ventas no objeto del IVA", t_no_obj, v_n_no_obj),
+        fila("VENTAS", "421", "IVA generado en ventas 15%", t_iva_15),
+        fila("VENTAS", "422", "IVA generado en ventas 5%", t_iva_5),
 
         # ── ADQUISICIONES (solo gastos del ejercicio) ──
-        fila("ADQUISICIONES", "510", "Adquisiciones gravadas 15% con derecho a crédito (valor neto)", base_15, n_base_15),
-        fila("ADQUISICIONES", "520", "IVA en adquisiciones 15% (crédito tributario)", iva_15),
-        fila("ADQUISICIONES", "550", "Adquisiciones gravadas 5% con derecho a crédito (valor neto)", base_5, n_base_5),
-        fila("ADQUISICIONES", "560", "IVA en adquisiciones 5% (crédito tributario)", iva_5),
-        fila("ADQUISICIONES", "517", "Adquisiciones y pagos gravados tarifa 0%", base_0, n_base_0),
-        fila("ADQUISICIONES", "—", "Adquisiciones no objeto del IVA", no_obj, n_no_obj),
-        fila("ADQUISICIONES", "—", "Adquisiciones exentas de IVA", exento, n_exento),
+        fila("ADQUISICIONES", "510", "Adquisiciones gravadas 15% con derecho a crédito (valor neto)", c_base_15, c_n_base_15),
+        fila("ADQUISICIONES", "520", "IVA en adquisiciones 15% (crédito tributario)", c_iva_15),
+        fila("ADQUISICIONES", "550", "Adquisiciones gravadas 5% con derecho a crédito (valor neto)", c_base_5, c_n_base_5),
+        fila("ADQUISICIONES", "560", "IVA en adquisiciones 5% (crédito tributario)", c_iva_5),
+        fila("ADQUISICIONES", "517", "Adquisiciones y pagos gravados tarifa 0%", c_base_0, c_n_base_0),
+        fila("ADQUISICIONES", "—", "Adquisiciones no objeto del IVA", c_no_obj, c_n_no_obj),
+        fila("ADQUISICIONES", "—", "Adquisiciones exentas de IVA", c_exento, c_n_exento),
 
         # ── RESULTADO ──
         fila("RESULTADO", "564", "Crédito tributario por adquisiciones (IVA compras del ejercicio)", iva_compras),
-        fila("RESULTADO", "499", "IVA a pagar estimado (421 − crédito 564)", iva_pagar),
+        fila("RESULTADO", "499", "IVA a pagar estimado (421+422 − crédito 564)", iva_pagar),
     ]
     return {
         "tipo": "IVA",
@@ -87,6 +124,8 @@ def declaracion_iva(invoices, ventas_ice):
             "iva_pagar": round(iva_pagar, 2),
             "num_facturas_ejercicio": len(ejercicio),
             "num_facturas_personales_excluidas": personales_excluidos,
+            "num_ventas_ice": n_ventas_ice,
+            "num_ventas_iva_solo": len(v_iva_solo_ok),
         },
     }
 

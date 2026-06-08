@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from config import get_settings
-from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials
+from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva
 from routers.access import require_module
 import os
 from dotenv import load_dotenv
@@ -93,6 +93,7 @@ app.include_router(invoices.router, dependencies=GASTOS)
 app.include_router(retentions.router, dependencies=RETEN)
 app.include_router(ice.router, dependencies=ICEMOD)
 app.include_router(ice_calc.router, dependencies=ICEMOD)
+app.include_router(sales_iva.router, dependencies=ICEMOD)
 app.include_router(products.router, dependencies=ICEMOD)
 app.include_router(rebajas.router, dependencies=ICEMOD)
 app.include_router(anexos.router, dependencies=ICEMOD)

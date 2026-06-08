@@ -55,11 +55,12 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const isDevoluciones = isDevTerceraEdad
   const isIceXml = path === '/ice'
   const isCalculo = path === '/calculo-ice'
+  const isIngresosIva = path === '/ingresos-iva'
   const isAnexo = path === '/anexo-pvp-ice'
   const isCatalogo = path === '/catalogo-productos'
   const isRebajas = path === '/rebajas-exenciones'
   const isRecursos = path === '/recursos-ice'
-  const isIngresos = isIceXml || isCalculo || isAnexo || isCatalogo || isRebajas || isRecursos
+  const isIngresos = isIceXml || isCalculo || isIngresosIva || isAnexo || isCatalogo || isRebajas || isRecursos
   const isGastos = !isRetenciones && !isIngresos && !isDeclaraciones && !isDevoluciones // todo lo demás pertenece al proceso de Gastos
   const isDatabase = path === '/'
   const isClassifier = path === '/clasificador'
@@ -90,6 +91,13 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
         </button>
         {ingresosOpen && (
           <div className="submodule-list">
+            <button
+              className={`nav-item submodule ${isIngresosIva ? 'active' : ''}`}
+              onClick={() => navigate('/ingresos-iva')}
+            >
+              <span className="nav-ico">📈</span>
+              <span>Ingresos IVA</span>
+            </button>
             <button
               className={`nav-item submodule ${isCalculo ? 'active' : ''}`}
               onClick={() => navigate('/calculo-ice')}

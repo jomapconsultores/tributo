@@ -150,6 +150,23 @@ export const iceAPI = {
     api.get('/api/ice/anexo-rows', { params: { client_id: clientId, act_import: actImport } }),
 }
 
+// Ingresos IVA (ventas SIN ICE, por cliente). Las ventas CON ICE van por iceAPI.
+export const salesIvaAPI = {
+  list: (clientId) => api.get('/api/sales-iva/', { params: { client_id: clientId } }),
+  processXml: (clientId, files) => {
+    const formData = new FormData()
+    files.forEach((file) => formData.append('files', file))
+    formData.append('client_id', clientId)
+    return api.post('/api/sales-iva/process-xml', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  delete: (id) => api.delete(`/api/sales-iva/${id}`),
+  clear: (clientId) => api.delete('/api/sales-iva/clear', { params: { client_id: clientId } }),
+  bulkMove: (ids, clientId) => api.post('/api/sales-iva/bulk-move', { ids, client_id: clientId }),
+  bulkDelete: (ids) => api.post('/api/sales-iva/bulk-delete', { ids }),
+}
+
 // Cálculo ICE manual (por cliente)
 export const iceCalcAPI = {
   list: (clientId) => api.get('/api/ice-calc/', { params: { client_id: clientId } }),

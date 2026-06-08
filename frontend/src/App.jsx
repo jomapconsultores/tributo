@@ -10,6 +10,7 @@ import Retenciones from './pages/Retenciones'
 import ICE from './pages/ICE'
 import CalculoICE from './pages/CalculoICE'
 import AnexoPVPICE from './pages/AnexoPVPICE'
+import IngresosIva from './pages/IngresosIva'
 import RecursosICE from './pages/RecursosICE'
 import Declaraciones from './pages/Declaraciones'
 import DevolucionesIvaTerceraEdad from './pages/DevolucionesIvaTerceraEdad'
@@ -111,6 +112,7 @@ function App() {
             <Route path="/declaracion-iva" element={<RequireModule modulo="declaraciones"><Declaraciones tipo="IVA" /></RequireModule>} />
             <Route path="/declaracion-ice" element={<RequireModule modulo="declaraciones"><Declaraciones tipo="ICE" /></RequireModule>} />
             <Route path="/devoluciones-iva/tercera-edad" element={<RequireModule modulo="declaraciones"><DevolucionesIvaTerceraEdad /></RequireModule>} />
+            <Route path="/ingresos-iva" element={<RequireModule modulo="ingresos_ice"><IngresosIva /></RequireModule>} />
             <Route path="/calculo-ice" element={<RequireModule modulo="ingresos_ice"><CalculoICE /></RequireModule>} />
             <Route path="/anexo-pvp-ice" element={<RequireModule modulo="ingresos_ice"><AnexoPVPICE /></RequireModule>} />
             <Route path="/recursos-ice" element={<RequireModule modulo="ingresos_ice"><RecursosICE /></RequireModule>} />

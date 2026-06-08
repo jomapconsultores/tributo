@@ -31,8 +31,9 @@ def _calcular(supabase, client_id, tipo, user_id):
         decl = declaracion_ice(ice, anio)
     else:
         invoices = supabase.table("invoices").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
-        ventas = supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
-        decl = declaracion_iva(invoices, ventas)
+        ventas_ice = supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
+        ventas_iva = supabase.table("sales_iva").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
+        decl = declaracion_iva(invoices, ventas_ice, ventas_iva)
     decl["cliente"] = c
     decl["anio"] = anio
     decl["mes"] = c.get("periodo_mes")
