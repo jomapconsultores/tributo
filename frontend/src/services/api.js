@@ -50,6 +50,17 @@ export const adminAPI = {
   resetIps: (uid) => api.delete(`/api/admin/users/${uid}/ips`),
 }
 
+// Credenciales de servicios externos (portal SRI, etc.) — SOLO ADMIN
+// Las contraseñas viajan cifradas en la DB; solo /reveal las descifra y queda auditado.
+export const credentialsAPI = {
+  list: (q = '') => api.get('/api/credentials', { params: q ? { q } : undefined }),
+  reveal: (id) => api.get(`/api/credentials/${id}/reveal`),
+  create: (data) => api.post('/api/credentials', data),
+  update: (id, data) => api.put(`/api/credentials/${id}`, data),
+  delete: (id) => api.delete(`/api/credentials/${id}`),
+  auditLog: (params = {}) => api.get('/api/credentials/audit-log', { params }),
+}
+
 // Clientes (contribuyentes)
 export const clientsAPI = {
   list: () => api.get('/api/clients/'),

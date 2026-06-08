@@ -253,7 +253,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
         <div className="nav-divider" />
 
         {/* Panel de administración (solo admins) */}
-        {isAdmin && (
+        {isAdmin && (<>
           <button
             className={`nav-item module-btn ${path === '/admin' ? 'active' : ''}`}
             onClick={() => navigate('/admin')}
@@ -261,7 +261,14 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
             <span className="nav-ico">🛠️</span>
             <span>ADMINISTRACIÓN</span>
           </button>
-        )}
+          <button
+            className={`nav-item module-btn ${path === '/admin/credenciales' ? 'active' : ''}`}
+            onClick={() => navigate('/admin/credenciales')}
+          >
+            <span className="nav-ico">🔐</span>
+            <span>CREDENCIALES SRI</span>
+          </button>
+        </>)}
 
         {/* Nivel 1: BASE DE DATOS */}
         <button
