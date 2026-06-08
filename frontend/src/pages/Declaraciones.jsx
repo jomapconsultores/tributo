@@ -138,7 +138,6 @@ export default function Declaraciones({ tipo }) {
     )
   }
 
-  const secciones = decl ? [...new Set(decl.filas.map((f) => f.seccion))] : []
   const resumen = decl?.resumen || {}
   const aplazadosPendientes = aplazados.filter((a) => a.estado === 'pendiente')
   const aplazadosVencen = decl?.aplazados_vencen || []
@@ -148,6 +147,39 @@ export default function Declaraciones({ tipo }) {
   const hayMontoAPagar = (resumen.iva_a_pagar || 0) > 0 ||
                          (resumen.ice_a_pagar || 0) > 0 ||
                          (resumen.total_a_pagar || 0) > 0
+
+  // Vista previa del aplazamiento: calcula el efecto en vivo cuando el usuario
+  // mueve el dropdown, antes de guardar.
+  const previewAplazamiento = (() => {
+    if (!diferirMeses || diferirMeses < 1) return null
+    const montoOriginal = parseFloat(
+      resumen.total_a_pagar || resumen.iva_a_pagar || resumen.ice_a_pagar || 0
+    )
+    if (montoOriginal <= 0) return null
+    const m0 = selectedClient.periodo_mes
+    const a0 = selectedClient.periodo_anio
+    const total = (m0 - 1) + diferirMeses
+    const venceMes = (total % 12) + 1
+    const venceAnio = a0 + Math.floor(total / 12)
+    return { montoOriginal, venceMes, venceAnio }
+  })()
+
+  // Filas mostradas en la tabla — si hay aplazamiento, mutamos en memoria
+  // (NO se persiste hasta que se guarde) las filas 902/904 para mostrar el efecto.
+  const filasDisplay = (() => {
+    if (!decl?.filas) return []
+    if (!previewAplazamiento) return decl.filas
+    return decl.filas.map((f) => {
+      // Tachamos el "a pagar HOY" porque se difiere
+      if (['902', '904', '499'].includes(f.codigo)) {
+        return { ...f, _diferido: true, _valorOriginal: f.valor, valor: 0 }
+      }
+      return f
+    })
+  })()
+  const seccionesDisplay = filasDisplay.length
+    ? [...new Set(filasDisplay.map((f) => f.seccion))]
+    : []
 
   return (
     <div className="dc-page">
@@ -249,6 +281,39 @@ export default function Declaraciones({ tipo }) {
         <button className="dc-btn oficial" onClick={exportarOficial} disabled={!decl}>📄 Formulario oficial SRI</button>
       </div>
 
+      {/* Vista previa del aplazamiento — efecto en vivo antes de guardar */}
+      {previewAplazamiento && (
+        <div className="dc-aplazar-preview">
+          <div className="dc-aplazar-preview-head">
+            🔄 <strong>Vista previa del aplazamiento</strong>
+            <span className="dc-aplazar-preview-tag">borrador (no guardado)</span>
+          </div>
+          <div className="dc-aplazar-preview-grid">
+            <div>
+              <span className="dc-aplazar-preview-lbl">Monto original a pagar</span>
+              <span className="dc-aplazar-preview-val strike">{money(previewAplazamiento.montoOriginal)}</span>
+            </div>
+            <div>
+              <span className="dc-aplazar-preview-lbl">A pagar HOY ({nombreMes(selectedClient.periodo_mes)} {selectedClient.periodo_anio})</span>
+              <span className="dc-aplazar-preview-val good">$0.00</span>
+            </div>
+            <div>
+              <span className="dc-aplazar-preview-lbl">Se aplaza a {diferirMeses} mes{diferirMeses > 1 ? 'es' : ''}</span>
+              <span className="dc-aplazar-preview-val warn">{money(previewAplazamiento.montoOriginal)}</span>
+            </div>
+            <div>
+              <span className="dc-aplazar-preview-lbl">Vence el</span>
+              <span className="dc-aplazar-preview-val">📅 {nombreMes(previewAplazamiento.venceMes)} {previewAplazamiento.venceAnio}</span>
+            </div>
+          </div>
+          <p className="dc-aplazar-preview-note">
+            Al guardar, esta deuda aparecerá automáticamente en la declaración de
+            <strong> {nombreMes(previewAplazamiento.venceMes)} {previewAplazamiento.venceAnio}</strong> sumada al
+            casillero 903 (pagos aplazados que vencen este período). Cambiá el dropdown a "No aplazar" para deshacer.
+          </p>
+        </div>
+      )}
+
       {loading ? (
         <div className="dc-empty">Calculando…</div>
       ) : !decl ? (
@@ -258,15 +323,29 @@ export default function Declaraciones({ tipo }) {
           <table className="dc-table">
             <thead><tr><th>Código SRI</th><th>Concepto</th><th className="r"># Fact.</th><th className="r">Valor</th></tr></thead>
             <tbody>
-              {secciones.map((sec) => (
+              {seccionesDisplay.map((sec) => (
                 <Fragment key={sec}>
                   <tr className="dc-sec"><td colSpan={4}>{sec}</td></tr>
-                  {decl.filas.filter((f) => f.seccion === sec).map((f, i) => (
-                    <tr key={sec + i} className={f.seccion === 'RESULTADO' ? 'dc-res' : ''}>
+                  {filasDisplay.filter((f) => f.seccion === sec).map((f, i) => (
+                    <tr key={sec + i} className={`${f.seccion === 'RESULTADO' ? 'dc-res' : ''} ${f._diferido ? 'dc-row-diferido' : ''}`}>
                       <td className="dc-cod">{f.codigo}</td>
-                      <td>{f.concepto}</td>
+                      <td>
+                        {f.concepto}
+                        {f._diferido && (
+                          <span className="dc-row-diferido-tag"> · aplazado {diferirMeses}m</span>
+                        )}
+                      </td>
                       <td className="r">{f.num_comprobantes != null ? f.num_comprobantes : ''}</td>
-                      <td className="r">{money(f.valor)}</td>
+                      <td className="r">
+                        {f._diferido ? (
+                          <>
+                            <span className="dc-strike">{money(f._valorOriginal)}</span>{' '}
+                            <strong>{money(f.valor)}</strong>
+                          </>
+                        ) : (
+                          money(f.valor)
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </Fragment>
