@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { credentialsAPI, clientsAPI } from '../services/api'
+import { infoDeclaracion } from '../utils/declaracionSRI'
 import './AdminCredentials.css'
 
 const SERVICIOS = [{ key: 'sri_portal', label: 'Portal SRI' }]
@@ -199,6 +200,18 @@ export default function AdminCredentials() {
                     <span className="adm-cred-copyable" title="Click para copiar RUC" onClick={() => onCopy(c.ruc, 'RUC')}>
                       {c.ruc || '—'}
                     </span>
+                    {(() => {
+                      const decl = infoDeclaracion(c.ruc)
+                      if (!decl.valido) return null
+                      return (
+                        <span
+                          className="adm-cred-decl"
+                          title={`Fecha máxima de declaración mensual (9no dígito ${decl.digito}) · próxima: ${decl.proximaFechaTexto}`}
+                        >
+                          📅 día {decl.dia}
+                        </span>
+                      )
+                    })()}
                   </td>
                   <td>{c.username || <span className="adm-cred-dim">(usa el RUC)</span>}</td>
                   {CLIENT_SERVICES.map((s) => {
