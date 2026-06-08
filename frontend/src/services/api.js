@@ -213,8 +213,9 @@ export const rebajasAPI = {
 // Declaraciones (IVA / ICE)
 export const declaracionesAPI = {
   // credito_adq/credito_ret: override del crédito tributario mes anterior (605/606)
-  calcular: (clientId, tipo, { credito_adq, credito_ret } = {}) => api.get('/api/declaraciones/calcular', {
-    params: { client_id: clientId, tipo, credito_adq, credito_ret },
+  // diferir_meses: preview de recálculo con N meses de aplazamiento (no persiste hasta save)
+  calcular: (clientId, tipo, { credito_adq, credito_ret, diferir_meses } = {}) => api.get('/api/declaraciones/calcular', {
+    params: { client_id: clientId, tipo, credito_adq, credito_ret, diferir_meses },
   }),
   list: (clientId, tipo) => api.get('/api/declaraciones/', { params: { client_id: clientId, tipo } }),
   // diferir_pago_meses: 0/1/2/3 (IVA), 0/1 (ICE)

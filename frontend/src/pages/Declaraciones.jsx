@@ -37,6 +37,7 @@ export default function Declaraciones({ tipo }) {
       const params = {}
       if (credAdq != null) params.credito_adq = credAdq
       if (credRet != null) params.credito_ret = credRet
+      if (diferirMeses > 0) params.diferir_meses = diferirMeses
       const [c, s, a] = await Promise.all([
         declaracionesAPI.calcular(selectedClientId, tipo, params),
         declaracionesAPI.list(selectedClientId, tipo),
@@ -50,7 +51,7 @@ export default function Declaraciones({ tipo }) {
     } catch (e) {
       alert('Error: ' + (e.response?.data?.detail || e.message))
     } finally { setLoading(false) }
-  }, [selectedClientId, tipo, credAdq, credRet, isIVA])
+  }, [selectedClientId, tipo, credAdq, credRet, diferirMeses, isIVA])
 
   useEffect(() => { load() }, [load])
 
@@ -148,35 +149,26 @@ export default function Declaraciones({ tipo }) {
                          (resumen.ice_a_pagar || 0) > 0 ||
                          (resumen.total_a_pagar || 0) > 0
 
-  // Vista previa del aplazamiento: calcula el efecto en vivo cuando el usuario
-  // mueve el dropdown, antes de guardar.
+  // Vista previa del aplazamiento: el cálculo lo hace el backend cuando
+  // diferirMeses > 0 (se pasa como query param). Acá solo derivamos la fecha
+  // de vencimiento y el monto para mostrar el resumen amigable.
   const previewAplazamiento = (() => {
     if (!diferirMeses || diferirMeses < 1) return null
-    const montoOriginal = parseFloat(
-      resumen.total_a_pagar || resumen.iva_a_pagar || resumen.ice_a_pagar || 0
-    )
-    if (montoOriginal <= 0) return null
     const m0 = selectedClient.periodo_mes
     const a0 = selectedClient.periodo_anio
     const total = (m0 - 1) + diferirMeses
     const venceMes = (total % 12) + 1
     const venceAnio = a0 + Math.floor(total / 12)
-    return { montoOriginal, venceMes, venceAnio }
+    return {
+      montoIvaDiferido: parseFloat(resumen.iva_diferido_actual || 0),
+      ventasDiferidas: parseFloat(resumen.ventas_diferidas_monto || 0),
+      saldoAFavor: parseFloat(resumen.saldo_a_favor_proximo_mes || 0),
+      aPagar: parseFloat(resumen.iva_a_pagar || 0),
+      venceMes, venceAnio,
+    }
   })()
 
-  // Filas mostradas en la tabla — si hay aplazamiento, mutamos en memoria
-  // (NO se persiste hasta que se guarde) las filas 902/904 para mostrar el efecto.
-  const filasDisplay = (() => {
-    if (!decl?.filas) return []
-    if (!previewAplazamiento) return decl.filas
-    return decl.filas.map((f) => {
-      // Tachamos el "a pagar HOY" porque se difiere
-      if (['902', '904', '499'].includes(f.codigo)) {
-        return { ...f, _diferido: true, _valorOriginal: f.valor, valor: 0 }
-      }
-      return f
-    })
-  })()
+  const filasDisplay = decl?.filas || []
   const seccionesDisplay = filasDisplay.length
     ? [...new Set(filasDisplay.map((f) => f.seccion))]
     : []
@@ -281,35 +273,44 @@ export default function Declaraciones({ tipo }) {
         <button className="dc-btn oficial" onClick={exportarOficial} disabled={!decl}>📄 Formulario oficial SRI</button>
       </div>
 
-      {/* Vista previa del aplazamiento — efecto en vivo antes de guardar */}
+      {/* Vista previa del aplazamiento — cálculo real desde backend (casillero 481/484 SRI) */}
       {previewAplazamiento && (
         <div className="dc-aplazar-preview">
           <div className="dc-aplazar-preview-head">
-            🔄 <strong>Vista previa del aplazamiento</strong>
-            <span className="dc-aplazar-preview-tag">borrador (no guardado)</span>
+            🔄 <strong>Efecto del aplazamiento ({diferirMeses} mes{diferirMeses > 1 ? 'es' : ''})</strong>
+            <span className="dc-aplazar-preview-tag">borrador · cálculo SRI 481/484</span>
           </div>
           <div className="dc-aplazar-preview-grid">
             <div>
-              <span className="dc-aplazar-preview-lbl">Monto original a pagar</span>
-              <span className="dc-aplazar-preview-val strike">{money(previewAplazamiento.montoOriginal)}</span>
+              <span className="dc-aplazar-preview-lbl">481 — Ventas con cobro diferido</span>
+              <span className="dc-aplazar-preview-val">{money(previewAplazamiento.ventasDiferidas)}</span>
             </div>
             <div>
-              <span className="dc-aplazar-preview-lbl">A pagar HOY ({nombreMes(selectedClient.periodo_mes)} {selectedClient.periodo_anio})</span>
-              <span className="dc-aplazar-preview-val good">$0.00</span>
+              <span className="dc-aplazar-preview-lbl">484 — IVA diferido (no se causa hoy)</span>
+              <span className="dc-aplazar-preview-val warn">{money(previewAplazamiento.montoIvaDiferido)}</span>
             </div>
             <div>
-              <span className="dc-aplazar-preview-lbl">Se aplaza a {diferirMeses} mes{diferirMeses > 1 ? 'es' : ''}</span>
-              <span className="dc-aplazar-preview-val warn">{money(previewAplazamiento.montoOriginal)}</span>
+              <span className="dc-aplazar-preview-lbl">{previewAplazamiento.saldoAFavor > 0 ? '699 — Saldo a favor próximo mes' : '902 — IVA a pagar HOY'}</span>
+              <span className={`dc-aplazar-preview-val ${previewAplazamiento.saldoAFavor > 0 ? 'good' : 'warn'}`}>
+                {money(previewAplazamiento.saldoAFavor > 0 ? previewAplazamiento.saldoAFavor : previewAplazamiento.aPagar)}
+              </span>
             </div>
             <div>
-              <span className="dc-aplazar-preview-lbl">Vence el</span>
+              <span className="dc-aplazar-preview-lbl">El 484 vencerá en</span>
               <span className="dc-aplazar-preview-val">📅 {nombreMes(previewAplazamiento.venceMes)} {previewAplazamiento.venceAnio}</span>
             </div>
           </div>
           <p className="dc-aplazar-preview-note">
-            Al guardar, esta deuda aparecerá automáticamente en la declaración de
-            <strong> {nombreMes(previewAplazamiento.venceMes)} {previewAplazamiento.venceAnio}</strong> sumada al
-            casillero 903 (pagos aplazados que vencen este período). Cambiá el dropdown a "No aplazar" para deshacer.
+            {previewAplazamiento.saldoAFavor > 0 ? (
+              <>El crédito tributario disponible (compras + arrastre + retenciones) es <strong>mayor</strong> al
+              impuesto causado neto, por lo que este período <strong>no hay pago</strong> y queda saldo a favor
+              de <strong>{money(previewAplazamiento.saldoAFavor)}</strong> para el siguiente mes.</>
+            ) : (
+              <>El causado neto supera al crédito, por lo que igual queda IVA a pagar de
+              <strong> {money(previewAplazamiento.aPagar)}</strong> este período.</>
+            )}
+            {' '}En <strong>{nombreMes(previewAplazamiento.venceMes)} {previewAplazamiento.venceAnio}</strong> el
+            IVA diferido entrará automáticamente como casillero 480. Cambiá el dropdown a "No aplazar" para deshacer.
           </p>
         </div>
       )}
@@ -326,28 +327,17 @@ export default function Declaraciones({ tipo }) {
               {seccionesDisplay.map((sec) => (
                 <Fragment key={sec}>
                   <tr className="dc-sec"><td colSpan={4}>{sec}</td></tr>
-                  {filasDisplay.filter((f) => f.seccion === sec).map((f, i) => (
-                    <tr key={sec + i} className={`${f.seccion === 'RESULTADO' ? 'dc-res' : ''} ${f._diferido ? 'dc-row-diferido' : ''}`}>
-                      <td className="dc-cod">{f.codigo}</td>
-                      <td>
-                        {f.concepto}
-                        {f._diferido && (
-                          <span className="dc-row-diferido-tag"> · aplazado {diferirMeses}m</span>
-                        )}
-                      </td>
-                      <td className="r">{f.num_comprobantes != null ? f.num_comprobantes : ''}</td>
-                      <td className="r">
-                        {f._diferido ? (
-                          <>
-                            <span className="dc-strike">{money(f._valorOriginal)}</span>{' '}
-                            <strong>{money(f.valor)}</strong>
-                          </>
-                        ) : (
-                          money(f.valor)
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {filasDisplay.filter((f) => f.seccion === sec).map((f, i) => {
+                    const esCasilleroAplazado = ['480', '481', '484', '609.X', '699'].includes(f.codigo)
+                    return (
+                      <tr key={sec + i} className={`${f.seccion === 'RESULTADO' ? 'dc-res' : ''} ${esCasilleroAplazado ? 'dc-row-diferido' : ''}`}>
+                        <td className="dc-cod">{f.codigo}</td>
+                        <td>{f.concepto}</td>
+                        <td className="r">{f.num_comprobantes != null ? f.num_comprobantes : ''}</td>
+                        <td className="r">{money(f.valor)}</td>
+                      </tr>
+                    )
+                  })}
                 </Fragment>
               ))}
             </tbody>

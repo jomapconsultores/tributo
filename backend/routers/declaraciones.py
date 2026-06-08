@@ -74,7 +74,7 @@ def _pagos_aplazados_vencen(supabase, client_id, user_id, mes, anio, tipo):
     return res.data or []
 
 
-def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, override_credito_ret=None):
+def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, override_credito_ret=None, diferir_meses=0):
     c = _cliente(supabase, client_id)
     anio = c.get("periodo_anio") or 2026
     mes = c.get("periodo_mes") or 1
@@ -105,6 +105,7 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
             credito_mes_anterior_adquisiciones=cred_adq_prev,
             credito_mes_anterior_retenciones=cred_ret_prev,
             pagos_aplazados_vencen_este_periodo=aplazados,
+            diferir_meses=diferir_meses,
         )
         decl["aplazados_vencen"] = aplazados
     decl["cliente"] = c
@@ -119,12 +120,13 @@ async def calcular(
     tipo: str = Query("IVA"),
     credito_adq: Optional[float] = Query(None, description="Override crédito tributario mes anterior por adquisiciones (605)"),
     credito_ret: Optional[float] = Query(None, description="Override crédito tributario mes anterior por retenciones (606)"),
+    diferir_meses: int = Query(0, description="Preview: difiere el IVA generado N meses (1-3 IVA, 1 ICE max). Solo recálculo, no persiste."),
     user_id: str = Depends(get_current_user),
 ):
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
-        return _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret)
+        return _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret, diferir_meses)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
