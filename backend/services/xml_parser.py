@@ -7,6 +7,37 @@ GASTOS_PERSONALES = {
     "SALUD", "VESTIMENTA", "VIVIENDA", "VARIOS", "TURISMO", "ARTE Y CULTURA"
 }
 
+
+def balance_components_to_total(components: dict, total: float, tolerance: float = 0.02) -> dict:
+    """Ajusta el componente NO-tasable de mayor valor para que la suma de
+    componentes redondeados a 2 decimales coincida exactamente con `total`.
+
+    Resuelve el problema del centavo perdido en redondeo: el `importeTotal` del
+    XML se calcula con precisión completa, mientras que cada base/iva se redondea
+    individualmente. Eso puede producir mismatches de ±0.01 entre la suma
+    horizontal y el total declarado.
+
+    Solo ajusta si la diferencia es ≤ tolerance (default 0.02). Diferencias
+    mayores indican algo más serio y se dejan intactas para no enmascarar.
+
+    El IVA (iva_15, iva_5) NUNCA se ajusta — mantiene la consistencia fiscal
+    (iva = base × tasa). Se ajusta el componente NO-tasable más grande entre:
+    base_0, base_15, exento_iva, no_objeto_iva, base_5 (en ese orden de prioridad).
+    """
+    keys = ("no_objeto_iva", "exento_iva", "base_0", "base_15", "iva_15", "base_5", "iva_5")
+    comp = {k: round(float(components.get(k, 0) or 0), 2) for k in keys}
+    suma = round(sum(comp.values()), 2)
+    diff = round(float(total) - suma, 2)
+    if diff == 0 or abs(diff) > tolerance:
+        return comp
+    # Elegir el componente NO-tasable más grande para absorber el centavo.
+    # Orden de prioridad: base_15, base_0, base_5, exento, no_objeto.
+    # (Evitamos iva_15 e iva_5 para no romper la relación iva = base × tasa.)
+    ajustables = ["base_15", "base_0", "base_5", "exento_iva", "no_objeto_iva"]
+    elegido = max(ajustables, key=lambda k: comp[k])
+    comp[elegido] = round(comp[elegido] + diff, 2)
+    return comp
+
 def find_text_ignore_ns(parent, tag_name: str) -> str:
     """Busca texto en elemento ignorando namespace"""
     if parent is None:
@@ -168,6 +199,15 @@ def parse_xml_invoice(
         mem_key = f"{nombre}|{total_original:.2f}"
         tarjeta_credito = card_memory.get(mem_key, "")
 
+        # Ajustar centavo perdido: que la suma de componentes redondeados
+        # sea exactamente igual al total grabado (evita mismatch en reportes).
+        total_round = round(total, 2)
+        bal = balance_components_to_total({
+            "no_objeto_iva": base_no_objeto, "exento_iva": base_exento,
+            "base_0": base_0, "base_15": base_15, "iva_15": iva_15,
+            "base_5": base_5, "iva_5": iva_5,
+        }, total_round)
+
         return {
             "unique_id": unique_id,
             "estado": "OK",
@@ -179,16 +219,16 @@ def parse_xml_invoice(
             "concepto": concepto_str,
             "forma_pago": forma_pago,
             "tarjeta_credito": tarjeta_credito,
-            "no_objeto_iva": round(base_no_objeto, 2),
-            "exento_iva": round(base_exento, 2),
-            "base_0": round(base_0, 2),
-            "base_15": round(base_15, 2),
-            "iva_15": round(iva_15, 2),
-            "base_5": round(base_5, 2),
-            "iva_5": round(iva_5, 2),
+            "no_objeto_iva": bal["no_objeto_iva"],
+            "exento_iva": bal["exento_iva"],
+            "base_0": bal["base_0"],
+            "base_15": bal["base_15"],
+            "iva_15": bal["iva_15"],
+            "base_5": bal["base_5"],
+            "iva_5": bal["iva_5"],
             "desc_info": round(total_descuento_xml, 2),
             "desc_manual": 0.00,
-            "total": round(total, 2),
+            "total": total_round,
             "destinatario": destinatario,
             "ruc_comprador": ruc_comprador,
             "xml_content": xml_content,

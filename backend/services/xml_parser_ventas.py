@@ -13,7 +13,7 @@ factura — el usuario debería usar el módulo ICE-XML en su lugar.
 import xml.etree.ElementTree as ET
 from typing import Dict, Optional
 
-from .xml_parser import find_text_ignore_ns, find_node_ignore_ns
+from .xml_parser import find_text_ignore_ns, find_node_ignore_ns, balance_components_to_total
 
 
 # Códigos de codigoPorcentaje del SRI para IVA (codigo=2):
@@ -137,6 +137,15 @@ def parse_venta_xml(xml_content: str) -> Optional[Dict]:
         except ValueError:
             importe_total = 0.0
 
+        # Balancear centavo perdido: que la suma de componentes redondeados
+        # coincida exactamente con importe_total. Misma lógica que para gastos.
+        total_round = round(importe_total, 2)
+        bal = balance_components_to_total({
+            'no_objeto_iva': no_objeto, 'exento_iva': exento,
+            'base_0': base_0, 'base_15': base_15, 'iva_15': iva_15,
+            'base_5': base_5, 'iva_5': iva_5,
+        }, total_round)
+
         return {
             'unique_id': unique_id,
             'estado': 'OK',
@@ -145,14 +154,14 @@ def parse_venta_xml(xml_content: str) -> Optional[Dict]:
             'id_cliente': id_cliente,
             'razon_social_cliente': razon_cliente,
             'factura_numero': factura_numero,
-            'no_objeto_iva': round(no_objeto, 2),
-            'exento_iva': round(exento, 2),
-            'base_0': round(base_0, 2),
-            'base_15': round(base_15, 2),
-            'iva_15': round(iva_15, 2),
-            'base_5': round(base_5, 2),
-            'iva_5': round(iva_5, 2),
-            'importe_total': round(importe_total, 2),
+            'no_objeto_iva': bal['no_objeto_iva'],
+            'exento_iva': bal['exento_iva'],
+            'base_0': bal['base_0'],
+            'base_15': bal['base_15'],
+            'iva_15': bal['iva_15'],
+            'base_5': bal['base_5'],
+            'iva_5': bal['iva_5'],
+            'importe_total': total_round,
         }
     except Exception:
         return None
