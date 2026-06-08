@@ -40,11 +40,13 @@ export default function Declaraciones({ tipo }) {
       const [c, s, a] = await Promise.all([
         declaracionesAPI.calcular(selectedClientId, tipo, params),
         declaracionesAPI.list(selectedClientId, tipo),
-        isIVA ? declaracionesAPI.listAplazados(selectedClientId).catch(() => ({ data: { data: [] } })) : Promise.resolve({ data: { data: [] } }),
+        declaracionesAPI.listAplazados(selectedClientId).catch(() => ({ data: { data: [] } })),
       ])
       setDecl(c.data)
       setSaved(s.data?.data || [])
-      setAplazados(a.data?.data || [])
+      // Filtrar aplazados por tipo de declaración (IVA o ICE)
+      const allAplazados = a.data?.data || []
+      setAplazados(allAplazados.filter((x) => (x.tipo || '').toUpperCase() === tipo))
     } catch (e) {
       alert('Error: ' + (e.response?.data?.detail || e.message))
     } finally { setLoading(false) }
@@ -143,7 +145,9 @@ export default function Declaraciones({ tipo }) {
   const aplazadosOtros = aplazadosPendientes.filter((a) =>
     !aplazadosVencen.some((v) => v.id === a.id)
   )
-  const hayMontoAPagar = (resumen.iva_a_pagar || 0) > 0 || (resumen.total_a_pagar || 0) > 0
+  const hayMontoAPagar = (resumen.iva_a_pagar || 0) > 0 ||
+                         (resumen.ice_a_pagar || 0) > 0 ||
+                         (resumen.total_a_pagar || 0) > 0
 
   return (
     <div className="dc-page">
@@ -209,7 +213,7 @@ export default function Declaraciones({ tipo }) {
       )}
 
       {/* Aplazamientos VENCEN este período (deudas que se suman al pago de hoy) */}
-      {isIVA && aplazadosVencen.length > 0 && (
+      {aplazadosVencen.length > 0 && (
         <div className="dc-card-box dc-aplazado-vencen">
           <h2 className="dc-h2">⚠ Pagos aplazados que vencen este período ({aplazadosVencen.length})</h2>
           <p className="dc-credit-help">Se sumaron al casillero 903 / 904 del cálculo. Marcalos como pagados después de presentar.</p>
@@ -274,7 +278,7 @@ export default function Declaraciones({ tipo }) {
       )}
 
       {/* Aplazamientos pendientes de otros períodos (informativo) */}
-      {isIVA && aplazadosOtros.length > 0 && (
+      {aplazadosOtros.length > 0 && (
         <div className="dc-card-box">
           <h2 className="dc-h2">📅 Otros pagos aplazados pendientes ({aplazadosOtros.length})</h2>
           <ul className="dc-aplazado-list">

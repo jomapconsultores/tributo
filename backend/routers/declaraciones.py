@@ -80,7 +80,9 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
     mes = c.get("periodo_mes") or 1
     if tipo.upper() == "ICE":
         ice = supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
-        decl = declaracion_ice(ice, anio)
+        aplazados_ice = _pagos_aplazados_vencen(supabase, client_id, user_id, mes, anio, "ICE")
+        decl = declaracion_ice(ice, anio, pagos_aplazados_vencen_este_periodo=aplazados_ice)
+        decl["aplazados_vencen"] = aplazados_ice
     else:
         invoices = supabase.table("invoices").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
         ventas_ice = supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []

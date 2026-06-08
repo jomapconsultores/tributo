@@ -183,11 +183,17 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     }
 
 
-def declaracion_ice(ice_rows, anio):
+def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None):
     """Formulario ICE para bebidas alcohólicas (SRI).
     - ICE específico: tarifa por litro de alcohol puro × litros de alcohol puro.
     - ICE ad valorem: 75% del exceso del precio/litro sobre el umbral.
-    Se apoya en la auditoría de ICE (específico + ad valorem) del año."""
+
+    Aplazamientos: ICE permite hasta 1 mes adicional cuando hay compras a crédito
+    de procesos productivos (regla SRI). Si hay aplazamientos vencidos este
+    período, se suman al casillero 902 (a pagar)."""
+    if pagos_aplazados_vencen_este_periodo is None:
+        pagos_aplazados_vencen_este_periodo = []
+
     g = ice_audit_general(ice_rows, anio)
     tax = tax_params(anio)
     esp = tax.get("esp", 0.0)
@@ -202,6 +208,9 @@ def declaracion_ice(ice_rows, anio):
     ice_adv = g.get("ice_advalorem", 0.0)
     total_ice = g.get("total_ice", 0.0)
 
+    monto_aplazados_que_vencen = sum(_f(p.get("monto")) for p in pagos_aplazados_vencen_este_periodo)
+    total_a_pagar = total_ice + monto_aplazados_que_vencen
+
     filas = [
         {"seccion": "AD VALOREM", "codigo": "303", "concepto": "Base imponible bruta (precio ex-fábrica)", "valor": round(base, 2)},
         {"seccion": "AD VALOREM", "codigo": "305", "concepto": "Porcentaje tarifa ad valorem", "valor": 0.75},
@@ -210,10 +219,26 @@ def declaracion_ice(ice_rows, anio):
         {"seccion": "ESPECÍFICO", "codigo": "315", "concepto": "Tarifa específica (por litro de alcohol puro)", "valor": round(esp, 2)},
         {"seccion": "ESPECÍFICO", "codigo": "319", "concepto": "ICE causado específico", "valor": round(ice_esp, 2)},
         {"seccion": "RESULTADO", "codigo": "399", "concepto": "TOTAL ICE CAUSADO", "valor": round(total_ice, 2)},
-        {"seccion": "RESULTADO", "codigo": "499", "concepto": "TOTAL ICE A PAGAR", "valor": round(total_ice, 2)},
+        {"seccion": "RESULTADO", "codigo": "499", "concepto": "TOTAL ICE A PAGAR (período actual)", "valor": round(total_ice, 2)},
     ]
+    if monto_aplazados_que_vencen > 0:
+        filas.append({"seccion": "RESULTADO", "codigo": "903",
+                      "concepto": "Pagos aplazados que vencen este período",
+                      "valor": round(monto_aplazados_que_vencen, 2),
+                      "num_comprobantes": len(pagos_aplazados_vencen_este_periodo)})
+        filas.append({"seccion": "RESULTADO", "codigo": "904",
+                      "concepto": "Total a pagar (499 + 903)",
+                      "valor": round(total_a_pagar, 2)})
     return {
         "tipo": "ICE",
         "filas": filas,
-        "resumen": {"ice_especifico": round(ice_esp, 2), "ice_advalorem": round(ice_adv, 2), "total_ice": round(total_ice, 2)},
+        "resumen": {
+            "ice_especifico": round(ice_esp, 2),
+            "ice_advalorem": round(ice_adv, 2),
+            "total_ice": round(total_ice, 2),
+            "ice_a_pagar": round(total_ice, 2),  # alias para que la UI detecte hayMontoAPagar
+            "monto_aplazados_vencen": round(monto_aplazados_que_vencen, 2),
+            "total_a_pagar": round(total_a_pagar, 2),
+            "num_aplazados_vencen": len(pagos_aplazados_vencen_este_periodo),
+        },
     }
