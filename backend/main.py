@@ -54,23 +54,43 @@ async def security_headers(request: Request, call_next):
 
 # --- Endurecimiento: límite de peticiones a rutas sensibles (anti fuerza bruta/spam) ---
 _RATE = {}
-_SENSIBLES = ("/auth/login", "/auth/signup", "/auth/forgot", "/auth/reset", "/api/contacto")
-_LIMITE, _VENTANA = 12, 60  # 12 intentos por minuto por IP
+# (path_prefix, methods, limit, window_seconds)
+_RATE_RULES = (
+    ("/auth/login",   ("POST",), 12, 60),   # 12 intentos/min — fuerza bruta a login
+    ("/auth/signup",  ("POST",), 12, 60),
+    ("/auth/forgot",  ("POST",), 12, 60),
+    ("/auth/reset",   ("POST",), 12, 60),
+    ("/api/contacto", ("POST",), 12, 60),   # anti-spam de contacto
+    # Acceso a credenciales SRI en plano: súper restrictivo (5/min) para detectar
+    # exfiltración aún con sesión admin comprometida.
+    ("/api/credentials/", ("GET",),  5, 60, "/reveal"),  # GET /api/credentials/{id}/reveal
+    # Acceso a audit log o list también limitado pero menos estricto
+    ("/api/credentials/audit-log", ("GET",), 30, 60),
+)
 
 
 @app.middleware("http")
 async def rate_limit(request: Request, call_next):
     path = request.url.path
-    if request.method == "POST" and any(path.startswith(p) for p in _SENSIBLES):
+    method = request.method
+    for rule in _RATE_RULES:
+        prefix, methods = rule[0], rule[1]
+        limit, ventana = rule[2], rule[3]
+        suffix_match = rule[4] if len(rule) > 4 else None
+        if method not in methods or not path.startswith(prefix):
+            continue
+        if suffix_match and not path.endswith(suffix_match):
+            continue
         xff = request.headers.get("x-forwarded-for", "")
         ip = xff.split(",")[0].strip() or (request.client.host if request.client else "x")
         now = time.time()
-        key = (ip, path)
-        arr = [t for t in _RATE.get(key, []) if now - t < _VENTANA]
-        if len(arr) >= _LIMITE:
+        key = (ip, prefix, suffix_match or "")
+        arr = [t for t in _RATE.get(key, []) if now - t < ventana]
+        if len(arr) >= limit:
             return JSONResponse(status_code=429, content={"detail": "Demasiados intentos. Espera un momento."})
         arr.append(now)
         _RATE[key] = arr
+        break  # Solo aplica la primera regla que matchea
     return await call_next(request)
 
 # Include routers — núcleo (sin restricción de módulo)
