@@ -25,6 +25,22 @@
   font-size: 0.88rem;
 }
 
+.classifier-refresh-indic {
+  font-size: 0.7rem;
+  color: #0284c7;
+  background: #e0f2fe;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-left: 10px;
+  font-weight: normal;
+  vertical-align: middle;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
 .classifier-search {
   padding: 9px 12px;
   border: 1px solid #cbd5e1;

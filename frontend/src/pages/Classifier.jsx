@@ -5,21 +5,26 @@ import './Classifier.css'
 
 export default function Classifier() {
   const [classifications, setClassifications] = useState([])
+  // loading = primera carga (sí muestra spinner). refreshing = reload tras edición
+  // (mantiene la tabla visible para que el usuario no pierda el contexto).
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [search, setSearch] = useState('')
   const [newEntry, setNewEntry] = useState({ ruc: '', nombre_proveedor: '', categoria: '' })
 
-  useEffect(() => { loadClassifications() }, [])
+  useEffect(() => { loadClassifications(true) }, [])
 
-  const loadClassifications = async () => {
-    setLoading(true)
+  const loadClassifications = async (initial = false) => {
+    if (initial) setLoading(true)
+    else setRefreshing(true)
     try {
       const response = await classificationAPI.list()
       setClassifications(response.data || [])
     } catch (error) {
       console.error('Error loading classifications:', error)
     } finally {
-      setLoading(false)
+      if (initial) setLoading(false)
+      else setRefreshing(false)
     }
   }
 
@@ -81,7 +86,7 @@ export default function Classifier() {
     <div className="classifier">
       <header className="classifier-header">
         <div>
-          <h1>🏷️ Clasificador de Gastos</h1>
+          <h1>🏷️ Clasificador de Gastos {refreshing && <span className="classifier-refresh-indic">↻ actualizando…</span>}</h1>
           <p className="classifier-sub">{classifications.length} RUCs · clic en cualquier celda (incluido el RUC) para editar</p>
         </div>
       </header>

@@ -12,7 +12,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const { has, isAdmin } = useAccess()
   const bajadorRef = useRef(null)
   const [clientsOpen, setClientsOpen] = useState(true)
-  const [ingresosOpen, setIngresosOpen] = useState(true)
+  const [ingresosIvaOpen, setIngresosIvaOpen] = useState(true)
+  const [ingresosIceOpen, setIngresosIceOpen] = useState(true)
   const [gastosOpen, setGastosOpen] = useState(true)
   const [retencionesOpen, setRetencionesOpen] = useState(true)
   const [declaracionesOpen, setDeclaracionesOpen] = useState(true)
@@ -60,7 +61,9 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const isCatalogo = path === '/catalogo-productos'
   const isRebajas = path === '/rebajas-exenciones'
   const isRecursos = path === '/recursos-ice'
-  const isIngresos = isIceXml || isCalculo || isIngresosIva || isAnexo || isCatalogo || isRebajas || isRecursos
+  const isInIngresosIvaMenu = isIngresosIva
+  const isInIngresosIceMenu = isIceXml || isCalculo || isAnexo || isCatalogo || isRebajas || isRecursos
+  const isIngresos = isInIngresosIvaMenu || isInIngresosIceMenu
   const isGastos = !isRetenciones && !isIngresos && !isDeclaraciones && !isDevoluciones // todo lo demás pertenece al proceso de Gastos
   const isDatabase = path === '/'
   const isClassifier = path === '/clasificador'
@@ -79,17 +82,17 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
       </div>
 
       <nav className="sidebar-nav">
-        {/* Módulo INGRESOS+ICE (al inicio, desplegable) */}
+        {/* Módulo INGRESOS IVA (desplegable, solo IVA) */}
         {has('ingresos_ice') && (<>
         <button
-          className={`nav-item module-btn ingresos ${isIngresos ? 'active' : ''}`}
-          onClick={() => setIngresosOpen((o) => !o)}
+          className={`nav-item module-btn ingresos ${isInIngresosIvaMenu ? 'active' : ''}`}
+          onClick={() => setIngresosIvaOpen((o) => !o)}
         >
-          <span className={`caret ${ingresosOpen ? 'open' : ''}`}>▸</span>
+          <span className={`caret ${ingresosIvaOpen ? 'open' : ''}`}>▸</span>
           <span className="nav-ico">📈</span>
-          <span>INGRESOS+ICE</span>
+          <span>INGRESOS IVA</span>
         </button>
-        {ingresosOpen && (
+        {ingresosIvaOpen && (
           <div className="submodule-list">
             <button
               className={`nav-item submodule ${isIngresosIva ? 'active' : ''}`}
@@ -98,6 +101,20 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
               <span className="nav-ico">📈</span>
               <span>Ingresos IVA</span>
             </button>
+          </div>
+        )}
+
+        {/* Módulo INGRESOS ICE (desplegable, todo lo de ICE) */}
+        <button
+          className={`nav-item module-btn ingresos ${isInIngresosIceMenu ? 'active' : ''}`}
+          onClick={() => setIngresosIceOpen((o) => !o)}
+        >
+          <span className={`caret ${ingresosIceOpen ? 'open' : ''}`}>▸</span>
+          <span className="nav-ico">🥃</span>
+          <span>INGRESOS ICE</span>
+        </button>
+        {ingresosIceOpen && (
+          <div className="submodule-list">
             <button
               className={`nav-item submodule ${isCalculo ? 'active' : ''}`}
               onClick={() => navigate('/calculo-ice')}

@@ -3,7 +3,7 @@ from typing import Dict, Optional
 from datetime import datetime
 
 GASTOS_PERSONALES = {
-    "ALIMENTACIÓN", "ALIMENTACION", "EDUCACIÓN", "EDUCACION",
+    "ALIMENTACIÓN", "EDUCACIÓN",
     "SALUD", "VESTIMENTA", "VIVIENDA", "VARIOS", "TURISMO", "ARTE Y CULTURA"
 }
 
