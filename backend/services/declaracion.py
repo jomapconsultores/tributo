@@ -29,20 +29,33 @@ def _agg(invoices, key):
     return total, n
 
 
-def declaracion_iva(invoices, ventas_ice, ventas_iva=None):
+def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
+                    credito_mes_anterior_adquisiciones=0, credito_mes_anterior_retenciones=0,
+                    pagos_aplazados_vencen_este_periodo=None):
     """Formulario 104.
 
     Compras: solo gastos del EJERCICIO (con derecho a crédito). Personales van al IR.
 
-    Ventas: dos fuentes que se SUMAN — ambas declaran al mismo formulario pero
-    se llevan en tablas distintas porque son impuestos distintos:
-    - ventas_ice (tabla ice_sales): facturas con ICE. base_iva ya incluye el ICE
-      en la base imponible (regla SRI ICE+IVA).
-    - ventas_iva (tabla sales_iva): facturas SIN ICE, solo IVA. Resumen por
-      factura con desglose por tarifa.
+    Ventas: dos fuentes que se SUMAN — ambas declaran al mismo formulario:
+    - ventas_ice (tabla ice_sales): base_iva ya incluye el ICE (regla SRI).
+    - ventas_iva (tabla sales_iva): facturas SIN ICE, desglose por tarifa.
+
+    Crédito tributario mes anterior: viene de la declaración del mes anterior
+    (saldos remanentes 605/606). El backend lo precarga del histórico y el
+    usuario puede sobrescribirlo si no hay historial.
+
+    Retenciones del período (609): se computa sumando ret_iva del listado de
+    retentions del cliente para el período.
+
+    Pagos aplazados: las declaraciones anteriores que difirieron pago y vencen
+    EN ESTE período aparecen aquí para que se sumen al total a pagar (903).
     """
     if ventas_iva is None:
         ventas_iva = []
+    if retentions is None:
+        retentions = []
+    if pagos_aplazados_vencen_este_periodo is None:
+        pagos_aplazados_vencen_este_periodo = []
 
     invoices = [i for i in invoices if (i.get("estado") or "OK") == "OK"]
     ejercicio = [i for i in invoices if not _es_personal(i)]
@@ -56,10 +69,9 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None):
     c_base_0, c_n_base_0   = _agg(ejercicio, "base_0")
     c_no_obj, c_n_no_obj   = _agg(ejercicio, "no_objeto_iva")
     c_exento, c_n_exento   = _agg(ejercicio, "exento_iva")
-    iva_compras = c_iva_15 + c_iva_5
+    iva_compras = c_iva_15 + c_iva_5  # crédito tributario del período actual
 
     # ── Ventas con ICE (tabla ice_sales) ─────────────────────────────────
-    # base_iva ya incluye el ICE en la base; valor_iva es 15% sobre esa base.
     v_ice_solo_ok = [v for v in ventas_ice if (v.get("estado") or "OK") == "OK"]
     v_ice_base_15 = sum(_f(v.get("base_iva")) for v in v_ice_solo_ok)
     v_ice_iva_15  = sum(_f(v.get("valor_iva")) for v in v_ice_solo_ok)
@@ -75,16 +87,38 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None):
     v_no_obj,  v_n_no_obj  = _agg(v_iva_solo_ok, "no_objeto_iva")
     v_exento,  v_n_exento  = _agg(v_iva_solo_ok, "exento_iva")
 
-    # ── Totales de ventas (suma ambas fuentes) ───────────────────────────
-    t_base_15 = v_ice_base_15 + v_base_15      # 411: ICE incluye su parte, IVA puro suma 15%
+    # ── Totales de ventas ────────────────────────────────────────────────
+    t_base_15 = v_ice_base_15 + v_base_15      # 411
     t_iva_15  = v_ice_iva_15 + v_iva_15        # 421
-    t_base_5  = v_base_5                       # 412 (ICE casi siempre es 15%)
+    t_base_5  = v_base_5                       # 412
     t_iva_5   = v_iva_5                        # 422
     t_base_0  = v_base_0                       # 413
     t_exento  = v_exento                       # 414
     t_no_obj  = v_no_obj                       # 415
     iva_ventas = t_iva_15 + t_iva_5
-    iva_pagar = max(0.0, iva_ventas - iva_compras)
+
+    # ── Retenciones del período (609) ────────────────────────────────────
+    # Suma de ret_iva de la tabla retentions del cliente en el período.
+    # Cuántas retenciones tiene cargadas el período.
+    ret_ok = [r for r in retentions if (r.get("estado") or "OK") == "OK"]
+    ret_iva_periodo = sum(_f(r.get("ret_iva")) for r in ret_ok)
+    n_retenciones = sum(1 for r in ret_ok if _f(r.get("ret_iva")) > 0)
+
+    # ── Cálculo del impuesto a pagar ─────────────────────────────────────
+    # 619 = IVA generado total = 421 + 422
+    impuesto_causado = iva_ventas
+    # Crédito total = compras (mes actual) + arrastre 605 + arrastre 606 + retenciones 609
+    credito_total = (iva_compras
+                     + _f(credito_mes_anterior_adquisiciones)
+                     + _f(credito_mes_anterior_retenciones)
+                     + ret_iva_periodo)
+    # Saldo: si crédito > impuesto, queda saldo para el siguiente mes
+    saldo_a_favor = max(0.0, credito_total - impuesto_causado)
+    iva_a_pagar = max(0.0, impuesto_causado - credito_total)
+
+    # Pagos aplazados vencidos en este período (se suman al total a pagar)
+    monto_aplazados_que_vencen = sum(_f(p.get("monto")) for p in pagos_aplazados_vencen_este_periodo)
+    total_a_pagar = iva_a_pagar + monto_aplazados_que_vencen
 
     def fila(seccion, codigo, concepto, valor, n=None):
         f = {"seccion": seccion, "codigo": codigo, "concepto": concepto, "valor": round(valor, 2)}
@@ -94,7 +128,7 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None):
 
     filas = [
         # ── VENTAS ──
-        fila("VENTAS", "411", "Ventas locales gravadas 15% (valor neto, ICE+IVA incluido en base)", t_base_15, n_ventas_ice + v_n_base_15),
+        fila("VENTAS", "411", "Ventas locales gravadas 15% (valor neto, ICE+IVA incluido)", t_base_15, n_ventas_ice + v_n_base_15),
         fila("VENTAS", "412", "Ventas locales gravadas 5% (valor neto)", t_base_5, v_n_base_5),
         fila("VENTAS", "413", "Ventas locales con tarifa 0%", t_base_0, v_n_base_0),
         fila("VENTAS", "414", "Ventas exentas de IVA", t_exento, v_n_exento),
@@ -102,30 +136,49 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None):
         fila("VENTAS", "421", "IVA generado en ventas 15%", t_iva_15),
         fila("VENTAS", "422", "IVA generado en ventas 5%", t_iva_5),
 
-        # ── ADQUISICIONES (solo gastos del ejercicio) ──
+        # ── ADQUISICIONES ──
         fila("ADQUISICIONES", "510", "Adquisiciones gravadas 15% con derecho a crédito (valor neto)", c_base_15, c_n_base_15),
-        fila("ADQUISICIONES", "520", "IVA en adquisiciones 15% (crédito tributario)", c_iva_15),
+        fila("ADQUISICIONES", "520", "IVA en adquisiciones 15%", c_iva_15),
         fila("ADQUISICIONES", "550", "Adquisiciones gravadas 5% con derecho a crédito (valor neto)", c_base_5, c_n_base_5),
-        fila("ADQUISICIONES", "560", "IVA en adquisiciones 5% (crédito tributario)", c_iva_5),
+        fila("ADQUISICIONES", "560", "IVA en adquisiciones 5%", c_iva_5),
         fila("ADQUISICIONES", "517", "Adquisiciones y pagos gravados tarifa 0%", c_base_0, c_n_base_0),
-        fila("ADQUISICIONES", "—", "Adquisiciones no objeto del IVA", c_no_obj, c_n_no_obj),
-        fila("ADQUISICIONES", "—", "Adquisiciones exentas de IVA", c_exento, c_n_exento),
+        fila("ADQUISICIONES", "518", "Adquisiciones no objeto del IVA", c_no_obj, c_n_no_obj),
+        fila("ADQUISICIONES", "519", "Adquisiciones exentas de IVA", c_exento, c_n_exento),
 
         # ── RESULTADO ──
-        fila("RESULTADO", "564", "Crédito tributario por adquisiciones (IVA compras del ejercicio)", iva_compras),
-        fila("RESULTADO", "499", "IVA a pagar estimado (421+422 − crédito 564)", iva_pagar),
+        fila("RESULTADO", "601", "IVA generado en ventas (421+422)", impuesto_causado),
+        fila("RESULTADO", "602", "Crédito tributario por adquisiciones del período (520+560)", iva_compras, c_n_base_15 + c_n_base_5),
+        fila("RESULTADO", "605", "Saldo crédito tributario mes anterior por adquisiciones (editable)", _f(credito_mes_anterior_adquisiciones)),
+        fila("RESULTADO", "606", "Saldo crédito tributario mes anterior por retenciones (editable)", _f(credito_mes_anterior_retenciones)),
+        fila("RESULTADO", "609", "Retenciones de IVA del período (de comprobantes)", ret_iva_periodo, n_retenciones),
+        fila("RESULTADO", "619", "Total crédito tributario disponible (602+605+606+609)", credito_total),
+        fila("RESULTADO", "699", "Saldo a favor para el siguiente mes (si crédito > causado)", saldo_a_favor),
+        fila("RESULTADO", "902", "IVA a pagar del período (601 − 619, mínimo 0)", iva_a_pagar),
     ]
+    if monto_aplazados_que_vencen > 0:
+        filas.append(fila("RESULTADO", "903", "Pagos aplazados que vencen este período", monto_aplazados_que_vencen, len(pagos_aplazados_vencen_este_periodo)))
+        filas.append(fila("RESULTADO", "904", "Total a pagar (902 + 903)", total_a_pagar))
+
     return {
         "tipo": "IVA",
         "filas": filas,
         "resumen": {
             "iva_ventas": round(iva_ventas, 2),
             "iva_compras": round(iva_compras, 2),
-            "iva_pagar": round(iva_pagar, 2),
+            "credito_mes_anterior_adquisiciones": round(_f(credito_mes_anterior_adquisiciones), 2),
+            "credito_mes_anterior_retenciones": round(_f(credito_mes_anterior_retenciones), 2),
+            "ret_iva_periodo": round(ret_iva_periodo, 2),
+            "credito_total": round(credito_total, 2),
+            "iva_a_pagar": round(iva_a_pagar, 2),
+            "saldo_a_favor_proximo_mes": round(saldo_a_favor, 2),
+            "monto_aplazados_vencen": round(monto_aplazados_que_vencen, 2),
+            "total_a_pagar": round(total_a_pagar, 2),
             "num_facturas_ejercicio": len(ejercicio),
             "num_facturas_personales_excluidas": personales_excluidos,
             "num_ventas_ice": n_ventas_ice,
             "num_ventas_iva_solo": len(v_iva_solo_ok),
+            "num_retenciones_periodo": n_retenciones,
+            "num_aplazados_vencen": len(pagos_aplazados_vencen_este_periodo),
         },
     }
 

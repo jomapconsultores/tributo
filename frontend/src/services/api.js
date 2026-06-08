@@ -208,12 +208,22 @@ export const rebajasAPI = {
 
 // Declaraciones (IVA / ICE)
 export const declaracionesAPI = {
-  calcular: (clientId, tipo) => api.get('/api/declaraciones/calcular', { params: { client_id: clientId, tipo } }),
+  // credito_adq/credito_ret: override del crédito tributario mes anterior (605/606)
+  calcular: (clientId, tipo, { credito_adq, credito_ret } = {}) => api.get('/api/declaraciones/calcular', {
+    params: { client_id: clientId, tipo, credito_adq, credito_ret },
+  }),
   list: (clientId, tipo) => api.get('/api/declaraciones/', { params: { client_id: clientId, tipo } }),
-  save: (clientId, tipo, datos) => api.post('/api/declaraciones/', { client_id: clientId, tipo, datos }),
+  // diferir_pago_meses: 0/1/2/3 (IVA), 0/1 (ICE)
+  save: (clientId, tipo, datos, diferir_pago_meses = 0) =>
+    api.post('/api/declaraciones/', { client_id: clientId, tipo, datos, diferir_pago_meses }),
   delete: (id) => api.delete(`/api/declaraciones/${id}`),
   exportExcel: (clientId, tipo) => api.get('/api/declaraciones/export/excel', { params: { client_id: clientId, tipo }, responseType: 'blob' }),
   exportOficial: (clientId, tipo) => api.get('/api/declaraciones/export/oficial', { params: { client_id: clientId, tipo }, responseType: 'blob' }),
+  // Pagos aplazados
+  listAplazados: (clientId, estado) => api.get('/api/declaraciones/aplazados', {
+    params: { client_id: clientId, estado },
+  }),
+  marcarAplazado: (id, estado) => api.put(`/api/declaraciones/aplazados/${id}`, { estado }),
 }
 
 // Recursos (Códigos ICE reemplazable)

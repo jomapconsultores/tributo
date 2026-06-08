@@ -16,6 +16,19 @@ class SaveDecl(BaseModel):
     client_id: str
     tipo: str
     datos: dict
+    diferir_pago_meses: Optional[int] = 0  # 0 = pagar este mes; 1-3 (IVA); 1 (ICE max)
+
+
+class AplazarPago(BaseModel):
+    client_id: str
+    tipo: str
+    monto: float
+    meses: int
+    notas: Optional[str] = None
+
+
+class MarcarPagado(BaseModel):
+    estado: str = "pagado"  # 'pagado' o 'cancelado'
 
 
 def _cliente(supabase, client_id):
@@ -23,9 +36,48 @@ def _cliente(supabase, client_id):
     return c.data[0] if c.data else {}
 
 
-def _calcular(supabase, client_id, tipo, user_id):
+def _periodo_anterior(mes, anio):
+    """Devuelve (mes_anterior, anio_anterior) para buscar la declaración previa."""
+    if not mes:
+        return None, None
+    if mes == 1:
+        return 12, (anio or 2026) - 1
+    return mes - 1, anio
+
+
+def _cargar_credito_mes_anterior(supabase, client_id, user_id, mes, anio):
+    """Si existe una declaración IVA guardada del mes anterior, devuelve sus saldos
+    remanentes (605 = adquisiciones, 606 = retenciones). Si no, devuelve ceros."""
+    mes_ant, anio_ant = _periodo_anterior(mes, anio)
+    if mes_ant is None:
+        return 0.0, 0.0
+    res = supabase.table("declaraciones").select("datos").eq(
+        "client_id", client_id).eq("user_id", user_id).eq("tipo", "IVA").eq(
+        "mes", mes_ant).eq("anio", anio_ant).order(
+        "created_at", desc=True).limit(1).execute()
+    if not res.data:
+        return 0.0, 0.0
+    datos = res.data[0].get("datos") or {}
+    # Saldo a favor del mes anterior se divide entre adq y ret según el resumen previo
+    resumen = datos.get("resumen") or {}
+    return (
+        float(resumen.get("saldo_a_favor_proximo_mes") or 0),
+        0.0,  # las retenciones del mes anterior arrastran solo si quedaron sin usar; por simplicidad 0
+    )
+
+
+def _pagos_aplazados_vencen(supabase, client_id, user_id, mes, anio, tipo):
+    """Devuelve los aplazamientos cuyo vencimiento cae EN este período (y siguen pendientes)."""
+    res = supabase.table("pagos_aplazados").select("*").eq(
+        "client_id", client_id).eq("user_id", user_id).eq("tipo", tipo).eq(
+        "estado", "pendiente").eq("vence_mes", mes).eq("vence_anio", anio).execute()
+    return res.data or []
+
+
+def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, override_credito_ret=None):
     c = _cliente(supabase, client_id)
     anio = c.get("periodo_anio") or 2026
+    mes = c.get("periodo_mes") or 1
     if tipo.upper() == "ICE":
         ice = supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
         decl = declaracion_ice(ice, anio)
@@ -33,19 +85,44 @@ def _calcular(supabase, client_id, tipo, user_id):
         invoices = supabase.table("invoices").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
         ventas_ice = supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
         ventas_iva = supabase.table("sales_iva").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
-        decl = declaracion_iva(invoices, ventas_ice, ventas_iva)
+        retentions = supabase.table("retentions").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
+
+        # Crédito mes anterior: si el llamador envió override, usalo; si no, mirá historial
+        if override_credito_adq is None:
+            cred_adq_prev, cred_ret_prev = _cargar_credito_mes_anterior(supabase, client_id, user_id, mes, anio)
+        else:
+            cred_adq_prev = float(override_credito_adq)
+            cred_ret_prev = float(override_credito_ret or 0)
+
+        # Pagos aplazados que vencen este período
+        aplazados = _pagos_aplazados_vencen(supabase, client_id, user_id, mes, anio, "IVA")
+
+        decl = declaracion_iva(
+            invoices, ventas_ice, ventas_iva,
+            retentions=retentions,
+            credito_mes_anterior_adquisiciones=cred_adq_prev,
+            credito_mes_anterior_retenciones=cred_ret_prev,
+            pagos_aplazados_vencen_este_periodo=aplazados,
+        )
+        decl["aplazados_vencen"] = aplazados
     decl["cliente"] = c
     decl["anio"] = anio
-    decl["mes"] = c.get("periodo_mes")
+    decl["mes"] = mes
     return decl
 
 
 @router.get("/calcular")
-async def calcular(client_id: str = Query(...), tipo: str = Query("IVA"), user_id: str = Depends(get_current_user)):
+async def calcular(
+    client_id: str = Query(...),
+    tipo: str = Query("IVA"),
+    credito_adq: Optional[float] = Query(None, description="Override crédito tributario mes anterior por adquisiciones (605)"),
+    credito_ret: Optional[float] = Query(None, description="Override crédito tributario mes anterior por retenciones (606)"),
+    user_id: str = Depends(get_current_user),
+):
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
-        return _calcular(supabase, client_id, tipo, user_id)
+        return _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -65,19 +142,96 @@ async def listar(client_id: Optional[str] = Query(None), tipo: Optional[str] = Q
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _sumar_periodo(mes, anio, n_meses):
+    """Devuelve (mes, anio) al sumar n_meses al período dado."""
+    total = (mes - 1) + n_meses
+    nuevo_mes = (total % 12) + 1
+    nuevo_anio = anio + (total // 12)
+    return nuevo_mes, nuevo_anio
+
+
 @router.post("/")
 async def guardar(entry: SaveDecl, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
         assert_client_owner(entry.client_id, user_id)
         c = _cliente(supabase, entry.client_id)
+        anio = c.get("periodo_anio")
+        mes = c.get("periodo_mes")
+        tipo = entry.tipo.upper()
+
+        # Validar aplazamiento
+        diferir = max(0, int(entry.diferir_pago_meses or 0))
+        if tipo == "ICE" and diferir > 1:
+            raise HTTPException(status_code=400, detail="ICE solo permite aplazar hasta 1 mes (regla SRI).")
+        if tipo == "IVA" and diferir > 3:
+            raise HTTPException(status_code=400, detail="IVA solo permite aplazar hasta 3 meses.")
+        if diferir < 0 or diferir > 3:
+            raise HTTPException(status_code=400, detail="Meses a aplazar inválidos (0-3).")
+
+        # Insertar declaración
         res = supabase.table("declaraciones").insert({
-            "client_id": entry.client_id, "user_id": user_id, "tipo": entry.tipo.upper(),
-            "anio": c.get("periodo_anio"), "mes": c.get("periodo_mes"), "datos": entry.datos,
+            "client_id": entry.client_id, "user_id": user_id, "tipo": tipo,
+            "anio": anio, "mes": mes, "datos": entry.datos,
         }).execute()
-        return res.data[0] if res.data else None
+        decl_record = res.data[0] if res.data else None
+
+        # Si difirió pago, crear registro en pagos_aplazados
+        if diferir > 0 and decl_record:
+            resumen = (entry.datos or {}).get("resumen") or {}
+            monto_a_pagar = float(resumen.get("total_a_pagar") or resumen.get("iva_a_pagar") or 0)
+            if monto_a_pagar > 0:
+                vence_mes, vence_anio = _sumar_periodo(mes or 1, anio or 2026, diferir)
+                supabase.table("pagos_aplazados").insert({
+                    "client_id": entry.client_id, "user_id": user_id,
+                    "declaracion_id": decl_record["id"], "tipo": tipo,
+                    "monto": monto_a_pagar, "meses_aplazados": diferir,
+                    "origen_mes": mes, "origen_anio": anio,
+                    "vence_mes": vence_mes, "vence_anio": vence_anio,
+                    "estado": "pendiente",
+                }).execute()
+        return decl_record
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/aplazados")
+async def listar_aplazados(
+    client_id: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="pendiente | vencido | pagado | cancelado"),
+    user_id: str = Depends(get_current_user),
+):
+    """Lista pagos aplazados del usuario. Si client_id, solo de ese cliente."""
+    try:
+        supabase = get_supabase_client()
+        q = supabase.table("pagos_aplazados").select("*").eq("user_id", user_id)
+        if client_id:
+            assert_client_owner(client_id, user_id)
+            q = q.eq("client_id", client_id)
+        if estado:
+            q = q.eq("estado", estado)
+        res = q.order("vence_anio", desc=False).order("vence_mes", desc=False).execute()
+        return {"data": res.data or []}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/aplazados/{aplazado_id}")
+async def marcar_aplazado(aplazado_id: str, body: MarcarPagado, user_id: str = Depends(get_current_user)):
+    """Marca un pago aplazado como 'pagado' o 'cancelado'."""
+    if body.estado not in ("pagado", "cancelado"):
+        raise HTTPException(status_code=400, detail="Estado inválido. Use 'pagado' o 'cancelado'.")
+    try:
+        supabase = get_supabase_client()
+        supabase.table("pagos_aplazados").update({"estado": body.estado}).eq(
+            "id", aplazado_id).eq("user_id", user_id).execute()
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/{decl_id}")
