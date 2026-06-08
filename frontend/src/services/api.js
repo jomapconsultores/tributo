@@ -59,6 +59,10 @@ export const credentialsAPI = {
   update: (id, data) => api.put(`/api/credentials/${id}`, data),
   delete: (id) => api.delete(`/api/credentials/${id}`),
   auditLog: (params = {}) => api.get('/api/credentials/audit-log', { params }),
+  // Toggle de servicios contratados por cliente
+  // service: 'declaracion_iva' | 'declaracion_ice' | 'declaracion_renta' | 'devolucion_iva'
+  toggleService: (clientId, service, active = null) =>
+    api.put(`/api/credentials/services/${clientId}/${service}`, active != null ? { active } : {}),
 }
 
 // Clientes (contribuyentes)

@@ -15,6 +15,9 @@ router = APIRouter(prefix="/api/credentials", tags=["credentials"])
 
 SERVICIOS = {"sri_portal"}
 
+# Servicios contratables que el admin puede marcar por cliente
+CLIENT_SERVICES = {"declaracion_iva", "declaracion_ice", "declaracion_renta", "devolucion_iva"}
+
 
 def _client_ip(req: Request) -> str:
     fwd = req.headers.get("x-forwarded-for")
@@ -54,7 +57,8 @@ class CredentialUpdate(BaseModel):
 
 @router.get("")
 async def listar(req: Request, admin_id: str = Depends(require_admin), q: Optional[str] = None):
-    """Listado con metadata + join a clients. NO devuelve contraseñas."""
+    """Listado con metadata + join a clients + servicios contratados.
+    NO devuelve contraseñas (solo metadata + lista de servicios activos por cliente)."""
     sb = get_supabase_client()
     creds = sb.table("service_credentials").select(
         "id, client_id, service, username, key_version, notes, created_at, updated_at"
@@ -66,6 +70,14 @@ async def listar(req: Request, admin_id: str = Depends(require_admin), q: Option
     client_ids = list({c["client_id"] for c in creds})
     clients = sb.table("clients").select("id, identificacion, nombre").in_("id", client_ids).execute().data or []
     by_id = {c["id"]: c for c in clients}
+
+    # Servicios contratados por cada cliente (declaraciones IVA/ICE/Renta, devolución)
+    services_rows = sb.table("client_services").select("client_id, service, active").in_(
+        "client_id", client_ids).eq("active", True).execute().data or []
+    services_by_client = {}
+    for s in services_rows:
+        services_by_client.setdefault(s["client_id"], set()).add(s["service"])
+
     out = []
     for c in creds:
         cl = by_id.get(c["client_id"], {})
@@ -86,9 +98,57 @@ async def listar(req: Request, admin_id: str = Depends(require_admin), q: Option
             "notes": c.get("notes"),
             "created_at": c["created_at"],
             "updated_at": c["updated_at"],
+            "client_services": sorted(services_by_client.get(c["client_id"], set())),
         })
     _log(credential_id=None, admin_user_id=admin_id, action="list", req=req, metadata={"count": len(out), "q": q})
     return {"data": out}
+
+
+@router.put("/services/{client_id}/{service}")
+async def toggle_servicio(
+    client_id: str,
+    service: str,
+    req: Request,
+    admin_id: str = Depends(require_admin),
+):
+    """Activa o desactiva un servicio contratable para un cliente.
+    Body opcional con {"active": true/false}; por defecto invierte el estado actual."""
+    if service not in CLIENT_SERVICES:
+        raise HTTPException(status_code=400, detail=f"Servicio inválido. Permitidos: {sorted(CLIENT_SERVICES)}")
+    sb = get_supabase_client()
+
+    # Body opcional con estado deseado
+    body = {}
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    desired_active = body.get("active")
+
+    # Verificar cliente existe
+    cl = sb.table("clients").select("id").eq("id", client_id).execute().data
+    if not cl:
+        raise HTTPException(status_code=404, detail="Cliente no existe")
+
+    existing = sb.table("client_services").select("id, active").eq(
+        "client_id", client_id).eq("service", service).execute().data
+
+    if existing:
+        cur = existing[0]
+        new_active = bool(desired_active) if desired_active is not None else (not cur["active"])
+        sb.table("client_services").update({"active": new_active}).eq("id", cur["id"]).execute()
+        action = "service_toggle_on" if new_active else "service_toggle_off"
+    else:
+        new_active = True if desired_active is None else bool(desired_active)
+        sb.table("client_services").insert({
+            "client_id": client_id, "service": service,
+            "active": new_active, "created_by": admin_id,
+        }).execute()
+        action = "service_toggle_on" if new_active else "service_toggle_off"
+
+    _log(credential_id=None, admin_user_id=admin_id, action="update", req=req,
+         metadata={"sub_action": action, "client_id": client_id, "service": service, "active": new_active})
+    return {"ok": True, "service": service, "active": new_active}
 
 
 @router.get("/{cred_id}/reveal")

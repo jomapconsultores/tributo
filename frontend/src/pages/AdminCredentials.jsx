@@ -5,6 +5,14 @@ import './AdminCredentials.css'
 const SERVICIOS = [{ key: 'sri_portal', label: 'Portal SRI' }]
 const REVEAL_TTL_SECONDS = 30
 
+// Servicios contratables que el admin marca por cliente (declaraciones SRI)
+const CLIENT_SERVICES = [
+  { key: 'declaracion_iva',   label: 'IVA',  title: 'Declaración IVA' },
+  { key: 'declaracion_ice',   label: 'ICE',  title: 'Declaración ICE' },
+  { key: 'declaracion_renta', label: 'Renta', title: 'Declaración Renta' },
+  { key: 'devolucion_iva',    label: 'Dev.', title: 'Devolución IVA (Tercera Edad, etc.)' },
+]
+
 function dedupContribuyentes(clients) {
   const seen = new Set()
   const out = []
@@ -93,6 +101,29 @@ export default function AdminCredentials() {
     }
   }
 
+  const onToggleService = async (cred, serviceKey) => {
+    const isActive = cred.client_services?.includes(serviceKey)
+    // Optimistic update para que el toggle se sienta instantáneo
+    setCreds((prev) => prev.map((c) => {
+      if (c.id !== cred.id) return c
+      const set = new Set(c.client_services || [])
+      isActive ? set.delete(serviceKey) : set.add(serviceKey)
+      return { ...c, client_services: Array.from(set).sort() }
+    }))
+    try {
+      await credentialsAPI.toggleService(cred.client_id, serviceKey, !isActive)
+    } catch (e) {
+      // Rollback en error
+      setCreds((prev) => prev.map((c) => {
+        if (c.id !== cred.id) return c
+        const set = new Set(c.client_services || [])
+        isActive ? set.add(serviceKey) : set.delete(serviceKey)
+        return { ...c, client_services: Array.from(set).sort() }
+      }))
+      alert('Error al cambiar servicio: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+
   const onCopy = async (text, label = 'valor') => {
     try {
       if (navigator.clipboard && window.isSecureContext) {
@@ -152,8 +183,10 @@ export default function AdminCredentials() {
               <tr>
                 <th>Cliente</th>
                 <th>RUC</th>
-                <th>Servicio</th>
                 <th>Usuario</th>
+                {CLIENT_SERVICES.map((s) => (
+                  <th key={s.key} className="adm-cred-svc-th" title={s.title}>{s.label}</th>
+                ))}
                 <th>Modificada</th>
                 <th>Acciones</th>
               </tr>
@@ -167,11 +200,23 @@ export default function AdminCredentials() {
                       {c.ruc || '—'}
                     </span>
                   </td>
-                  <td>{SERVICIOS.find((s) => s.key === c.service)?.label || c.service}</td>
                   <td>{c.username || <span className="adm-cred-dim">(usa el RUC)</span>}</td>
+                  {CLIENT_SERVICES.map((s) => {
+                    const checked = c.client_services?.includes(s.key) || false
+                    return (
+                      <td key={s.key} className="adm-cred-svc-cell">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => onToggleService(c, s.key)}
+                          title={`${s.title} — ${checked ? 'activo' : 'sin contratar'}`}
+                        />
+                      </td>
+                    )
+                  })}
                   <td className="adm-cred-dim">{(c.updated_at || '').slice(0, 16).replace('T', ' ')}</td>
                   <td className="adm-cred-actions">
-                    <button className="btn-reveal" onClick={() => onReveal(c)}>👁 Revelar</button>
+                    <button className="btn-reveal" onClick={() => onReveal(c)}>👁</button>
                     <button className="btn-edit" onClick={() => setEditor({ mode: 'edit', credential: c })}>✎</button>
                     <button className="btn-del" onClick={() => onDelete(c)} disabled={busy}>🗑</button>
                   </td>
