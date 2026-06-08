@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from config import get_settings
-from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto
+from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials
 from routers.access import require_module
 import os
 from dotenv import load_dotenv
@@ -77,6 +77,7 @@ async def rate_limit(request: Request, call_next):
 app.include_router(auth.router)
 app.include_router(access.router)
 app.include_router(admin.router)
+app.include_router(credentials.router)
 app.include_router(contacto.router)
 app.include_router(clients.router)
 app.include_router(memory.router)
