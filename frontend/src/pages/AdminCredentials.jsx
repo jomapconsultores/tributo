@@ -34,6 +34,15 @@ export default function AdminCredentials() {
   const [reveal, setReveal] = useState(null) // { id, ruc, nombre, password, ttl }
   const [editor, setEditor] = useState(null) // { mode: 'create'|'edit', credential?: {...} }
   const [busy, setBusy] = useState(false)
+  // Filtro persistente por servicio (IVA, ICE, Renta, Dev.). Vacío = todos.
+  const [svcFilter, setSvcFilter] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('admCredSvcFilter')) || [] } catch { return [] }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('admCredSvcFilter', JSON.stringify(svcFilter)) } catch { /* ignore */ }
+  }, [svcFilter])
+  const toggleSvcFilter = (key) =>
+    setSvcFilter((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key])
 
   const load = async () => {
     setLoading(true)
@@ -54,11 +63,14 @@ export default function AdminCredentials() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return creds
-    return creds.filter((c) =>
-      [c.nombre, c.ruc, c.username, c.notes].some((f) => String(f || '').toLowerCase().includes(q))
-    )
-  }, [creds, search])
+    return creds.filter((c) => {
+      const matchSearch = !q ||
+        [c.nombre, c.ruc, c.username, c.notes].some((f) => String(f || '').toLowerCase().includes(q))
+      const matchSvc = svcFilter.length === 0 ||
+        svcFilter.some((k) => c.client_services?.includes(k))
+      return matchSearch && matchSvc
+    })
+  }, [creds, search, svcFilter])
 
   // Auto-ocultar la contraseña revelada después de REVEAL_TTL_SECONDS
   useEffect(() => {
@@ -171,6 +183,34 @@ export default function AdminCredentials() {
         </span>
       </div>
 
+      <div className="adm-cred-filters">
+        <span className="adm-cred-filters-lbl">Filtrar por servicio:</span>
+        {CLIENT_SERVICES.map((s) => {
+          const active = svcFilter.includes(s.key)
+          return (
+            <button
+              key={s.key}
+              type="button"
+              className={`adm-cred-chip${active ? ' is-active' : ''}`}
+              onClick={() => toggleSvcFilter(s.key)}
+              title={s.title}
+            >
+              {s.title}
+            </button>
+          )
+        })}
+        {svcFilter.length > 0 && (
+          <button
+            type="button"
+            className="adm-cred-chip adm-cred-chip-clear"
+            onClick={() => setSvcFilter([])}
+            title="Quitar filtros"
+          >
+            ✕ Todos
+          </button>
+        )}
+      </div>
+
       {loading ? (
         <div className="adm-cred-loading">Cargando…</div>
       ) : creds.length === 0 ? (
@@ -235,6 +275,13 @@ export default function AdminCredentials() {
                   </td>
                 </tr>
               ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="adm-cred-empty-row">
+                    Ningún cliente coincide con el filtro seleccionado.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
