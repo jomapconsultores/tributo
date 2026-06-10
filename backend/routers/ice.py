@@ -9,6 +9,8 @@ from services.ice_calc import full_report
 from services.ice_export import generate_ice_excel, generate_ice_pdf
 from services.ice_anexo import generar_anexo_ice, anexo_rows, catalogo_con_codigos
 from services.ice_data import TAX_DB
+from services.codigos_ice import buscar_tokens_bd
+from services.compradores import extraer_compradores, upsert_compradores
 from tenancy import assert_client_owner
 
 router = APIRouter(prefix="/api/ice", tags=["ice"])
@@ -60,12 +62,15 @@ async def process_xml(
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
         new_count = dup_count = err_count = 0
+        compradores_xml = {}
         for file in files:
             xml_content = (await file.read()).decode("utf-8", errors="ignore")
             registros = parse_ice_invoice(xml_content)
             if not registros:
                 err_count += 1
                 continue
+            for c in extraer_compradores(registros):
+                compradores_xml[c["ruc"]] = c
             for reg in registros:
                 try:
                     supabase.table("ice_sales").insert({
@@ -78,6 +83,12 @@ async def process_xml(
                     else:
                         print(f"Error insertando ICE {reg.get('unique_id')}: {e}")
                         err_count += 1
+        # Guarda los clientes compradores (aparte de la tabla clients)
+        try:
+            c = _cliente(supabase, client_id)
+            upsert_compradores(supabase, user_id, c.get("identificacion"), list(compradores_xml.values()))
+        except Exception as e:
+            print(f"No se pudieron guardar los compradores: {e}")
         return {"new": new_count, "duplicates": dup_count, "errors": err_count}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -169,6 +180,12 @@ def _catalogo_cliente(supabase, identificacion, user_id):
     return r.data or []
 
 
+def _buscador_oficial(supabase):
+    """Buscador de marcas en el catálogo oficial de Códigos ICE, para resolver
+    productos que no están en el catálogo del cliente ni en el base."""
+    return lambda q: buscar_tokens_bd(supabase, q, 20)
+
+
 @router.get("/catalog")
 async def catalog(_: str = Depends(get_current_user)):
     return {"catalogo": catalogo_con_codigos()}
@@ -187,7 +204,8 @@ async def get_anexo_rows(
         rows = supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
         c = _cliente(supabase, client_id)
         cat = _catalogo_cliente(supabase, c.get("identificacion"), user_id)
-        return anexo_rows(rows, c, c.get("periodo_anio") or 2026, c.get("periodo_mes") or 1, act_import, cat)
+        return anexo_rows(rows, c, c.get("periodo_anio") or 2026, c.get("periodo_mes") or 1, act_import, cat,
+                          buscar_oficial=_buscador_oficial(supabase))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -207,7 +225,8 @@ async def generar_anexo(
         anio = c.get("periodo_anio") or 2026
         mes = c.get("periodo_mes") or 1
         cat = _catalogo_cliente(supabase, c.get("identificacion"), user_id)
-        return generar_anexo_ice(rows, c, anio, mes, act_import, cat)
+        return generar_anexo_ice(rows, c, anio, mes, act_import, cat,
+                                 buscar_oficial=_buscador_oficial(supabase))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

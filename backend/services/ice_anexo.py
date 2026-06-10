@@ -1,5 +1,6 @@
 """Generación del anexo ICE para el SRI y agrupaciones por producto / cliente.
 Portado de la lógica de ICEcompleto(1).py (sincronizar_editor + generar_xml)."""
+import re
 from collections import defaultdict, OrderedDict
 from xml.sax.saxutils import escape
 from services.ice_data import buscar_en_catalogo
@@ -12,28 +13,109 @@ def _map_tipo_id(t):
     return _TIPO_ID.get(str(t or '').strip(), 'F')
 
 
-def _resolver_cod_prod_ice(nombre_producto, catalogo_cliente=None):
-    """Devuelve (codProdICE, reconocido). Primero busca en el catálogo del
-    cliente (por coincidencia de nombre); si no, usa el catálogo base."""
+# Palabras de empaque/medida que no forman parte de la marca en el catálogo SRI
+_PALABRAS_GENERICAS = {
+    'CAJA', 'CAJAS', 'PACK', 'SIXPACK', 'BOTELLA', 'BOTELLAS',
+    'UNIDAD', 'UNIDADES', 'FUNDA', 'FUNDAS', 'DE', 'X', 'U',
+}
+
+
+def _extraer_capacidad_ml(nombre):
+    """Capacidad en ml desde la descripción ('750 ML', '1 LT', '0.75 L')."""
+    s = (nombre or '').upper()
+    m = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:ML|CC)\b', s)
+    if m:
+        return str(int(float(m.group(1).replace(',', '.'))))
+    m = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:LTS?|LITROS?|L)\b', s)
+    if m:
+        return str(int(float(m.group(1).replace(',', '.')) * 1000))
+    return None
+
+
+def _extraer_grado(nombre):
+    """Grado alcohólico desde la descripción ('40V', '40°', '40 GL', '40 GRADOS')."""
+    s = (nombre or '').upper()
+    m = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:V|°|G\.?L\.?|GRADOS?)\b', s)
+    if m:
+        return str(int(float(m.group(1).replace(',', '.'))))
+    return None
+
+
+def _limpiar_nombre(nombre):
+    """Quita empaque, medidas y números para quedarse con la marca:
+    'CAJA WHISKY RED DIEZ 40V 750 ML (12U)' → 'WHISKY RED DIEZ'."""
+    s = (nombre or '').upper()
+    s = re.sub(r'\([^)]*\)', ' ', s)
+    s = re.sub(r'\d+(?:[.,]\d+)?\s*(?:ML|CC|LTS?|LITROS?|L|V|°|G\.?L\.?|GRADOS?|U)\b', ' ', s)
+    s = re.sub(r'\b\d+(?:[.,]\d+)?\b', ' ', s)
+    palabras = [p for p in re.split(r'[^A-ZÁÉÍÓÚÜÑ]+', s) if p and p not in _PALABRAS_GENERICAS]
+    return ' '.join(palabras)
+
+
+def _armar_codigo(cimp, clasif, marca, pres, cap, und, pais, grado):
+    """Código completo: impuesto-clasificación-marca-presentación-capacidad-unidad-país-grado."""
+    return (f"{cimp}-{str(clasif).zfill(3)}-{str(marca).zfill(6)}-{str(pres).zfill(3)}-"
+            f"{str(cap).zfill(6)}-{und}-{pais}-{str(grado).zfill(6)}")
+
+
+def _buscar_codigo_oficial(nombre_producto, buscar_oficial):
+    """Busca la marca en el catálogo oficial de Códigos ICE (BD ice_codigos /
+    archivo). Exige que TODAS las palabras del nombre limpio aparezcan en la
+    descripción oficial (en cualquier orden: 'WHISKY RED DIEZ' encuentra
+    'RED DIEZ WHISKY') y elige la marca con menos palabras sobrantes. Para
+    nombres de una sola palabra solo acepta coincidencia exacta."""
+    limpio = _limpiar_nombre(nombre_producto)
+    tokens = limpio.split()
+    if not tokens:
+        return None
+    try:
+        res = buscar_oficial(limpio) or []
+    except Exception:
+        return None
+    qset = set(tokens)
+    candidatos = []
+    for d in res:
+        dtok = {t for t in re.split(r'[^A-ZÁÉÍÓÚÜÑ0-9]+', (d.get('descripcion') or '').upper()) if t}
+        if qset <= dtok:
+            candidatos.append((len(dtok - qset), d))
+    if len(tokens) == 1:
+        candidatos = [c for c in candidatos if c[0] == 0]
+    if not candidatos:
+        return None
+    candidatos.sort(key=lambda c: c[0])
+    return candidatos[0][1]
+
+
+def _resolver_cod_prod_ice(nombre_producto, catalogo_cliente=None, buscar_oficial=None):
+    """Devuelve (codProdICE, reconocido). Orden de búsqueda: catálogo del
+    cliente (por coincidencia de nombre) → catálogo base → catálogo oficial
+    de Códigos ICE del SRI (marca por descripción, capacidad y grado
+    extraídos del nombre del producto)."""
     desc = (nombre_producto or "").upper()
     if catalogo_cliente:
         for p in catalogo_cliente:
             pn = (p.get("nombre") or "").upper().strip()
             cod = (p.get("cod_prod_ice") or "").strip()
-            if pn and cod and pn in desc:
+            if pn and cod and (pn in desc or desc in pn):
                 return cod, True
     cat = buscar_en_catalogo(nombre_producto)
     cod_sri = (cat.get('codProdSRI', '') or '').strip()
-    if not cod_sri:
-        return cat.get('codImpuesto', '3031'), False
-    if '-' in cod_sri:
-        return cod_sri, True
-    pres = (cat.get('presentacion', '13') or '13').zfill(3)
-    cap = (cat.get('capacidad', '750') or '750').zfill(6)
-    und = cat.get('unidad', '66')
-    grad = (cat.get('grado', '15') or '15').zfill(6)
-    cimp = cat.get('codImpuesto', '3031')
-    return f"{cimp}-057-{cod_sri.zfill(6)}-{pres}-{cap}-{und}-593-{grad}", True
+    if cod_sri:
+        if '-' in cod_sri:
+            return cod_sri, True
+        return _armar_codigo(
+            cat.get('codImpuesto', '3031'), '057', cod_sri,
+            cat.get('presentacion', '13') or '13', cat.get('capacidad', '750') or '750',
+            cat.get('unidad', '66'), '593', cat.get('grado', '15') or '15'), True
+    if buscar_oficial:
+        of = _buscar_codigo_oficial(nombre_producto, buscar_oficial)
+        if of and (of.get('marca') or '').strip():
+            return _armar_codigo(
+                of.get('impuesto') or '3031', of.get('clasif_cod') or '57',
+                of['marca'].strip(),
+                '13', _extraer_capacidad_ml(nombre_producto) or '750',
+                '66', '593', _extraer_grado(nombre_producto) or '15'), True
+    return cat.get('codImpuesto', '3031'), False
 
 
 def _f(v):
@@ -86,15 +168,21 @@ def grupo_por_cliente(rows):
             for v in ag.values()]
 
 
-def _build_vtas(rows, catalogo_cliente=None):
+def _build_vtas(rows, catalogo_cliente=None, buscar_oficial=None):
     """Agrupa ventas por (idCliente, codProdICE). Devuelve (lista_vtas, advertencias)."""
     dedup = OrderedDict()
     no_reconocidos = set()
+    cache = {}
     for r in rows:
         idc = r.get("id_cliente") or ""
-        cod_ice, ok = _resolver_cod_prod_ice(r.get("nombre_producto"), catalogo_cliente)
+        nombre = r.get("nombre_producto") or ""
+        if nombre in cache:
+            cod_ice, ok = cache[nombre]
+        else:
+            cod_ice, ok = _resolver_cod_prod_ice(nombre, catalogo_cliente, buscar_oficial)
+            cache[nombre] = (cod_ice, ok)
         if not ok:
-            no_reconocidos.add((r.get("nombre_producto") or "")[:80])
+            no_reconocidos.add(nombre[:80])
         clave = (idc, cod_ice)
         ent = dedup.get(clave)
         bottles = int(_f(r.get("unidades_botellas")))
@@ -110,6 +198,7 @@ def _build_vtas(rows, catalogo_cliente=None):
                 "ventaICE": bottles,
                 "devICE": "0",
                 "cantProdBajaICE": "0",
+                "nombreProducto": nombre,
             }
     advertencias = []
     if no_reconocidos:
@@ -120,9 +209,9 @@ def _build_vtas(rows, catalogo_cliente=None):
     return list(dedup.values()), advertencias
 
 
-def anexo_rows(rows, contribuyente, anio, mes, act_import="02", catalogo_cliente=None):
+def anexo_rows(rows, contribuyente, anio, mes, act_import="02", catalogo_cliente=None, buscar_oficial=None):
     """Filas del anexo ICE listas para editar en el editor."""
-    vtas, advertencias = _build_vtas(rows, catalogo_cliente)
+    vtas, advertencias = _build_vtas(rows, catalogo_cliente, buscar_oficial)
     for v in vtas:
         v["ventaICE"] = str(v["ventaICE"])
     c = contribuyente or {}
@@ -154,10 +243,10 @@ def catalogo_con_codigos():
     return out
 
 
-def generar_anexo_ice(rows, contribuyente, anio, mes, act_import="02", catalogo_cliente=None):
+def generar_anexo_ice(rows, contribuyente, anio, mes, act_import="02", catalogo_cliente=None, buscar_oficial=None):
     """Genera el XML del anexo ICE. Agrupa ventas por idCliente + codProdICE.
     Devuelve {xml, ventas, advertencias}."""
-    vtas, no_reconocidos_adv = _build_vtas(rows, catalogo_cliente)
+    vtas, no_reconocidos_adv = _build_vtas(rows, catalogo_cliente, buscar_oficial)
     dedup = {(v["idCliente"], v["codProdICE"]): v for v in vtas}
 
     mes_str = str(mes).zfill(2)

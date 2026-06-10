@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
-import { iceAPI, productsAPI, anexosAPI } from '../services/api'
+import { iceAPI, productsAPI, anexosAPI, compradoresAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoCorto } from '../utils/periodo'
 import './AnexoPVPICE.css'
@@ -15,6 +15,18 @@ const HEADER = {
   ICE: ['TipoIDInformante', 'IdInformante', 'razonSocial', 'Anio', 'Mes', 'actImport', 'codigoOperativo'],
   PVP: ['TipoIDInformante', 'IdInformante', 'razonSocial', 'Anio', 'Mes', 'tipoCarga', 'codigoOperativo'],
 }
+
+// Partes constitutivas del código de producto ICE (orden SRI)
+const PARTES_DEF = [
+  { key: 'impuesto', label: '1. Cód. Impuesto', lk: null },
+  { key: 'clasificacion', label: '2. Clasificación', lk: null },
+  { key: 'marca', label: '3. Marca (producto)', lk: null },
+  { key: 'presentacion', label: '4. Presentación', lk: 'presentacion' },
+  { key: 'capacidad', label: '5. Capacidad (ml)', lk: 'capacidad' },
+  { key: 'unidad', label: '6. Unidad', lk: 'unidad' },
+  { key: 'pais', label: '7. País', lk: 'pais' },
+  { key: 'grado', label: '8. Grado alcohólico', lk: 'grado' },
+]
 
 const DEFAULT_ROW = (tipo) => {
   const r = {}
@@ -36,6 +48,26 @@ const childEl = (parent, tag) => {
   return null
 }
 
+// tipoIdentificacionComprador (factura) → tipoIdCliente (anexo ICE)
+const TIPO_ID_LETRA = { '04': 'R', '05': 'C', '06': 'P', '07': 'F', '08': 'F' }
+
+const dig = (v) => String(v || '').replace(/\D/g, '')
+const pad = (v, n) => dig(v).padStart(n, '0')
+const sinCeros = (v) => String(parseInt(dig(v) || '0', 10))
+
+// Arma el código completo: impuesto-clasificación-marca-presentación-capacidad-unidad-país-grado
+const armarCodigo = (p) =>
+  `${dig(p.impuesto) || '3031'}-${pad(p.clasificacion || '57', 3)}-${pad(p.marca, 6)}-${pad(p.presentacion || '13', 3)}-${pad(p.capacidad || '750', 6)}-${dig(p.unidad) || '66'}-${pad(p.pais || '593', 3)}-${pad(p.grado || '15', 6)}`
+
+// Descompone un código completo en sus 8 partes; si no tiene el formato, inicia con defaults
+const descomponerCodigo = (cod) => {
+  const seg = String(cod || '').trim().split('-')
+  if (seg.length === 8) {
+    return { impuesto: seg[0], clasificacion: seg[1], marca: seg[2], presentacion: seg[3], capacidad: seg[4], unidad: seg[5], pais: seg[6], grado: seg[7] }
+  }
+  return { impuesto: dig(cod) || '3031', clasificacion: '057', marca: '', presentacion: '013', capacidad: '000750', unidad: '66', pais: '593', grado: '000015' }
+}
+
 export default function AnexoPVPICE() {
   const { clients } = useClients()
   const [tipo, setTipo] = useState(null) // 'ICE' | 'PVP'
@@ -45,8 +77,20 @@ export default function AnexoPVPICE() {
   const [clientSel, setClientSel] = useState('')
   const [catalogo, setCatalogo] = useState([])
   const [catSel, setCatSel] = useState('')
+  const [compradores, setCompradores] = useState([])
+  const [compSel, setCompSel] = useState('')
   const [saved, setSaved] = useState([])
+  const [savedId, setSavedId] = useState(null) // anexo guardado en edición (para actualizar, no duplicar)
+  const [filtro, setFiltro] = useState('')
+  const [busqCod, setBusqCod] = useState('')
+  const [resCod, setResCod] = useState([])
+  const [selRow, setSelRow] = useState(null) // fila cuyo código se descompone abajo
+  const [partes, setPartes] = useState(null)
+  const [marcaInfo, setMarcaInfo] = useState(null)
+  const [lk, setLk] = useState({ presentacion: [], capacidad: [], unidad: [], pais: [], grado: [] })
   const fileRef = useRef(null)
+
+  const codField = tipo === 'PVP' ? 'codProdPVP' : 'codProdICE'
 
   // Contribuyentes únicos (RUC) y períodos del RUC elegido
   const contribs = []
@@ -70,6 +114,17 @@ export default function AnexoPVPICE() {
     productsAPI.byClient(clientSel).then((r) => setCatalogo(r.data?.data || [])).catch(() => setCatalogo([]))
   }, [clientSel])
 
+  // Clientes importados (compradores) del contribuyente elegido
+  useEffect(() => {
+    if (!rucSel) { setCompradores([]); return }
+    compradoresAPI.list(rucSel).then((r) => setCompradores(r.data?.data || [])).catch(() => setCompradores([]))
+  }, [rucSel])
+
+  // Listas auxiliares de la base oficial (presentación, capacidad, unidad, país, grado)
+  useEffect(() => {
+    productsAPI.lookups().then((r) => setLk(r.data || {})).catch(() => {})
+  }, [])
+
   // Anexos del RUC (todos sus períodos) → "ver por RUC los anexos en general"
   const cargarAnexos = () => {
     if (!rucSel) { setSaved([]); return }
@@ -84,9 +139,15 @@ export default function AnexoPVPICE() {
     if (!clientSel) { alert('Elige un cliente (RUC y período) para guardar.'); return }
     if (!tipo) { alert('No hay anexo para guardar.'); return }
     try {
-      await anexosAPI.save(clientSel, tipo, { tipo, header, rows })
+      if (savedId) {
+        await anexosAPI.update(savedId, tipo, { tipo, header, rows })
+        alert('✔ Anexo actualizado en la base de datos.')
+      } else {
+        const res = await anexosAPI.save(clientSel, tipo, { tipo, header, rows })
+        if (res.data?.id) setSavedId(res.data.id)
+        alert('✔ Anexo guardado en la base de datos para el período seleccionado.')
+      }
       cargarAnexos()
-      alert('✔ Anexo guardado para el período seleccionado.')
     } catch (e) { alert('Error al guardar: ' + (e.response?.data?.detail || e.message)) }
   }
 
@@ -95,12 +156,17 @@ export default function AnexoPVPICE() {
     setTipo(d.tipo || a.tipo)
     setHeader(d.header || {})
     setRows(d.rows || [])
+    setSavedId(a.id)
+    cerrarPanel()
   }
 
   const borrarAnexo = async (id) => {
     if (!window.confirm('¿Eliminar este anexo guardado?')) return
-    try { await anexosAPI.delete(id); cargarAnexos() }
-    catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
+    try {
+      await anexosAPI.delete(id)
+      if (id === savedId) setSavedId(null)
+      cargarAnexos()
+    } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
 
   const importarICEXML = async () => {
@@ -111,7 +177,11 @@ export default function AnexoPVPICE() {
       setTipo('ICE')
       setHeader(d.header || {})
       setRows((d.rows || []).map((v) => ({ ...DEFAULT_ROW('ICE'), ...v })))
-      if (d.advertencias?.length) alert('⚠ ' + d.advertencias.join(' '))
+      setSavedId(null)
+      cerrarPanel()
+      if (d.advertencias?.length) {
+        alert('⚠ ' + d.advertencias.join(' ') + '\nUsa el buscador de códigos o haz clic en el código para corregirlo aquí mismo.')
+      }
     } catch (e) {
       alert('Error al importar: ' + (e.response?.data?.detail || e.message))
     }
@@ -125,14 +195,35 @@ export default function AnexoPVPICE() {
     const r = DEFAULT_ROW(t)
     if (t === 'ICE') r.codProdICE = p.cod_prod_ice || '3031'
     else r.codProdPVP = p.cod_prod_pvp || ''
+    r.nombreProducto = p.nombre || ''
     setRows((rs) => [...rs, r])
     setCatSel('')
+  }
+
+  // Aplica un cliente importado: a la fila seleccionada, o añade una fila nueva (solo ICE)
+  const aplicarComprador = (id) => {
+    const c = compradores.find((x) => x.id === id)
+    if (!c) return
+    const letra = TIPO_ID_LETRA[c.tipo_id] || (['R', 'C', 'P', 'F'].includes(c.tipo_id) ? c.tipo_id : 'F')
+    if (tipo === 'PVP') { alert('El anexo PVP no lleva cliente por fila.'); setCompSel(''); return }
+    if (selRow != null) {
+      setRows((rs) => rs.map((r, idx) => (idx === selRow ? { ...r, idCliente: c.ruc, tipoIdCliente: letra } : r)))
+    } else {
+      if (!tipo) initVacio('ICE')
+      const r = DEFAULT_ROW('ICE')
+      r.idCliente = c.ruc
+      r.tipoIdCliente = letra
+      setRows((rs) => [...rs, r])
+    }
+    setCompSel('')
   }
 
   const initVacio = (t) => {
     const h = {}
     HEADER[t].forEach((c) => { h[c] = c === 'codigoOperativo' ? t : '' })
     setTipo(t); setHeader(h); setRows([])
+    setSavedId(null)
+    cerrarPanel()
   }
 
   const cargarXml = async (file) => {
@@ -156,6 +247,8 @@ export default function AnexoPVPICE() {
         }
       }
       setTipo(t); setHeader(h); setRows(nuevas)
+      setSavedId(null)
+      cerrarPanel()
     } catch (e) {
       alert('Error al leer el XML: ' + e.message)
     } finally {
@@ -166,8 +259,91 @@ export default function AnexoPVPICE() {
   const setH = (k, v) => setHeader((p) => ({ ...p, [k]: v }))
   const setR = (i, k, v) => setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)))
   const addRow = () => { if (tipo) setRows((rs) => [...rs, DEFAULT_ROW(tipo)]) }
-  const delRow = (i) => setRows((rs) => rs.filter((_, idx) => idx !== i))
-  const limpiar = () => { if (window.confirm('¿Borrar todo el contenido en pantalla?')) { setTipo(null); setHeader({}); setRows([]) } }
+  const delRow = (i) => {
+    setRows((rs) => rs.filter((_, idx) => idx !== i))
+    if (selRow === i) cerrarPanel()
+    else if (selRow != null && i < selRow) setSelRow(selRow - 1)
+  }
+  const limpiar = () => {
+    if (window.confirm('¿Borrar todo el contenido en pantalla?')) {
+      setTipo(null); setHeader({}); setRows([]); setSavedId(null); setFiltro('')
+      cerrarPanel()
+    }
+  }
+
+  // ── Panel de partes constitutivas del código ──────────────────────────────
+  const abrirPanel = (i) => {
+    setSelRow(i)
+    setPartes(descomponerCodigo(rows[i]?.[codField]))
+  }
+  const cerrarPanel = () => { setSelRow(null); setPartes(null); setMarcaInfo(null) }
+  const setParte = (k, v) => setPartes((p) => ({ ...p, [k]: v }))
+  const codigoArmado = partes ? armarCodigo(partes) : ''
+  const aplicarPartes = () => {
+    if (selRow == null || !partes) return
+    setR(selRow, codField, codigoArmado)
+  }
+
+  // Nombre oficial de la marca/clasificación/impuesto según la BD de Códigos ICE
+  useEffect(() => {
+    if (selRow == null || !partes) { setMarcaInfo(null); return }
+    const m = sinCeros(partes.marca)
+    if (!m || m === '0') { setMarcaInfo(null); return }
+    const t = setTimeout(() => {
+      productsAPI.searchCodigos(m, sinCeros(partes.impuesto) || '3031')
+        .then((r) => {
+          const data = r.data?.data || []
+          setMarcaInfo(data.find((d) => sinCeros(d.marca) === m) || null)
+        })
+        .catch(() => setMarcaInfo(null))
+    }, 250)
+    return () => clearTimeout(t)
+  }, [selRow, partes?.marca, partes?.impuesto])
+
+  const lkDesc = (key, val) => {
+    const f = (lk[key] || []).find((x) => sinCeros(x.codigo) === sinCeros(val))
+    return f?.descripcion || ''
+  }
+
+  // ── Buscador en el catálogo oficial de Códigos ICE ────────────────────────
+  useEffect(() => {
+    const q = busqCod.trim()
+    if (q.length < 2) { setResCod([]); return }
+    const t = setTimeout(() => {
+      productsAPI.searchCodigos(q, '').then((r) => setResCod(r.data?.data || [])).catch(() => setResCod([]))
+    }, 250)
+    return () => clearTimeout(t)
+  }, [busqCod])
+
+  const elegirOficial = (m) => {
+    if (selRow != null && partes) {
+      // Aplica impuesto/clasificación/marca a la fila seleccionada (panel abierto)
+      setPartes((p) => ({ ...p, impuesto: m.impuesto || '3031', clasificacion: m.clasif_cod || '57', marca: m.marca || '' }))
+    } else {
+      // Agrega una fila nueva con el código armado desde la marca oficial
+      const t = tipo || 'ICE'
+      if (!tipo) initVacio('ICE')
+      const r = DEFAULT_ROW(t)
+      const cod = armarCodigo({ impuesto: m.impuesto, clasificacion: m.clasif_cod, marca: m.marca, presentacion: '13', capacidad: '750', unidad: '66', pais: '593', grado: '15' })
+      if (t === 'ICE') r.codProdICE = cod
+      else r.codProdPVP = m.marca || ''
+      r.nombreProducto = (m.descripcion || '').toUpperCase()
+      setRows((rs) => [...rs, r])
+    }
+    setBusqCod(''); setResCod([])
+  }
+
+  // ── Filtro de filas (busca en códigos, cliente y nombre de producto) ──────
+  const visibles = useMemo(() => {
+    const todas = rows.map((r, i) => ({ r, i }))
+    const f = filtro.trim().toUpperCase()
+    if (!f || !tipo) return todas
+    const campos = [...COLS[tipo], 'nombreProducto']
+    return todas.filter(({ r }) => campos.some((c) => String(r[c] || '').toUpperCase().includes(f)))
+  }, [rows, filtro, tipo])
+
+  const hayNombre = rows.some((r) => r.nombreProducto)
+  const codInvalido = (r) => !(String(r[codField] || '').includes('-'))
 
   const xml = useMemo(() => {
     if (!tipo) return ''
@@ -196,6 +372,25 @@ export default function AnexoPVPICE() {
     URL.revokeObjectURL(url)
   }
 
+  const nombreArchivo = (ext) =>
+    `Anexo_${tipo}_${header.Anio || ''}${String(header.Mes || '').padStart(2, '0')}.${ext}`
+
+  const exportarExcel = async () => {
+    if (!tipo) { alert('No hay datos para exportar.'); return }
+    try {
+      const r = await anexosAPI.exportExcel(tipo, header, rows)
+      downloadBlob(r.data, nombreArchivo('xlsx'))
+    } catch (e) { alert('Error al exportar Excel: ' + (e.response?.data?.detail || e.message)) }
+  }
+
+  const exportarPdf = async () => {
+    if (!tipo) { alert('No hay datos para exportar.'); return }
+    try {
+      const r = await anexosAPI.exportPdf(tipo, header, rows)
+      downloadBlob(r.data, nombreArchivo('pdf'))
+    } catch (e) { alert('Error al exportar PDF: ' + (e.response?.data?.detail || e.message)) }
+  }
+
   return (
     <div className="ax-page">
       <header className="ax-header">
@@ -213,7 +408,11 @@ export default function AnexoPVPICE() {
         <button className="ax-btn green" onClick={addRow} disabled={!tipo}>➕ Añadir producto</button>
         <button className="ax-btn red" onClick={limpiar}>🧹 Limpiar todo</button>
         <button className="ax-btn yellow" onClick={descargar} disabled={!tipo}>💾 Generar XML SRI</button>
-        <button className="ax-btn teal" onClick={guardarAnexo} disabled={!tipo || !clientSel}>🗄 Guardar anexo</button>
+        <button className="ax-btn teal" onClick={guardarAnexo} disabled={!tipo || !clientSel}>
+          {savedId ? '🗄 Actualizar anexo' : '🗄 Guardar anexo'}
+        </button>
+        <button className="ax-btn green" onClick={exportarExcel} disabled={!tipo}>📊 Exportar Excel</button>
+        <button className="ax-btn red" onClick={exportarPdf} disabled={!tipo}>📑 Exportar PDF</button>
       </div>
 
       {/* Relacionar productos */}
@@ -232,6 +431,13 @@ export default function AnexoPVPICE() {
           <button className="ax-btn teal" onClick={importarICEXML} disabled={!clientSel}>↪ Importar ventas ICE</button>
         </div>
         <div className="ax-relate-group">
+          <span className="ax-relate-lbl">Cliente importado:</span>
+          <select value={compSel} disabled={!rucSel} onChange={(e) => { setCompSel(e.target.value); if (e.target.value) aplicarComprador(e.target.value) }}>
+            <option value="">{rucSel ? (compradores.length ? (selRow != null ? 'Aplicar a la fila seleccionada…' : 'Añadir fila con cliente…') : 'Sin clientes guardados') : 'Elige un RUC primero'}</option>
+            {compradores.map((c) => <option key={c.id} value={c.id}>{c.nombre || c.ruc} — {c.ruc}</option>)}
+          </select>
+        </div>
+        <div className="ax-relate-group">
           <span className="ax-relate-lbl">Desde catálogo del cliente:</span>
           <select value={catSel} disabled={!clientSel} onChange={(e) => { setCatSel(e.target.value); if (e.target.value) agregarDelCatalogo(e.target.value) }}>
             <option value="">{clientSel ? (catalogo.length ? 'Agregar producto…' : 'Sin productos en su catálogo') : 'Elige un cliente primero'}</option>
@@ -243,6 +449,28 @@ export default function AnexoPVPICE() {
         </div>
       </div>
 
+      {/* Buscador en el catálogo oficial de Códigos ICE del SRI */}
+      <div className="ax-search-official">
+        <input
+          value={busqCod}
+          onChange={(e) => setBusqCod(e.target.value)}
+          placeholder="🔍 Buscar producto o código en el catálogo oficial SRI (Códigos ICE)… ej: WHISKY RED DIEZ"
+        />
+        {resCod.length > 0 && (
+          <ul className="ax-results">
+            {resCod.map((m) => (
+              <li key={`${m.impuesto}-${m.marca}`} onMouseDown={() => elegirOficial(m)}>
+                <span className="ax-res-desc">{m.descripcion}</span>
+                <span className="ax-res-meta">
+                  {m.clasificacion} · marca {m.marca} · imp {m.impuesto}
+                  {selRow != null ? ' — clic para aplicar a la fila seleccionada' : ' — clic para añadir fila'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       {/* Anexos guardados del RUC (todos sus períodos) */}
       {rucSel && saved.length > 0 && (
         <div className="ax-saved">
@@ -250,7 +478,7 @@ export default function AnexoPVPICE() {
           {saved.map((a) => {
             const cli = clients.find((c) => c.id === a.client_id)
             return (
-              <span key={a.id} className="ax-saved-item">
+              <span key={a.id} className={`ax-saved-item${a.id === savedId ? ' activo' : ''}`}>
                 <button className="ax-saved-load" onClick={() => recuperarAnexo(a)} title="Recuperar">
                   {a.tipo} · {cli ? periodoCorto(cli) : '—'} · {(a.datos?.rows?.length ?? 0)} filas
                 </button>
@@ -284,22 +512,44 @@ export default function AnexoPVPICE() {
           </div>
 
           <div className="ax-card">
-            <h2 className="ax-card-title">Detalle de productos (ventas) — {rows.length}</h2>
+            <div className="ax-detail-head">
+              <h2 className="ax-card-title">Detalle de productos (ventas) — {filtro ? `${visibles.length} de ${rows.length}` : rows.length}</h2>
+              <input
+                className="ax-filter"
+                value={filtro}
+                onChange={(e) => setFiltro(e.target.value)}
+                placeholder="🔍 Filtrar por producto, código o cliente…"
+              />
+            </div>
+            <p className="ax-hint">Haz clic en un código de producto para ver y editar sus partes constitutivas abajo.</p>
             <div className="ax-scroll">
               <table className="ax-table">
                 <thead>
                   <tr>
+                    {hayNombre && <th>Producto (referencia)</th>}
                     {COLS[tipo].map((c) => <th key={c}>{c}</th>)}
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.length === 0 ? (
-                    <tr><td colSpan={COLS[tipo].length + 1} className="ax-empty">Sin productos. Usa "➕ Añadir producto".</td></tr>
-                  ) : rows.map((r, i) => (
-                    <tr key={i}>
+                  {visibles.length === 0 ? (
+                    <tr><td colSpan={COLS[tipo].length + (hayNombre ? 2 : 1)} className="ax-empty">
+                      {rows.length === 0 ? 'Sin productos. Usa "➕ Añadir producto".' : 'Ningún producto coincide con el filtro.'}
+                    </td></tr>
+                  ) : visibles.map(({ r, i }) => (
+                    <tr key={i} className={`${i === selRow ? 'ax-row-sel' : ''} ${codInvalido(r) ? 'ax-row-bad' : ''}`}>
+                      {hayNombre && (
+                        <td><input value={r.nombreProducto || ''} onChange={(e) => setR(i, 'nombreProducto', e.target.value)} /></td>
+                      )}
                       {COLS[tipo].map((c) => (
-                        <td key={c}><input value={r[c] || ''} onChange={(e) => setR(i, c, e.target.value)} /></td>
+                        <td key={c} className={c === codField ? 'ax-cod-cell' : ''}>
+                          <input
+                            value={r[c] || ''}
+                            onChange={(e) => setR(i, c, e.target.value)}
+                            onFocus={c === codField ? () => abrirPanel(i) : undefined}
+                            title={c === codField ? 'Clic para descomponer el código abajo' : undefined}
+                          />
+                        </td>
                       ))}
                       <td><button className="ax-del" onClick={() => delRow(i)} title="Quitar">✕</button></td>
                     </tr>
@@ -308,6 +558,50 @@ export default function AnexoPVPICE() {
               </table>
             </div>
           </div>
+
+          {/* Panel: partes constitutivas del código de producto */}
+          {selRow != null && partes && rows[selRow] && (
+            <div className="ax-card ax-partes">
+              <div className="ax-partes-head">
+                <h2 className="ax-card-title">
+                  🧩 Partes del código — fila {selRow + 1}
+                  {rows[selRow].nombreProducto ? ` · ${rows[selRow].nombreProducto}` : ''}
+                </h2>
+                <button className="ax-btn ghost" onClick={cerrarPanel}>✕ Cerrar</button>
+              </div>
+              <div className="ax-partes-grid">
+                {PARTES_DEF.map((p) => (
+                  <label key={p.key} className="ax-field">
+                    <span>{p.label}</span>
+                    <input
+                      list={p.lk ? `ax-lk-${p.key}` : undefined}
+                      value={partes[p.key] || ''}
+                      onChange={(e) => setParte(p.key, e.target.value)}
+                    />
+                    <small className="ax-parte-desc">
+                      {p.key === 'impuesto' && (marcaInfo?.impuesto_nombre || (sinCeros(partes.impuesto) === '3031' ? 'ICE BEBIDAS ALCOHÓLICAS' : ''))}
+                      {p.key === 'clasificacion' && (marcaInfo?.clasificacion || '')}
+                      {p.key === 'marca' && (marcaInfo?.descripcion || (sinCeros(partes.marca) !== '0' ? 'Marca no encontrada en Códigos ICE' : 'Ingresa o busca la marca arriba'))}
+                      {p.key === 'pais' && (lkDesc('pais', partes.pais) || (sinCeros(partes.pais) === '593' ? 'ECUADOR' : ''))}
+                      {p.lk && p.key !== 'pais' && lkDesc(p.lk, partes[p.key])}
+                    </small>
+                  </label>
+                ))}
+              </div>
+              <datalist id="ax-lk-presentacion">{(lk.presentacion || []).slice(0, 400).map((x) => <option key={x.codigo} value={x.codigo}>{x.descripcion}</option>)}</datalist>
+              <datalist id="ax-lk-capacidad">{(lk.capacidad || []).slice(0, 600).map((x) => <option key={x.codigo} value={x.codigo}>{x.descripcion}</option>)}</datalist>
+              <datalist id="ax-lk-unidad">{(lk.unidad || []).map((x) => <option key={x.codigo} value={x.codigo}>{x.descripcion}</option>)}</datalist>
+              <datalist id="ax-lk-pais">{(lk.pais || []).map((x) => <option key={x.codigo} value={x.codigo}>{x.descripcion}</option>)}</datalist>
+              <datalist id="ax-lk-grado">{(lk.grado || []).slice(0, 400).map((x) => <option key={x.codigo} value={x.codigo}>{x.descripcion}</option>)}</datalist>
+              <div className="ax-partes-foot">
+                <div>
+                  <span className="ax-partes-lbl">Código armado:</span>
+                  <code className="ax-partes-cod">{codigoArmado}</code>
+                </div>
+                <button className="ax-btn green" onClick={aplicarPartes}>✔ Aplicar a la fila</button>
+              </div>
+            </div>
+          )}
 
           <div className="ax-card">
             <h2 className="ax-card-title">Vista previa del XML</h2>

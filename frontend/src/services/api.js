@@ -199,7 +199,19 @@ export const productsAPI = {
 export const anexosAPI = {
   list: (clientId) => api.get('/api/anexos/', { params: { client_id: clientId } }),
   save: (clientId, tipo, datos) => api.post('/api/anexos/', { client_id: clientId, tipo, datos }),
+  update: (id, tipo, datos) => api.put(`/api/anexos/${id}`, { tipo, datos }),
   delete: (id) => api.delete(`/api/anexos/${id}`),
+  exportExcel: (tipo, header, rows) =>
+    api.post('/api/anexos/export/excel', { tipo, header, rows }, { responseType: 'blob' }),
+  exportPdf: (tipo, header, rows) =>
+    api.post('/api/anexos/export/pdf', { tipo, header, rows }, { responseType: 'blob' }),
+}
+
+// Clientes importados (compradores de las facturas), aparte de los contribuyentes
+export const compradoresAPI = {
+  list: (identificacion) => api.get('/api/compradores/', { params: identificacion ? { identificacion } : undefined }),
+  sync: () => api.post('/api/compradores/sync'),
+  delete: (id) => api.delete(`/api/compradores/${id}`),
 }
 
 // Rebajas y exenciones ICE (ingredientes por producto)

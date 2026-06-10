@@ -83,6 +83,38 @@ def _sanitizar(q):
     return "".join(c for c in (q or "") if c.isalnum() or c.isspace() or c in "ÁÉÍÓÚÑáéíóúñ").strip()
 
 
+def buscar_tokens(q, limit=20):
+    """Marcas cuya descripción contiene TODAS las palabras de q (en cualquier
+    orden). Búsqueda en memoria sobre el archivo."""
+    tokens = [t for t in (q or "").upper().split() if t]
+    if not tokens:
+        return []
+    res = []
+    for d in _cargar_marcas():
+        desc = d["descripcion"].upper()
+        if all(t in desc for t in tokens):
+            res.append(d)
+            if len(res) >= limit:
+                break
+    return res
+
+
+def buscar_tokens_bd(supabase, q, limit=20):
+    """Como buscar_tokens pero contra la tabla ice_codigos (filtros AND).
+    Si la tabla está vacía, cae al archivo."""
+    if contar_bd(supabase) == 0:
+        return buscar_tokens(q, limit)
+    tokens = [_sanitizar(t) for t in (q or "").upper().split()]
+    tokens = [t for t in tokens if t]
+    if not tokens:
+        return []
+    query = supabase.table("ice_codigos").select(
+        "impuesto,impuesto_nombre,clasif_cod,clasificacion,marca,descripcion")
+    for t in tokens:
+        query = query.ilike("descripcion", f"%{t}%")
+    return query.limit(limit).execute().data or []
+
+
 def contar_bd(supabase):
     try:
         r = supabase.table("ice_codigos").select("id", count="exact").limit(1).execute()

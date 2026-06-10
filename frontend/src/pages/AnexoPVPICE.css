@@ -51,3 +51,38 @@
 .ax-del:hover { color: #dc2626; }
 
 .ax-preview { background: #1e1e1e; color: #d4d4d4; border-radius: 8px; padding: 14px; font-size: 0.78rem; overflow-x: auto; margin: 0; max-height: 320px; }
+
+.ax-btn.ghost { background: transparent; color: #64748b; border: 1px solid #cbd5e1; }
+.ax-saved-item.activo { border-color: #0d9488; box-shadow: 0 0 0 1px #0d9488; }
+
+/* Buscador en el catálogo oficial de Códigos ICE */
+.ax-search-official { position: relative; }
+.ax-search-official input { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 14px; font-size: 0.88rem; outline: none; }
+.ax-search-official input:focus { border-color: #0d9488; }
+.ax-results { position: absolute; z-index: 30; top: 100%; left: 0; right: 0; margin: 4px 0 0; padding: 4px; list-style: none; background: #fff; border: 1px solid #cbd5e1; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); max-height: 320px; overflow-y: auto; }
+.ax-results li { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 7px; cursor: pointer; }
+.ax-results li:hover { background: #f0fdfa; }
+.ax-res-desc { font-size: 0.84rem; font-weight: 600; color: #0f172a; }
+.ax-res-meta { font-size: 0.72rem; color: #64748b; }
+
+/* Filtro del detalle */
+.ax-detail-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.ax-detail-head .ax-card-title { margin: 0; }
+.ax-filter { border: 1px solid #cbd5e1; border-radius: 8px; padding: 7px 11px; font-size: 0.82rem; min-width: 280px; outline: none; }
+.ax-filter:focus { border-color: #3498db; }
+.ax-hint { margin: 0 0 10px; font-size: 0.74rem; color: #94a3b8; }
+
+/* Filas */
+.ax-row-sel td { background: #eff6ff; }
+.ax-row-bad td { background: #fef2f2; }
+.ax-row-bad .ax-cod-cell input { color: #b91c1c; font-weight: 700; }
+.ax-cod-cell input { cursor: pointer; font-family: ui-monospace, monospace; min-width: 250px; }
+
+/* Panel de partes constitutivas del código */
+.ax-partes { border: 2px solid #0d9488; }
+.ax-partes-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.ax-partes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 10px; }
+.ax-parte-desc { font-size: 0.68rem; color: #0d9488; font-weight: 600; min-height: 14px; }
+.ax-partes-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.ax-partes-lbl { font-size: 0.78rem; font-weight: 700; color: #475569; margin-right: 8px; }
+.ax-partes-cod { background: #0f172a; color: #5eead4; padding: 6px 10px; border-radius: 7px; font-size: 0.85rem; }
