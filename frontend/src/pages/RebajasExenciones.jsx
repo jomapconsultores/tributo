@@ -20,6 +20,8 @@ export default function RebajasExenciones() {
   const [ings, setIngs] = useState([])
   const [form, setForm] = useState(EMPTY)
   const [verif, setVerif] = useState(null) // { estado, texto }
+  // Condiciones normativas del producto (Art. 82/77 LRTI, Art. 199.4/199.5 RLRTI)
+  const [cond, setCond] = useState({ es_cerveza: false, nueva_marca: false, cupo_anual_sri: false })
 
   const verificarRuc = async () => {
     const ruc = (form.ruc_proveedor || '').trim()
@@ -52,6 +54,24 @@ export default function RebajasExenciones() {
     setIngs(res.data?.data || [])
   }, [ident, producto])
   useEffect(() => { loadIngs() }, [loadIngs])
+
+  // Condiciones normativas guardadas del producto
+  useEffect(() => {
+    setCond({ es_cerveza: false, nueva_marca: false, cupo_anual_sri: false })
+    if (!ident || !producto) return
+    rebajasAPI.getCondiciones(ident, producto).then((r) => {
+      const d = (r.data?.data || [])[0]
+      if (d) setCond({ es_cerveza: !!d.es_cerveza, nueva_marca: !!d.nueva_marca, cupo_anual_sri: !!d.cupo_anual_sri })
+    }).catch(() => {})
+  }, [ident, producto])
+
+  const setCondicion = async (campo, valor) => {
+    const nuevo = { ...cond, [campo]: valor }
+    setCond(nuevo)
+    try {
+      await rebajasAPI.setCondiciones({ identificacion: ident, producto, ...nuevo })
+    } catch (e) { alert('Error al guardar la condición: ' + (e.response?.data?.detail || e.message)) }
+  }
 
   const agregar = async () => {
     if (!producto) { alert('Elige un producto del catálogo.'); return }
@@ -208,6 +228,45 @@ export default function RebajasExenciones() {
               </tfoot>
             </table>
           </div>
+
+          {/* Condiciones normativas del producto (se usan en la declaración ICE) */}
+          {producto && (
+            <div className="re-normas" style={{ marginTop: 14 }}>
+              <div className="re-normas-body">
+                <p><strong>📋 Condiciones normativas de «{producto}»</strong> — determinan los beneficios en la declaración ICE:</p>
+                <p style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+                  <label><input type="checkbox" checked={cond.es_cerveza}
+                    onChange={(e) => setCondicion('es_cerveza', e.target.checked)} /> Es cerveza</label>
+                  <label title="Sin marca primigenia registrada en propiedad intelectual + nueva notificación sanitaria (Art. 199.5 RLRTI)">
+                    <input type="checkbox" checked={cond.nueva_marca}
+                      onChange={(e) => setCondicion('nueva_marca', e.target.checked)} /> Producto nuevo / nueva marca</label>
+                  <label title="Cupo anual de exoneración otorgado por el SRI (Art. 77.1 LRTI / Art. 199.4 RLRTI)">
+                    <input type="checkbox" checked={cond.cupo_anual_sri}
+                      onChange={(e) => setCondicion('cupo_anual_sri', e.target.checked)} /> Cupo anual SRI obtenido (exención)</label>
+                </p>
+                {(() => {
+                  const marcaOk = !cond.es_cerveza || cond.nueva_marca
+                  const rebajaOk = resumen.cumple && marcaOk
+                  const exencionOk = rebajaOk && cond.cupo_anual_sri
+                  return (
+                    <ul>
+                      <li><span className={`re-badge ${rebajaOk ? 'ok' : 'no'}`}>{rebajaOk ? '✔' : '✗'}</span>{' '}
+                        <strong>Rebaja 50% tarifa específica</strong> (Art. 82 LRTI / Art. 199.5 RLRTI):
+                        {' '}{resumen.cumple ? `cumple el ≥${UMBRAL}% nacional` : `no cumple el ≥${UMBRAL}% nacional`}
+                        {cond.es_cerveza && (cond.nueva_marca ? '; cerveza con nueva marca ✔' : '; cerveza SIN nueva marca: la rebaja solo aplica a nuevas marcas')}.
+                      </li>
+                      <li><span className={`re-badge ${exencionOk ? 'ok' : 'no'}`}>{exencionOk ? '✔' : '✗'}</span>{' '}
+                        <strong>Exención del ICE</strong> (Art. 77.1 LRTI / Art. 199.4 RLRTI): requiere las condiciones de la rebaja
+                        {' '}y el <strong>cupo anual del SRI</strong>{cond.cupo_anual_sri ? ' (marcado ✔)' : ' (sin marcar)'}.
+                        {' '}El cupo es un límite anual: verifica el monto otorgado por resolución.
+                      </li>
+                    </ul>
+                  )
+                })()}
+                <p className="re-normas-nota">Estos datos se aplican automáticamente al calcular la <strong>Declaración ICE</strong> (exención por producto sobre su ICE sin beneficio; rebaja del 50% del específico para los demás que cumplan). Consulta los textos legales en <strong>Información útil → Normativa</strong>.</p>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

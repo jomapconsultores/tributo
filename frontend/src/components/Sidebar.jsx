@@ -60,10 +60,11 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const isAnexo = path === '/anexo-pvp-ice'
   const isCatalogo = path === '/catalogo-productos'
   const isRebajas = path === '/rebajas-exenciones'
+  const isNormativa = path === '/normativa'
   const isRecursos = path === '/recursos-ice'
   const isCompradores = path === '/compradores'
   const isInIngresosIvaMenu = isIngresosIva
-  const isInIngresosIceMenu = isIceXml || isCalculo || isAnexo || isCatalogo || isRebajas || isRecursos || isCompradores
+  const isInIngresosIceMenu = isIceXml || isCalculo || isAnexo || isCatalogo || isRebajas || isRecursos || isCompradores || isNormativa
   const isIngresos = isInIngresosIvaMenu || isInIngresosIceMenu
   const isGastos = !isRetenciones && !isIngresos && !isDeclaraciones && !isDevoluciones // todo lo demás pertenece al proceso de Gastos
   const isDatabase = path === '/'
@@ -169,6 +170,13 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
             >
               <span className="nav-ico">📊</span>
               <span>Códigos ICE</span>
+            </button>
+            <button
+              className={`nav-item info-item ${isNormativa ? 'active' : ''}`}
+              onClick={() => navigate('/normativa')}
+            >
+              <span className="nav-ico">📖</span>
+              <span>Normativa (LRTI y más)</span>
             </button>
           </div>
         )}

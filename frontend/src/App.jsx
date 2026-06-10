@@ -17,6 +17,7 @@ import DevolucionesIvaTerceraEdad from './pages/DevolucionesIvaTerceraEdad'
 import CatalogoProductos from './pages/CatalogoProductos'
 import Compradores from './pages/Compradores'
 import RebajasExenciones from './pages/RebajasExenciones'
+import Normativa from './pages/Normativa'
 import Admin from './pages/Admin'
 import AdminCredentials from './pages/AdminCredentials'
 import Layout from './components/Layout'
@@ -121,6 +122,7 @@ function App() {
             <Route path="/catalogo-productos" element={<RequireModule modulo="ingresos_ice"><CatalogoProductos /></RequireModule>} />
             <Route path="/compradores" element={<RequireModule modulo="ingresos_ice"><Compradores /></RequireModule>} />
             <Route path="/rebajas-exenciones" element={<RequireModule modulo="ingresos_ice"><RebajasExenciones /></RequireModule>} />
+            <Route path="/normativa" element={<Normativa />} />
             <Route path="/admin" element={<RequireAdmin><Admin /></RequireAdmin>} />
             <Route path="/admin/credenciales" element={<RequireAdmin><AdminCredentials /></RequireAdmin>} />
             <Route path="/sin-acceso" element={<SinAcceso />} />

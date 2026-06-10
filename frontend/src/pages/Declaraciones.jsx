@@ -30,6 +30,9 @@ export default function Declaraciones({ tipo }) {
   const [exencionIce, setExencionIce] = useState(null)
   const [editReb, setEditReb] = useState(false)
   const [editExe, setEditExe] = useState(false)
+  // Casillas "aplica" manuales (sin cálculo del módulo): generan advertencia
+  const [marcaReb, setMarcaReb] = useState(false)
+  const [marcaExe, setMarcaExe] = useState(false)
 
   // Diferir pago al guardar: 0 (no diferir), 1, 2 o 3 meses
   const [diferirMeses, setDiferirMeses] = useState(0)
@@ -46,6 +49,8 @@ export default function Declaraciones({ tipo }) {
       if (credRet != null) params.credito_ret = credRet
       if (rebajaIce != null) params.rebaja_ice = rebajaIce
       if (exencionIce != null) params.exencion_ice = exencionIce
+      if (marcaReb) params.rebaja_manual = 1
+      if (marcaExe) params.exencion_manual = 1
       if (diferirMeses > 0) params.diferir_meses = diferirMeses
       const [c, s, a] = await Promise.all([
         declaracionesAPI.calcular(selectedClientId, tipo, params),
@@ -60,7 +65,7 @@ export default function Declaraciones({ tipo }) {
     } catch (e) {
       alert('Error: ' + (e.response?.data?.detail || e.message))
     } finally { setLoading(false) }
-  }, [selectedClientId, tipo, credAdq, credRet, rebajaIce, exencionIce, diferirMeses, isIVA])
+  }, [selectedClientId, tipo, credAdq, credRet, rebajaIce, exencionIce, marcaReb, marcaExe, diferirMeses, isIVA])
 
   useEffect(() => { load() }, [load])
 
@@ -249,17 +254,35 @@ export default function Declaraciones({ tipo }) {
         </div>
       )}
 
-      {/* Rebajas y exenciones (solo ICE): auto del módulo ⚖️ o manual */}
+      {/* Rebajas y exenciones (solo ICE): auto del módulo ⚖️, casilla manual u override */}
       {!isIVA && decl && (
         <div className="dc-card-box dc-credit-box">
           <h2 className="dc-h2">⚖️ Rebajas y exenciones</h2>
           <p className="dc-credit-help">
             {rebajaIce != null || exencionIce != null
               ? 'Valores ingresados manualmente (override).'
-              : (resumen.productos_con_rebaja || []).length > 0
-                ? `Rebaja precalculada del módulo Rebajas y exenciones (50% de la tarifa específica de los productos con ≥70% de materia prima nacional MIPYME): ${resumen.productos_con_rebaja.map((p) => `${p.producto} (${p.pct}%)`).join(', ')}.`
-                : 'Sin productos que cumplan el ≥70% en el módulo Rebajas y exenciones. Registralos ahí para el cálculo automático, o ingresá los valores a mano.'}
+              : (resumen.productos_con_rebaja || []).length > 0 || (resumen.productos_exentos || []).length > 0
+                ? <>
+                    {(resumen.productos_exentos || []).length > 0 && `Exentos (Art. 77.1 LRTI, con cupo anual SRI): ${resumen.productos_exentos.map((p) => `${p.producto} (${p.pct}%)`).join(', ')}. `}
+                    {(resumen.productos_con_rebaja || []).length > 0 && `Con rebaja 50% tarifa específica (Art. 199.5 RLRTI): ${resumen.productos_con_rebaja.map((p) => `${p.producto} (${p.pct}%)`).join(', ')}.`}
+                  </>
+                : 'Sin productos que cumplan los requisitos en el módulo Rebajas y exenciones (≥70% nacional; cervezas solo nuevas marcas; exención requiere cupo anual SRI). Registralos ahí, marcá las casillas manuales o ingresá los valores a mano.'}
           </p>
+          <div className="dc-credit-grid" style={{ marginBottom: 8 }}>
+            <label className="dc-aplazar-control" title="Aplica el 50% de la tarifa específica total sin el cálculo del módulo">
+              <input type="checkbox" checked={marcaReb} disabled={rebajaIce != null}
+                onChange={(e) => setMarcaReb(e.target.checked)} />
+              Aplica rebaja 50% (manual)
+            </label>
+            <label className="dc-aplazar-control" title="Exonera el ICE restante del período sin el cálculo del módulo">
+              <input type="checkbox" checked={marcaExe} disabled={exencionIce != null}
+                onChange={(e) => setMarcaExe(e.target.checked)} />
+              Aplica exención (manual)
+            </label>
+          </div>
+          {(resumen.advertencias || []).map((a, i) => (
+            <p key={i} className="dc-credit-help" style={{ color: '#b9770e', fontWeight: 600 }}>{a}</p>
+          ))}
           <div className="dc-credit-grid">
             <div className="dc-credit-field">
               <label>(−) Rebaja tarifa específica (componente nacional, 50%)</label>

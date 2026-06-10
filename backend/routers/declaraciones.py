@@ -90,7 +90,19 @@ def _rebajas_por_producto(supabase, identificacion, user_id):
     out = {}
     for p, d in por_prod.items():
         pct = (d["calif"] / d["total"] * 100) if d["total"] else 0.0
-        out[p] = {"pct": pct, "cumple": pct >= 70}
+        out[p] = {"pct": pct, "cumple": pct >= 70,
+                  "es_cerveza": False, "nueva_marca": False, "cupo_anual_sri": False}
+
+    # Condiciones normativas por producto (cerveza/nueva marca/cupo anual SRI)
+    conds = supabase.table("rebajas_productos").select(
+        "producto,es_cerveza,nueva_marca,cupo_anual_sri").eq(
+        "identificacion", identificacion).eq("user_id", user_id).execute()
+    for r in (conds.data or []):
+        p = (r.get("producto") or "").strip().upper()
+        if p in out:
+            out[p].update({"es_cerveza": bool(r.get("es_cerveza")),
+                           "nueva_marca": bool(r.get("nueva_marca")),
+                           "cupo_anual_sri": bool(r.get("cupo_anual_sri"))})
     return out
 
 
@@ -103,7 +115,7 @@ def _pagos_aplazados_vencen(supabase, client_id, user_id, mes, anio, tipo):
 
 
 def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, override_credito_ret=None, diferir_meses=0,
-              override_rebaja=None, override_exencion=None):
+              override_rebaja=None, override_exencion=None, marcar_rebaja=False, marcar_exencion=False):
     c = _cliente(supabase, client_id)
     anio = c.get("periodo_anio") or 2026
     mes = c.get("periodo_mes") or 1
@@ -113,7 +125,8 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
         rebajas_prod = _rebajas_por_producto(supabase, c.get("identificacion") or "", user_id)
         decl = declaracion_ice(ice, anio, pagos_aplazados_vencen_este_periodo=aplazados_ice,
                                rebajas_productos=rebajas_prod,
-                               override_rebaja=override_rebaja, override_exencion=override_exencion)
+                               override_rebaja=override_rebaja, override_exencion=override_exencion,
+                               marcar_rebaja=marcar_rebaja, marcar_exencion=marcar_exencion)
         decl["aplazados_vencen"] = aplazados_ice
     else:
         invoices = supabase.table("invoices").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
@@ -155,13 +168,16 @@ async def calcular(
     diferir_meses: int = Query(0, description="Preview: difiere el IVA generado N meses (1-3 IVA, 1 ICE max). Solo recálculo, no persiste."),
     rebaja_ice: Optional[float] = Query(None, description="Override manual de la rebaja ICE (si no, se precalcula del módulo Rebajas y exenciones)"),
     exencion_ice: Optional[float] = Query(None, description="Override manual de exenciones ICE"),
+    rebaja_manual: int = Query(0, description="Casilla manual: aplica rebaja 50% de la tarifa específica (con advertencia)"),
+    exencion_manual: int = Query(0, description="Casilla manual: aplica exención del ICE restante (con advertencia)"),
     user_id: str = Depends(get_current_user),
 ):
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
         return _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret, diferir_meses,
-                         override_rebaja=rebaja_ice, override_exencion=exencion_ice)
+                         override_rebaja=rebaja_ice, override_exencion=exencion_ice,
+                         marcar_rebaja=bool(rebaja_manual), marcar_exencion=bool(exencion_manual))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

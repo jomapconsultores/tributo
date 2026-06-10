@@ -221,17 +221,28 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
 
 
 def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
-                    rebajas_productos=None, override_rebaja=None, override_exencion=None):
+                    rebajas_productos=None, override_rebaja=None, override_exencion=None,
+                    marcar_rebaja=False, marcar_exencion=False):
     """Formulario ICE para bebidas alcohólicas (SRI).
     - ICE específico: tarifa por litro de alcohol puro × litros de alcohol puro.
     - ICE ad valorem: 75% del exceso del precio/litro sobre el umbral.
 
-    Rebajas y exenciones (LRTI): rebaja del 50% de la tarifa específica para
-    productos elaborados con ≥70% de materia prima nacional de proveedores
-    MIPYME/artesanos. `rebajas_productos` viene del módulo Rebajas y exenciones
-    ({PRODUCTO: {pct, cumple}}); con eso se precalcula la rebaja automática.
-    `override_rebaja` / `override_exencion` permiten ingresar los montos a mano
-    (mismo patrón que el crédito 605/606 del IVA).
+    Rebajas y exenciones según LRTI y su Reglamento:
+    - REBAJA (Art. 82 LRTI / Art. 199.5 RLRTI): 50% de la tarifa específica para
+      bebidas con ≥70% de ingredientes nacionales (sin contar agua) de
+      artesanos/MIPYME/EPS. Para CERVEZAS solo aplica a NUEVAS MARCAS.
+    - EXENCIÓN (Art. 77.1 LRTI / Art. 199.4 RLRTI): mismas condiciones de la
+      rebaja + cupo anual del SRI; se aplica por producto sobre el ICE calculado
+      sin beneficio alguno (un producto exento no recibe además la rebaja).
+
+    `rebajas_productos` viene del módulo Rebajas y exenciones:
+    {PRODUCTO: {pct, cumple, es_cerveza, nueva_marca, cupo_anual_sri}}.
+
+    Aplicación manual (con advertencia en resumen["advertencias"]):
+    - `marcar_rebaja` / `marcar_exencion`: casillas "aplica" sin cálculo del
+      módulo → rebaja = 50% del específico total; exención = ICE restante.
+    - `override_rebaja` / `override_exencion`: montos escritos a mano (tienen
+      prioridad sobre las casillas y sobre el cálculo automático).
 
     Aplazamientos: ICE permite hasta 1 mes adicional cuando hay compras a crédito
     de procesos productivos (regla SRI). Si hay aplazamientos vencidos este
@@ -254,27 +265,71 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
     ice_adv = g.get("ice_advalorem", 0.0)
     total_ice = g.get("total_ice", 0.0)
 
-    # ── Rebaja por componente nacional (módulo Rebajas y exenciones) ─────
-    # 50% del ICE específico de los productos que cumplen (≥70% de materia
-    # prima nacional de proveedores MIPYME calificados)
+    # ── Rebaja y exención por producto (módulo Rebajas y exenciones) ─────
+    # Elegibilidad según la normativa:
+    #  - rebaja: cumple ≥70% nacional Y (no es cerveza O es nueva marca)
+    #  - exención: lo anterior Y cupo anual del SRI (Art. 199.4 RLRTI)
     rebajas_productos = rebajas_productos or {}
     cumplen = {p: d for p, d in rebajas_productos.items() if d.get("cumple")}
     productos_con_rebaja = []
+    productos_exentos = []
     rebaja_auto = 0.0
+    exencion_auto = 0.0
     if cumplen:
         for fp in ice_por_producto(ice_rows, anio):
             nombre = (fp.get("producto") or "").upper().strip()
             for p, d in cumplen.items():
                 pn = p.upper().strip()
-                if pn and nombre and (pn in nombre or nombre in pn):
+                if not (pn and nombre and (pn in nombre or nombre in pn)):
+                    continue
+                marca_ok = (not d.get("es_cerveza")) or d.get("nueva_marca")
+                if not marca_ok:  # cerveza sin nueva marca: sin beneficio (Art. 199.5)
+                    break
+                if d.get("cupo_anual_sri"):
+                    # Exención por producto, sobre su ICE sin beneficio alguno
+                    exencion_auto += _f(fp.get("total_ice"))
+                    productos_exentos.append({"producto": fp.get("producto"),
+                                              "pct": round(_f(d.get("pct")), 2)})
+                else:
                     rebaja_auto += 0.5 * _f(fp.get("ice_especifico"))
                     productos_con_rebaja.append({"producto": fp.get("producto"),
                                                  "pct": round(_f(d.get("pct")), 2)})
-                    break
+                break
     rebaja_auto = round(min(rebaja_auto, ice_esp * 0.5), 2)
+    exencion_auto = round(min(exencion_auto, total_ice), 2)
 
-    rebaja = _f(override_rebaja) if override_rebaja is not None else rebaja_auto
-    exencion = _f(override_exencion) if override_exencion is not None else 0.0
+    # Prioridad: monto manual (override) > casilla "aplica" (marcar_*) > automático
+    advertencias = []
+    if override_rebaja is not None:
+        rebaja = _f(override_rebaja)
+        advertencias.append("⚠ Rebaja ingresada manualmente: el valor no está determinado "
+                            "con el cálculo correspondiente (Art. 82 LRTI / Art. 199.5 RLRTI). "
+                            "Verifique los requisitos antes de declarar.")
+    elif marcar_rebaja:
+        rebaja = 0.5 * ice_esp
+        advertencias.append("⚠ Rebaja aplicada por casilla manual (50% de la tarifa específica "
+                            "total): el valor no está determinado con el cálculo correspondiente "
+                            "del módulo Rebajas y exenciones (Art. 82 LRTI / Art. 199.5 RLRTI — "
+                            "≥70% de ingredientes nacionales de artesanos/MIPYME/EPS; cervezas "
+                            "solo nuevas marcas). Verifique los requisitos antes de declarar.")
+    else:
+        rebaja = rebaja_auto
+
+    if override_exencion is not None:
+        exencion = _f(override_exencion)
+        advertencias.append("⚠ Exención ingresada manualmente: el valor no está determinado "
+                            "con el cálculo correspondiente (Art. 77.1 LRTI / Art. 199.4 RLRTI). "
+                            "Verifique el cupo anual del SRI antes de declarar.")
+    elif marcar_exencion:
+        exencion = max(0.0, total_ice - max(0.0, min(rebaja, total_ice)))
+        advertencias.append("⚠ Exención aplicada por casilla manual (ICE restante del período): "
+                            "el valor no está determinado con el cálculo correspondiente del "
+                            "módulo Rebajas y exenciones (Art. 77.1 LRTI / Art. 199.4 RLRTI — "
+                            "requiere cupo anual del SRI, ≥70% de ingredientes nacionales y, en "
+                            "cervezas, nueva marca). Verifique los requisitos antes de declarar.")
+    else:
+        exencion = exencion_auto
+
     rebaja = max(0.0, min(rebaja, total_ice))
     exencion = max(0.0, min(exencion, total_ice - rebaja))
     ice_neto = max(0.0, total_ice - rebaja - exencion)
@@ -291,13 +346,18 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
         {"seccion": "ESPECÍFICO", "codigo": "319", "concepto": "ICE causado específico", "valor": round(ice_esp, 2)},
         {"seccion": "RESULTADO", "codigo": "399", "concepto": "TOTAL ICE CAUSADO", "valor": round(total_ice, 2)},
         {"seccion": "RESULTADO", "codigo": "R-50",
-         "concepto": "(−) Rebaja tarifa específica — componente nacional ≥70% MIPYME (50%)"
-                     + (" · " + ", ".join(f"{x['producto']} ({x['pct']}%)" for x in productos_con_rebaja)
-                        if override_rebaja is None and productos_con_rebaja else
-                        " · ingresada manualmente" if override_rebaja is not None else ""),
+         "concepto": "(−) Rebaja tarifa específica 50% — Art. 82 LRTI / Art. 199.5 RLRTI"
+                     + (" · ingresada manualmente (verificar)" if override_rebaja is not None
+                        else " · casilla manual (verificar)" if marcar_rebaja
+                        else (" · " + ", ".join(f"{x['producto']} ({x['pct']}%)" for x in productos_con_rebaja)
+                              if productos_con_rebaja else "")),
          "valor": round(rebaja, 2)},
         {"seccion": "RESULTADO", "codigo": "EXE",
-         "concepto": "(−) Exenciones" + (" · ingresada manualmente" if override_exencion is not None else ""),
+         "concepto": "(−) Exención — Art. 77.1 LRTI / Art. 199.4 RLRTI"
+                     + (" · ingresada manualmente (verificar)" if override_exencion is not None
+                        else " · casilla manual (verificar)" if marcar_exencion
+                        else (" · " + ", ".join(f"{x['producto']} ({x['pct']}%)" for x in productos_exentos)
+                              if productos_exentos else "")),
          "valor": round(exencion, 2)},
         {"seccion": "RESULTADO", "codigo": "499", "concepto": "TOTAL ICE A PAGAR (399 − rebajas − exenciones)", "valor": round(ice_neto, 2)},
     ]
@@ -319,9 +379,14 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
             "rebaja_ice": round(rebaja, 2),
             "exencion_ice": round(exencion, 2),
             "rebaja_ice_auto": round(rebaja_auto, 2),
-            "rebaja_origen": "manual" if override_rebaja is not None else "auto",
-            "exencion_origen": "manual" if override_exencion is not None else "auto",
+            "exencion_ice_auto": round(exencion_auto, 2),
+            "rebaja_origen": ("manual" if override_rebaja is not None
+                              else "casilla" if marcar_rebaja else "auto"),
+            "exencion_origen": ("manual" if override_exencion is not None
+                                else "casilla" if marcar_exencion else "auto"),
             "productos_con_rebaja": productos_con_rebaja,
+            "productos_exentos": productos_exentos,
+            "advertencias": advertencias,
             "ice_a_pagar": round(ice_neto, 2),  # alias para que la UI detecte hayMontoAPagar
             "monto_aplazados_vencen": round(monto_aplazados_que_vencen, 2),
             "total_a_pagar": round(total_a_pagar, 2),

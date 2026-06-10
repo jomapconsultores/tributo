@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from config import get_settings
-from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores
+from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa
 from routers.access import require_module
 import os
 from dotenv import load_dotenv
@@ -101,6 +101,7 @@ app.include_router(credentials.router)
 app.include_router(contacto.router)
 app.include_router(clients.router)
 app.include_router(memory.router)
+app.include_router(normativa.router)  # información útil: cuerpos legales consultables
 
 # Módulos contratables (bloqueados si el usuario no los tiene)
 GASTOS = [Depends(require_module("gastos"))]

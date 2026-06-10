@@ -1,0 +1,47 @@
+.nv-page { padding: 22px 26px; max-width: 1100px; margin: 0 auto; }
+.nv-header h1 { margin: 0 0 4px; color: #1a5276; }
+.nv-sub { margin: 0 0 18px; color: #5d6d7e; }
+
+/* Tarjetas de documentos */
+.nv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.nv-card { background: #fff; border: 1px solid #d6dbdf; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.nv-card.vacio { opacity: .75; border-style: dashed; }
+.nv-card-icon { font-size: 30px; }
+.nv-card h2 { margin: 0; font-size: 16px; color: #1a5276; }
+.nv-card-desc { margin: 0; font-size: 13px; color: #5d6d7e; flex: 1; }
+.nv-card-meta { margin: 0; font-size: 12px; color: #839192; }
+.nv-card-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Botones */
+.nv-btn { border: 1px solid #aab7b8; background: #fdfefe; color: #2c3e50; border-radius: 8px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
+.nv-btn:hover:not(:disabled) { background: #eaf2f8; }
+.nv-btn:disabled { opacity: .5; cursor: not-allowed; }
+.nv-btn.primary { background: #1a5276; border-color: #1a5276; color: #fff; }
+.nv-btn.primary:hover:not(:disabled) { background: #21618c; }
+.nv-btn.ghost { border-color: transparent; background: transparent; color: #1a5276; }
+
+/* Vista de libro */
+.nv-libro-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.nv-libro-head h2 { margin: 0; flex: 1; font-size: 17px; color: #1a5276; }
+.nv-buscador { display: flex; gap: 8px; margin-bottom: 10px; }
+.nv-buscador input { flex: 1; border: 1px solid #aab7b8; border-radius: 8px; padding: 8px 12px; font-size: 14px; }
+
+.nv-resultados { background: #fef9e7; border: 1px solid #f7dc6f; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; max-height: 260px; overflow: auto; }
+.nv-res-head { margin: 0 0 6px; font-size: 13px; font-weight: 700; color: #7d6608; }
+.nv-res-vacio { margin: 0; font-size: 13px; color: #7d6608; }
+.nv-resultados ul { list-style: none; margin: 0; padding: 0; }
+.nv-resultados li { display: flex; gap: 10px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; align-items: baseline; }
+.nv-resultados li:hover { background: #fcf3cf; }
+.nv-resultados li.activo { background: #f9e79f; }
+.nv-res-pag { font-weight: 700; color: #1a5276; white-space: nowrap; }
+.nv-res-snippet { color: #424949; }
+
+.nv-pagina-nav { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.nv-pag-info { font-size: 14px; color: #2c3e50; }
+.nv-ir { font-size: 13px; color: #5d6d7e; }
+.nv-ir input { width: 60px; border: 1px solid #aab7b8; border-radius: 6px; padding: 5px 8px; margin-left: 4px; }
+
+/* La "hoja" del libro */
+.nv-hoja { background: #fffdf7; border: 1px solid #d5cba7; border-radius: 4px; padding: 28px 34px; box-shadow: 0 2px 10px rgba(93, 64, 28, .12), inset 0 0 60px rgba(213, 196, 161, .15); min-height: 480px; }
+.nv-hoja pre { margin: 0; white-space: pre-wrap; word-wrap: break-word; font-family: Georgia, 'Times New Roman', serif; font-size: 14.5px; line-height: 1.65; color: #2c2418; }
+.nv-hoja mark { background: #f9e79f; padding: 0 2px; border-radius: 2px; }

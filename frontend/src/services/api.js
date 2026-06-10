@@ -220,6 +220,22 @@ export const rebajasAPI = {
   verificarRuc: (ruc) => api.get('/api/rebajas/verificar-ruc', { params: { ruc } }),
   create: (entry) => api.post('/api/rebajas/', entry),
   delete: (id) => api.delete(`/api/rebajas/${id}`),
+  // Condiciones normativas del producto (cerveza / nueva marca / cupo anual SRI)
+  getCondiciones: (identificacion, producto) => api.get('/api/rebajas/producto', { params: { identificacion, producto } }),
+  setCondiciones: (entry) => api.put('/api/rebajas/producto', entry),
+}
+
+// Normativa (cuerpos legales consultables: LRTI, Reglamento, normativa vigente)
+export const normativaAPI = {
+  list: () => api.get('/api/normativa/'),
+  pagina: (slug, num) => api.get(`/api/normativa/${slug}/pagina/${num}`),
+  buscar: (slug, q) => api.get(`/api/normativa/${slug}/buscar`, { params: { q } }),
+  pdfUrl: (slug) => api.get(`/api/normativa/${slug}/pdf`),
+  reemplazar: (slug, file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return api.post(`/api/normativa/${slug}/reemplazar`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
 }
 
 // Declaraciones (IVA / ICE)
@@ -227,8 +243,9 @@ export const declaracionesAPI = {
   // credito_adq/credito_ret: override del crédito tributario mes anterior (605/606)
   // diferir_meses: preview de recálculo con N meses de aplazamiento (no persiste hasta save)
   // rebaja_ice/exencion_ice: override manual de rebajas y exenciones ICE (si no, auto del módulo)
-  calcular: (clientId, tipo, { credito_adq, credito_ret, diferir_meses, rebaja_ice, exencion_ice } = {}) => api.get('/api/declaraciones/calcular', {
-    params: { client_id: clientId, tipo, credito_adq, credito_ret, diferir_meses, rebaja_ice, exencion_ice },
+  // rebaja_manual/exencion_manual: casillas "aplica" sin cálculo (1/0) — generan advertencia
+  calcular: (clientId, tipo, { credito_adq, credito_ret, diferir_meses, rebaja_ice, exencion_ice, rebaja_manual, exencion_manual } = {}) => api.get('/api/declaraciones/calcular', {
+    params: { client_id: clientId, tipo, credito_adq, credito_ret, diferir_meses, rebaja_ice, exencion_ice, rebaja_manual, exencion_manual },
   }),
   list: (clientId, tipo) => api.get('/api/declaraciones/', { params: { client_id: clientId, tipo } }),
   // diferir_pago_meses: 0/1/2/3 (IVA), 0/1 (ICE)
