@@ -150,8 +150,8 @@ export const iceAPI = {
   anexo: (clientId, actImport) =>
     api.get('/api/ice/anexo', { params: { client_id: clientId, act_import: actImport } }),
   catalog: () => api.get('/api/ice/catalog'),
-  anexoRows: (clientId, actImport) =>
-    api.get('/api/ice/anexo-rows', { params: { client_id: clientId, act_import: actImport } }),
+  anexoRows: (clientId, actImport, tipo = 'ICE') =>
+    api.get('/api/ice/anexo-rows', { params: { client_id: clientId, act_import: actImport, tipo } }),
 }
 
 // Ingresos IVA (ventas SIN ICE, por cliente). Las ventas CON ICE van por iceAPI.

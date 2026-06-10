@@ -2,11 +2,11 @@ import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { compradoresAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
-import './Contribuyente.css'
+import './Compradores.css'
 
 const TIPO_ID = { '04': 'RUC', '05': 'Cédula', '06': 'Pasaporte', '07': 'Consumidor final', '08': 'Id. exterior' }
 
-export default function Contribuyente() {
+export default function Compradores() {
   const { clients } = useClients()
   const [searchParams, setSearchParams] = useSearchParams()
   const identParam = searchParams.get('ident') || ''
@@ -100,9 +100,9 @@ export default function Contribuyente() {
     <div className="ct-page">
       <header className="ct-header">
         <div>
-          <h1>👥 Contribuyente — Clientes importados</h1>
+          <h1>👥 Compradores</h1>
           <p className="ct-sub">
-            Clientes (compradores) guardados automáticamente al importar las ventas, clasificados por contribuyente.
+            Clientes compradores guardados automáticamente al importar las ventas, clasificados por contribuyente.
             Se usan en el Anexo PVP+ICE cuando se requieren.
           </p>
         </div>

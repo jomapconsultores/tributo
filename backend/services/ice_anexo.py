@@ -209,21 +209,89 @@ def _build_vtas(rows, catalogo_cliente=None, buscar_oficial=None):
     return list(dedup.values()), advertencias
 
 
-def anexo_rows(rows, contribuyente, anio, mes, act_import="02", catalogo_cliente=None, buscar_oficial=None):
-    """Filas del anexo ICE listas para editar en el editor."""
-    vtas, advertencias = _build_vtas(rows, catalogo_cliente, buscar_oficial)
-    for v in vtas:
-        v["ventaICE"] = str(v["ventaICE"])
+def _resolver_cod_prod_pvp(nombre_producto, catalogo_cliente=None, buscar_oficial=None):
+    """Devuelve (codProdPVP, reconocido). El código PVP es el código individual
+    de la marca (no el compuesto): catálogo del cliente → base → oficial."""
+    desc = (nombre_producto or "").upper()
+    if catalogo_cliente:
+        for p in catalogo_cliente:
+            pn = (p.get("nombre") or "").upper().strip()
+            cod = (p.get("cod_prod_pvp") or p.get("cod_prod_ice") or "").strip()
+            if pn and cod and (pn in desc or desc in pn):
+                return cod.split('-')[2].lstrip('0') if cod.count('-') == 7 else cod, True
+    cat = buscar_en_catalogo(nombre_producto)
+    cod_sri = (cat.get('codProdSRI', '') or '').strip()
+    if cod_sri:
+        return cod_sri, True
+    if buscar_oficial:
+        of = _buscar_codigo_oficial(nombre_producto, buscar_oficial)
+        if of and (of.get('marca') or '').strip():
+            return of['marca'].strip(), True
+    return '', False
+
+
+def _build_vtas_pvp(rows, anio, mes, catalogo_cliente=None, buscar_oficial=None):
+    """Filas del anexo PVP: una por producto (codProdPVP), con precio ex-fábrica
+    y PVP promedio por botella, vigentes desde el inicio del período."""
+    ag = OrderedDict()
+    no_reconocidos = set()
+    cache = {}
+    for r in rows:
+        nombre = r.get("nombre_producto") or ""
+        if nombre in cache:
+            cod, ok = cache[nombre]
+        else:
+            cod, ok = _resolver_cod_prod_pvp(nombre, catalogo_cliente, buscar_oficial)
+            cache[nombre] = (cod, ok)
+        if not ok:
+            no_reconocidos.add(nombre[:80])
+        a = ag.get(cod or nombre)
+        if not a:
+            a = ag[cod or nombre] = {"cod": cod, "nombre": nombre, "botellas": 0,
+                                     "sin_imp": 0.0, "total": 0.0}
+        a["botellas"] += int(_f(r.get("unidades_botellas")))
+        a["sin_imp"] += _f(r.get("precio_total_sin_impuesto"))
+        a["total"] += _f(r.get("importe_total"))
+    fecha_ini = f"01/{str(mes).zfill(2)}/{anio}"
+    vtas = []
+    for a in ag.values():
+        b = a["botellas"] or 1
+        vtas.append({
+            "codProdPVP": a["cod"],
+            "gramoAzucar": "0.00",
+            "precioExPVP": f"{a['sin_imp'] / b:.2f}",
+            "precioPVP": f"{a['total'] / b:.2f}",
+            "fechaInPVP": fecha_ini,
+            "fechaFinPVP": "",
+            "nombreProducto": a["nombre"],
+        })
+    advertencias = []
+    if no_reconocidos:
+        advertencias.append(
+            "Productos sin código PVP (corrígelos en el editor o el catálogo): "
+            + "; ".join(sorted(p for p in no_reconocidos if p))
+        )
+    return vtas, advertencias
+
+
+def anexo_rows(rows, contribuyente, anio, mes, act_import="02", catalogo_cliente=None, buscar_oficial=None, tipo="ICE"):
+    """Filas del anexo (ICE o PVP) listas para editar en el editor."""
     c = contribuyente or {}
-    header = {
+    base_header = {
         "TipoIDInformante": "R",
         "IdInformante": c.get("identificacion", ""),
         "razonSocial": c.get("nombre", ""),
         "Anio": str(anio),
         "Mes": str(mes).zfill(2),
-        "actImport": str(act_import)[:2],
-        "codigoOperativo": "ICE",
     }
+    if str(tipo).upper() == "PVP":
+        vtas, advertencias = _build_vtas_pvp(rows, anio, mes, catalogo_cliente, buscar_oficial)
+        header = {**base_header, "tipoCarga": "", "codigoOperativo": "PVP"}
+        return {"tipo": "PVP", "header": header, "rows": vtas, "advertencias": advertencias}
+    vtas, advertencias = _build_vtas(rows, catalogo_cliente, buscar_oficial)
+    for v in vtas:
+        v["ventaICE"] = str(v["ventaICE"])
+    header = {**base_header, "actImport": str(act_import)[:2], "codigoOperativo": "ICE"}
     return {"tipo": "ICE", "header": header, "rows": vtas, "advertencias": advertencias}
 
 

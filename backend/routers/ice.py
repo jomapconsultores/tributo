@@ -195,9 +195,10 @@ async def catalog(_: str = Depends(get_current_user)):
 async def get_anexo_rows(
     client_id: str = Query(...),
     act_import: str = Query("02"),
+    tipo: str = Query("ICE"),
     user_id: str = Depends(get_current_user),
 ):
-    """Filas del anexo ICE de un cliente, listas para el editor de Anexo PVP+ICE."""
+    """Filas del anexo (ICE o PVP, a elegir) de un cliente, para el editor de Anexo PVP+ICE."""
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
@@ -205,7 +206,7 @@ async def get_anexo_rows(
         c = _cliente(supabase, client_id)
         cat = _catalogo_cliente(supabase, c.get("identificacion"), user_id)
         return anexo_rows(rows, c, c.get("periodo_anio") or 2026, c.get("periodo_mes") or 1, act_import, cat,
-                          buscar_oficial=_buscador_oficial(supabase))
+                          buscar_oficial=_buscador_oficial(supabase), tipo=tipo)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

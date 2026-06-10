@@ -79,6 +79,7 @@ export default function AnexoPVPICE() {
   const [catSel, setCatSel] = useState('')
   const [compradores, setCompradores] = useState([])
   const [compSel, setCompSel] = useState('')
+  const [tipoImport, setTipoImport] = useState('ICE')
   const [saved, setSaved] = useState([])
   const [savedId, setSavedId] = useState(null) // anexo guardado en edición (para actualizar, no duplicar)
   const [filtro, setFiltro] = useState('')
@@ -169,14 +170,15 @@ export default function AnexoPVPICE() {
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
 
-  const importarICEXML = async () => {
+  const importarVentas = async () => {
     if (!clientSel) { alert('Elige un cliente.'); return }
     try {
-      const res = await iceAPI.anexoRows(clientSel, header.actImport || '02')
+      const res = await iceAPI.anexoRows(clientSel, header.actImport || '02', tipoImport)
       const d = res.data
-      setTipo('ICE')
+      const t = d.tipo || tipoImport
+      setTipo(t)
       setHeader(d.header || {})
-      setRows((d.rows || []).map((v) => ({ ...DEFAULT_ROW('ICE'), ...v })))
+      setRows((d.rows || []).map((v) => ({ ...DEFAULT_ROW(t), ...v })))
       setSavedId(null)
       cerrarPanel()
       if (d.advertencias?.length) {
@@ -187,33 +189,46 @@ export default function AnexoPVPICE() {
     }
   }
 
+  // Añade una fila y la deja seleccionada: lo siguiente que se elija
+  // (producto o cliente) se junta en esa MISMA línea.
+  const agregarFilaActiva = (datos, t) => {
+    setRows((rs) => {
+      setSelRow(rs.length)
+      return [...rs, { ...DEFAULT_ROW(t), ...datos }]
+    })
+    setPartes(null); setMarcaInfo(null)
+  }
+
+  // Producto del catálogo del cliente: llena la fila seleccionada o crea una nueva
   const agregarDelCatalogo = (id) => {
     const p = catalogo.find((c) => c.id === id)
     if (!p) return
     const t = tipo || 'ICE'
     if (!tipo) initVacio('ICE')
-    const r = DEFAULT_ROW(t)
-    if (t === 'ICE') r.codProdICE = p.cod_prod_ice || '3031'
-    else r.codProdPVP = p.cod_prod_pvp || ''
-    r.nombreProducto = p.nombre || ''
-    setRows((rs) => [...rs, r])
+    const datos = t === 'ICE'
+      ? { codProdICE: p.cod_prod_ice || '3031', nombreProducto: p.nombre || '' }
+      : { codProdPVP: p.cod_prod_pvp || '', nombreProducto: p.nombre || '' }
+    if (selRow != null && tipo) {
+      setRows((rs) => rs.map((r, idx) => (idx === selRow ? { ...r, ...datos } : r)))
+      if (partes) setPartes(descomponerCodigo(datos[codField]))
+    } else {
+      agregarFilaActiva(datos, t)
+    }
     setCatSel('')
   }
 
-  // Aplica un cliente importado: a la fila seleccionada, o añade una fila nueva (solo ICE)
+  // Cliente importado: completa idCliente/tipoIdCliente en la fila seleccionada
+  // (misma línea que el producto) o crea una fila nueva y la deja activa
   const aplicarComprador = (id) => {
     const c = compradores.find((x) => x.id === id)
     if (!c) return
     const letra = TIPO_ID_LETRA[c.tipo_id] || (['R', 'C', 'P', 'F'].includes(c.tipo_id) ? c.tipo_id : 'F')
     if (tipo === 'PVP') { alert('El anexo PVP no lleva cliente por fila.'); setCompSel(''); return }
-    if (selRow != null) {
+    if (selRow != null && tipo) {
       setRows((rs) => rs.map((r, idx) => (idx === selRow ? { ...r, idCliente: c.ruc, tipoIdCliente: letra } : r)))
     } else {
       if (!tipo) initVacio('ICE')
-      const r = DEFAULT_ROW('ICE')
-      r.idCliente = c.ruc
-      r.tipoIdCliente = letra
-      setRows((rs) => [...rs, r])
+      agregarFilaActiva({ idCliente: c.ruc, tipoIdCliente: letra }, 'ICE')
     }
     setCompSel('')
   }
@@ -271,6 +286,15 @@ export default function AnexoPVPICE() {
     }
   }
 
+  // Selecciona la fila activa (sin abrir el panel de partes): el producto o
+  // cliente que se elija arriba se junta en esta línea
+  const seleccionarFila = (i) => {
+    if (i === selRow) return
+    setSelRow(i)
+    setPartes(null)
+    setMarcaInfo(null)
+  }
+
   // ── Panel de partes constitutivas del código ──────────────────────────────
   const abrirPanel = (i) => {
     setSelRow(i)
@@ -317,18 +341,30 @@ export default function AnexoPVPICE() {
 
   const elegirOficial = (m) => {
     if (selRow != null && partes) {
-      // Aplica impuesto/clasificación/marca a la fila seleccionada (panel abierto)
+      // Panel abierto: aplica impuesto/clasificación/marca a las partes
       setPartes((p) => ({ ...p, impuesto: m.impuesto || '3031', clasificacion: m.clasif_cod || '57', marca: m.marca || '' }))
+    } else if (selRow != null && tipo) {
+      // Fila seleccionada: junta el producto en esa misma línea
+      setRows((rs) => rs.map((r, idx) => {
+        if (idx !== selRow) return r
+        const nuevo = { ...r }
+        if (tipo === 'ICE') {
+          nuevo.codProdICE = armarCodigo({ ...descomponerCodigo(r.codProdICE), impuesto: m.impuesto || '3031', clasificacion: m.clasif_cod || '57', marca: m.marca || '' })
+        } else {
+          nuevo.codProdPVP = m.marca || ''
+        }
+        if (!nuevo.nombreProducto) nuevo.nombreProducto = (m.descripcion || '').toUpperCase()
+        return nuevo
+      }))
     } else {
-      // Agrega una fila nueva con el código armado desde la marca oficial
+      // Sin fila seleccionada: crea una nueva y la deja activa
       const t = tipo || 'ICE'
       if (!tipo) initVacio('ICE')
-      const r = DEFAULT_ROW(t)
       const cod = armarCodigo({ impuesto: m.impuesto, clasificacion: m.clasif_cod, marca: m.marca, presentacion: '13', capacidad: '750', unidad: '66', pais: '593', grado: '15' })
-      if (t === 'ICE') r.codProdICE = cod
-      else r.codProdPVP = m.marca || ''
-      r.nombreProducto = (m.descripcion || '').toUpperCase()
-      setRows((rs) => [...rs, r])
+      const datos = t === 'ICE'
+        ? { codProdICE: cod, nombreProducto: (m.descripcion || '').toUpperCase() }
+        : { codProdPVP: m.marca || '', nombreProducto: (m.descripcion || '').toUpperCase() }
+      agregarFilaActiva(datos, t)
     }
     setBusqCod(''); setResCod([])
   }
@@ -428,7 +464,12 @@ export default function AnexoPVPICE() {
             <option value="">Período…</option>
             {periodosRuc.map((c) => <option key={c.id} value={c.id}>{periodoCorto(c)}</option>)}
           </select>
-          <button className="ax-btn teal" onClick={importarICEXML} disabled={!clientSel}>↪ Importar ventas ICE</button>
+          <span className="ax-relate-lbl">Importar como:</span>
+          <select value={tipoImport} onChange={(e) => setTipoImport(e.target.value)}>
+            <option value="ICE">Anexo ICE</option>
+            <option value="PVP">Anexo PVP</option>
+          </select>
+          <button className="ax-btn teal" onClick={importarVentas} disabled={!clientSel}>↪ Importar ventas</button>
         </div>
         <div className="ax-relate-group">
           <span className="ax-relate-lbl">Cliente importado:</span>
@@ -521,7 +562,10 @@ export default function AnexoPVPICE() {
                 placeholder="🔍 Filtrar por producto, código o cliente…"
               />
             </div>
-            <p className="ax-hint">Haz clic en un código de producto para ver y editar sus partes constitutivas abajo.</p>
+            <p className="ax-hint">
+              Haz clic en una fila para seleccionarla: el producto (catálogo o buscador) y el cliente importado que elijas
+              se juntan en esa misma línea. Clic en el código de producto para ver y editar sus partes abajo.
+            </p>
             <div className="ax-scroll">
               <table className="ax-table">
                 <thead>
@@ -539,14 +583,14 @@ export default function AnexoPVPICE() {
                   ) : visibles.map(({ r, i }) => (
                     <tr key={i} className={`${i === selRow ? 'ax-row-sel' : ''} ${codInvalido(r) ? 'ax-row-bad' : ''}`}>
                       {hayNombre && (
-                        <td><input value={r.nombreProducto || ''} onChange={(e) => setR(i, 'nombreProducto', e.target.value)} /></td>
+                        <td><input value={r.nombreProducto || ''} onFocus={() => seleccionarFila(i)} onChange={(e) => setR(i, 'nombreProducto', e.target.value)} /></td>
                       )}
                       {COLS[tipo].map((c) => (
                         <td key={c} className={c === codField ? 'ax-cod-cell' : ''}>
                           <input
                             value={r[c] || ''}
                             onChange={(e) => setR(i, c, e.target.value)}
-                            onFocus={c === codField ? () => abrirPanel(i) : undefined}
+                            onFocus={c === codField ? () => abrirPanel(i) : () => seleccionarFila(i)}
                             title={c === codField ? 'Clic para descomponer el código abajo' : undefined}
                           />
                         </td>
