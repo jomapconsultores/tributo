@@ -12,6 +12,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const { has, isAdmin } = useAccess()
   const bajadorRef = useRef(null)
   const [clientsOpen, setClientsOpen] = useState(true)
+  const [contribOpen, setContribOpen] = useState(false)
   const [ingresosIvaOpen, setIngresosIvaOpen] = useState(true)
   const [ingresosIceOpen, setIngresosIceOpen] = useState(true)
   const [gastosOpen, setGastosOpen] = useState(true)
@@ -61,8 +62,9 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const isCatalogo = path === '/catalogo-productos'
   const isRebajas = path === '/rebajas-exenciones'
   const isRecursos = path === '/recursos-ice'
+  const isContribuyente = path === '/contribuyente'
   const isInIngresosIvaMenu = isIngresosIva
-  const isInIngresosIceMenu = isIceXml || isCalculo || isAnexo || isCatalogo || isRebajas || isRecursos
+  const isInIngresosIceMenu = isIceXml || isCalculo || isAnexo || isCatalogo || isRebajas || isRecursos || isContribuyente
   const isIngresos = isInIngresosIvaMenu || isInIngresosIceMenu
   const isGastos = !isRetenciones && !isIngresos && !isDeclaraciones && !isDevoluciones // todo lo demás pertenece al proceso de Gastos
   const isDatabase = path === '/'
@@ -303,6 +305,46 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
           <span className="nav-ico">🗄️</span>
           <span>BASE DE DATOS</span>
         </button>
+
+        {/* Contribuyente (desplegable): clientes importados clasificados por contribuyente */}
+        {has('ingresos_ice') && (<>
+        <button
+          className={`nav-item clients-toggle ${isContribuyente ? 'active' : ''}`}
+          onClick={() => setContribOpen((o) => !o)}
+        >
+          <span className={`caret ${contribOpen ? 'open' : ''}`}>▸</span>
+          <span>Contribuyente</span>
+          {contribuyentes.length > 0 && <span className="client-badge">{contribuyentes.length}</span>}
+        </button>
+        {contribOpen && (
+          <div className="client-list">
+            <button
+              className="nav-item client-item"
+              onClick={() => navigate('/contribuyente')}
+              title="Todos los clientes importados"
+            >
+              <span className="client-dot" />
+              <span className="client-info">
+                <span className="client-name">Ver todos los clientes</span>
+              </span>
+            </button>
+            {contribuyentes.map((c) => (
+              <button
+                key={c.identificacion}
+                className="nav-item client-item"
+                onClick={() => navigate(`/contribuyente?ident=${encodeURIComponent(c.identificacion)}`)}
+                title={`Clientes de ${c.identificacion} — ${c.nombre}`}
+              >
+                <span className="client-dot" />
+                <span className="client-info">
+                  <span className="client-name">{c.nombre}</span>
+                  <span className="client-periodo">{c.identificacion}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+        </>)}
 
         {/* Clientes (desplegable, por nombre, con buscador) */}
         <button

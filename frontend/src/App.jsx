@@ -15,6 +15,7 @@ import RecursosICE from './pages/RecursosICE'
 import Declaraciones from './pages/Declaraciones'
 import DevolucionesIvaTerceraEdad from './pages/DevolucionesIvaTerceraEdad'
 import CatalogoProductos from './pages/CatalogoProductos'
+import Contribuyente from './pages/Contribuyente'
 import RebajasExenciones from './pages/RebajasExenciones'
 import Admin from './pages/Admin'
 import AdminCredentials from './pages/AdminCredentials'
@@ -118,6 +119,7 @@ function App() {
             <Route path="/recursos-ice" element={<RequireModule modulo="ingresos_ice"><RecursosICE /></RequireModule>} />
             <Route path="/ice" element={<RequireModule modulo="ingresos_ice"><ICE /></RequireModule>} />
             <Route path="/catalogo-productos" element={<RequireModule modulo="ingresos_ice"><CatalogoProductos /></RequireModule>} />
+            <Route path="/contribuyente" element={<RequireModule modulo="ingresos_ice"><Contribuyente /></RequireModule>} />
             <Route path="/rebajas-exenciones" element={<RequireModule modulo="ingresos_ice"><RebajasExenciones /></RequireModule>} />
             <Route path="/admin" element={<RequireAdmin><Admin /></RequireAdmin>} />
             <Route path="/admin/credenciales" element={<RequireAdmin><AdminCredentials /></RequireAdmin>} />
