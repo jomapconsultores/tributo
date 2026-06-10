@@ -3,8 +3,20 @@ import { useOutletContext } from 'react-router-dom'
 import { productsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
-import { buildCodProdICE } from '../utils/codigoICE'
+import { buildCodProdICE, armarCodigo, descomponerCodigo, sinCeros } from '../utils/codigoICE'
 import './CatalogoProductos.css'
+
+// Partes constitutivas del código de producto ICE (orden SRI)
+const PARTES_DEF = [
+  { key: 'impuesto', label: '1. Cód. Impuesto', lk: null },
+  { key: 'clasificacion', label: '2. Clasificación', lk: null },
+  { key: 'marca', label: '3. Marca (producto)', lk: null },
+  { key: 'presentacion', label: '4. Presentación', lk: 'presentacion' },
+  { key: 'capacidad', label: '5. Capacidad (ml)', lk: 'capacidad' },
+  { key: 'unidad', label: '6. Unidad', lk: 'unidad' },
+  { key: 'pais', label: '7. País', lk: 'pais' },
+  { key: 'grado', label: '8. Grado alcohólico', lk: 'grado' },
+]
 
 const EMPTY = {
   nombre: '', cod_prod_sri: '', cod_prod_ice: '', cod_prod_pvp: '', cod_impuesto: '3031',
@@ -76,6 +88,70 @@ export default function CatalogoProductos() {
   }
   const editar = (p) => { setEditId(p.id); setForm({ ...EMPTY, ...p }) }
   const cancelar = () => { setEditId(null); setForm(EMPTY) }
+
+  // ── Panel de partes del código: clic en el código de un producto lo desglosa ──
+  const [partesId, setPartesId] = useState(null)   // producto cuyo código se desglosa
+  const [partes, setPartes] = useState(null)       // las 8 partes editables
+  const [marcaInfo, setMarcaInfo] = useState(null) // nombre oficial de la marca (Códigos ICE)
+
+  const abrirPartes = (p) => {
+    if (partesId === p.id) { cerrarPartes(); return }
+    setPartesId(p.id)
+    // Desglosa el código completo; si no existe, parte de los campos guardados
+    const base = (p.cod_prod_ice || '').includes('-')
+      ? descomponerCodigo(p.cod_prod_ice)
+      : { impuesto: p.cod_impuesto || '3031', clasificacion: p.cod_clasificacion || '57',
+          marca: p.cod_prod_sri || p.cod_prod_pvp || '', presentacion: p.presentacion || '13',
+          capacidad: p.capacidad || '750', unidad: p.unidad || '66',
+          pais: p.cod_pais || '593', grado: p.grado || '15' }
+    setPartes(base)
+    setMarcaInfo(null)
+  }
+  const cerrarPartes = () => { setPartesId(null); setPartes(null); setMarcaInfo(null) }
+  const setParte = (k, v) => setPartes((pp) => ({ ...pp, [k]: v }))
+  const codigoArmado = partes ? armarCodigo(partes) : ''
+  const prodPartes = rows.find((p) => p.id === partesId)
+
+  // Nombre oficial de la marca según la BD de Códigos ICE
+  useEffect(() => {
+    if (!partes) { setMarcaInfo(null); return }
+    const m = sinCeros(partes.marca)
+    if (!m || m === '0') { setMarcaInfo(null); return }
+    const t = setTimeout(() => {
+      productsAPI.searchCodigos(m, sinCeros(partes.impuesto) || '3031')
+        .then((r) => {
+          const data = r.data?.data || []
+          setMarcaInfo(data.find((d) => sinCeros(d.marca) === m) || null)
+        })
+        .catch(() => setMarcaInfo(null))
+    }, 250)
+    return () => clearTimeout(t)
+  }, [partesId, partes?.marca, partes?.impuesto])
+
+  const lkDesc = (key, val) => {
+    const f = (lk[key] || []).find((x) => sinCeros(x.codigo) === sinCeros(val))
+    return f?.descripcion || ''
+  }
+
+  const guardarPartes = async () => {
+    if (!prodPartes || !partes) return
+    try {
+      await productsAPI.update(prodPartes.id, {
+        cod_prod_ice: codigoArmado,
+        cod_impuesto: sinCeros(partes.impuesto),
+        cod_clasificacion: sinCeros(partes.clasificacion),
+        cod_prod_sri: sinCeros(partes.marca),
+        cod_prod_pvp: prodPartes.cod_prod_pvp || sinCeros(partes.marca),
+        presentacion: sinCeros(partes.presentacion),
+        capacidad: sinCeros(partes.capacidad),
+        unidad: sinCeros(partes.unidad),
+        cod_pais: sinCeros(partes.pais),
+        grado: sinCeros(partes.grado),
+      })
+      await load()
+      cerrarPartes()
+    } catch (e) { alert('Error al guardar: ' + (e.response?.data?.detail || e.message)) }
+  }
   const borrar = async (id) => {
     if (!window.confirm('¿Eliminar este producto del catálogo?')) return
     try { await productsAPI.delete(id); if (editId === id) cancelar(); await load() }
@@ -188,10 +264,10 @@ export default function CatalogoProductos() {
               </tr></thead>
               <tbody>
                 {rows.map((p) => (
-                  <tr key={p.id} className={editId === p.id ? 'cp-editing' : ''}>
+                  <tr key={p.id} className={`${editId === p.id ? 'cp-editing' : ''} ${partesId === p.id ? 'cp-partes-sel' : ''}`}>
                     <td>{p.nombre}</td>
-                    <td className="cp-cod">{p.cod_prod_sri || '—'}</td>
-                    <td className="cp-cod">{p.cod_prod_ice || <span className="cp-falta">— falta —</span>}</td>
+                    <td className="cp-cod cp-click" title="Clic para desglosar el código en sus 8 partes" onClick={() => abrirPartes(p)}>{p.cod_prod_sri || '—'}</td>
+                    <td className="cp-cod cp-click" title="Clic para desglosar el código en sus 8 partes" onClick={() => abrirPartes(p)}>{p.cod_prod_ice || <span className="cp-falta">— clic para armarlo —</span>}</td>
                     <td className="cp-cod">{p.cod_prod_pvp || '—'}</td>
                     <td className="r">{p.capacidad}</td><td className="r">{p.grado}</td>
                     <td className="r">{p.presentacion}</td><td className="r">{p.unidad}</td><td className="r">{p.botellas_por_caja}</td>
@@ -206,6 +282,42 @@ export default function CatalogoProductos() {
           </div>
         )}
       </div>
+
+      {/* Panel: partes constitutivas del código del producto seleccionado */}
+      {prodPartes && partes && (
+        <div className="cp-partes">
+          <div className="cp-partes-head">
+            <h2>🧩 Partes del código — {prodPartes.nombre}</h2>
+            <button className="cp-btn ghost" onClick={cerrarPartes}>✕ Cerrar</button>
+          </div>
+          <div className="cp-partes-grid">
+            {PARTES_DEF.map((pd) => (
+              <label key={pd.key} className="cp-f">
+                <span>{pd.label}</span>
+                <input
+                  list={pd.lk ? `lk-${pd.lk === 'presentacion' ? 'pres' : pd.lk === 'capacidad' ? 'cap' : pd.lk === 'unidad' ? 'und' : pd.lk}` : undefined}
+                  value={partes[pd.key] || ''}
+                  onChange={(e) => setParte(pd.key, e.target.value)}
+                />
+                <small className="cp-parte-desc">
+                  {pd.key === 'impuesto' && (marcaInfo?.impuesto_nombre || (sinCeros(partes.impuesto) === '3031' ? 'ICE BEBIDAS ALCOHÓLICAS' : ''))}
+                  {pd.key === 'clasificacion' && (marcaInfo?.clasificacion || '')}
+                  {pd.key === 'marca' && (marcaInfo?.descripcion || (sinCeros(partes.marca) !== '0' ? 'Marca no encontrada en Códigos ICE' : 'Ingresa el código de la marca'))}
+                  {pd.key === 'pais' && (lkDesc('pais', partes.pais) || (sinCeros(partes.pais) === '593' ? 'ECUADOR' : ''))}
+                  {pd.lk && pd.key !== 'pais' && lkDesc(pd.lk, partes[pd.key])}
+                </small>
+              </label>
+            ))}
+          </div>
+          <div className="cp-partes-foot">
+            <div>
+              <span className="cp-codes-lbl">Código armado:</span>{' '}
+              <code className="cp-full">{codigoArmado}</code>
+            </div>
+            <button className="cp-btn primary" onClick={guardarPartes}>💾 Guardar en el producto</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

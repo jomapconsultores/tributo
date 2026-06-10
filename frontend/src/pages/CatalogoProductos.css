@@ -49,3 +49,17 @@
 .cp-falta { color: #d97706; font-style: italic; font-family: inherit; }
 .cp-table tr.cp-editing { background: #fef3c7; }
 .cp-actions button { border: none; background: transparent; cursor: pointer; font-size: 0.9rem; padding: 2px 5px; }
+
+/* Panel de partes constitutivas del código (clic en el código de la tabla) */
+.cp-click { cursor: pointer; }
+.cp-click:hover { background: #fffbeb; color: #b45309; text-decoration: underline; }
+.cp-table tr.cp-partes-sel { background: #ecfdf5; }
+.cp-partes { background: #fff; border: 2px solid #10b981; border-radius: 10px; padding: 14px 18px; margin-top: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.cp-partes-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.cp-partes-head h2 { margin: 0; font-size: 0.95rem; color: #065f46; }
+.cp-partes-grid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px 14px; }
+.cp-partes-grid .cp-f input { font-family: monospace; }
+.cp-parte-desc { display: block; min-height: 14px; font-size: 0.68rem; color: #059669; margin-top: 2px; }
+.cp-partes-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; background: #1e293b; border-radius: 8px; padding: 10px 14px; color: #e2e8f0; font-size: 0.85rem; flex-wrap: wrap; }
+.cp-partes-foot code.cp-full { color: #6ee7b7; word-break: break-all; font-family: monospace; }
+@media (max-width: 900px) { .cp-partes-grid { grid-template-columns: repeat(2, 1fr); } }
