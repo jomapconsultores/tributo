@@ -1,7 +1,7 @@
 """Cálculo de declaraciones (código SRI → valor) a partir de los datos cargados.
 IVA = Formulario 104; ICE = Formulario ICE. Los mapeos de código son los
 campos estándar del SRI; el contador debe verificarlos antes de presentar."""
-from services.ice_calc import resumen_general as ice_audit_general, resumen_por_producto as ice_por_producto
+from services.ice_calc import resumen_general as ice_audit_general, resumen_por_producto as ice_por_producto, audit_detail as ice_audit_detail
 from services.ice_data import tax_params
 from services.xml_parser import GASTOS_PERSONALES
 
@@ -242,8 +242,9 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
     g = ice_audit_general(ice_rows, anio)
     tax = tax_params(anio)
     esp = tax.get("esp", 0.0)
-    # Base imponible (ad valorem) = precio ex-fábrica de venta
-    base = sum(_f(r.get("base_ice")) or _f(r.get("precio_total_sin_impuesto")) for r in ice_rows)
+    # Base imponible ad valorem (303): SOLO las ventas cuyo precio por litro
+    # supera el umbral (si ninguna cumple, el casillero queda en 0)
+    base = sum(_f(d.get("subtotal")) for d in ice_audit_detail(ice_rows, anio) if d.get("aplica_adv"))
     # Volumen = LITROS DE ALCOHOL PURO (litros de bebida × grado/100)
     litros_alcohol = sum(
         _f(r.get("unidades_botellas")) * (_f(r.get("capacidad")) / 1000.0) * (_f(r.get("grado_alcoholico")) / 100.0)
@@ -282,7 +283,7 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
     total_a_pagar = ice_neto + monto_aplazados_que_vencen
 
     filas = [
-        {"seccion": "AD VALOREM", "codigo": "303", "concepto": "Base imponible bruta (precio ex-fábrica)", "valor": round(base, 2)},
+        {"seccion": "AD VALOREM", "codigo": "303", "concepto": "Base imponible ad valorem (solo ventas con precio/litro sobre el umbral; 0 si ninguna)", "valor": round(base, 2)},
         {"seccion": "AD VALOREM", "codigo": "305", "concepto": "Porcentaje tarifa ad valorem", "valor": 0.75},
         {"seccion": "AD VALOREM", "codigo": "309", "concepto": "ICE causado ad valorem", "valor": round(ice_adv, 2)},
         {"seccion": "ESPECÍFICO", "codigo": "314", "concepto": "Volumen neto (litros de alcohol puro)", "valor": round(litros_alcohol, 4)},
