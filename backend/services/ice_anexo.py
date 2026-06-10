@@ -1,9 +1,17 @@
 """Generación del anexo ICE para el SRI y agrupaciones por producto / cliente.
 Portado de la lógica de ICEcompleto(1).py (sincronizar_editor + generar_xml)."""
 import re
+import unicodedata
 from collections import defaultdict, OrderedDict
 from xml.sax.saxutils import escape
 from services.ice_data import buscar_en_catalogo
+
+
+def _sin_tildes(s):
+    """El validador del SRI rechaza vocales con tilde/diéresis; la Ñ sí es válida."""
+    s = str(s or '').replace('Ñ', '\x00').replace('ñ', '\x01')
+    s = unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii')
+    return s.replace('\x00', 'Ñ').replace('\x01', 'ñ')
 
 # tipoIdentificacionComprador (factura) → tipoIdCliente (anexo ICE)
 _TIPO_ID = {'04': 'R', '05': 'C', '06': 'P', '07': 'F', '08': 'F'}
@@ -280,7 +288,7 @@ def anexo_rows(rows, contribuyente, anio, mes, act_import="02", catalogo_cliente
     base_header = {
         "TipoIDInformante": "R",
         "IdInformante": c.get("identificacion", ""),
-        "razonSocial": c.get("nombre", ""),
+        "razonSocial": _sin_tildes(c.get("nombre", "")),
         "Anio": str(anio),
         "Mes": str(mes).zfill(2),
     }
@@ -319,7 +327,7 @@ def generar_anexo_ice(rows, contribuyente, anio, mes, act_import="02", catalogo_
 
     mes_str = str(mes).zfill(2)
     ruc = (contribuyente or {}).get("identificacion", "")
-    razon = (contribuyente or {}).get("nombre", "")
+    razon = _sin_tildes((contribuyente or {}).get("nombre", ""))
 
     cols = ['codProdICE', 'gramoAzucar', 'tipoIdCliente', 'idCliente',
             'tipoVentaICE', 'ventaICE', 'devICE', 'cantProdBajaICE']

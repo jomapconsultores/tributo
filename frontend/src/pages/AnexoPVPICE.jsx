@@ -39,7 +39,14 @@ const DEFAULT_ROW = (tipo) => {
   return r
 }
 
-const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+// El validador del SRI rechaza vocales con tilde/diéresis (la Ñ sí es válida)
+const sinTildes = (s) => String(s ?? '')
+  .replace(/[ÁÀÂÄ]/g, 'A').replace(/[ÉÈÊË]/g, 'E').replace(/[ÍÌÎÏ]/g, 'I')
+  .replace(/[ÓÒÔÖ]/g, 'O').replace(/[ÚÙÛÜ]/g, 'U')
+  .replace(/[áàâä]/g, 'a').replace(/[éèêë]/g, 'e').replace(/[íìîï]/g, 'i')
+  .replace(/[óòôö]/g, 'o').replace(/[úùûü]/g, 'u')
+
+const esc = (s) => sinTildes(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 const childText = (parent, tag) => {
   for (const el of parent.children) if (el.tagName === tag) return el.textContent || ''
   return ''
@@ -252,7 +259,7 @@ export default function AnexoPVPICE() {
     h.TipoIDInformante = 'R'
     if (t === 'ICE') h.actImport = '02'
     const contrib = clients.find((c) => c.identificacion === rucSel)
-    if (contrib) { h.IdInformante = contrib.identificacion; h.razonSocial = contrib.nombre || '' }
+    if (contrib) { h.IdInformante = contrib.identificacion; h.razonSocial = sinTildes(contrib.nombre || '') }
     const per = clients.find((c) => c.id === clientSel)
     if (per) { h.Anio = String(per.periodo_anio || ''); h.Mes = String(per.periodo_mes || '').padStart(2, '0') }
     setTipo(t); setHeader(h); setRows([])
