@@ -31,8 +31,9 @@ const PARTES_DEF = [
 const DEFAULT_ROW = (tipo) => {
   const r = {}
   COLS[tipo].forEach((c) => {
-    if (['devICE', 'cantProdBajaICE'].includes(c)) r[c] = '0'
-    else if (['ventaICE', 'precioPVP', 'precioExPVP'].includes(c)) r[c] = '0.00'
+    if (['devICE', 'cantProdBajaICE', 'ventaICE'].includes(c)) r[c] = '0' // el SRI exige enteros (botellas)
+    else if (['precioPVP', 'precioExPVP', 'gramoAzucar'].includes(c)) r[c] = '0.00'
+    else if (c === 'tipoVentaICE') r[c] = '1'
     else r[c] = ''
   })
   return r
@@ -50,6 +51,17 @@ const childEl = (parent, tag) => {
 
 // tipoIdentificacionComprador (factura) → tipoIdCliente (anexo ICE)
 const TIPO_ID_LETRA = { '04': 'R', '05': 'C', '06': 'P', '07': 'F', '08': 'F' }
+
+// '12.00' → '12' en los campos de cantidad del anexo ICE (el SRI exige enteros)
+const normalizarCantidades = (tipo, r) => {
+  if (tipo !== 'ICE') return r
+  const out = { ...r }
+  for (const c of ['ventaICE', 'devICE', 'cantProdBajaICE']) {
+    const m = String(out[c] ?? '').trim().match(/^(\d+)(?:[.,]0+)?$/)
+    if (m) out[c] = m[1]
+  }
+  return out
+}
 
 const dig = (v) => String(v || '').replace(/\D/g, '')
 const pad = (v, n) => dig(v).padStart(n, '0')
@@ -154,9 +166,10 @@ export default function AnexoPVPICE() {
 
   const recuperarAnexo = (a) => {
     const d = a.datos || {}
-    setTipo(d.tipo || a.tipo)
+    const t = d.tipo || a.tipo
+    setTipo(t)
     setHeader(d.header || {})
-    setRows(d.rows || [])
+    setRows((d.rows || []).map((r) => normalizarCantidades(t, r)))
     setSavedId(a.id)
     cerrarPanel()
   }
@@ -236,6 +249,12 @@ export default function AnexoPVPICE() {
   const initVacio = (t) => {
     const h = {}
     HEADER[t].forEach((c) => { h[c] = c === 'codigoOperativo' ? t : '' })
+    h.TipoIDInformante = 'R'
+    if (t === 'ICE') h.actImport = '02'
+    const contrib = clients.find((c) => c.identificacion === rucSel)
+    if (contrib) { h.IdInformante = contrib.identificacion; h.razonSocial = contrib.nombre || '' }
+    const per = clients.find((c) => c.id === clientSel)
+    if (per) { h.Anio = String(per.periodo_anio || ''); h.Mes = String(per.periodo_mes || '').padStart(2, '0') }
     setTipo(t); setHeader(h); setRows([])
     setSavedId(null)
     cerrarPanel()
@@ -258,7 +277,7 @@ export default function AnexoPVPICE() {
           if (vta.tagName !== 'vta') continue
           const r = {}
           COLS[t].forEach((c) => { r[c] = childText(vta, c) })
-          nuevas.push(r)
+          nuevas.push(normalizarCantidades(t, r))
         }
       }
       setTipo(t); setHeader(h); setRows(nuevas)
@@ -398,8 +417,41 @@ export default function AnexoPVPICE() {
     return s
   }, [tipo, header, rows])
 
+  // Validación previa: el validador del SRI rechaza elementos vacíos y
+  // cantidades con decimales (ventaICE/devICE/cantProdBajaICE son enteros)
+  const validar = () => {
+    const errs = []
+    HEADER[tipo].forEach((c) => {
+      if (c === 'tipoCarga') return // opcional en el esquema PVP
+      if (!String(header[c] || '').trim()) errs.push(`Cabecera: «${c}» está vacío`)
+    })
+    if (String(header.Anio || '').trim() && !/^\d{4}$/.test(String(header.Anio).trim()))
+      errs.push('Cabecera: «Anio» debe tener 4 dígitos (ej. 2026)')
+    if (String(header.Mes || '').trim() && !/^(0[1-9]|1[0-2])$/.test(String(header.Mes).trim()))
+      errs.push('Cabecera: «Mes» debe ser 01 a 12')
+    rows.forEach((r, i) => {
+      const n = `Fila ${i + 1}${r.nombreProducto ? ` (${String(r.nombreProducto).slice(0, 30)})` : ''}`
+      COLS[tipo].forEach((c) => {
+        if (c === 'fechaFinPVP') return // opcional
+        if (!String(r[c] || '').trim()) errs.push(`${n}: «${c}» está vacío`)
+      })
+      if (tipo === 'ICE') {
+        for (const c of ['ventaICE', 'devICE', 'cantProdBajaICE']) {
+          const v = String(r[c] ?? '').trim()
+          if (v && !/^\d+$/.test(v)) errs.push(`${n}: «${c}» debe ser un entero sin decimales (tiene '${v}')`)
+        }
+      }
+    })
+    return errs
+  }
+
   const descargar = () => {
     if (!tipo) { alert('No hay datos para generar.'); return }
+    const errs = validar()
+    if (errs.length) {
+      const detalle = errs.slice(0, 15).join('\n') + (errs.length > 15 ? `\n…y ${errs.length - 15} más` : '')
+      if (!window.confirm(`⚠ El SRI rechazará este XML:\n\n${detalle}\n\n¿Generar de todas formas?`)) return
+    }
     const blob = new Blob([xml], { type: 'application/xml' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
