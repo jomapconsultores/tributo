@@ -1,7 +1,7 @@
 """Cálculo de declaraciones (código SRI → valor) a partir de los datos cargados.
 IVA = Formulario 104; ICE = Formulario ICE. Los mapeos de código son los
 campos estándar del SRI; el contador debe verificarlos antes de presentar."""
-from services.ice_calc import resumen_general as ice_audit_general
+from services.ice_calc import resumen_general as ice_audit_general, resumen_por_producto as ice_por_producto
 from services.ice_data import tax_params
 from services.xml_parser import GASTOS_PERSONALES
 
@@ -220,10 +220,18 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     }
 
 
-def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None):
+def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
+                    rebajas_productos=None, override_rebaja=None, override_exencion=None):
     """Formulario ICE para bebidas alcohólicas (SRI).
     - ICE específico: tarifa por litro de alcohol puro × litros de alcohol puro.
     - ICE ad valorem: 75% del exceso del precio/litro sobre el umbral.
+
+    Rebajas y exenciones (LRTI): rebaja del 50% de la tarifa específica para
+    productos elaborados con ≥70% de materia prima nacional de proveedores
+    MIPYME/artesanos. `rebajas_productos` viene del módulo Rebajas y exenciones
+    ({PRODUCTO: {pct, cumple}}); con eso se precalcula la rebaja automática.
+    `override_rebaja` / `override_exencion` permiten ingresar los montos a mano
+    (mismo patrón que el crédito 605/606 del IVA).
 
     Aplazamientos: ICE permite hasta 1 mes adicional cuando hay compras a crédito
     de procesos productivos (regla SRI). Si hay aplazamientos vencidos este
@@ -245,8 +253,33 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None):
     ice_adv = g.get("ice_advalorem", 0.0)
     total_ice = g.get("total_ice", 0.0)
 
+    # ── Rebaja por componente nacional (módulo Rebajas y exenciones) ─────
+    # 50% del ICE específico de los productos que cumplen (≥70% de materia
+    # prima nacional de proveedores MIPYME calificados)
+    rebajas_productos = rebajas_productos or {}
+    cumplen = {p: d for p, d in rebajas_productos.items() if d.get("cumple")}
+    productos_con_rebaja = []
+    rebaja_auto = 0.0
+    if cumplen:
+        for fp in ice_por_producto(ice_rows, anio):
+            nombre = (fp.get("producto") or "").upper().strip()
+            for p, d in cumplen.items():
+                pn = p.upper().strip()
+                if pn and nombre and (pn in nombre or nombre in pn):
+                    rebaja_auto += 0.5 * _f(fp.get("ice_especifico"))
+                    productos_con_rebaja.append({"producto": fp.get("producto"),
+                                                 "pct": round(_f(d.get("pct")), 2)})
+                    break
+    rebaja_auto = round(min(rebaja_auto, ice_esp * 0.5), 2)
+
+    rebaja = _f(override_rebaja) if override_rebaja is not None else rebaja_auto
+    exencion = _f(override_exencion) if override_exencion is not None else 0.0
+    rebaja = max(0.0, min(rebaja, total_ice))
+    exencion = max(0.0, min(exencion, total_ice - rebaja))
+    ice_neto = max(0.0, total_ice - rebaja - exencion)
+
     monto_aplazados_que_vencen = sum(_f(p.get("monto")) for p in pagos_aplazados_vencen_este_periodo)
-    total_a_pagar = total_ice + monto_aplazados_que_vencen
+    total_a_pagar = ice_neto + monto_aplazados_que_vencen
 
     filas = [
         {"seccion": "AD VALOREM", "codigo": "303", "concepto": "Base imponible bruta (precio ex-fábrica)", "valor": round(base, 2)},
@@ -256,7 +289,16 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None):
         {"seccion": "ESPECÍFICO", "codigo": "315", "concepto": "Tarifa específica (por litro de alcohol puro)", "valor": round(esp, 2)},
         {"seccion": "ESPECÍFICO", "codigo": "319", "concepto": "ICE causado específico", "valor": round(ice_esp, 2)},
         {"seccion": "RESULTADO", "codigo": "399", "concepto": "TOTAL ICE CAUSADO", "valor": round(total_ice, 2)},
-        {"seccion": "RESULTADO", "codigo": "499", "concepto": "TOTAL ICE A PAGAR (período actual)", "valor": round(total_ice, 2)},
+        {"seccion": "RESULTADO", "codigo": "R-50",
+         "concepto": "(−) Rebaja tarifa específica — componente nacional ≥70% MIPYME (50%)"
+                     + (" · " + ", ".join(f"{x['producto']} ({x['pct']}%)" for x in productos_con_rebaja)
+                        if override_rebaja is None and productos_con_rebaja else
+                        " · ingresada manualmente" if override_rebaja is not None else ""),
+         "valor": round(rebaja, 2)},
+        {"seccion": "RESULTADO", "codigo": "EXE",
+         "concepto": "(−) Exenciones" + (" · ingresada manualmente" if override_exencion is not None else ""),
+         "valor": round(exencion, 2)},
+        {"seccion": "RESULTADO", "codigo": "499", "concepto": "TOTAL ICE A PAGAR (399 − rebajas − exenciones)", "valor": round(ice_neto, 2)},
     ]
     if monto_aplazados_que_vencen > 0:
         filas.append({"seccion": "RESULTADO", "codigo": "903",
@@ -273,7 +315,13 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None):
             "ice_especifico": round(ice_esp, 2),
             "ice_advalorem": round(ice_adv, 2),
             "total_ice": round(total_ice, 2),
-            "ice_a_pagar": round(total_ice, 2),  # alias para que la UI detecte hayMontoAPagar
+            "rebaja_ice": round(rebaja, 2),
+            "exencion_ice": round(exencion, 2),
+            "rebaja_ice_auto": round(rebaja_auto, 2),
+            "rebaja_origen": "manual" if override_rebaja is not None else "auto",
+            "exencion_origen": "manual" if override_exencion is not None else "auto",
+            "productos_con_rebaja": productos_con_rebaja,
+            "ice_a_pagar": round(ice_neto, 2),  # alias para que la UI detecte hayMontoAPagar
             "monto_aplazados_vencen": round(monto_aplazados_que_vencen, 2),
             "total_a_pagar": round(total_a_pagar, 2),
             "num_aplazados_vencen": len(pagos_aplazados_vencen_este_periodo),

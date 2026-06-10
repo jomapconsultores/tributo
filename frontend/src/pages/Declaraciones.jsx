@@ -24,6 +24,13 @@ export default function Declaraciones({ tipo }) {
   const [editAdq, setEditAdq] = useState(false)
   const [editRet, setEditRet] = useState(false)
 
+  // Rebajas y exenciones ICE: null = auto (precalculado del módulo Rebajas y
+  // exenciones); número = override manual. Mismo patrón que 605/606.
+  const [rebajaIce, setRebajaIce] = useState(null)
+  const [exencionIce, setExencionIce] = useState(null)
+  const [editReb, setEditReb] = useState(false)
+  const [editExe, setEditExe] = useState(false)
+
   // Diferir pago al guardar: 0 (no diferir), 1, 2 o 3 meses
   const [diferirMeses, setDiferirMeses] = useState(0)
 
@@ -37,6 +44,8 @@ export default function Declaraciones({ tipo }) {
       const params = {}
       if (credAdq != null) params.credito_adq = credAdq
       if (credRet != null) params.credito_ret = credRet
+      if (rebajaIce != null) params.rebaja_ice = rebajaIce
+      if (exencionIce != null) params.exencion_ice = exencionIce
       if (diferirMeses > 0) params.diferir_meses = diferirMeses
       const [c, s, a] = await Promise.all([
         declaracionesAPI.calcular(selectedClientId, tipo, params),
@@ -51,7 +60,7 @@ export default function Declaraciones({ tipo }) {
     } catch (e) {
       alert('Error: ' + (e.response?.data?.detail || e.message))
     } finally { setLoading(false) }
-  }, [selectedClientId, tipo, credAdq, credRet, diferirMeses, isIVA])
+  }, [selectedClientId, tipo, credAdq, credRet, rebajaIce, exencionIce, diferirMeses, isIVA])
 
   useEffect(() => { load() }, [load])
 
@@ -107,11 +116,15 @@ export default function Declaraciones({ tipo }) {
     const num = parseFloat(valor)
     const v = isNaN(num) ? 0 : num
     if (campo === 'adq') { setCredAdq(v); setEditAdq(false) }
-    else { setCredRet(v); setEditRet(false) }
+    else if (campo === 'ret') { setCredRet(v); setEditRet(false) }
+    else if (campo === 'reb') { setRebajaIce(v); setEditReb(false) }
+    else { setExencionIce(v); setEditExe(false) }
   }
   const limpiarOverride = (campo) => {
     if (campo === 'adq') setCredAdq(null)
-    else setCredRet(null)
+    else if (campo === 'ret') setCredRet(null)
+    else if (campo === 'reb') setRebajaIce(null)
+    else setExencionIce(null)
   }
 
   const icon = tipo === 'ICE' ? '🥃' : '🧾'
@@ -229,6 +242,60 @@ export default function Declaraciones({ tipo }) {
                   <strong>{money(resumen.credito_mes_anterior_retenciones || 0)}</strong>
                   <button className="dc-btn-mini" onClick={() => setEditRet(true)} title="Editar">✎</button>
                   {credRet != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('ret')} title="Volver al automático">↺</button>}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rebajas y exenciones (solo ICE): auto del módulo ⚖️ o manual */}
+      {!isIVA && decl && (
+        <div className="dc-card-box dc-credit-box">
+          <h2 className="dc-h2">⚖️ Rebajas y exenciones</h2>
+          <p className="dc-credit-help">
+            {rebajaIce != null || exencionIce != null
+              ? 'Valores ingresados manualmente (override).'
+              : (resumen.productos_con_rebaja || []).length > 0
+                ? `Rebaja precalculada del módulo Rebajas y exenciones (50% de la tarifa específica de los productos con ≥70% de materia prima nacional MIPYME): ${resumen.productos_con_rebaja.map((p) => `${p.producto} (${p.pct}%)`).join(', ')}.`
+                : 'Sin productos que cumplan el ≥70% en el módulo Rebajas y exenciones. Registralos ahí para el cálculo automático, o ingresá los valores a mano.'}
+          </p>
+          <div className="dc-credit-grid">
+            <div className="dc-credit-field">
+              <label>(−) Rebaja tarifa específica (componente nacional, 50%)</label>
+              {editReb ? (
+                <div className="dc-credit-edit">
+                  <input
+                    type="number" step="0.01" autoFocus
+                    defaultValue={resumen.rebaja_ice || 0}
+                    onBlur={(e) => aplicarOverride('reb', e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
+                  />
+                </div>
+              ) : (
+                <div className="dc-credit-value">
+                  <strong>{money(resumen.rebaja_ice || 0)}</strong>
+                  <button className="dc-btn-mini" onClick={() => setEditReb(true)} title="Editar">✎</button>
+                  {rebajaIce != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('reb')} title="Volver al automático">↺</button>}
+                </div>
+              )}
+            </div>
+            <div className="dc-credit-field">
+              <label>(−) Exenciones</label>
+              {editExe ? (
+                <div className="dc-credit-edit">
+                  <input
+                    type="number" step="0.01" autoFocus
+                    defaultValue={resumen.exencion_ice || 0}
+                    onBlur={(e) => aplicarOverride('exe', e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
+                  />
+                </div>
+              ) : (
+                <div className="dc-credit-value">
+                  <strong>{money(resumen.exencion_ice || 0)}</strong>
+                  <button className="dc-btn-mini" onClick={() => setEditExe(true)} title="Editar">✎</button>
+                  {exencionIce != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('exe')} title="Volver al automático">↺</button>}
                 </div>
               )}
             </div>

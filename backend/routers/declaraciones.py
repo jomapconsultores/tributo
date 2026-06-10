@@ -66,6 +66,34 @@ def _cargar_credito_mes_anterior(supabase, client_id, user_id, mes, anio):
     )
 
 
+def _rebajas_por_producto(supabase, identificacion, user_id):
+    """% de materia prima nacional calificada por producto, desde el módulo
+    Rebajas y exenciones (misma regla que su pantalla: el agua no cuenta,
+    solo suman los proveedores calificados, cumple si el % es ≥ 70)."""
+    if not identificacion:
+        return {}
+    res = supabase.table("rebajas_ingredientes").select(
+        "producto,ingrediente,cantidad,calificado").eq(
+        "identificacion", identificacion).eq("user_id", user_id).execute()
+    por_prod = {}
+    for r in (res.data or []):
+        if (r.get("ingrediente") or "").strip().upper() == "AGUA":
+            continue
+        p = (r.get("producto") or "").strip().upper()
+        if not p:
+            continue
+        d = por_prod.setdefault(p, {"total": 0.0, "calif": 0.0})
+        cant = float(r.get("cantidad") or 0)
+        d["total"] += cant
+        if r.get("calificado"):
+            d["calif"] += cant
+    out = {}
+    for p, d in por_prod.items():
+        pct = (d["calif"] / d["total"] * 100) if d["total"] else 0.0
+        out[p] = {"pct": pct, "cumple": pct >= 70}
+    return out
+
+
 def _pagos_aplazados_vencen(supabase, client_id, user_id, mes, anio, tipo):
     """Devuelve los aplazamientos cuyo vencimiento cae EN este período (y siguen pendientes)."""
     res = supabase.table("pagos_aplazados").select("*").eq(
@@ -74,14 +102,18 @@ def _pagos_aplazados_vencen(supabase, client_id, user_id, mes, anio, tipo):
     return res.data or []
 
 
-def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, override_credito_ret=None, diferir_meses=0):
+def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, override_credito_ret=None, diferir_meses=0,
+              override_rebaja=None, override_exencion=None):
     c = _cliente(supabase, client_id)
     anio = c.get("periodo_anio") or 2026
     mes = c.get("periodo_mes") or 1
     if tipo.upper() == "ICE":
         ice = supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
         aplazados_ice = _pagos_aplazados_vencen(supabase, client_id, user_id, mes, anio, "ICE")
-        decl = declaracion_ice(ice, anio, pagos_aplazados_vencen_este_periodo=aplazados_ice)
+        rebajas_prod = _rebajas_por_producto(supabase, c.get("identificacion") or "", user_id)
+        decl = declaracion_ice(ice, anio, pagos_aplazados_vencen_este_periodo=aplazados_ice,
+                               rebajas_productos=rebajas_prod,
+                               override_rebaja=override_rebaja, override_exencion=override_exencion)
         decl["aplazados_vencen"] = aplazados_ice
     else:
         invoices = supabase.table("invoices").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
@@ -121,12 +153,15 @@ async def calcular(
     credito_adq: Optional[float] = Query(None, description="Override crédito tributario mes anterior por adquisiciones (605)"),
     credito_ret: Optional[float] = Query(None, description="Override crédito tributario mes anterior por retenciones (606)"),
     diferir_meses: int = Query(0, description="Preview: difiere el IVA generado N meses (1-3 IVA, 1 ICE max). Solo recálculo, no persiste."),
+    rebaja_ice: Optional[float] = Query(None, description="Override manual de la rebaja ICE (si no, se precalcula del módulo Rebajas y exenciones)"),
+    exencion_ice: Optional[float] = Query(None, description="Override manual de exenciones ICE"),
     user_id: str = Depends(get_current_user),
 ):
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
-        return _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret, diferir_meses)
+        return _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret, diferir_meses,
+                         override_rebaja=rebaja_ice, override_exencion=exencion_ice)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
