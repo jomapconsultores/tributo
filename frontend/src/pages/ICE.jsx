@@ -1,6 +1,19 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
-import { iceAPI, downloadBlob } from '../services/api'
+import { iceAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
+
+// Descarga el ZIP de XML originales subidos, nombrado Tipo_RUC_nombre_mes_año
+const descargarXmlsOriginales = async (cliente, clientId, tipo, modulo) => {
+  try {
+    const nom = (cliente?.nombre || '').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 20)
+    const nombre = `${tipo}_${cliente?.identificacion || ''}_${nom}_${String(cliente?.periodo_mes || '').padStart(2, '0')}_${cliente?.periodo_anio || ''}.zip`
+    const res = await xmlOriginalesAPI.descargar(clientId, modulo)
+    downloadBlob(res.data, nombre, 'application/zip')
+  } catch (err) {
+    if (err.response?.status === 404) alert('Aún no hay XML guardados para este período. Se guardan automáticamente al subir nuevos XML.')
+    else alert('Error: ' + (err.response?.data?.detail || err.message))
+  }
+}
 import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import BulkBar from '../components/BulkBar'
@@ -281,6 +294,7 @@ export default function ICE() {
         <button className="ice-btn primary" onClick={() => xmlInputRef.current?.click()}>📂 Cargar XMLs</button>
         <button className="ice-btn small" onClick={handleExport}>⬇ Excel</button>
         <button className="ice-btn small" onClick={handleExportPdf}>⬇ PDF</button>
+        <button className="ice-btn small" onClick={() => descargarXmlsOriginales(selectedClient, selectedClientId, 'IngresosICE', 'ingreso_ice')} title="Descargar los XML originales subidos">⬇ XML originales</button>
         <button className="ice-btn anexo" onClick={() => setAnexo('open')}>📄 Generar Anexo ICE</button>
         <button className="ice-btn small" onClick={() => navigate('/calculo-ice')}>🧮 Ir a Cálculo ICE</button>
         <button className="ice-btn small" onClick={abrirCodigos}>📊 Abrir Códigos ICE</button>

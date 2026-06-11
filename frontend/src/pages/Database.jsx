@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { invoicesAPI, downloadBlob } from '../services/api'
+import { invoicesAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import InvoiceTabs from '../components/InvoiceTabs'
 import UploadPanel from '../components/UploadPanel'
@@ -105,6 +105,19 @@ export default function Database() {
     }
   }
 
+  const handleDownloadXmls = async () => {
+    try {
+      const c = selectedClient || {}
+      const nom = (c.nombre || '').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 20)
+      const nombre = `Gastos_${c.identificacion || ''}_${nom}_${String(c.periodo_mes || '').padStart(2, '0')}_${c.periodo_anio || ''}.zip`
+      const res = await xmlOriginalesAPI.descargar(selectedClientId, 'gasto')
+      downloadBlob(res.data, nombre, 'application/zip')
+    } catch (err) {
+      if (err.response?.status === 404) alert('Aún no hay XML guardados para este período. Se guardan automáticamente al subir nuevos XML.')
+      else alert('Error: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
   const handleClear = async () => {
     if (!window.confirm(`¿Eliminar TODAS las facturas de ${selectedClient?.nombre}?`)) return
     try {
@@ -171,6 +184,7 @@ export default function Database() {
       <div className="db-controls">
         <button className="db-btn small" onClick={handleExportExcel}>⬇ Excel</button>
         <button className="db-btn small" onClick={handleExportPdf}>⬇ PDF</button>
+        <button className="db-btn small" onClick={handleDownloadXmls} title="Descargar los XML originales subidos">⬇ XML originales</button>
         <button className="db-btn small danger" onClick={handleClear}>🗑 Limpiar facturas</button>
       </div>
 

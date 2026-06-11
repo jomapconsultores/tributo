@@ -6,6 +6,7 @@ from auth import get_current_user
 from database import get_supabase_client
 from services.retention_parser import parse_retention_xml
 from services.retention_export import generate_retention_excel
+from services.xml_store import guardar_xml_original
 from tenancy import assert_client_owner
 
 router = APIRouter(prefix="/api/retentions", tags=["retentions"])
@@ -74,6 +75,7 @@ async def process_xml(
             if not ret:
                 err_count += 1
                 continue
+            guardar_xml_original(supabase, user_id, client_id, "retencion", xml_content)
             result = _store_retention(supabase, client_id, user_id, ret)
             if result == "new":
                 new_count += 1

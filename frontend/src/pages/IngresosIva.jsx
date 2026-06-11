@@ -1,6 +1,18 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { salesIvaAPI } from '../services/api'
+import { salesIvaAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
+
+const descargarXmlsOriginales = async (cliente, clientId, tipo, modulo) => {
+  try {
+    const nom = (cliente?.nombre || '').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 20)
+    const nombre = `${tipo}_${cliente?.identificacion || ''}_${nom}_${String(cliente?.periodo_mes || '').padStart(2, '0')}_${cliente?.periodo_anio || ''}.zip`
+    const res = await xmlOriginalesAPI.descargar(clientId, modulo)
+    downloadBlob(res.data, nombre, 'application/zip')
+  } catch (err) {
+    if (err.response?.status === 404) alert('Aún no hay XML guardados para este período. Se guardan automáticamente al subir nuevos XML.')
+    else alert('Error: ' + (err.response?.data?.detail || err.message))
+  }
+}
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import './IngresosIva.css'
@@ -153,6 +165,7 @@ export default function IngresosIva() {
           value={search} onChange={(e) => setSearch(e.target.value)}
         />
         <span className="ing-iva-count">{filtered.length} de {rows.length}</span>
+        <button className="ing-iva-clear" onClick={() => descargarXmlsOriginales(selectedClient, selectedClientId, 'IngresosIVA', 'ingreso_iva')} title="Descargar los XML originales subidos">⬇ XML originales</button>
         {rows.length > 0 && (
           <button className="ing-iva-clear" onClick={handleClear}>Vaciar todo</button>
         )}

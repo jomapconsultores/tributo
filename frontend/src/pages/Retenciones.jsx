@@ -1,9 +1,21 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { retentionsAPI, downloadBlob } from '../services/api'
+import { retentionsAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import BulkBar from '../components/BulkBar'
+
+const descargarXmlsOriginales = async (cliente, clientId, tipo, modulo) => {
+  try {
+    const nom = (cliente?.nombre || '').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 20)
+    const nombre = `${tipo}_${cliente?.identificacion || ''}_${nom}_${String(cliente?.periodo_mes || '').padStart(2, '0')}_${cliente?.periodo_anio || ''}.zip`
+    const res = await xmlOriginalesAPI.descargar(clientId, modulo)
+    downloadBlob(res.data, nombre, 'application/zip')
+  } catch (err) {
+    if (err.response?.status === 404) alert('Aún no hay XML guardados para este período. Se guardan automáticamente al subir nuevos XML.')
+    else alert('Error: ' + (err.response?.data?.detail || err.message))
+  }
+}
 import RetentionReport from '../components/RetentionReport'
 import ClientSwitcher from '../components/ClientSwitcher'
 import './Retenciones.css'
@@ -219,6 +231,7 @@ export default function Retenciones() {
         />
         <button className="ret-btn primary" onClick={() => xmlInputRef.current?.click()}>📂 Cargar XMLs</button>
         <button className="ret-btn small" onClick={handleExport}>⬇ Exportar Excel</button>
+        <button className="ret-btn small" onClick={() => descargarXmlsOriginales(selectedClient, selectedClientId, 'Retenciones', 'retencion')} title="Descargar los XML originales subidos">⬇ XML originales</button>
         <button className="ret-btn small danger" onClick={handleClear}>🗑 Limpiar todo</button>
         <input
           className="ret-search"

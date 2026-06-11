@@ -11,6 +11,7 @@ from services.ice_anexo import generar_anexo_ice, anexo_rows, catalogo_con_codig
 from services.ice_data import TAX_DB
 from services.codigos_ice import buscar_tokens_bd
 from services.compradores import extraer_compradores, upsert_compradores
+from services.xml_store import guardar_xml_original
 from tenancy import assert_client_owner
 
 router = APIRouter(prefix="/api/ice", tags=["ice"])
@@ -69,6 +70,7 @@ async def process_xml(
             if not registros:
                 err_count += 1
                 continue
+            guardar_xml_original(supabase, user_id, client_id, "ingreso_ice", xml_content)
             for c in extraer_compradores(registros):
                 compradores_xml[c["ruc"]] = c
             for reg in registros:

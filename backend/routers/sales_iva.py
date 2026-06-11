@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client
 from services.xml_parser_ventas import parse_venta_xml
+from services.xml_store import guardar_xml_original
 from tenancy import assert_client_owner
 
 router = APIRouter(prefix="/api/sales-iva", tags=["sales_iva"])
@@ -69,6 +70,7 @@ async def process_xml(
                     "motivo": parsed.get("message"),
                 })
                 continue
+            guardar_xml_original(supabase, user_id, client_id, "ingreso_iva", xml_content)
             try:
                 supabase.table("sales_iva").insert({
                     "client_id": client_id, "user_id": user_id, **parsed

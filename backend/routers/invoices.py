@@ -7,6 +7,7 @@ from database import get_supabase_client
 from services.sri_service import extract_claves_from_txt, descargar_multiples_xmls
 from services.xml_parser import parse_xml_invoice
 from services.export_service import generate_excel, generate_pdf
+from services.xml_store import guardar_xml_original
 from tenancy import assert_client_owner
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
@@ -126,6 +127,7 @@ async def process_txt(
             if not invoice:
                 err_count += 1
                 continue
+            guardar_xml_original(supabase, user_id, client_id, "gasto", xml_content)
             result = _store_invoice(supabase, client_id, user_id, invoice)
             if result == "new":
                 new_count += 1
@@ -166,6 +168,7 @@ async def process_xml(
             if not invoice:
                 err_count += 1
                 continue
+            guardar_xml_original(supabase, user_id, client_id, "gasto", xml_content)
             result = _store_invoice(supabase, client_id, user_id, invoice)
             if result == "new":
                 new_count += 1

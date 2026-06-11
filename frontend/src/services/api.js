@@ -238,6 +238,13 @@ export const normativaAPI = {
   },
 }
 
+// XML originales subidos (re-descarga en ZIP con nombre Tipo_RUC_nombre_mes_año)
+// modulo: 'gasto' | 'ingreso_ice' | 'ingreso_iva' | 'retencion'
+export const xmlOriginalesAPI = {
+  contar: (clientId, modulo) => api.get('/api/xml-originales/contar', { params: { client_id: clientId, modulo } }),
+  descargar: (clientId, modulo) => api.get('/api/xml-originales/descargar', { params: { client_id: clientId, modulo }, responseType: 'blob' }),
+}
+
 // Declaraciones (IVA / ICE)
 export const declaracionesAPI = {
   // credito_adq/credito_ret: override del crédito tributario mes anterior (605/606)
