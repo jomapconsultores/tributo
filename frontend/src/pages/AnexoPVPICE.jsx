@@ -484,13 +484,18 @@ export default function AnexoPVPICE() {
     const blob = new Blob([xml], { type: 'application/xml' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url; a.download = `${tipo}_MODIFICADO.xml`
+    a.href = url; a.download = nombreArchivo('xml')
     document.body.appendChild(a); a.click(); document.body.removeChild(a)
     URL.revokeObjectURL(url)
   }
 
-  const nombreArchivo = (ext) =>
-    `Anexo_${tipo}_${header.Anio || ''}${String(header.Mes || '').padStart(2, '0')}.${ext}`
+  // Nombre estándar: Anexo{ICE|PVP}_RUC_nombre_mes_año
+  const nombreArchivo = (ext) => {
+    const ruc = String(header.IdInformante || '').replace(/\D/g, '')
+    const nom = sinTildes(header.razonSocial || '').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 20)
+    const mes = String(header.Mes || '').replace(/\D/g, '').padStart(2, '0')
+    return `Anexo${tipo}_${ruc}_${nom}_${mes}_${header.Anio || ''}.${ext}`
+  }
 
   const exportarExcel = async () => {
     if (!tipo) { alert('No hay datos para exportar.'); return }
