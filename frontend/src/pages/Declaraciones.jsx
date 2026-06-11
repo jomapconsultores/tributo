@@ -1,12 +1,18 @@
 import { useState, useEffect, useCallback, Fragment } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { declaracionesAPI, downloadBlob } from '../services/api'
+import { declaracionesAPI, credentialsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, nombreMes } from '../utils/periodo'
 import ClientSwitcher from '../components/ClientSwitcher'
 import './Declaraciones.css'
 
 const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
+
+// Etiquetas legibles de los servicios contratados (client_services)
+const SERVICIO_LBL = {
+  declaracion_iva: 'Declaración IVA', declaracion_ice: 'Declaración ICE',
+  declaracion_renta: 'Declaración Renta', devolucion_iva: 'Devolución IVA',
+}
 
 export default function Declaraciones({ tipo }) {
   const { openNewClient } = useOutletContext()
@@ -16,6 +22,9 @@ export default function Declaraciones({ tipo }) {
   const [saved, setSaved] = useState([])
   const [aplazados, setAplazados] = useState([])
   const [loading, setLoading] = useState(false)
+  // Credenciales/servicios del contribuyente (punto 4)
+  const [creds, setCreds] = useState(null)
+  const [claveSRI, setClaveSRI] = useState('')
 
   // Overrides editables del crédito tributario mes anterior (605/606)
   // null = usar el pre-cargado del backend; número = override manual
@@ -68,6 +77,23 @@ export default function Declaraciones({ tipo }) {
   }, [selectedClientId, tipo, credAdq, credRet, rebajaIce, exencionIce, marcaReb, marcaExe, diferirMeses, isIVA])
 
   useEffect(() => { load() }, [load])
+
+  // Servicios contratados + acceso al portal SRI del contribuyente (punto 4)
+  useEffect(() => {
+    setCreds(null); setClaveSRI('')
+    if (!selectedClientId) return
+    declaracionesAPI.credenciales(selectedClientId)
+      .then((r) => setCreds(r.data))
+      .catch(() => setCreds(null))
+  }, [selectedClientId])
+
+  const revelarClaveSRI = async () => {
+    if (!creds?.credencial?.id) return
+    try {
+      const r = await credentialsAPI.reveal(creds.credencial.id)
+      setClaveSRI(r.data?.password || '')
+    } catch (e) { alert('No se pudo revelar la clave: ' + (e.response?.data?.detail || e.message)) }
+  }
 
   const guardar = async () => {
     try {
@@ -201,6 +227,33 @@ export default function Declaraciones({ tipo }) {
       </header>
 
       <ClientSwitcher onNewClient={openNewClient} />
+
+      {/* Servicios contratados + acceso al portal SRI (punto 4) */}
+      {creds && ((creds.servicios && creds.servicios.length > 0) || creds.credencial) && (
+        <div className="dc-card-box dc-credit-box">
+          <h2 className="dc-h2">🔗 Servicios y acceso SRI del contribuyente</h2>
+          {creds.servicios && creds.servicios.length > 0 ? (
+            <p className="dc-credit-help" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span>Servicios contratados:</span>
+              {creds.servicios.map((s) => (
+                <span key={s} style={{ background: '#1a5276', color: '#fff', borderRadius: 12, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>
+                  {SERVICIO_LBL[s] || s}
+                </span>
+              ))}
+            </p>
+          ) : (
+            <p className="dc-credit-help">Este contribuyente no tiene servicios contratados marcados.</p>
+          )}
+          {creds.es_admin && creds.credencial && (
+            <p className="dc-credit-help" style={{ marginTop: 6 }}>
+              🔐 Portal SRI · usuario: <strong>{creds.credencial.username || '—'}</strong>{' '}
+              {claveSRI
+                ? <>· clave: <code>{claveSRI}</code> <button className="dc-btn-mini" onClick={() => setClaveSRI('')} title="Ocultar">🙈</button></>
+                : <button className="dc-btn-mini" onClick={revelarClaveSRI} title="Revelar clave (auditado)">👁 Revelar clave</button>}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Crédito tributario del mes anterior (solo IVA) */}
       {isIVA && decl && (

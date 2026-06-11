@@ -8,6 +8,7 @@ from database import get_supabase_client
 from services.declaracion import declaracion_iva, declaracion_ice
 from services.declaracion_oficial import llenar_oficial
 from tenancy import assert_client_owner
+from routers.access import es_admin
 
 router = APIRouter(prefix="/api/declaraciones", tags=["declaraciones"])
 
@@ -180,6 +181,37 @@ async def calcular(
                          marcar_rebaja=bool(rebaja_manual), marcar_exencion=bool(exencion_manual))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/credenciales")
+async def credenciales_cliente(client_id: str = Query(...), user_id: str = Depends(get_current_user)):
+    """Para la pantalla de declaración: servicios contratados del contribuyente
+    (compartidos por RUC) y, solo para administradores, el acceso al portal SRI
+    (usuario + id de credencial para revelar la clave). Relaciona las
+    credenciales con la declaración (punto 4)."""
+    try:
+        supabase = get_supabase_client()
+        assert_client_owner(client_id, user_id)
+        cl = supabase.table("clients").select("identificacion,nombre,user_id").eq("id", client_id).execute().data
+        if not cl:
+            return {"servicios": [], "es_admin": False, "credencial": None}
+        ident = cl[0]["identificacion"]
+        # Todos los períodos (client_id) del mismo RUC del usuario
+        hermanos = supabase.table("clients").select("id").eq("identificacion", ident).eq("user_id", user_id).execute().data or []
+        ids = [h["id"] for h in hermanos] or [client_id]
+        servicios = supabase.table("client_services").select("service,active").in_("client_id", ids).eq("active", True).execute().data or []
+        servicios = sorted({s["service"] for s in servicios})
+        admin = es_admin(user_id)
+        credencial = None
+        if admin:
+            cred = supabase.table("service_credentials").select("id,service,username").in_("client_id", ids).eq("service", "sri_portal").execute().data
+            if cred:
+                credencial = {"id": cred[0]["id"], "service": cred[0]["service"], "username": cred[0].get("username")}
+        return {"servicios": servicios, "es_admin": admin, "credencial": credencial}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/")

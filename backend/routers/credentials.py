@@ -71,12 +71,24 @@ async def listar(req: Request, admin_id: str = Depends(require_admin), q: Option
     clients = sb.table("clients").select("id, identificacion, nombre").in_("id", client_ids).execute().data or []
     by_id = {c["id"]: c for c in clients}
 
-    # Servicios contratados por cada cliente (declaraciones IVA/ICE/Renta, devolución)
+    # Servicios contratados COMPARTIDOS POR RUC: un servicio marcado en cualquier
+    # período del contribuyente vale para todos. Se reúnen todos los client_id
+    # que comparten identificación y se unen sus servicios activos.
+    rucs = {cl.get("identificacion") for cl in clients if cl.get("identificacion")}
+    todos = sb.table("clients").select("id, identificacion").in_("identificacion", list(rucs)).execute().data or [] if rucs else []
+    ids_por_ruc = {}
+    ruc_por_id = {}
+    for r in todos:
+        ids_por_ruc.setdefault(r["identificacion"], []).append(r["id"])
+        ruc_por_id[r["id"]] = r["identificacion"]
+    todos_ids = list(ruc_por_id.keys()) or client_ids
     services_rows = sb.table("client_services").select("client_id, service, active").in_(
-        "client_id", client_ids).eq("active", True).execute().data or []
-    services_by_client = {}
+        "client_id", todos_ids).eq("active", True).execute().data or []
+    services_by_ruc = {}
     for s in services_rows:
-        services_by_client.setdefault(s["client_id"], set()).add(s["service"])
+        ruc = ruc_por_id.get(s["client_id"])
+        if ruc:
+            services_by_ruc.setdefault(ruc, set()).add(s["service"])
 
     out = []
     for c in creds:
@@ -98,7 +110,7 @@ async def listar(req: Request, admin_id: str = Depends(require_admin), q: Option
             "notes": c.get("notes"),
             "created_at": c["created_at"],
             "updated_at": c["updated_at"],
-            "client_services": sorted(services_by_client.get(c["client_id"], set())),
+            "client_services": sorted(services_by_ruc.get(ruc, set())),
         })
     _log(credential_id=None, admin_user_id=admin_id, action="list", req=req, metadata={"count": len(out), "q": q})
     return {"data": out}
