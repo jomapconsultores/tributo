@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { clientsAPI } from '../services/api'
+import { useState, useMemo, Fragment } from 'react'
+import { clientsAPI, anexosAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { nombreMes } from '../utils/periodo'
 import './SavedData.css'
@@ -11,8 +11,17 @@ export default function SavedData() {
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(null) // { identificacion, nombre }
   const [summary, setSummary] = useState(null)
+  const [anexos, setAnexos] = useState([])       // anexos PVP+ICE del contribuyente
+  const [anexoOpen, setAnexoOpen] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // Mapa client_id → período (para mostrar el período de cada anexo)
+  const clientById = useMemo(() => {
+    const m = {}
+    for (const c of clients) m[c.id] = c
+    return m
+  }, [clients])
 
   // Contribuyentes únicos (un cliente puede tener varios períodos)
   const contribuyentes = useMemo(() => {
@@ -43,6 +52,8 @@ export default function SavedData() {
   const openContribuyente = async (c) => {
     setSelected(c)
     setSummary(null)
+    setAnexos([])
+    setAnexoOpen(null)
     setError('')
     setLoading(true)
     try {
@@ -53,6 +64,12 @@ export default function SavedData() {
     } finally {
       setLoading(false)
     }
+    // Anexos PVP+ICE guardados de este contribuyente (todos sus períodos)
+    try {
+      const idsRuc = new Set(clients.filter((x) => x.identificacion === c.identificacion).map((x) => x.id))
+      const r = await anexosAPI.list()
+      setAnexos((r.data?.data || []).filter((a) => idsRuc.has(a.client_id)))
+    } catch { setAnexos([]) }
   }
 
   // Agrupar filas del resumen por año → mes
@@ -116,14 +133,68 @@ export default function SavedData() {
             <div className="sd-placeholder">Cargando desglose…</div>
           ) : error ? (
             <div className="sd-error">⚠ {error}</div>
-          ) : !grupos.length ? (
+          ) : !grupos.length && !anexos.length ? (
             <div className="sd-placeholder">Sin datos registrados para {selected.nombre}.</div>
           ) : (
             <>
               <div className="sd-detail-head">
-                <h2>{summary.nombre}</h2>
+                <h2>{summary?.nombre || selected.nombre}</h2>
                 <span className="sd-ident">{selected.identificacion}</span>
               </div>
+
+              {anexos.length > 0 && (
+                <div className="sd-anio">
+                  <div className="sd-anio-head">
+                    <span className="sd-anio-label">📄 Anexos PVP+ICE guardados</span>
+                    <span className="sd-anio-total">{anexos.length}</span>
+                  </div>
+                  <table className="sd-table">
+                    <thead>
+                      <tr><th>Tipo</th><th>Período</th><th className="r">Filas</th><th>Guardado</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                      {anexos.map((a) => {
+                        const cli = clientById[a.client_id]
+                        const d = a.datos || {}
+                        const per = cli ? `${nombreMes(cli.periodo_mes)} ${cli.periodo_anio}`
+                          : `${d.header?.Anio || ''}/${d.header?.Mes || ''}`
+                        return (
+                          <Fragment key={a.id}>
+                            <tr>
+                              <td><strong>{a.tipo}</strong></td>
+                              <td>{per}</td>
+                              <td className="r">{(d.rows || []).length}</td>
+                              <td>{String(a.created_at || '').slice(0, 10)}</td>
+                              <td><button className="sd-li-item" style={{ padding: '2px 8px', cursor: 'pointer' }}
+                                onClick={() => setAnexoOpen(anexoOpen === a.id ? null : a.id)}>
+                                {anexoOpen === a.id ? '▲ Ocultar' : '▼ Detalle'}</button></td>
+                            </tr>
+                            {anexoOpen === a.id && (
+                              <tr><td colSpan={5}>
+                                <div style={{ fontSize: 12, color: '#444', padding: '4px 0' }}>
+                                  <div><strong>Informante:</strong> {d.header?.IdInformante || '—'} · {d.header?.razonSocial || '—'}</div>
+                                  <div style={{ marginTop: 4, maxHeight: 180, overflow: 'auto' }}>
+                                    {(d.rows || []).slice(0, 50).map((r, i) => (
+                                      <div key={i} style={{ borderBottom: '1px solid #eee', padding: '2px 0' }}>
+                                        {r.nombreProducto || r.codProdICE || r.codProdPVP || '—'}
+                                        {' · '}{r.codProdICE || r.codProdPVP || ''}
+                                        {r.ventaICE != null ? ` · venta ${r.ventaICE}` : ''}
+                                        {r.precioPVP != null ? ` · PVP ${r.precioPVP}` : ''}
+                                      </div>
+                                    ))}
+                                    {(d.rows || []).length > 50 && <div>…y {(d.rows || []).length - 50} más</div>}
+                                  </div>
+                                </div>
+                              </td></tr>
+                            )}
+                          </Fragment>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
               {grupos.map((anio) => (
                 <div key={anio.anio} className="sd-anio">
                   <div className="sd-anio-head">
