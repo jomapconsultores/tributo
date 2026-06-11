@@ -290,6 +290,28 @@ export default function AnexoPVPICE() {
       setTipo(t); setHeader(h); setRows(nuevas)
       setSavedId(null)
       cerrarPanel()
+
+      // Relación automática con la base de datos: si el XML trae IdInformante
+      // (RUC) y/o razonSocial, se busca el contribuyente y su período y se
+      // seleccionan, para que el anexo quede ligado al cliente correcto.
+      const rucXml = String(h.IdInformante || '').replace(/\D/g, '').trim()
+      const razonXml = sinTildes(String(h.razonSocial || '')).toUpperCase().trim()
+      let contrib = rucXml && clients.find((c) => String(c.identificacion || '').replace(/\D/g, '') === rucXml)
+      if (!contrib && razonXml) {
+        contrib = clients.find((c) => sinTildes(String(c.nombre || '')).toUpperCase().trim() === razonXml)
+      }
+      if (contrib) {
+        setRucSel(contrib.identificacion)
+        const anioXml = String(h.Anio || '').trim()
+        const mesXml = String(h.Mes || '').replace(/\D/g, '').padStart(2, '0')
+        const periodos = clients.filter((c) => c.identificacion === contrib.identificacion)
+        const per = periodos.find((c) => String(c.periodo_anio) === anioXml &&
+          String(c.periodo_mes).padStart(2, '0') === mesXml) || periodos[0]
+        setClientSel(per?.id || '')
+      } else if (rucXml || razonXml) {
+        alert('ℹ El RUC/razón social del XML no coincide con ningún contribuyente guardado. '
+          + 'El anexo se cargó igual; selecciona el RUC manualmente si deseas guardarlo ligado a un cliente.')
+      }
     } catch (e) {
       alert('Error al leer el XML: ' + e.message)
     } finally {
