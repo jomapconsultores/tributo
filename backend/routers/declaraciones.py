@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from typing import Optional
 from pydantic import BaseModel
 from auth import get_current_user
-from database import get_supabase_client
+from database import get_supabase_client, fetch_all
 from services.declaracion import declaracion_iva, declaracion_ice
 from services.declaracion_oficial import llenar_oficial
 from tenancy import assert_client_owner
@@ -73,11 +73,11 @@ def _rebajas_por_producto(supabase, identificacion, user_id):
     solo suman los proveedores calificados, cumple si el % es ≥ 70)."""
     if not identificacion:
         return {}
-    res = supabase.table("rebajas_ingredientes").select(
+    ingredientes = fetch_all(lambda: supabase.table("rebajas_ingredientes").select(
         "producto,ingrediente,cantidad,calificado").eq(
-        "identificacion", identificacion).eq("user_id", user_id).execute()
+        "identificacion", identificacion).eq("user_id", user_id))
     por_prod = {}
-    for r in (res.data or []):
+    for r in ingredientes:
         if (r.get("ingrediente") or "").strip().upper() == "AGUA":
             continue
         p = (r.get("producto") or "").strip().upper()
@@ -121,7 +121,7 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
     anio = c.get("periodo_anio") or 2026
     mes = c.get("periodo_mes") or 1
     if tipo.upper() == "ICE":
-        ice = supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
+        ice = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id))
         aplazados_ice = _pagos_aplazados_vencen(supabase, client_id, user_id, mes, anio, "ICE")
         rebajas_prod = _rebajas_por_producto(supabase, c.get("identificacion") or "", user_id)
         decl = declaracion_ice(ice, anio, pagos_aplazados_vencen_este_periodo=aplazados_ice,
@@ -130,10 +130,10 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
                                marcar_rebaja=marcar_rebaja, marcar_exencion=marcar_exencion)
         decl["aplazados_vencen"] = aplazados_ice
     else:
-        invoices = supabase.table("invoices").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
-        ventas_ice = supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
-        ventas_iva = supabase.table("sales_iva").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
-        retentions = supabase.table("retentions").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
+        invoices = fetch_all(lambda: supabase.table("invoices").select("*").eq("client_id", client_id).eq("user_id", user_id))
+        ventas_ice = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id))
+        ventas_iva = fetch_all(lambda: supabase.table("sales_iva").select("*").eq("client_id", client_id).eq("user_id", user_id))
+        retentions = fetch_all(lambda: supabase.table("retentions").select("*").eq("client_id", client_id).eq("user_id", user_id))
 
         # Crédito mes anterior: si el llamador envió override, usalo; si no, mirá historial
         if override_credito_adq is None:

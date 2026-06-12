@@ -8,6 +8,7 @@ from services.sri_service import extract_claves_from_txt, descargar_multiples_xm
 from services.xml_parser import parse_xml_invoice
 from services.export_service import generate_excel, generate_pdf
 from services.xml_store import guardar_xml_original
+from database import fetch_all
 from tenancy import assert_client_owner
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
@@ -286,10 +287,12 @@ async def delete_invoice(invoice_id: str, user_id: str = Depends(get_current_use
 
 
 def _fetch_for_export(supabase, client_id: Optional[str], user_id: str):
-    q = supabase.table("invoices").select("*").eq("user_id", user_id)
-    if client_id:
-        q = q.eq("client_id", client_id)
-    return q.order("fecha", desc=True).execute().data or []
+    def _q():
+        q = supabase.table("invoices").select("*").eq("user_id", user_id).order("fecha", desc=True)
+        if client_id:
+            q = q.eq("client_id", client_id)
+        return q
+    return fetch_all(_q)
 
 
 def _client_label(supabase, client_id: Optional[str]) -> str:

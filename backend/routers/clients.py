@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 from pydantic import BaseModel
 from auth import get_current_user
-from database import get_supabase_client
+from database import get_supabase_client, fetch_all
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
@@ -37,8 +37,8 @@ async def list_clients(user_id: str = Depends(get_current_user)):
             .order("periodo_mes", desc=True)\
             .execute().data or []
 
-        # Estadísticas por cliente
-        invoices = supabase.table("invoices").select("client_id, total, clasificacion").eq("user_id", user_id).execute().data or []
+        # Estadísticas por cliente (paginado para no truncar conteos/sumas)
+        invoices = fetch_all(lambda: supabase.table("invoices").select("client_id, total, clasificacion").eq("user_id", user_id))
         stats = {}
         for inv in invoices:
             cid = inv.get("client_id")
@@ -72,7 +72,7 @@ async def contribuyentes(user_id: str = Depends(get_current_user)):
         ).eq("user_id", user_id).execute().data or []
 
         def counts(table):
-            rows = supabase.table(table).select("client_id").eq("user_id", user_id).execute().data or []
+            rows = fetch_all(lambda: supabase.table(table).select("client_id").eq("user_id", user_id))
             m = {}
             for r in rows:
                 cid = r.get("client_id")
@@ -129,9 +129,9 @@ async def client_summary(identificacion: str, user_id: str = Depends(get_current
 
         invoices = []
         if client_ids:
-            invoices = supabase.table("invoices").select(
+            invoices = fetch_all(lambda: supabase.table("invoices").select(
                 "client_id, clasificacion, base_15, iva_15, total, estado"
-            ).in_("client_id", client_ids).execute().data or []
+            ).in_("client_id", client_ids))
 
         agg = {}
         for inv in invoices:

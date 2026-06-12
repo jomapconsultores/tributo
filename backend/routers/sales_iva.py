@@ -11,6 +11,7 @@ from auth import get_current_user
 from database import get_supabase_client
 from services.xml_parser_ventas import parse_venta_xml
 from services.xml_store import guardar_xml_original
+from database import fetch_all
 from tenancy import assert_client_owner
 
 router = APIRouter(prefix="/api/sales-iva", tags=["sales_iva"])
@@ -35,12 +36,14 @@ class BulkIds(BaseModel):
 async def list_sales(user_id: str = Depends(get_current_user), client_id: Optional[str] = Query(None)):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("sales_iva").select(COLUMNS).eq("user_id", user_id)
         if client_id:
             assert_client_owner(client_id, user_id)
-            q = q.eq("client_id", client_id)
-        res = q.order("fecha", desc=True).execute()
-        return {"data": res.data or []}
+        def _q():
+            q = supabase.table("sales_iva").select(COLUMNS).eq("user_id", user_id).order("fecha", desc=True)
+            if client_id:
+                q = q.eq("client_id", client_id)
+            return q
+        return {"data": fetch_all(_q)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

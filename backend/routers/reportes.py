@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from auth import get_current_user
-from database import get_supabase_client
+from database import get_supabase_client, fetch_all
 
 router = APIRouter(prefix="/api/reportes", tags=["reportes"])
 
@@ -35,7 +35,7 @@ def _filas_y_total(user_id):
     pre-marcando lo relevante (servicios contratados, anexos y declaraciones
     realmente hechas). Devuelve (filas, total_a_cobrar)."""
     sb = get_supabase_client()
-    rows_clients = sb.table("clients").select("id,identificacion,nombre").eq("user_id", user_id).execute().data or []
+    rows_clients = fetch_all(lambda: sb.table("clients").select("id,identificacion,nombre").eq("user_id", user_id))
     nombre_por_ruc = {}
     id_to_ruc = {}
     for c in rows_clients:
@@ -48,15 +48,15 @@ def _filas_y_total(user_id):
     anexo_rucs = set()
     decl_keys = set()
     if all_ids:
-        servicios = sb.table("client_services").select("client_id,service").in_(
-            "client_id", all_ids).eq("active", True).execute().data or []
+        servicios = fetch_all(lambda: sb.table("client_services").select("client_id,service").in_(
+            "client_id", all_ids).eq("active", True))
         for s in servicios:
             ruc = id_to_ruc.get(s["client_id"])
             if ruc:
                 serv_por_ruc.setdefault(ruc, set()).add(s["service"])
-        anexos = sb.table("anexos").select("client_id").eq("user_id", user_id).execute().data or []
+        anexos = fetch_all(lambda: sb.table("anexos").select("client_id").eq("user_id", user_id))
         anexo_rucs = {id_to_ruc.get(a["client_id"]) for a in anexos}
-        decls = sb.table("declaraciones").select("client_id,tipo").eq("user_id", user_id).execute().data or []
+        decls = fetch_all(lambda: sb.table("declaraciones").select("client_id,tipo").eq("user_id", user_id))
         for d in decls:
             ruc = id_to_ruc.get(d["client_id"])
             t = (d.get("tipo") or "").upper()
@@ -65,8 +65,8 @@ def _filas_y_total(user_id):
             if ruc and t == "ICE":
                 decl_keys.add((ruc, "declaracion_ice"))
 
-    guardados = sb.table("reportes_honorarios").select(
-        "identificacion,producto,cobrar,valor").eq("user_id", user_id).execute().data or []
+    guardados = fetch_all(lambda: sb.table("reportes_honorarios").select(
+        "identificacion,producto,cobrar,valor").eq("user_id", user_id))
     by_key = {(g["identificacion"], g["producto"]): g for g in guardados}
 
     filas = []
