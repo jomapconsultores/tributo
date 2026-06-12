@@ -29,4 +29,5 @@
 .rp-money-prefix { color: #64748b; margin-right: 2px; }
 .rp-saving { display: block; font-size: 10px; color: #059669; }
 .rp-tag { color: #059669; margin-left: 6px; font-size: 9px; vertical-align: middle; }
+.rp-row-subtotal td { background: #eef5fb; color: #1a5276; font-weight: 700; border-bottom: 1px solid #d6dbdf; }
 .rp-table tfoot td { background: #f8fafc; border-top: 2px solid #1a5276; font-size: 0.95rem; }

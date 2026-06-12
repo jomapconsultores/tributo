@@ -134,18 +134,37 @@ async def export_excel(user_id: str = Depends(get_current_user)):
     money = wb.add_format({"border": 1, "num_format": "$#,##0.00"})
     si = wb.add_format({"border": 1, "align": "center"})
     tot = wb.add_format({"bold": True, "border": 1, "num_format": "$#,##0.00", "bg_color": "#eafaf1"})
+    sub_lbl = wb.add_format({"bold": True, "border": 1, "bg_color": "#eef5fb", "font_color": "#1a5276", "align": "right"})
+    sub_val = wb.add_format({"bold": True, "border": 1, "num_format": "$#,##0.00", "bg_color": "#eef5fb", "font_color": "#1a5276"})
 
     ws.write(0, 0, "REPORTE DE HONORARIOS A COBRAR", title)
     r = 2
     for j, h in enumerate(["Contribuyente", "RUC", "Concepto / Servicio", "¿Cobrar?", "Valor a cobrar"]):
         ws.write(r, j, h, head)
+
+    def _subtotal(row, contrib, monto):
+        ws.merge_range(row, 0, row, 3, f"Subtotal {contrib}", sub_lbl)
+        ws.write_number(row, 4, round(monto, 2), sub_val)
+
+    curr = None
+    sub = 0.0
     for f in filas:
+        if curr is not None and f["contribuyente"] != curr:
+            r += 1
+            _subtotal(r, curr, sub)
+            sub = 0.0
+        curr = f["contribuyente"]
         r += 1
         ws.write(r, 0, f["contribuyente"], cell)
         ws.write(r, 1, f["identificacion"], cell)
         ws.write(r, 2, f["concepto"], cell)
         ws.write(r, 3, "Sí" if f["cobrar"] else "No", si)
         ws.write_number(r, 4, f["valor"] if f["cobrar"] else 0, money)
+        if f["cobrar"]:
+            sub += f["valor"]
+    if curr is not None:
+        r += 1
+        _subtotal(r, curr, sub)
     r += 1
     ws.write(r, 3, "TOTAL", head)
     ws.write_number(r, 4, total, tot)
@@ -174,13 +193,26 @@ async def export_pdf(user_id: str = Depends(get_current_user)):
     st = getSampleStyleSheet()
     story = [Paragraph("Reporte de honorarios a cobrar", st["Title"]), Spacer(1, 0.15 * inch)]
     data = [["Contribuyente", "RUC", "Concepto / Servicio", "Cobrar", "Valor"]]
+    sub_rows = []  # índices de filas de subtotal (para colorearlas)
+    curr = None
+    sub = 0.0
     for f in filas:
+        if curr is not None and f["contribuyente"] != curr:
+            data.append(["", "", "", f"Subtotal {curr}", f"${sub:.2f}"])
+            sub_rows.append(len(data) - 1)
+            sub = 0.0
+        curr = f["contribuyente"]
         data.append([f["contribuyente"], f["identificacion"], f["concepto"],
                      "Sí" if f["cobrar"] else "No",
                      f"${f['valor']:.2f}" if f["cobrar"] else "$0.00"])
+        if f["cobrar"]:
+            sub += f["valor"]
+    if curr is not None:
+        data.append(["", "", "", f"Subtotal {curr}", f"${sub:.2f}"])
+        sub_rows.append(len(data) - 1)
     data.append(["", "", "", "TOTAL", f"${total:.2f}"])
-    t = Table(data, repeatRows=1, colWidths=[2.2 * inch, 1.3 * inch, 1.7 * inch, 0.7 * inch, 0.9 * inch])
-    t.setStyle(TableStyle([
+    t = Table(data, repeatRows=1, colWidths=[2.2 * inch, 1.3 * inch, 1.7 * inch, 1.0 * inch, 0.9 * inch])
+    estilo = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a5276")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
@@ -190,7 +222,12 @@ async def export_pdf(user_id: str = Depends(get_current_user)):
         ("FONTNAME", (3, -1), (-1, -1), "Helvetica-Bold"),
         ("ALIGN", (4, 0), (4, -1), "RIGHT"),
         ("ALIGN", (3, 0), (3, -1), "CENTER"),
-    ]))
+    ]
+    for si in sub_rows:
+        estilo.append(("BACKGROUND", (0, si), (-1, si), colors.HexColor("#eef5fb")))
+        estilo.append(("FONTNAME", (3, si), (-1, si), "Helvetica-Bold"))
+        estilo.append(("TEXTCOLOR", (0, si), (-1, si), colors.HexColor("#1a5276")))
+    t.setStyle(TableStyle(estilo))
     story.append(t)
     doc.build(story)
     out.seek(0)

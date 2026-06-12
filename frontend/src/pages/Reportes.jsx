@@ -59,6 +59,22 @@ export default function Reportes() {
     [rows]
   )
 
+  // Lista de visualización con subtotal por contribuyente
+  const display = useMemo(() => {
+    const out = []
+    let curr = null, sub = 0
+    for (const r of filtradas) {
+      if (curr !== null && r.contribuyente !== curr) {
+        out.push({ type: 'subtotal', contribuyente: curr, valor: sub }); sub = 0
+      }
+      curr = r.contribuyente
+      out.push({ type: 'row', r })
+      if (r.cobrar) sub += parseFloat(r.valor) || 0
+    }
+    if (curr !== null) out.push({ type: 'subtotal', contribuyente: curr, valor: sub })
+    return out
+  }, [filtradas])
+
   const exportar = async (tipo) => {
     try {
       const r = tipo === 'excel' ? await reportesAPI.exportExcel() : await reportesAPI.exportPdf()
@@ -114,7 +130,16 @@ export default function Reportes() {
               </tr>
             </thead>
             <tbody>
-              {filtradas.map((r) => {
+              {display.map((item, di) => {
+                if (item.type === 'subtotal') {
+                  return (
+                    <tr key={'sub-' + item.contribuyente + di} className="rp-row-subtotal">
+                      <td colSpan={4} className="r">Subtotal {item.contribuyente || '—'}</td>
+                      <td className="r">{money(item.valor)}</td>
+                    </tr>
+                  )
+                }
+                const r = item.r
                 const realIdx = rows.indexOf(r)
                 const nuevoContrib = r.contribuyente !== prevContrib
                 prevContrib = r.contribuyente
