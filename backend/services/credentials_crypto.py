@@ -72,3 +72,22 @@ def decrypt(ciphertext_ascii: str, key_version: int) -> str:
         return f.decrypt(ciphertext_ascii.encode("ascii")).decode("utf-8")
     except InvalidToken:
         raise RuntimeError("Ciphertext corrupto o llave incorrecta")
+
+
+def key_configured() -> bool:
+    """True si hay una llave maestra disponible (sin lanzar excepción)."""
+    try:
+        _keys()
+        return True
+    except Exception:
+        return False
+
+
+def can_decrypt(ciphertext_ascii: str, key_version: int) -> bool:
+    """True si el ciphertext se puede descifrar con la llave actual.
+    Sirve para detectar credenciales cifradas con una llave anterior (deben reingresarse)."""
+    try:
+        decrypt(ciphertext_ascii, key_version)
+        return True
+    except Exception:
+        return False

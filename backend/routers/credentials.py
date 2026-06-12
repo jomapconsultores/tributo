@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from database import get_supabase_client
 from routers.admin import require_admin
-from services.credentials_crypto import encrypt, decrypt
+from services.credentials_crypto import encrypt, decrypt, can_decrypt
 
 router = APIRouter(prefix="/api/credentials", tags=["credentials"])
 
@@ -61,7 +61,7 @@ async def listar(req: Request, admin_id: str = Depends(require_admin), q: Option
     NO devuelve contraseñas (solo metadata + lista de servicios activos por cliente)."""
     sb = get_supabase_client()
     creds = sb.table("service_credentials").select(
-        "id, client_id, service, username, key_version, notes, created_at, updated_at"
+        "id, client_id, service, username, key_version, ciphertext, notes, created_at, updated_at"
     ).order("updated_at", desc=True).execute().data or []
     if not creds:
         _log(credential_id=None, admin_user_id=admin_id, action="list", req=req, metadata={"count": 0, "q": q})
@@ -99,6 +99,9 @@ async def listar(req: Request, admin_id: str = Depends(require_admin), q: Option
             ql = q.lower().strip()
             if ql and ql not in nombre.lower() and ql not in ruc.lower():
                 continue
+        # ¿Se puede descifrar con la llave actual? Si no, la credencial fue
+        # cifrada con una llave anterior y debe reingresarse (NO se expone el ciphertext).
+        needs_reentry = not can_decrypt(c.get("ciphertext", ""), c["key_version"])
         out.append({
             "id": c["id"],
             "client_id": c["client_id"],
@@ -107,6 +110,7 @@ async def listar(req: Request, admin_id: str = Depends(require_admin), q: Option
             "service": c["service"],
             "username": c.get("username"),
             "key_version": c["key_version"],
+            "needs_reentry": needs_reentry,
             "notes": c.get("notes"),
             "created_at": c["created_at"],
             "updated_at": c["updated_at"],
@@ -175,7 +179,13 @@ async def revelar(cred_id: int, req: Request, admin_id: str = Depends(require_ad
         password = decrypt(row["ciphertext"], row["key_version"])
     except Exception as e:
         _log(credential_id=cred_id, admin_user_id=admin_id, action="reveal", req=req, metadata={"error": str(e)})
-        raise HTTPException(status_code=500, detail=f"No se pudo descifrar: {e}")
+        # Caso típico: la credencial se cifró con una llave maestra anterior.
+        # Damos un mensaje accionable (409) en vez de un error técnico.
+        raise HTTPException(
+            status_code=409,
+            detail="Esta credencial fue guardada con una llave anterior y no se puede descifrar. "
+                   "Vuelve a ingresar la contraseña (botón Editar) para guardarla con la llave actual.",
+        )
     _log(credential_id=cred_id, admin_user_id=admin_id, action="reveal", req=req)
     return {"id": cred_id, "service": row["service"], "username": row.get("username"), "password": password}
 

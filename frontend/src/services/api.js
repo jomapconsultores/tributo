@@ -87,6 +87,8 @@ export const invoicesAPI = {
     formData.append('client_id', clientId)
     return api.post('/api/invoices/process-txt', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      // El SRI es lento y reintentamos varias rondas; damos margen amplio.
+      timeout: 300000,
     })
   },
   processXml: (clientId, files) => {

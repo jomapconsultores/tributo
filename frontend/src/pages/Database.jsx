@@ -66,7 +66,17 @@ export default function Database() {
     try {
       const res = await invoicesAPI.processTxt(selectedClientId, file)
       const d = res.data
-      alert(`Claves: ${d.total_claves} | Procesadas: ${d.processed}\nNuevas: ${d.new} | Duplicadas: ${d.duplicates} | Errores: ${d.errors}`)
+      const faltan = d.no_descargadas ?? 0
+      let msg = `Claves en el archivo: ${d.total_claves}\n` +
+                `Descargadas del SRI: ${d.descargadas ?? d.processed} de ${d.total_claves}\n` +
+                `Nuevas: ${d.new} | Duplicadas: ${d.duplicates}`
+      if (faltan > 0) {
+        msg += `\n\n⚠ ${faltan} no se pudieron bajar (el SRI las rechazó tras varios reintentos).` +
+               `\nVuelve a subir el MISMO archivo: solo reintentará las que faltan (las ya bajadas saldrán como duplicadas).`
+      } else {
+        msg += `\n\n✔ Se bajaron TODAS las facturas.`
+      }
+      alert(msg)
       await afterImport()
     } catch (err) {
       alert('Error: ' + (err.response?.data?.detail || err.message))

@@ -118,7 +118,10 @@ async def process_txt(
             raise HTTPException(status_code=400, detail="No se encontraron claves válidas en el archivo")
 
         claves_list = list(claves)
-        xmls, errores = descargar_multiples_xmls(claves_list, max_workers=10)
+        # Reintenta en varias rondas las claves que el SRI falle, para bajar
+        # TODAS las facturas y no solo una parte.
+        xmls, no_descargadas = descargar_multiples_xmls(claves_list, max_workers=8, max_rondas=3)
+        errores = no_descargadas
 
         classification_map, card_memory = _load_maps(supabase)
 
@@ -142,7 +145,9 @@ async def process_txt(
             "new": new_count,
             "duplicates": dup_count,
             "errors": errores + err_count,
-            "total_claves": len(claves)
+            "total_claves": len(claves),
+            "descargadas": len(xmls),
+            "no_descargadas": no_descargadas,
         }
     except HTTPException:
         raise

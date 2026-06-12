@@ -203,6 +203,14 @@ export default function AdminCredentials() {
         </span>
       </div>
 
+      {creds.some((c) => c.needs_reentry) && (
+        <div className="adm-cred-reentry-banner">
+          ⚠ {creds.filter((c) => c.needs_reentry).length} credencial(es) fueron cifradas con una llave anterior
+          y no se pueden descifrar. Editá cada una (✎) y volvé a ingresar la contraseña del portal SRI
+          para guardarla con la llave actual.
+        </div>
+      )}
+
       <div className="adm-cred-filters">
         <span className="adm-cred-filters-lbl">Filtrar por servicio:</span>
         {CLIENT_SERVICES.map((s) => {
@@ -270,8 +278,15 @@ export default function AdminCredentials() {
             </thead>
             <tbody>
               {filtered.map((c) => (
-                <tr key={c.id}>
-                  <td>{c.nombre || '—'}</td>
+                <tr key={c.id} className={c.needs_reentry ? 'adm-cred-row-reentry' : ''}>
+                  <td>
+                    {c.nombre || '—'}
+                    {c.needs_reentry && (
+                      <span className="adm-cred-reentry-badge" title="Esta contraseña fue cifrada con una llave anterior. Editá la credencial y volvé a ingresar la contraseña para guardarla con la llave actual.">
+                        ⚠ reingresar
+                      </span>
+                    )}
+                  </td>
                   <td className="mono">
                     <span className="adm-cred-copyable" title="Click para copiar RUC" onClick={() => onCopy(c.ruc, 'RUC')}>
                       {c.ruc || '—'}
