@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import NewClientModal from './NewClientModal'
+import AlertaDeclaracion from './AlertaDeclaracion'
 import { useAccess } from '../context/AccessContext'
 import './Layout.css'
 
@@ -38,6 +39,7 @@ export default function Layout({ user, onLogout }) {
       <Sidebar onNewClient={openNewClient} onLogout={onLogout} userEmail={user?.email} />
       <main className="layout-content">
         <SubBanner />
+        <AlertaDeclaracion />
         <Outlet context={{ openNewClient }} />
       </main>
       <NewClientModal open={modalOpen} onClose={() => setModalOpen(false)} />

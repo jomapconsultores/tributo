@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react'
 import { useClients } from '../context/ClientContext'
 import { MESES } from '../utils/periodo'
+import { periodoADeclarar } from '../utils/declaracionSRI'
 import './NewClientModal.css'
 
 const ANIO_ACTUAL = 2026
 const ANIOS = Array.from({ length: 12 }, (_, i) => ANIO_ACTUAL - i)
 
+// Por defecto, el período a declarar (mes anterior) — lo que normalmente se carga
+const _per = periodoADeclarar()
 const EMPTY = {
   identificacion: '', nombre: '', tipo_identificacion: 'RUC',
-  periodo_mes: '', periodo_anio: '',
+  periodo_mes: _per.mes, periodo_anio: _per.anio,
 }
 
 export default function NewClientModal({ open, onClose, editClient = null, selectAfter = true, onCreated }) {
@@ -27,7 +30,8 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
         periodo_anio: editClient.periodo_anio || '',
       })
     } else {
-      setForm(EMPTY)
+      const p = periodoADeclarar()
+      setForm({ ...EMPTY, periodo_mes: p.mes, periodo_anio: p.anio })
     }
     setError('')
   }, [editClient, open])

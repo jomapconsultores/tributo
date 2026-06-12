@@ -50,6 +50,37 @@ export function proximaFechaDeclaracion(ruc, hoy = new Date()) {
   return new Date(anio, mes, dia)
 }
 
+// Período que se debe declarar AHORA: en Ecuador se declara el mes ANTERIOR.
+// Devuelve { mes (1-12), anio, nombre }. Ej: en junio se declara mayo.
+export function periodoADeclarar(hoy = new Date()) {
+  let m = hoy.getMonth() - 1   // mes anterior (0-11)
+  let a = hoy.getFullYear()
+  if (m < 0) { m = 11; a -= 1 }
+  return { mes: m + 1, anio: a, nombre: MESES[m] }
+}
+
+// Estado del plazo de declaración para un RUC: se declara el mes anterior y el
+// límite es el día (10-28) del MES ACTUAL. Devuelve nivel/mensaje para alertar.
+// nivel: 'ok' | 'pronto' (<=3 días) | 'hoy' | 'vencido'
+export function estadoDeclaracion(ruc, hoy = new Date()) {
+  const dia = diaDeclaracion(ruc)
+  if (dia === null) return { valido: false }
+  const per = periodoADeclarar(hoy)
+  const limite = new Date(hoy.getFullYear(), hoy.getMonth(), dia)
+  const base = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
+  const dias = Math.round((limite - base) / 86400000)
+  let nivel, mensaje
+  if (dias > 3) { nivel = 'ok'; mensaje = `Faltan ${dias} días` }
+  else if (dias > 0) { nivel = 'pronto'; mensaje = `Faltan ${dias} día(s)` }
+  else if (dias === 0) { nivel = 'hoy'; mensaje = 'HOY es el último día' }
+  else { nivel = 'vencido'; mensaje = `Vencido hace ${-dias} día(s)` }
+  return {
+    valido: true, dia, nivel, mensaje, dias, limite,
+    mesADeclarar: per.mes, anioADeclarar: per.anio, nombreMes: per.nombre,
+    limiteTexto: `${dia} de ${MESES[hoy.getMonth()]} de ${hoy.getFullYear()}`,
+  }
+}
+
 // Resumen listo para mostrar. { valido, digito, dia, proximaFecha, proximaFechaTexto }
 export function infoDeclaracion(ruc, hoy = new Date()) {
   const digito = novenoDigito(ruc)
