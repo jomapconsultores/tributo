@@ -63,6 +63,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const isNormativa = path === '/normativa'
   const isRecursos = path === '/recursos-ice'
   const isCompradores = path === '/compradores'
+  const isReportes = path === '/reportes'
   const isInIngresosIvaMenu = isIngresosIva
   const isInIngresosIceMenu = isIceXml || isCalculo || isAnexo || isCatalogo || isRebajas || isRecursos || isCompradores || isNormativa
   const isIngresos = isInIngresosIvaMenu || isInIngresosIceMenu
@@ -283,6 +284,15 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
           </div>
         )}
         </>)}
+
+        {/* REPORTES: honorarios a cobrar por contribuyente y producto */}
+        <button
+          className={`nav-item module-btn ${isReportes ? 'active' : ''}`}
+          onClick={() => navigate('/reportes')}
+        >
+          <span className="nav-ico">📑</span>
+          <span>REPORTES</span>
+        </button>
 
         <div className="nav-divider" />
 

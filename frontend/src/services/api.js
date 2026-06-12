@@ -238,6 +238,12 @@ export const normativaAPI = {
   },
 }
 
+// REPORTES: honorarios a cobrar por contribuyente y producto
+export const reportesAPI = {
+  cobros: () => api.get('/api/reportes/cobros'),
+  guardarCobro: (entry) => api.put('/api/reportes/cobros', entry),
+}
+
 // XML originales subidos (re-descarga en ZIP con nombre Tipo_RUC_nombre_mes_año)
 // modulo: 'gasto' | 'ingreso_ice' | 'ingreso_iva' | 'retencion'
 export const xmlOriginalesAPI = {

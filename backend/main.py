@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from config import get_settings
-from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales
+from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes
 from routers.access import require_module
 import os
 from dotenv import load_dotenv
@@ -122,6 +122,7 @@ app.include_router(compradores.router, dependencies=ICEMOD)
 app.include_router(resources.router, dependencies=ICEMOD)
 app.include_router(declaraciones.router, dependencies=DECL)
 app.include_router(xml_originales.router)  # descarga de XML originales (gastos/ingresos/retenciones)
+app.include_router(reportes.router)  # REPORTES: honorarios a cobrar por contribuyente/producto
 
 @app.get("/")
 async def root():

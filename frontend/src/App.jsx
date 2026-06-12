@@ -18,6 +18,7 @@ import CatalogoProductos from './pages/CatalogoProductos'
 import Compradores from './pages/Compradores'
 import RebajasExenciones from './pages/RebajasExenciones'
 import Normativa from './pages/Normativa'
+import Reportes from './pages/Reportes'
 import Admin from './pages/Admin'
 import AdminCredentials from './pages/AdminCredentials'
 import Layout from './components/Layout'
@@ -123,6 +124,7 @@ function App() {
             <Route path="/compradores" element={<RequireModule modulo="ingresos_ice"><Compradores /></RequireModule>} />
             <Route path="/rebajas-exenciones" element={<RequireModule modulo="ingresos_ice"><RebajasExenciones /></RequireModule>} />
             <Route path="/normativa" element={<Normativa />} />
+            <Route path="/reportes" element={<Reportes />} />
             <Route path="/admin" element={<RequireAdmin><Admin /></RequireAdmin>} />
             <Route path="/admin/credenciales" element={<RequireAdmin><AdminCredentials /></RequireAdmin>} />
             <Route path="/sin-acceso" element={<SinAcceso />} />

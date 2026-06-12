@@ -1,0 +1,31 @@
+.rp-page { padding: 20px 26px; }
+.rp-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.rp-header h1 { margin: 0 0 4px; color: #1a5276; }
+.rp-sub { margin: 0; color: #5d6d7e; max-width: 640px; }
+.rp-total-box { background: linear-gradient(135deg, #065f46, #059669); color: #fff; border-radius: 12px; padding: 12px 20px; text-align: right; min-width: 180px; }
+.rp-total-lbl { display: block; font-size: 12px; opacity: .9; }
+.rp-total-val { display: block; font-size: 1.7rem; font-weight: 800; }
+
+.rp-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.rp-search { flex: 1; min-width: 240px; border: 1px solid #cbd5e1; border-radius: 9px; padding: 9px 13px; font-size: 14px; }
+.rp-count { color: #64748b; font-size: 13px; }
+.rp-btn { border: 1px solid #aab7b8; background: #fff; border-radius: 8px; padding: 8px 12px; cursor: pointer; font-size: 13px; }
+.rp-btn:hover { background: #eaf2f8; }
+.rp-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; }
+
+.rp-table-wrap { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow-x: auto; }
+.rp-empty { padding: 32px; text-align: center; color: #94a3b8; }
+.rp-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.rp-table th, .rp-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; text-align: left; vertical-align: middle; }
+.rp-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: .3px; color: #64748b; font-weight: 700; background: #f8fafc; position: sticky; top: 0; }
+.rp-table .r { text-align: right; }
+.rp-table .c { text-align: center; }
+.rp-ruc { font-family: monospace; color: #475569; font-size: 0.8rem; }
+.rp-marca { font-family: monospace; color: #334155; }
+.rp-row-newgroup td { border-top: 2px solid #d6dbdf; }
+.rp-row-off { background: #fafafa; color: #94a3b8; }
+.rp-valor { width: 96px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 5px 8px; text-align: right; font-size: 0.85rem; }
+.rp-valor:disabled { background: #f1f5f9; color: #94a3b8; }
+.rp-money-prefix { color: #64748b; margin-right: 2px; }
+.rp-saving { display: block; font-size: 10px; color: #059669; }
+.rp-table tfoot td { background: #f8fafc; border-top: 2px solid #1a5276; font-size: 0.95rem; }
