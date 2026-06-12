@@ -44,6 +44,14 @@ export default function AdminCredentials() {
   const toggleSvcFilter = (key) =>
     setSvcFilter((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key])
 
+  // Filtro por día máximo de declaración (según 9no dígito del RUC) y orden por
+  // la próxima fecha de declaración (la más cercana primero)
+  const [diaFilter, setDiaFilter] = useState(() => localStorage.getItem('admCredDiaFilter') || '')
+  useEffect(() => { try { localStorage.setItem('admCredDiaFilter', diaFilter) } catch { /* ignore */ } }, [diaFilter])
+  const [ordenFecha, setOrdenFecha] = useState(() => localStorage.getItem('admCredOrdenFecha') === '1')
+  useEffect(() => { try { localStorage.setItem('admCredOrdenFecha', ordenFecha ? '1' : '0') } catch { /* ignore */ } }, [ordenFecha])
+  const DIAS_DECL = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28]
+
   const load = async () => {
     setLoading(true)
     try {
@@ -63,14 +71,26 @@ export default function AdminCredentials() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return creds.filter((c) => {
+    let list = creds.filter((c) => {
       const matchSearch = !q ||
         [c.nombre, c.ruc, c.username, c.notes].some((f) => String(f || '').toLowerCase().includes(q))
       const matchSvc = svcFilter.length === 0 ||
         svcFilter.some((k) => c.client_services?.includes(k))
-      return matchSearch && matchSvc
+      const matchDia = !diaFilter || infoDeclaracion(c.ruc).dia === Number(diaFilter)
+      return matchSearch && matchSvc && matchDia
     })
-  }, [creds, search, svcFilter])
+    if (ordenFecha) {
+      list = [...list].sort((a, b) => {
+        const fa = infoDeclaracion(a.ruc).proximaFecha
+        const fb = infoDeclaracion(b.ruc).proximaFecha
+        if (!fa && !fb) return 0
+        if (!fa) return 1
+        if (!fb) return -1
+        return fa - fb
+      })
+    }
+    return list
+  }, [creds, search, svcFilter, diaFilter, ordenFecha])
 
   // Auto-ocultar la contraseña revelada después de REVEAL_TTL_SECONDS
   useEffect(() => {
@@ -209,6 +229,21 @@ export default function AdminCredentials() {
             ✕ Todos
           </button>
         )}
+
+        <span className="adm-cred-filters-lbl" style={{ marginLeft: 'auto' }}>Fecha máx. declaración:</span>
+        <select
+          className="adm-cred-dia-select"
+          value={diaFilter}
+          onChange={(e) => setDiaFilter(e.target.value)}
+          title="Filtrar por el día máximo de declaración (9no dígito del RUC)"
+        >
+          <option value="">Todas</option>
+          {DIAS_DECL.map((d) => <option key={d} value={d}>día {d}</option>)}
+        </select>
+        <label className="adm-cred-orden" title="Ordenar por la próxima fecha de declaración (la más cercana primero)">
+          <input type="checkbox" checked={ordenFecha} onChange={(e) => setOrdenFecha(e.target.checked)} />
+          ↑ por fecha
+        </label>
       </div>
 
       {loading ? (
@@ -224,6 +259,7 @@ export default function AdminCredentials() {
               <tr>
                 <th>Cliente</th>
                 <th>RUC</th>
+                <th>Próxima declaración</th>
                 <th>Usuario</th>
                 {CLIENT_SERVICES.map((s) => (
                   <th key={s.key} className="adm-cred-svc-th" title={s.title}>{s.label}</th>
@@ -240,17 +276,14 @@ export default function AdminCredentials() {
                     <span className="adm-cred-copyable" title="Click para copiar RUC" onClick={() => onCopy(c.ruc, 'RUC')}>
                       {c.ruc || '—'}
                     </span>
+                  </td>
+                  <td className="adm-cred-decl-cell">
                     {(() => {
-                      const decl = infoDeclaracion(c.ruc)
-                      if (!decl.valido) return null
-                      return (
-                        <span
-                          className="adm-cred-decl"
-                          title={`Fecha máxima de declaración mensual (9no dígito ${decl.digito}) · próxima: ${decl.proximaFechaTexto}`}
-                        >
-                          📅 día {decl.dia}
-                        </span>
-                      )
+                      const d = infoDeclaracion(c.ruc)
+                      if (!d.valido) return <span className="adm-cred-dim">—</span>
+                      const f = d.proximaFecha
+                      const fecha = `${String(f.getDate()).padStart(2, '0')}/${String(f.getMonth() + 1).padStart(2, '0')}/${f.getFullYear()}`
+                      return <span title={d.proximaFechaTexto}><strong>día {d.dia}</strong> · {fecha}</span>
                     })()}
                   </td>
                   <td>{c.username || <span className="adm-cred-dim">(usa el RUC)</span>}</td>
@@ -277,7 +310,7 @@ export default function AdminCredentials() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="adm-cred-empty-row">
+                  <td colSpan={10} className="adm-cred-empty-row">
                     Ningún cliente coincide con el filtro seleccionado.
                   </td>
                 </tr>
