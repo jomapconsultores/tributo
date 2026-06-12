@@ -31,3 +31,16 @@
 .rp-tag { color: #059669; margin-left: 6px; font-size: 9px; vertical-align: middle; }
 .rp-row-subtotal td { background: #eef5fb; color: #1a5276; font-weight: 700; border-bottom: 1px solid #d6dbdf; }
 .rp-table tfoot td { background: #f8fafc; border-top: 2px solid #1a5276; font-size: 0.95rem; }
+
+/* Grupos desplegables por contribuyente + rubros personalizados */
+.rp-grupo-head { cursor: pointer; background: #eef5fb; }
+.rp-grupo-head:hover { background: #e3eef8; }
+.rp-grupo-head td { border-top: 2px solid #c9d6e3; color: #1a5276; }
+.rp-caret { display: inline-block; width: 16px; color: #1a5276; font-weight: 700; }
+.rp-grupo-ruc { font-family: monospace; font-size: 0.74rem; color: #64748b; margin-left: 8px; }
+.rp-concepto { padding-left: 24px; }
+.rp-badge-custom { margin-left: 8px; font-size: 0.62rem; background: #fde68a; color: #92400e; border-radius: 8px; padding: 1px 7px; vertical-align: middle; }
+.rp-addrow td { padding-left: 24px; background: #fcfcfd; }
+.rp-add-btn { border: 1px dashed #94a3b8; background: #fff; color: #475569; border-radius: 7px; padding: 4px 12px; font-size: 0.78rem; cursor: pointer; }
+.rp-add-btn:hover { background: #f1f5f9; border-color: #64748b; }
+.rp-del { border: none; background: transparent; color: #dc2626; cursor: pointer; font-size: 0.9rem; }

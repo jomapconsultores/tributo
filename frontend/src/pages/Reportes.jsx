@@ -10,6 +10,7 @@ export default function Reportes() {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [guardando, setGuardando] = useState('')
+  const [colapsados, setColapsados] = useState(() => new Set())
 
   const cargar = useCallback(async () => {
     setLoading(true); setError('')
@@ -43,12 +44,45 @@ export default function Reportes() {
     })
   }
 
+  const agregarRubro = async (ident, contribuyente) => {
+    const nombre = (prompt(`Nuevo rubro / servicio para ${contribuyente}:`) || '').trim()
+    if (!nombre) return
+    try {
+      await reportesAPI.guardarCobro({ identificacion: ident, producto: nombre, cobrar: true, valor: 0 })
+      await cargar()
+    } catch (e) { alert('No se pudo agregar: ' + (e.response?.data?.detail || e.message)) }
+  }
+
+  const borrarRubro = async (fila) => {
+    if (!window.confirm(`Quitar el rubro "${fila.concepto}" de ${fila.contribuyente}?`)) return
+    try {
+      await reportesAPI.borrarCobro(fila.identificacion, fila.concepto)
+      await cargar()
+    } catch (e) { alert('No se pudo quitar: ' + (e.response?.data?.detail || e.message)) }
+  }
+
+  const toggleGrupo = (ident) => setColapsados((s) => {
+    const n = new Set(s); n.has(ident) ? n.delete(ident) : n.add(ident); return n
+  })
+
   const filtradas = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return rows
     return rows.filter((r) => [r.contribuyente, r.identificacion, r.concepto]
       .some((f) => String(f || '').toLowerCase().includes(q)))
   }, [rows, search])
+
+  // Agrupado por contribuyente, con subtotal
+  const grupos = useMemo(() => {
+    const m = new Map()
+    for (const r of filtradas) {
+      if (!m.has(r.identificacion)) m.set(r.identificacion, { identificacion: r.identificacion, contribuyente: r.contribuyente, rows: [] })
+      m.get(r.identificacion).rows.push(r)
+    }
+    const out = [...m.values()]
+    out.forEach((g) => { g.subtotal = g.rows.filter((r) => r.cobrar).reduce((s, r) => s + (parseFloat(r.valor) || 0), 0) })
+    return out
+  }, [filtradas])
 
   const total = useMemo(
     () => filtradas.filter((r) => r.cobrar).reduce((s, r) => s + (parseFloat(r.valor) || 0), 0),
@@ -59,22 +93,6 @@ export default function Reportes() {
     [rows]
   )
 
-  // Lista de visualización con subtotal por contribuyente
-  const display = useMemo(() => {
-    const out = []
-    let curr = null, sub = 0
-    for (const r of filtradas) {
-      if (curr !== null && r.contribuyente !== curr) {
-        out.push({ type: 'subtotal', contribuyente: curr, valor: sub }); sub = 0
-      }
-      curr = r.contribuyente
-      out.push({ type: 'row', r })
-      if (r.cobrar) sub += parseFloat(r.valor) || 0
-    }
-    if (curr !== null) out.push({ type: 'subtotal', contribuyente: curr, valor: sub })
-    return out
-  }, [filtradas])
-
   const exportar = async (tipo) => {
     try {
       const r = tipo === 'excel' ? await reportesAPI.exportExcel() : await reportesAPI.exportPdf()
@@ -83,14 +101,12 @@ export default function Reportes() {
     } catch (e) { alert('Error al exportar: ' + (e.response?.data?.detail || e.message)) }
   }
 
-  let prevContrib = null
-
   return (
     <div className="rp-page">
       <header className="rp-header">
         <div>
           <h1>📑 Reportes — Honorarios a cobrar</h1>
-          <p className="rp-sub">Todos los contribuyentes con los servicios que se les hace (declaraciones y anexos). Marca si se cobra y define el valor; se guarda automáticamente para el futuro. Ya viene marcado lo que tienen contratado o realizado.</p>
+          <p className="rp-sub">Cada contribuyente (desplegable) con los servicios que se le hacen. Marca si se cobra y define el valor; se guarda solo. Puedes agregar rubros que no estén en la lista con "➕ Agregar rubro".</p>
         </div>
         <div className="rp-total-box">
           <span className="rp-total-lbl">Total a cobrar{search ? ' (filtrado)' : ''}</span>
@@ -101,7 +117,9 @@ export default function Reportes() {
       <div className="rp-toolbar">
         <input className="rp-search" placeholder="🔍 Buscar contribuyente o concepto…"
           value={search} onChange={(e) => setSearch(e.target.value)} />
-        <span className="rp-count">{filtradas.length} de {rows.length} fila(s)</span>
+        <span className="rp-count">{grupos.length} contribuyente(s)</span>
+        <button className="rp-btn" onClick={() => setColapsados(new Set(grupos.map((g) => g.identificacion)))}>▸ Contraer todo</button>
+        <button className="rp-btn" onClick={() => setColapsados(new Set())}>▾ Expandir todo</button>
         <button className="rp-btn" onClick={cargar}>↻ Actualizar</button>
         <button className="rp-btn" onClick={() => exportar('excel')} disabled={!rows.length}>⬇ Excel</button>
         <button className="rp-btn" onClick={() => exportar('pdf')} disabled={!rows.length}>⬇ PDF</button>
@@ -112,7 +130,7 @@ export default function Reportes() {
       <div className="rp-table-wrap">
         {loading ? (
           <div className="rp-empty">Cargando…</div>
-        ) : filtradas.length === 0 ? (
+        ) : grupos.length === 0 ? (
           <div className="rp-empty">
             {rows.length === 0
               ? 'No hay contribuyentes cargados todavía. Crea clientes y aparecerán aquí con sus servicios.'
@@ -122,59 +140,90 @@ export default function Reportes() {
           <table className="rp-table">
             <thead>
               <tr>
-                <th>Contribuyente</th>
-                <th>RUC</th>
                 <th>Concepto / Servicio</th>
                 <th className="c">¿Cobrar?</th>
                 <th className="r">Valor a cobrar</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {display.map((item, di) => {
-                if (item.type === 'subtotal') {
-                  return (
-                    <tr key={'sub-' + item.contribuyente + di} className="rp-row-subtotal">
-                      <td colSpan={4} className="r">Subtotal {item.contribuyente || '—'}</td>
-                      <td className="r">{money(item.valor)}</td>
-                    </tr>
-                  )
-                }
-                const r = item.r
-                const realIdx = rows.indexOf(r)
-                const nuevoContrib = r.contribuyente !== prevContrib
-                prevContrib = r.contribuyente
-                const key = r.identificacion + '|' + r.concepto
+              {grupos.map((g) => {
+                const cerrado = colapsados.has(g.identificacion)
                 return (
-                  <tr key={key} className={`${nuevoContrib ? 'rp-row-newgroup' : ''} ${!r.cobrar ? 'rp-row-off' : ''}`}>
-                    <td>{nuevoContrib ? <strong>{r.contribuyente || '—'}</strong> : ''}</td>
-                    <td className="rp-ruc">{nuevoContrib ? r.identificacion : ''}</td>
-                    <td>{r.concepto}{r.relevante && <span className="rp-tag" title="Contratado o realizado">●</span>}</td>
-                    <td className="c">
-                      <input type="checkbox" checked={!!r.cobrar}
-                        onChange={(e) => setFila(realIdx, { cobrar: e.target.checked }, true)} />
-                    </td>
-                    <td className="r">
-                      <span className="rp-money-prefix">$</span>
-                      <input className="rp-valor" type="number" step="0.01" min="0"
-                        value={r.valor}
-                        onChange={(e) => setFila(realIdx, { valor: e.target.value })}
-                        onBlur={() => setFila(realIdx, {}, true)}
-                        disabled={!r.cobrar} />
-                      {guardando === key && <span className="rp-saving">guardando…</span>}
-                    </td>
-                  </tr>
+                  <Grupo key={g.identificacion} g={g} cerrado={cerrado}
+                    onToggle={() => toggleGrupo(g.identificacion)}
+                    rows={rows} setFila={setFila} guardando={guardando}
+                    onAddRubro={() => agregarRubro(g.identificacion, g.contribuyente)}
+                    onDelRubro={borrarRubro} money={money} />
                 )
               })}
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={4} className="r"><strong>TOTAL a cobrar{search ? ' (filtrado)' : ''}</strong></td>
+                <td className="r"><strong>TOTAL a cobrar{search ? ' (filtrado)' : ''}</strong></td>
+                <td></td>
                 <td className="r"><strong>{money(search ? total : totalGeneral)}</strong></td>
+                <td></td>
               </tr>
             </tfoot>
           </table>
         )}
       </div>
     </div>
+  )
+}
+
+function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onDelRubro, money }) {
+  return (
+    <>
+      <tr className="rp-grupo-head" onClick={onToggle}>
+        <td>
+          <span className="rp-caret">{cerrado ? '▸' : '▾'}</span>
+          <strong>{g.contribuyente || '—'}</strong>
+          <span className="rp-grupo-ruc">{g.identificacion}</span>
+        </td>
+        <td></td>
+        <td className="r"><strong>{money(g.subtotal)}</strong></td>
+        <td></td>
+      </tr>
+      {!cerrado && g.rows.map((r) => {
+        const realIdx = rows.indexOf(r)
+        const key = r.identificacion + '|' + r.concepto
+        return (
+          <tr key={key} className={!r.cobrar ? 'rp-row-off' : ''}>
+            <td className="rp-concepto">
+              {r.concepto}
+              {r.relevante && <span className="rp-tag" title="Contratado o realizado">●</span>}
+              {r.personalizado && <span className="rp-badge-custom">rubro propio</span>}
+            </td>
+            <td className="c">
+              <input type="checkbox" checked={!!r.cobrar}
+                onChange={(e) => setFila(realIdx, { cobrar: e.target.checked }, true)} />
+            </td>
+            <td className="r">
+              <span className="rp-money-prefix">$</span>
+              <input className="rp-valor" type="number" step="0.01" min="0"
+                value={r.valor}
+                onChange={(e) => setFila(realIdx, { valor: e.target.value })}
+                onBlur={() => setFila(realIdx, {}, true)}
+                disabled={!r.cobrar} />
+              {guardando === key && <span className="rp-saving">guardando…</span>}
+            </td>
+            <td className="c">
+              {r.personalizado && (
+                <button className="rp-del" title="Quitar rubro" onClick={() => onDelRubro(r)}>✕</button>
+              )}
+            </td>
+          </tr>
+        )
+      })}
+      {!cerrado && (
+        <tr className="rp-addrow">
+          <td colSpan={4}>
+            <button className="rp-add-btn" onClick={onAddRubro}>➕ Agregar rubro a {g.contribuyente}</button>
+          </td>
+        </tr>
+      )}
+    </>
   )
 }

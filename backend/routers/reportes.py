@@ -69,14 +69,18 @@ def _filas_y_total(user_id):
         "identificacion,producto,cobrar,valor").eq("user_id", user_id))
     by_key = {(g["identificacion"], g["producto"]): g for g in guardados}
 
+    fixed_labels = {label for label, _ in CONCEPTOS}
+    # Rubros personalizados guardados (conceptos que no están en la lista fija)
+    custom_por_ruc = {}
+    for g in guardados:
+        if g["producto"] not in fixed_labels:
+            custom_por_ruc.setdefault(g["identificacion"], []).append(g)
+
     filas = []
     total = 0.0
     for ruc in sorted(nombre_por_ruc, key=lambda r: (nombre_por_ruc[r] or "").upper()):
-        for label, key in CONCEPTOS:
-            relevante = (key in serv_por_ruc.get(ruc, set())
-                         or (key == "anexo" and ruc in anexo_rucs)
-                         or (ruc, key) in decl_keys)
-            g = by_key.get((ruc, label))
+        def _fila(concepto, relevante, personalizado, g):
+            nonlocal total
             cobrar = bool(g["cobrar"]) if g else relevante
             valor = float(g["valor"]) if g and g.get("valor") is not None else 0.0
             if cobrar:
@@ -84,11 +88,19 @@ def _filas_y_total(user_id):
             filas.append({
                 "identificacion": ruc,
                 "contribuyente": nombre_por_ruc[ruc],
-                "concepto": label,
+                "concepto": concepto,
                 "relevante": relevante,
+                "personalizado": personalizado,
                 "cobrar": cobrar,
                 "valor": round(valor, 2),
             })
+        for label, key in CONCEPTOS:
+            relevante = (key in serv_por_ruc.get(ruc, set())
+                         or (key == "anexo" and ruc in anexo_rucs)
+                         or (ruc, key) in decl_keys)
+            _fila(label, relevante, False, by_key.get((ruc, label)))
+        for g in sorted(custom_por_ruc.get(ruc, []), key=lambda x: x["producto"].upper()):
+            _fila(g["producto"], False, True, g)
     return filas, round(total, 2)
 
 
@@ -119,6 +131,15 @@ async def guardar_cobro(entry: CobroIn, user_id: str = Depends(get_current_user)
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/cobros")
+async def borrar_cobro(identificacion: str, producto: str, user_id: str = Depends(get_current_user)):
+    """Elimina una fila guardada (sirve para quitar un rubro personalizado)."""
+    sb = get_supabase_client()
+    sb.table("reportes_honorarios").delete().eq("user_id", user_id).eq(
+        "identificacion", (identificacion or "").strip()).eq("producto", (producto or "").strip()).execute()
+    return {"ok": True}
 
 
 @router.get("/export/excel")
