@@ -238,10 +238,12 @@ export const normativaAPI = {
   },
 }
 
-// REPORTES: honorarios a cobrar por contribuyente y producto
+// REPORTES: honorarios a cobrar por contribuyente y concepto (servicio)
 export const reportesAPI = {
   cobros: () => api.get('/api/reportes/cobros'),
   guardarCobro: (entry) => api.put('/api/reportes/cobros', entry),
+  exportExcel: () => api.get('/api/reportes/export/excel', { responseType: 'blob' }),
+  exportPdf: () => api.get('/api/reportes/export/pdf', { responseType: 'blob' }),
 }
 
 // XML originales subidos (re-descarga en ZIP con nombre Tipo_RUC_nombre_mes_año)

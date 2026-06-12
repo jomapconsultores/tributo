@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { reportesAPI } from '../services/api'
+import { reportesAPI, downloadBlob } from '../services/api'
 import './Reportes.css'
 
 const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
@@ -23,12 +23,12 @@ export default function Reportes() {
   useEffect(() => { cargar() }, [cargar])
 
   const guardarFila = async (fila) => {
-    const key = fila.identificacion + '|' + fila.producto
+    const key = fila.identificacion + '|' + fila.concepto
     setGuardando(key)
     try {
       await reportesAPI.guardarCobro({
-        identificacion: fila.identificacion, producto: fila.producto,
-        marca: fila.marca, cobrar: fila.cobrar, valor: parseFloat(fila.valor) || 0,
+        identificacion: fila.identificacion, producto: fila.concepto,
+        cobrar: fila.cobrar, valor: parseFloat(fila.valor) || 0,
       })
     } catch (e) {
       alert('No se pudo guardar: ' + (e.response?.data?.detail || e.message))
@@ -46,7 +46,7 @@ export default function Reportes() {
   const filtradas = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return rows
-    return rows.filter((r) => [r.contribuyente, r.identificacion, r.producto, r.marca]
+    return rows.filter((r) => [r.contribuyente, r.identificacion, r.concepto]
       .some((f) => String(f || '').toLowerCase().includes(q)))
   }, [rows, search])
 
@@ -59,7 +59,14 @@ export default function Reportes() {
     [rows]
   )
 
-  // Para resaltar el cambio de contribuyente (agrupado visualmente)
+  const exportar = async (tipo) => {
+    try {
+      const r = tipo === 'excel' ? await reportesAPI.exportExcel() : await reportesAPI.exportPdf()
+      downloadBlob(r.data, `Reporte_Honorarios.${tipo === 'excel' ? 'xlsx' : 'pdf'}`,
+        tipo === 'excel' ? undefined : 'application/pdf')
+    } catch (e) { alert('Error al exportar: ' + (e.response?.data?.detail || e.message)) }
+  }
+
   let prevContrib = null
 
   return (
@@ -67,7 +74,7 @@ export default function Reportes() {
       <header className="rp-header">
         <div>
           <h1>📑 Reportes — Honorarios a cobrar</h1>
-          <p className="rp-sub">Todos los contribuyentes con sus productos y marca. Marca si se cobra y define el valor; se guarda automáticamente para el futuro.</p>
+          <p className="rp-sub">Todos los contribuyentes con los servicios que se les hace (declaraciones y anexos). Marca si se cobra y define el valor; se guarda automáticamente para el futuro. Ya viene marcado lo que tienen contratado o realizado.</p>
         </div>
         <div className="rp-total-box">
           <span className="rp-total-lbl">Total a cobrar{search ? ' (filtrado)' : ''}</span>
@@ -76,10 +83,12 @@ export default function Reportes() {
       </header>
 
       <div className="rp-toolbar">
-        <input className="rp-search" placeholder="🔍 Buscar contribuyente, producto o marca…"
+        <input className="rp-search" placeholder="🔍 Buscar contribuyente o concepto…"
           value={search} onChange={(e) => setSearch(e.target.value)} />
         <span className="rp-count">{filtradas.length} de {rows.length} fila(s)</span>
         <button className="rp-btn" onClick={cargar}>↻ Actualizar</button>
+        <button className="rp-btn" onClick={() => exportar('excel')} disabled={!rows.length}>⬇ Excel</button>
+        <button className="rp-btn" onClick={() => exportar('pdf')} disabled={!rows.length}>⬇ PDF</button>
       </div>
 
       {error && <div className="rp-error">⚠ {error}</div>}
@@ -90,7 +99,7 @@ export default function Reportes() {
         ) : filtradas.length === 0 ? (
           <div className="rp-empty">
             {rows.length === 0
-              ? 'No hay productos en el catálogo de los contribuyentes. Agrega productos en "Catálogo de productos" y aparecerán aquí.'
+              ? 'No hay contribuyentes cargados todavía. Crea clientes y aparecerán aquí con sus servicios.'
               : 'Ninguna fila coincide con la búsqueda.'}
           </div>
         ) : (
@@ -99,25 +108,22 @@ export default function Reportes() {
               <tr>
                 <th>Contribuyente</th>
                 <th>RUC</th>
-                <th>Producto</th>
-                <th>Marca</th>
+                <th>Concepto / Servicio</th>
                 <th className="c">¿Cobrar?</th>
                 <th className="r">Valor a cobrar</th>
               </tr>
             </thead>
             <tbody>
-              {filtradas.map((r, i) => {
-                // índice real en rows (para setFila)
+              {filtradas.map((r) => {
                 const realIdx = rows.indexOf(r)
                 const nuevoContrib = r.contribuyente !== prevContrib
                 prevContrib = r.contribuyente
-                const key = r.identificacion + '|' + r.producto
+                const key = r.identificacion + '|' + r.concepto
                 return (
                   <tr key={key} className={`${nuevoContrib ? 'rp-row-newgroup' : ''} ${!r.cobrar ? 'rp-row-off' : ''}`}>
                     <td>{nuevoContrib ? <strong>{r.contribuyente || '—'}</strong> : ''}</td>
                     <td className="rp-ruc">{nuevoContrib ? r.identificacion : ''}</td>
-                    <td>{r.producto}</td>
-                    <td className="rp-marca">{r.marca || '—'}</td>
+                    <td>{r.concepto}{r.relevante && <span className="rp-tag" title="Contratado o realizado">●</span>}</td>
                     <td className="c">
                       <input type="checkbox" checked={!!r.cobrar}
                         onChange={(e) => setFila(realIdx, { cobrar: e.target.checked }, true)} />
@@ -137,7 +143,7 @@ export default function Reportes() {
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={5} className="r"><strong>TOTAL a cobrar{search ? ' (filtrado)' : ''}</strong></td>
+                <td colSpan={4} className="r"><strong>TOTAL a cobrar{search ? ' (filtrado)' : ''}</strong></td>
                 <td className="r"><strong>{money(search ? total : totalGeneral)}</strong></td>
               </tr>
             </tfoot>
