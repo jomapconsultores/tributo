@@ -116,7 +116,8 @@ def _pagos_aplazados_vencen(supabase, client_id, user_id, mes, anio, tipo):
 
 
 def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, override_credito_ret=None, diferir_meses=0,
-              override_rebaja=None, override_exencion=None, marcar_rebaja=False, marcar_exencion=False):
+              override_rebaja=None, override_exencion=None, marcar_rebaja=False, marcar_exencion=False,
+              override_ventas_15=None, override_ventas_5=None, override_ventas_0=None):
     c = _cliente(supabase, client_id)
     anio = c.get("periodo_anio") or 2026
     mes = c.get("periodo_mes") or 1
@@ -152,6 +153,9 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
             credito_mes_anterior_retenciones=cred_ret_prev,
             pagos_aplazados_vencen_este_periodo=aplazados,
             diferir_meses=diferir_meses,
+            override_ventas_15=override_ventas_15,
+            override_ventas_5=override_ventas_5,
+            override_ventas_0=override_ventas_0,
         )
         decl["aplazados_vencen"] = aplazados
     decl["cliente"] = c
@@ -171,6 +175,9 @@ async def calcular(
     exencion_ice: Optional[float] = Query(None, description="Override manual de exenciones ICE"),
     rebaja_manual: int = Query(0, description="Casilla manual: aplica rebaja 50% de la tarifa específica (con advertencia)"),
     exencion_manual: int = Query(0, description="Casilla manual: aplica exención del ICE restante (con advertencia)"),
+    ventas_15: Optional[float] = Query(None, description="Override manual de ventas gravadas 15% (411), si no hay XML"),
+    ventas_5: Optional[float] = Query(None, description="Override manual de ventas gravadas 5% (412)"),
+    ventas_0: Optional[float] = Query(None, description="Override manual de ventas tarifa 0% (413)"),
     user_id: str = Depends(get_current_user),
 ):
     try:
@@ -178,7 +185,8 @@ async def calcular(
         assert_client_owner(client_id, user_id)
         return _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret, diferir_meses,
                          override_rebaja=rebaja_ice, override_exencion=exencion_ice,
-                         marcar_rebaja=bool(rebaja_manual), marcar_exencion=bool(exencion_manual))
+                         marcar_rebaja=bool(rebaja_manual), marcar_exencion=bool(exencion_manual),
+                         override_ventas_15=ventas_15, override_ventas_5=ventas_5, override_ventas_0=ventas_0)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -332,12 +340,21 @@ async def eliminar(decl_id: str, user_id: str = Depends(get_current_user)):
 
 
 @router.get("/export/oficial")
-async def export_oficial(client_id: str = Query(...), tipo: str = Query("IVA"), user_id: str = Depends(get_current_user)):
+async def export_oficial(client_id: str = Query(...), tipo: str = Query("IVA"),
+                         credito_adq: Optional[float] = Query(None), credito_ret: Optional[float] = Query(None),
+                         rebaja_ice: Optional[float] = Query(None), exencion_ice: Optional[float] = Query(None),
+                         rebaja_manual: int = Query(0), exencion_manual: int = Query(0),
+                         ventas_15: Optional[float] = Query(None), ventas_5: Optional[float] = Query(None),
+                         ventas_0: Optional[float] = Query(None),
+                         user_id: str = Depends(get_current_user)):
     """Llena el formulario oficial del SRI (borrador) con los valores calculados."""
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
-        decl = _calcular(supabase, client_id, tipo, user_id)
+        decl = _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret, 0,
+                         override_rebaja=rebaja_ice, override_exencion=exencion_ice,
+                         marcar_rebaja=bool(rebaja_manual), marcar_exencion=bool(exencion_manual),
+                         override_ventas_15=ventas_15, override_ventas_5=ventas_5, override_ventas_0=ventas_0)
         c = decl.get("cliente", {})
         data, llenados, omitidos = llenar_oficial(tipo, decl)
         label = f"Formulario_{tipo.upper()}_{c.get('identificacion','')}_{decl.get('anio')}{str(decl.get('mes') or '').zfill(2)}".replace(" ", "_")
@@ -357,12 +374,21 @@ async def export_oficial(client_id: str = Query(...), tipo: str = Query("IVA"), 
 
 
 @router.get("/export/excel")
-async def export_excel(client_id: str = Query(...), tipo: str = Query("IVA"), user_id: str = Depends(get_current_user)):
+async def export_excel(client_id: str = Query(...), tipo: str = Query("IVA"),
+                       credito_adq: Optional[float] = Query(None), credito_ret: Optional[float] = Query(None),
+                       rebaja_ice: Optional[float] = Query(None), exencion_ice: Optional[float] = Query(None),
+                       rebaja_manual: int = Query(0), exencion_manual: int = Query(0),
+                       ventas_15: Optional[float] = Query(None), ventas_5: Optional[float] = Query(None),
+                       ventas_0: Optional[float] = Query(None),
+                       user_id: str = Depends(get_current_user)):
     try:
         import xlsxwriter
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
-        decl = _calcular(supabase, client_id, tipo, user_id)
+        decl = _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret, 0,
+                         override_rebaja=rebaja_ice, override_exencion=exencion_ice,
+                         marcar_rebaja=bool(rebaja_manual), marcar_exencion=bool(exencion_manual),
+                         override_ventas_15=ventas_15, override_ventas_5=ventas_5, override_ventas_0=ventas_0)
         c = decl.get("cliente", {})
         output = io.BytesIO()
         wb = xlsxwriter.Workbook(output, {"in_memory": True})

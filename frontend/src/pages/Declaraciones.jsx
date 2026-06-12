@@ -33,6 +33,15 @@ export default function Declaraciones({ tipo }) {
   const [editAdq, setEditAdq] = useState(false)
   const [editRet, setEditRet] = useState(false)
 
+  // Override manual de ventas/ingresos (cuando no se tienen los XML).
+  // null = usar lo calculado de los comprobantes; número = ingresado a mano.
+  const [ventas15, setVentas15] = useState(null)
+  const [ventas5, setVentas5] = useState(null)
+  const [ventas0, setVentas0] = useState(null)
+  const [editV15, setEditV15] = useState(false)
+  const [editV5, setEditV5] = useState(false)
+  const [editV0, setEditV0] = useState(false)
+
   // Rebajas y exenciones ICE: null = auto (precalculado del módulo Rebajas y
   // exenciones); número = override manual. Mismo patrón que 605/606.
   const [rebajaIce, setRebajaIce] = useState(null)
@@ -60,6 +69,9 @@ export default function Declaraciones({ tipo }) {
       if (exencionIce != null) params.exencion_ice = exencionIce
       if (marcaReb) params.rebaja_manual = 1
       if (marcaExe) params.exencion_manual = 1
+      if (ventas15 != null) params.ventas_15 = ventas15
+      if (ventas5 != null) params.ventas_5 = ventas5
+      if (ventas0 != null) params.ventas_0 = ventas0
       if (diferirMeses > 0) params.diferir_meses = diferirMeses
       const [c, s, a] = await Promise.all([
         declaracionesAPI.calcular(selectedClientId, tipo, params),
@@ -74,7 +86,7 @@ export default function Declaraciones({ tipo }) {
     } catch (e) {
       alert('Error: ' + (e.response?.data?.detail || e.message))
     } finally { setLoading(false) }
-  }, [selectedClientId, tipo, credAdq, credRet, rebajaIce, exencionIce, marcaReb, marcaExe, diferirMeses, isIVA])
+  }, [selectedClientId, tipo, credAdq, credRet, rebajaIce, exencionIce, marcaReb, marcaExe, ventas15, ventas5, ventas0, diferirMeses, isIVA])
 
   useEffect(() => { load() }, [load])
 
@@ -111,13 +123,13 @@ export default function Declaraciones({ tipo }) {
   }
   const exportar = async () => {
     try {
-      const res = await declaracionesAPI.exportExcel(selectedClientId, tipo)
+      const res = await declaracionesAPI.exportExcel(selectedClientId, tipo, overridesActuales())
       downloadBlob(res.data, `Declaracion_${tipo}_${selectedClient?.nombre || ''}.xlsx`)
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
   const exportarOficial = async () => {
     try {
-      const res = await declaracionesAPI.exportOficial(selectedClientId, tipo)
+      const res = await declaracionesAPI.exportOficial(selectedClientId, tipo, overridesActuales())
       downloadBlob(res.data, `Formulario_${tipo}_${selectedClient?.nombre || ''}.xlsx`)
       const ll = res.headers['x-codigos-llenados']
       const om = res.headers['x-codigos-omitidos']
@@ -149,13 +161,34 @@ export default function Declaraciones({ tipo }) {
     if (campo === 'adq') { setCredAdq(v); setEditAdq(false) }
     else if (campo === 'ret') { setCredRet(v); setEditRet(false) }
     else if (campo === 'reb') { setRebajaIce(v); setEditReb(false) }
-    else { setExencionIce(v); setEditExe(false) }
+    else if (campo === 'exe') { setExencionIce(v); setEditExe(false) }
+    else if (campo === 'v15') { setVentas15(v); setEditV15(false) }
+    else if (campo === 'v5') { setVentas5(v); setEditV5(false) }
+    else if (campo === 'v0') { setVentas0(v); setEditV0(false) }
   }
   const limpiarOverride = (campo) => {
     if (campo === 'adq') setCredAdq(null)
     else if (campo === 'ret') setCredRet(null)
     else if (campo === 'reb') setRebajaIce(null)
-    else setExencionIce(null)
+    else if (campo === 'exe') setExencionIce(null)
+    else if (campo === 'v15') setVentas15(null)
+    else if (campo === 'v5') setVentas5(null)
+    else if (campo === 'v0') setVentas0(null)
+  }
+
+  // Overrides activos para incluir en las exportaciones (Excel / formulario oficial)
+  const overridesActuales = () => {
+    const ov = {}
+    if (credAdq != null) ov.credito_adq = credAdq
+    if (credRet != null) ov.credito_ret = credRet
+    if (rebajaIce != null) ov.rebaja_ice = rebajaIce
+    if (exencionIce != null) ov.exencion_ice = exencionIce
+    if (marcaReb) ov.rebaja_manual = 1
+    if (marcaExe) ov.exencion_manual = 1
+    if (ventas15 != null) ov.ventas_15 = ventas15
+    if (ventas5 != null) ov.ventas_5 = ventas5
+    if (ventas0 != null) ov.ventas_0 = ventas0
+    return ov
   }
 
   const icon = tipo === 'ICE' ? '🥃' : '🧾'
@@ -252,6 +285,74 @@ export default function Declaraciones({ tipo }) {
                 : <button className="dc-btn-mini" onClick={revelarClaveSRI} title="Revelar clave (auditado)">👁 Revelar clave</button>}
             </p>
           )}
+        </div>
+      )}
+
+      {/* Ingresos / Ventas — editable cuando no se tienen los XML (solo IVA) */}
+      {isIVA && decl && (
+        <div className="dc-card-box dc-credit-box">
+          <h2 className="dc-h2">🧾 Ingresos / Ventas del período</h2>
+          <p className="dc-credit-help">
+            {resumen.ventas_manual
+              ? 'Ventas ingresadas manualmente (override). El IVA en ventas (421/422) se recalcula automáticamente y fluye al resto del cálculo.'
+              : 'Calculadas desde los comprobantes. Si no tenés los XML, editá la base de ventas y el IVA se recalcula solo (15% / 5%).'}
+          </p>
+          <div className="dc-credit-grid">
+            <div className="dc-credit-field">
+              <label>411 — Ventas gravadas 15% (base)</label>
+              {editV15 ? (
+                <div className="dc-credit-edit">
+                  <input type="number" step="0.01" autoFocus
+                    defaultValue={resumen.ventas_15 || 0}
+                    onBlur={(e) => aplicarOverride('v15', e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
+                </div>
+              ) : (
+                <div className="dc-credit-value">
+                  <strong>{money(resumen.ventas_15 || 0)}</strong>
+                  <button className="dc-btn-mini" onClick={() => setEditV15(true)} title="Editar">✎</button>
+                  {ventas15 != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('v15')} title="Volver al automático">↺</button>}
+                  <span style={{ marginLeft: 8, fontSize: 12, color: '#1a5276' }}>→ IVA 421: {money(resumen.iva_ventas_15 || 0)}</span>
+                </div>
+              )}
+            </div>
+            <div className="dc-credit-field">
+              <label>412 — Ventas gravadas 5% (base)</label>
+              {editV5 ? (
+                <div className="dc-credit-edit">
+                  <input type="number" step="0.01" autoFocus
+                    defaultValue={resumen.ventas_5 || 0}
+                    onBlur={(e) => aplicarOverride('v5', e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
+                </div>
+              ) : (
+                <div className="dc-credit-value">
+                  <strong>{money(resumen.ventas_5 || 0)}</strong>
+                  <button className="dc-btn-mini" onClick={() => setEditV5(true)} title="Editar">✎</button>
+                  {ventas5 != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('v5')} title="Volver al automático">↺</button>}
+                  <span style={{ marginLeft: 8, fontSize: 12, color: '#1a5276' }}>→ IVA 422: {money(resumen.iva_ventas_5 || 0)}</span>
+                </div>
+              )}
+            </div>
+            <div className="dc-credit-field">
+              <label>413 — Ventas tarifa 0% (base)</label>
+              {editV0 ? (
+                <div className="dc-credit-edit">
+                  <input type="number" step="0.01" autoFocus
+                    defaultValue={resumen.ventas_0 || 0}
+                    onBlur={(e) => aplicarOverride('v0', e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
+                </div>
+              ) : (
+                <div className="dc-credit-value">
+                  <strong>{money(resumen.ventas_0 || 0)}</strong>
+                  <button className="dc-btn-mini" onClick={() => setEditV0(true)} title="Editar">✎</button>
+                  {ventas0 != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('v0')} title="Volver al automático">↺</button>}
+                  <span style={{ marginLeft: 8, fontSize: 12, color: '#7f8c8d' }}>(sin IVA)</span>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

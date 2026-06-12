@@ -32,7 +32,8 @@ def _agg(invoices, key):
 def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
                     credito_mes_anterior_adquisiciones=0, credito_mes_anterior_retenciones=0,
                     pagos_aplazados_vencen_este_periodo=None,
-                    diferir_meses=0):
+                    diferir_meses=0,
+                    override_ventas_15=None, override_ventas_5=None, override_ventas_0=None):
     """Formulario 104.
 
     Compras: solo gastos del EJERCICIO (con derecho a crédito). Personales van al IR.
@@ -104,6 +105,21 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     t_no_obj  = v_no_obj                       # 415
     iva_ventas = t_iva_15 + t_iva_5
 
+    # ── Override manual de ventas (cuando no se tienen los XML) ───────────
+    # Si el usuario ingresa la base de ventas a mano, esta REEMPLAZA el valor
+    # de la casilla y el IVA se recalcula (15% / 5%). Todo el resultado
+    # (causado, crédito, a pagar) fluye luego con estos totales.
+    ventas_manual = any(x is not None for x in (override_ventas_15, override_ventas_5, override_ventas_0))
+    if override_ventas_15 is not None:
+        t_base_15 = _f(override_ventas_15)
+        t_iva_15 = round(t_base_15 * 0.15, 2)
+    if override_ventas_5 is not None:
+        t_base_5 = _f(override_ventas_5)
+        t_iva_5 = round(t_base_5 * 0.05, 2)
+    if override_ventas_0 is not None:
+        t_base_0 = _f(override_ventas_0)
+    iva_ventas = t_iva_15 + t_iva_5
+
     # ── Retenciones del período (609) ────────────────────────────────────
     # Suma de ret_iva de la tabla retentions del cliente en el período.
     ret_ok = [r for r in retentions if (r.get("estado") or "OK") == "OK"]
@@ -147,11 +163,16 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
             f["num_comprobantes"] = n
         return f
 
+    # Conteo de comprobantes: no aplica cuando la base se ingresó a mano.
+    n411 = None if override_ventas_15 is not None else (n_ventas_ice + v_n_base_15)
+    n412 = None if override_ventas_5 is not None else v_n_base_5
+    n413 = None if override_ventas_0 is not None else v_n_base_0
+
     filas = [
         # ── VENTAS ──
-        fila("VENTAS", "411", "Ventas locales gravadas 15% (valor neto, ICE+IVA incluido)", t_base_15, n_ventas_ice + v_n_base_15),
-        fila("VENTAS", "412", "Ventas locales gravadas 5% (valor neto)", t_base_5, v_n_base_5),
-        fila("VENTAS", "413", "Ventas locales con tarifa 0%", t_base_0, v_n_base_0),
+        fila("VENTAS", "411", "Ventas locales gravadas 15% (valor neto, ICE+IVA incluido)", t_base_15, n411),
+        fila("VENTAS", "412", "Ventas locales gravadas 5% (valor neto)", t_base_5, n412),
+        fila("VENTAS", "413", "Ventas locales con tarifa 0%", t_base_0, n413),
         fila("VENTAS", "414", "Ventas exentas de IVA", t_exento, v_n_exento),
         fila("VENTAS", "415", "Ventas no objeto del IVA", t_no_obj, v_n_no_obj),
         fila("VENTAS", "421", "IVA generado en ventas 15%", t_iva_15),
@@ -197,6 +218,13 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
         "filas": filas,
         "resumen": {
             "iva_ventas": round(iva_ventas, 2),
+            # Bases de ventas (para edición manual cuando no hay XML)
+            "ventas_15": round(t_base_15, 2),
+            "ventas_5": round(t_base_5, 2),
+            "ventas_0": round(t_base_0, 2),
+            "iva_ventas_15": round(t_iva_15, 2),
+            "iva_ventas_5": round(t_iva_5, 2),
+            "ventas_manual": ventas_manual,
             "iva_compras": round(iva_compras, 2),
             "credito_mes_anterior_adquisiciones": round(_f(credito_mes_anterior_adquisiciones), 2),
             "credito_mes_anterior_retenciones": round(_f(credito_mes_anterior_retenciones), 2),

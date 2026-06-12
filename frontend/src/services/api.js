@@ -264,8 +264,9 @@ export const declaracionesAPI = {
   // diferir_meses: preview de recálculo con N meses de aplazamiento (no persiste hasta save)
   // rebaja_ice/exencion_ice: override manual de rebajas y exenciones ICE (si no, auto del módulo)
   // rebaja_manual/exencion_manual: casillas "aplica" sin cálculo (1/0) — generan advertencia
-  calcular: (clientId, tipo, { credito_adq, credito_ret, diferir_meses, rebaja_ice, exencion_ice, rebaja_manual, exencion_manual } = {}) => api.get('/api/declaraciones/calcular', {
-    params: { client_id: clientId, tipo, credito_adq, credito_ret, diferir_meses, rebaja_ice, exencion_ice, rebaja_manual, exencion_manual },
+  // ventas_15/ventas_5/ventas_0: override manual de las ventas (cuando no hay XML)
+  calcular: (clientId, tipo, { credito_adq, credito_ret, diferir_meses, rebaja_ice, exencion_ice, rebaja_manual, exencion_manual, ventas_15, ventas_5, ventas_0 } = {}) => api.get('/api/declaraciones/calcular', {
+    params: { client_id: clientId, tipo, credito_adq, credito_ret, diferir_meses, rebaja_ice, exencion_ice, rebaja_manual, exencion_manual, ventas_15, ventas_5, ventas_0 },
   }),
   list: (clientId, tipo) => api.get('/api/declaraciones/', { params: { client_id: clientId, tipo } }),
   // Servicios contratados + acceso al portal SRI (admin) del contribuyente
@@ -274,8 +275,8 @@ export const declaracionesAPI = {
   save: (clientId, tipo, datos, diferir_pago_meses = 0) =>
     api.post('/api/declaraciones/', { client_id: clientId, tipo, datos, diferir_pago_meses }),
   delete: (id) => api.delete(`/api/declaraciones/${id}`),
-  exportExcel: (clientId, tipo) => api.get('/api/declaraciones/export/excel', { params: { client_id: clientId, tipo }, responseType: 'blob' }),
-  exportOficial: (clientId, tipo) => api.get('/api/declaraciones/export/oficial', { params: { client_id: clientId, tipo }, responseType: 'blob' }),
+  exportExcel: (clientId, tipo, ov = {}) => api.get('/api/declaraciones/export/excel', { params: { client_id: clientId, tipo, ...ov }, responseType: 'blob' }),
+  exportOficial: (clientId, tipo, ov = {}) => api.get('/api/declaraciones/export/oficial', { params: { client_id: clientId, tipo, ...ov }, responseType: 'blob' }),
   // Pagos aplazados
   listAplazados: (clientId, estado) => api.get('/api/declaraciones/aplazados', {
     params: { client_id: clientId, estado },
