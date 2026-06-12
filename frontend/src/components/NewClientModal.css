@@ -109,3 +109,17 @@
   font-weight: 600;
   cursor: pointer;
 }
+
+/* Consulta SRI del RUC */
+.ruc-row { display: flex; gap: 8px; }
+.ruc-row input { flex: 1; }
+.ruc-consultar { white-space: nowrap; }
+.ruc-sri { margin: 8px 0 4px; padding: 10px 12px; background: #f0f7ff; border: 1px solid #cfe2f7; border-radius: 8px; font-size: 0.82rem; color: #1e293b; }
+.ruc-sri-row { display: flex; align-items: center; gap: 8px; }
+.ruc-estado { font-size: 0.68rem; font-weight: 700; border-radius: 8px; padding: 1px 8px; }
+.ruc-estado.ok { background: #d1fae5; color: #065f46; }
+.ruc-estado.no { background: #fee2e2; color: #991b1b; }
+.ruc-sri-line { margin-top: 3px; }
+.ruc-sri-line.dim { color: #64748b; font-size: 0.76rem; }
+.ruc-sri-obl { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 5px; }
+.ruc-chip { background: #1a5276; color: #fff; border-radius: 8px; padding: 1px 8px; font-size: 0.7rem; }

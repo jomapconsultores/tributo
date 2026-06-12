@@ -101,6 +101,21 @@ export default function Reportes() {
     } catch (e) { alert('Error al exportar: ' + (e.response?.data?.detail || e.message)) }
   }
 
+  // Emite la señal al correo de Johanna (Odoo): abre el correo ya redactado con
+  // el detalle y el total a facturar.
+  const enviarAJohanna = () => {
+    const conValor = grupos.filter((g) => g.subtotal > 0)
+    if (!conValor.length) { alert('No hay valores a cobrar para enviar.'); return }
+    const detalle = conValor.map((g) => {
+      const items = g.rows.filter((r) => r.cobrar && (parseFloat(r.valor) || 0) > 0)
+        .map((r) => `   - ${r.concepto}: ${money(r.valor)}`).join('\n')
+      return `${g.contribuyente} (${g.identificacion})\n${items}\n   Subtotal: ${money(g.subtotal)}`
+    }).join('\n\n')
+    const cuerpo = `Hola Johanna,\n\nDetalle de honorarios para registrar la factura en Odoo:\n\n${detalle}\n\nTOTAL A FACTURAR: ${money(totalGeneral)}\n\nGracias.`
+    const asunto = 'Honorarios para facturar en Odoo'
+    window.location.href = `mailto:johannanievecela@hotmail.com?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`
+  }
+
   return (
     <div className="rp-page">
       <header className="rp-header">
@@ -123,6 +138,7 @@ export default function Reportes() {
         <button className="rp-btn" onClick={cargar}>↻ Actualizar</button>
         <button className="rp-btn" onClick={() => exportar('excel')} disabled={!rows.length}>⬇ Excel</button>
         <button className="rp-btn" onClick={() => exportar('pdf')} disabled={!rows.length}>⬇ PDF</button>
+        <button className="rp-btn rp-btn-mail" onClick={enviarAJohanna} disabled={!rows.length} title="Enviar el detalle y total a Johanna para facturar en Odoo">✉ Enviar a Johanna (Odoo)</button>
       </div>
 
       {error && <div className="rp-error">⚠ {error}</div>}

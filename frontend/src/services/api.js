@@ -74,6 +74,7 @@ export const clientsAPI = {
   update: (id, data) => api.put(`/api/clients/${id}`, data),
   delete: (id) => api.delete(`/api/clients/${id}`),
   summary: (identificacion) => api.get(`/api/clients/summary/${identificacion}`),
+  consultaRuc: (ruc) => api.get('/api/clients/consulta-ruc', { params: { ruc } }),
 }
 
 // Invoices (por cliente)

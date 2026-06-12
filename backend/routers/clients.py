@@ -3,6 +3,7 @@ from typing import Optional
 from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client, fetch_all
+from services.sri_ruc import consultar_ruc
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
@@ -59,6 +60,13 @@ async def list_clients(user_id: str = Depends(get_current_user)):
         return clients
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/consulta-ruc")
+async def consulta_ruc(ruc: str, _: str = Depends(get_current_user)):
+    """Datos básicos del RUC desde la API pública del SRI (razón social, estado,
+    actividad, régimen, obligaciones). Para registrar/precargar contribuyentes."""
+    return consultar_ruc(ruc)
 
 
 @router.get("/contribuyentes")
