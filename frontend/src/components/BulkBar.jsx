@@ -13,8 +13,19 @@ export default function BulkBar({ count, onMove, onDelete, onClear }) {
   const [moveTo, setMoveTo] = useState('')
   const [showNew, setShowNew] = useState(false)
 
-  if (count === 0) return null
   const targets = clients.filter((c) => c.id !== selectedClientId)
+
+  // Sin selección: pista visible para que se descubra que se pueden reasignar
+  if (count === 0) {
+    return (
+      <div className="bulk-bar bulk-bar-hint">
+        <span className="bulk-hint-text">
+          ↪ ¿Una factura quedó en el contribuyente equivocado? Marca las casillas
+          de la izquierda y muévela a <strong>otro contribuyente</strong> (o crea uno nuevo).
+        </span>
+      </div>
+    )
+  }
 
   const handleSelect = (e) => {
     const v = e.target.value
