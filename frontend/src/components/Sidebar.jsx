@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useClients } from '../context/ClientContext'
 import { useAccess, homeFor } from '../context/AccessContext'
@@ -10,7 +10,6 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const location = useLocation()
   const { clients, selectedClientId, selectClient, setFocusIdent } = useClients()
   const { has, isAdmin } = useAccess()
-  const bajadorRef = useRef(null)
   const [clientsOpen, setClientsOpen] = useState(true)
   const [ingresosIvaOpen, setIngresosIvaOpen] = useState(true)
   const [ingresosIceOpen, setIngresosIceOpen] = useState(true)
@@ -39,13 +38,12 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
     navigate('/')
   }
 
-  // El href "javascript:" se fija por ref para que React no lo sanitice y el
-  // enlace pueda arrastrarse a la barra de marcadores.
-  useEffect(() => {
-    if (bajadorRef.current) {
-      bajadorRef.current.setAttribute('href', bajadorBookmarklet.trim())
-    }
-  }, [gastosOpen])
+  // El href "javascript:" se fija con un callback ref que se reaplica en CADA
+  // render (React sanitiza/ restaura un href en el JSX, por eso no se pone ahí).
+  // Asi el marcador siempre guarda el bookmarklet y no la URL de la pagina.
+  const setBajadorHref = (el) => {
+    if (el) el.setAttribute('href', bajadorBookmarklet.trim())
+  }
 
   const path = location.pathname
   const isRetenciones = path === '/retenciones'
@@ -205,9 +203,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
               <span className="nav-ico">📊</span><span>Datos guardados</span>
             </button>
             <a
-              ref={bajadorRef}
+              ref={setBajadorHref}
               className="nav-item submodule bajador-item"
-              href="#"
               draggable="true"
               title="Arrástralo a tu barra de marcadores para instalarlo"
               onClick={(e) => {
