@@ -151,3 +151,9 @@
 .sd-table .r { text-align: right; }
 .sd-table tbody tr:hover { background: #f8fafc; }
 .sd-unclass td { color: #d97706; }
+
+/* Filtro por fecha de declaración + dato por contribuyente */
+.sd-decl-filter { display: flex; gap: 8px; align-items: center; margin: 6px 0 8px; }
+.sd-decl-filter select { flex: 1; padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 0.78rem; background: #fff; color: #334155; }
+.sd-decl-filter label { display: inline-flex; align-items: center; gap: 3px; font-size: 0.74rem; color: #475569; cursor: pointer; white-space: nowrap; }
+.sd-li-decl { display: block; font-size: 0.72rem; color: #1a5276; margin-top: 2px; }

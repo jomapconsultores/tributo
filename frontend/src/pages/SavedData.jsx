@@ -1,10 +1,13 @@
-import { useState, useMemo, Fragment } from 'react'
+import { useState, useMemo, useEffect, Fragment } from 'react'
 import { clientsAPI, anexosAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { nombreMes } from '../utils/periodo'
+import { infoDeclaracion } from '../utils/declaracionSRI'
 import './SavedData.css'
 
 const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
+const DIAS_DECL = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28]
+const fechaCorta = (f) => `${String(f.getDate()).padStart(2, '0')}/${String(f.getMonth() + 1).padStart(2, '0')}/${f.getFullYear()}`
 
 export default function SavedData() {
   const { clients } = useClients()
@@ -15,6 +18,11 @@ export default function SavedData() {
   const [anexoOpen, setAnexoOpen] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  // Filtro/orden por fecha máxima de declaración (9no dígito del RUC)
+  const [diaFilter, setDiaFilter] = useState(() => localStorage.getItem('sdDiaFilter') || '')
+  const [ordenFecha, setOrdenFecha] = useState(() => localStorage.getItem('sdOrdenFecha') === '1')
+  useEffect(() => { try { localStorage.setItem('sdDiaFilter', diaFilter) } catch { /* ignore */ } }, [diaFilter])
+  useEffect(() => { try { localStorage.setItem('sdOrdenFecha', ordenFecha ? '1' : '0') } catch { /* ignore */ } }, [ordenFecha])
 
   // Mapa client_id → período (para mostrar el período de cada anexo)
   const clientById = useMemo(() => {
@@ -42,12 +50,22 @@ export default function SavedData() {
   }, [clients])
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return contribuyentes
-    const q = search.toLowerCase()
-    return contribuyentes.filter((c) =>
-      [c.nombre, c.identificacion].some((f) => String(f || '').toLowerCase().includes(q))
-    )
-  }, [contribuyentes, search])
+    let list = contribuyentes
+    const q = search.trim().toLowerCase()
+    if (q) list = list.filter((c) => [c.nombre, c.identificacion].some((f) => String(f || '').toLowerCase().includes(q)))
+    if (diaFilter) list = list.filter((c) => infoDeclaracion(c.identificacion).dia === Number(diaFilter))
+    if (ordenFecha) {
+      list = [...list].sort((a, b) => {
+        const fa = infoDeclaracion(a.identificacion).proximaFecha
+        const fb = infoDeclaracion(b.identificacion).proximaFecha
+        if (!fa && !fb) return 0
+        if (!fa) return 1
+        if (!fb) return -1
+        return fa - fb
+      })
+    }
+    return list
+  }, [contribuyentes, search, diaFilter, ordenFecha])
 
   const openContribuyente = async (c) => {
     setSelected(c)
@@ -108,20 +126,37 @@ export default function SavedData() {
             onChange={(e) => setSearch(e.target.value)}
             autoFocus
           />
+          <div className="sd-decl-filter">
+            <select value={diaFilter} onChange={(e) => setDiaFilter(e.target.value)} title="Filtrar por día máximo de declaración (9no dígito del RUC)">
+              <option value="">📅 Declaración: todas</option>
+              {DIAS_DECL.map((d) => <option key={d} value={d}>Declaran el día {d}</option>)}
+            </select>
+            <label title="Ordenar por la próxima fecha de declaración (la más cercana primero)">
+              <input type="checkbox" checked={ordenFecha} onChange={(e) => setOrdenFecha(e.target.checked)} /> ↑ fecha
+            </label>
+          </div>
           <div className="sd-list-scroll">
             {filtered.length === 0 && <div className="sd-empty">Sin contribuyentes.</div>}
-            {filtered.map((c) => (
-              <button
-                key={c.identificacion}
-                className={`sd-list-item ${selected?.identificacion === c.identificacion ? 'active' : ''}`}
-                onClick={() => openContribuyente(c)}
-              >
-                <span className="sd-li-name">{c.nombre}</span>
-                <span className="sd-li-meta">
-                  {c.identificacion} · {c.periodos} período(s) · {c.num_facturas} fact.
-                </span>
-              </button>
-            ))}
+            {filtered.map((c) => {
+              const d = infoDeclaracion(c.identificacion)
+              return (
+                <button
+                  key={c.identificacion}
+                  className={`sd-list-item ${selected?.identificacion === c.identificacion ? 'active' : ''}`}
+                  onClick={() => openContribuyente(c)}
+                >
+                  <span className="sd-li-name">{c.nombre}</span>
+                  <span className="sd-li-meta">
+                    {c.identificacion} · {c.periodos} período(s) · {c.num_facturas} fact.
+                  </span>
+                  {d.valido && (
+                    <span className="sd-li-decl" title={`Fecha máxima de declaración · ${d.proximaFechaTexto}`}>
+                      📅 día {d.dia} · {fechaCorta(d.proximaFecha)}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
         </aside>
 
