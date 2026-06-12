@@ -213,13 +213,13 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
               onClick={(e) => {
                 e.preventDefault()
                 alert(
-                  '📥 Bajador de facturas\n\n' +
+                  '📥 Bajador-XML\n\n' +
                   'Para instalarlo: ARRÁSTRA este botón hacia la barra de marcadores (favoritos) de tu navegador.\n\n' +
-                  'Luego, dentro del portal del SRI, haz clic en el marcador para detectar y descargar los XML.'
+                  'Luego, dentro del portal del SRI, haz clic en el marcador para descargar TODOS los XML (todas las páginas).'
                 )
               }}
             >
-              <span className="nav-ico">📥</span><span>Bajador de facturas</span>
+              <span className="nav-ico">📥</span><span>Bajador-XML</span>
             </a>
           </div>
         )}
