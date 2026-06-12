@@ -244,6 +244,7 @@ export const reportesAPI = {
   cobros: () => api.get('/api/reportes/cobros'),
   guardarCobro: (entry) => api.put('/api/reportes/cobros', entry),
   borrarCobro: (identificacion, producto) => api.delete('/api/reportes/cobros', { params: { identificacion, producto } }),
+  enviarCorreo: () => api.post('/api/reportes/enviar-correo'),
   exportExcel: () => api.get('/api/reportes/export/excel', { responseType: 'blob' }),
   exportPdf: () => api.get('/api/reportes/export/pdf', { responseType: 'blob' }),
 }

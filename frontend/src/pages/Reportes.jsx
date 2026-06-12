@@ -101,9 +101,8 @@ export default function Reportes() {
     } catch (e) { alert('Error al exportar: ' + (e.response?.data?.detail || e.message)) }
   }
 
-  // Emite la señal al correo de Johanna (Odoo): abre el correo ya redactado con
-  // el detalle y el total a facturar.
-  const enviarAJohanna = () => {
+  // Correo redactado (mailto) como respaldo si el envío automático no está
+  const abrirCorreoRedactado = () => {
     const conValor = grupos.filter((g) => g.subtotal > 0)
     if (!conValor.length) { alert('No hay valores a cobrar para enviar.'); return }
     const detalle = conValor.map((g) => {
@@ -112,8 +111,20 @@ export default function Reportes() {
       return `${g.contribuyente} (${g.identificacion})\n${items}\n   Subtotal: ${money(g.subtotal)}`
     }).join('\n\n')
     const cuerpo = `Hola Johanna,\n\nDetalle de honorarios para registrar la factura en Odoo:\n\n${detalle}\n\nTOTAL A FACTURAR: ${money(totalGeneral)}\n\nGracias.`
-    const asunto = 'Honorarios para facturar en Odoo'
-    window.location.href = `mailto:johannanievecela@hotmail.com?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`
+    window.location.href = `mailto:johannanievecela@hotmail.com?subject=${encodeURIComponent('Honorarios para facturar en Odoo')}&body=${encodeURIComponent(cuerpo)}`
+  }
+
+  // Intenta el envío automático (servidor); si no está configurado, abre el redactado.
+  const enviarAJohanna = async () => {
+    try {
+      const r = await reportesAPI.enviarCorreo()
+      if (r.data?.ok) { alert(`✔ Correo enviado a Johanna (${r.data.destinatario}). Total: ${money(r.data.total)}`); return }
+      abrirCorreoRedactado()  // no configurado
+    } catch (e) {
+      const msg = e.response?.data?.detail || ''
+      if (msg) alert('No se pudo enviar automáticamente (' + msg + '). Abriré el correo redactado.')
+      abrirCorreoRedactado()
+    }
   }
 
   return (

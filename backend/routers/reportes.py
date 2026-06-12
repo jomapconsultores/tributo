@@ -9,6 +9,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client, fetch_all
+from services.email_sender import enviar_correo, email_configurado
+
+DESTINO_ODOO = "johannanievecela@hotmail.com"
 
 router = APIRouter(prefix="/api/reportes", tags=["reportes"])
 
@@ -140,6 +143,35 @@ async def borrar_cobro(identificacion: str, producto: str, user_id: str = Depend
     sb.table("reportes_honorarios").delete().eq("user_id", user_id).eq(
         "identificacion", (identificacion or "").strip()).eq("producto", (producto or "").strip()).execute()
     return {"ok": True}
+
+
+@router.post("/enviar-correo")
+async def enviar_correo_reporte(user_id: str = Depends(get_current_user)):
+    """Envía a Johanna (Odoo) el detalle de honorarios y el total a facturar.
+    Requiere SMTP configurado; si no, devuelve configurado=False para que el
+    front abra el correo redactado (mailto)."""
+    if not email_configurado():
+        return {"ok": False, "configurado": False,
+                "error": "El envío automático no está configurado en el servidor."}
+    filas, total = _filas_y_total(user_id)
+    # Agrupar por contribuyente, solo lo que se cobra con valor > 0
+    por_ruc = {}
+    for f in filas:
+        if f["cobrar"] and f["valor"] > 0:
+            g = por_ruc.setdefault(f["identificacion"], {"nombre": f["contribuyente"], "items": [], "sub": 0.0})
+            g["items"].append(f"   - {f['concepto']}: ${f['valor']:.2f}")
+            g["sub"] += f["valor"]
+    if not por_ruc:
+        raise HTTPException(status_code=400, detail="No hay valores a cobrar para enviar.")
+    bloques = []
+    for ruc, g in por_ruc.items():
+        bloques.append(f"{g['nombre']} ({ruc})\n" + "\n".join(g["items"]) + f"\n   Subtotal: ${g['sub']:.2f}")
+    cuerpo = ("Hola Johanna,\n\nDetalle de honorarios para registrar la factura en Odoo:\n\n"
+              + "\n\n".join(bloques) + f"\n\nTOTAL A FACTURAR: ${total:.2f}\n\nGracias.")
+    ok, err = enviar_correo(DESTINO_ODOO, "Honorarios para facturar en Odoo", cuerpo)
+    if not ok:
+        raise HTTPException(status_code=400, detail=err or "No se pudo enviar el correo.")
+    return {"ok": True, "configurado": True, "destinatario": DESTINO_ODOO, "total": total}
 
 
 @router.get("/export/excel")
