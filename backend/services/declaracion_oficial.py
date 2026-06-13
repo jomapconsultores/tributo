@@ -39,13 +39,16 @@ def llenar_oficial(tipo, decl):
 
     # código -> valor (solo entradas, no resultados/fórmulas)
     valores = {}
+    # La plantilla del SRI es de DISEÑO (sin fórmulas): se llenan TODOS los
+    # casilleros que calculamos, incluido el resultado (crédito mes anterior
+    # 605/606, factor 563, crédito 564, etc.). Las celdas de VENTAS/
+    # ADQUISICIONES se traducen al casillero oficial; las de RESULTADO ya
+    # usan el código oficial.
     for f in decl.get("filas", []):
-        if f.get("seccion") == "RESULTADO":
-            continue
         cod = str(f.get("codigo", "")).strip()
         if not cod.isdigit():
             continue
-        if not es_ice:
+        if not es_ice and f.get("seccion") != "RESULTADO":
             cod = MAP_IVA.get(cod, cod)   # traducir al casillero oficial
             if cod is None:
                 continue
