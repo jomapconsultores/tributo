@@ -1,39 +1,100 @@
-.cn-wrap { display: flex; flex-direction: column; gap: 8px; }
+.cn-wrap { display: flex; flex-direction: column; gap: 6px; }
 
 .cn-search {
   padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 9px;
-  font-size: 0.9rem; outline: none; max-width: 460px;
+  font-size: 0.9rem; outline: none; width: 100%; max-width: 520px; box-sizing: border-box;
+  margin-bottom: 4px;
 }
-.cn-search:focus { border-color: #4f46e5; }
+.cn-search:focus { border-color: #003399; box-shadow: 0 0 0 2px rgba(0,51,153,.1); }
 
 .cn-empty { background: #fff; border-radius: 10px; padding: 30px; text-align: center; color: #94a3b8; }
 
-.cn-cont { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); overflow: hidden; }
+/* Tarjeta de contribuyente */
+.cn-cont {
+  background: #fff; border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  border: 1px solid #e8edf3;
+  overflow: hidden;
+}
 
+/* Cabecera de la fila */
 .cn-cont-head {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  background: transparent; border: none; padding: 14px 16px; cursor: pointer; text-align: left;
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; min-height: 52px;
+  transition: background 0.12s;
 }
 .cn-cont-head:hover { background: #f8fafc; }
-.cn-caret { font-size: 0.8rem; color: #94a3b8; transition: transform 0.15s; }
+.cn-cont-head.open { background: #f4f7fb; border-bottom: 1px solid #e2e8f0; }
+
+/* Botón toggle (caret) */
+.cn-toggle {
+  background: none; border: none; cursor: pointer; padding: 4px;
+  flex-shrink: 0; line-height: 1;
+}
+.cn-caret { display: inline-block; font-size: 0.85rem; color: #64748b; transition: transform 0.15s; }
 .cn-caret.open { transform: rotate(90deg); }
-.cn-cont-name { font-weight: 700; color: #1e293b; }
-.cn-cont-ruc { margin-left: auto; font-size: 0.82rem; color: #64748b; font-weight: 600; }
 
-.cn-anios { padding: 0 16px 12px 34px; display: flex; flex-direction: column; gap: 10px; }
-.cn-anio { border-left: 2px solid #e2e8f0; padding-left: 12px; }
-.cn-anio-label { font-weight: 800; color: #4338ca; font-size: 0.95rem; margin-bottom: 4px; }
+/* Nombre + RUC */
+.cn-info {
+  flex: 1; min-width: 0; cursor: pointer;
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+}
+.cn-cont-name {
+  font-weight: 700; color: #1e293b; font-size: 0.92rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cn-cont-ruc {
+  font-family: monospace; font-size: 0.8rem; color: #64748b; font-weight: 600;
+  white-space: nowrap;
+}
 
-.cn-mes { display: flex; align-items: center; gap: 12px; padding: 5px 0; flex-wrap: wrap; }
-.cn-mes-label { min-width: 92px; font-size: 0.82rem; color: #334155; text-transform: capitalize; font-weight: 600; }
+/* Credencial SRI */
+.cn-clave {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  background: #eef4fb; border: 1px solid #c3d8ef; border-radius: 7px;
+  padding: 3px 10px; font-size: 0.78rem;
+}
+.cn-clave-user { color: #1a5276; font-weight: 600; white-space: nowrap; }
+.cn-clave-val {
+  font-family: monospace; background: #fff; border: 1px solid #b9d3e8;
+  border-radius: 4px; padding: 1px 8px; letter-spacing: 0.5px; font-size: 0.82rem;
+  color: #0d3349;
+}
+.cn-clave-btn {
+  background: none; border: none; cursor: pointer; font-size: 14px;
+  padding: 0 2px; line-height: 1; opacity: 0.8;
+}
+.cn-clave-btn:hover { opacity: 1; }
+.cn-clave-btn:disabled { cursor: wait; }
+.cn-clave-none { color: #94a3b8; font-size: 0.75rem; font-style: italic; }
+
+/* Chips de totales */
+.cn-totales { display: flex; gap: 5px; flex-shrink: 0; flex-wrap: wrap; align-items: center; }
+.cn-tot-chip {
+  font-size: 0.72rem; font-weight: 700; border-radius: 12px;
+  padding: 2px 8px; white-space: nowrap;
+}
+.cn-tot-chip.gastos { background: #e0f2fe; color: #0369a1; }
+.cn-tot-chip.ret    { background: #fef9c3; color: #854d0e; }
+.cn-tot-chip.ice    { background: #ede9fe; color: #5b21b6; }
+.cn-tot-chip.calc   { background: #dcfce7; color: #166534; }
+.cn-tot-vacio       { font-size: 0.72rem; color: #cbd5e1; font-style: italic; }
+
+/* Detalle expandido */
+.cn-anios { padding: 10px 14px 12px 38px; display: flex; flex-direction: column; gap: 10px; }
+.cn-anio  { border-left: 2px solid #e2e8f0; padding-left: 12px; }
+.cn-anio-label { font-weight: 800; color: #003399; font-size: 0.88rem; margin-bottom: 4px; }
+
+.cn-mes { display: flex; align-items: center; gap: 12px; padding: 4px 0; flex-wrap: wrap; }
+.cn-mes-label { min-width: 88px; font-size: 0.8rem; color: #334155; font-weight: 600; text-transform: capitalize; }
 .cn-tipos { display: flex; gap: 6px; flex-wrap: wrap; }
-.cn-sin { font-size: 0.78rem; color: #cbd5e1; font-style: italic; }
+.cn-sin   { font-size: 0.76rem; color: #cbd5e1; font-style: italic; }
 
 .cn-tipo {
   display: inline-flex; align-items: center; gap: 5px;
   background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe;
-  border-radius: 20px; padding: 4px 11px; font-size: 0.78rem; font-weight: 600; cursor: pointer;
+  border-radius: 20px; padding: 3px 10px; font-size: 0.76rem; font-weight: 600; cursor: pointer;
 }
 .cn-tipo:hover { background: #4f46e5; color: #fff; border-color: #4f46e5; }
-.cn-badge { background: rgba(67,56,202,0.15); border-radius: 10px; padding: 0 6px; font-size: 0.7rem; }
-.cn-tipo:hover .cn-badge { background: rgba(255,255,255,0.25); }
+.cn-badge { background: rgba(67,56,202,.15); border-radius: 10px; padding: 0 5px; font-size: 0.68rem; }
+.cn-tipo:hover .cn-badge { background: rgba(255,255,255,.25); }

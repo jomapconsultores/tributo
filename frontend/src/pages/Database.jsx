@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { invoicesAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
@@ -14,23 +14,7 @@ import './Database.css'
 
 export default function Database() {
   const { openNewClient } = useOutletContext()
-  const { clients, selectedClient, selectedClientId, selectClient, refreshClients, deleteClient } = useClients()
-
-  // Al entrar a Gastos, si no hay un contribuyente RESUELTO (ninguno elegido, o
-  // el guardado en localStorage ya no existe) se abre el más reciente para caer
-  // directo en los gastos (panel de subir/arrastrar XML). Solo una vez por
-  // montaje: "← Volver" sigue llevando al navegador.
-  const autoSel = useRef(false)
-  useEffect(() => {
-    if (autoSel.current) return
-    if (clients.length === 0) return            // aún sin cargar
-    autoSel.current = true
-    if (!selectedClient) {
-      const reciente = [...clients].sort(
-        (a, b) => (b.periodo_anio - a.periodo_anio) || (b.periodo_mes - a.periodo_mes))[0]
-      if (reciente) selectClient(reciente.id)
-    }
-  }, [clients, selectedClient, selectClient])
+  const { selectedClient, selectedClientId, refreshClients, deleteClient } = useClients()
 
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(false)

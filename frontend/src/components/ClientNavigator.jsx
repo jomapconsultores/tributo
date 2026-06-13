@@ -1,15 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { clientsAPI } from '../services/api'
+import { clientsAPI, credentialsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { nombreMes } from '../utils/periodo'
 import './ClientNavigator.css'
 
 const TIPOS = [
-  { key: 'gastos', label: 'Gastos', icon: '💸', route: '/' },
-  { key: 'retenciones', label: 'Retenciones', icon: '🧾', route: '/retenciones' },
-  { key: 'ice', label: 'ICE-XML', icon: '🥃', route: '/ice' },
-  { key: 'calculo_ice', label: 'Cálculo ICE', icon: '🧮', route: '/calculo-ice' },
+  { key: 'gastos',      label: 'Gastos',    icon: '💸', route: '/' },
+  { key: 'retenciones', label: 'Ret.',       icon: '🧾', route: '/retenciones' },
+  { key: 'ice',         label: 'ICE',        icon: '🥃', route: '/ice' },
+  { key: 'calculo_ice', label: 'Cálc. ICE', icon: '🧮', route: '/calculo-ice' },
 ]
 
 export default function ClientNavigator() {
@@ -20,6 +20,11 @@ export default function ClientNavigator() {
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState({})
 
+  // Credenciales SRI — solo admin (si el endpoint falla, no es admin)
+  const [credByRuc, setCredByRuc] = useState(null) // null = aún cargando; {} = cargado
+  const [revealed, setRevealed] = useState({})     // { ruc: password }
+  const [revealing, setRevealing] = useState({})   // { ruc: bool }
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -29,7 +34,33 @@ export default function ClientNavigator() {
   }, [])
   useEffect(() => { load() }, [load])
 
-  // Enfocar contribuyente desde el sidebar
+  useEffect(() => {
+    credentialsAPI.list()
+      .then((r) => {
+        const map = {}
+        for (const c of (r.data?.data || [])) {
+          if (c.ruc && c.service === 'sri_portal' && !map[c.ruc]) {
+            map[c.ruc] = { id: c.id, username: c.username || '' }
+          }
+        }
+        setCredByRuc(map)
+      })
+      .catch(() => setCredByRuc({}))
+  }, [])
+
+  const revelar = async (ruc, credId) => {
+    if (revealing[ruc]) return
+    setRevealing((p) => ({ ...p, [ruc]: true }))
+    try {
+      const r = await credentialsAPI.reveal(credId)
+      setRevealed((p) => ({ ...p, [ruc]: r.data?.password || '' }))
+    } catch (e) {
+      alert('No se pudo revelar: ' + (e.response?.data?.detail || e.message))
+    } finally {
+      setRevealing((p) => ({ ...p, [ruc]: false }))
+    }
+  }
+
   useEffect(() => {
     if (focusIdent) {
       setOpen((o) => ({ ...o, [focusIdent]: true }))
@@ -41,7 +72,9 @@ export default function ClientNavigator() {
   const filtrados = useMemo(() => {
     if (!search.trim()) return data
     const q = search.toLowerCase()
-    return data.filter((c) => [c.nombre, c.identificacion].some((f) => String(f || '').toLowerCase().includes(q)))
+    return data.filter((c) =>
+      [c.nombre, c.identificacion].some((f) => String(f || '').toLowerCase().includes(q))
+    )
   }, [data, search])
 
   const abrir = (tipo, clientId) => {
@@ -57,20 +90,86 @@ export default function ClientNavigator() {
 
   if (loading) return <div className="cn-empty">Cargando base de datos…</div>
 
+  const esAdmin = credByRuc !== null && Object.keys(credByRuc).length >= 0
+
   return (
     <div className="cn-wrap">
-      <input className="cn-search" placeholder="🔍 Buscar contribuyente (nombre o RUC)…" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <input
+        className="cn-search"
+        placeholder="🔍 Buscar por nombre o RUC…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
       {filtrados.length === 0 ? (
-        <div className="cn-empty">Sin contribuyentes.</div>
+        <div className="cn-empty">Sin contribuyentes que coincidan.</div>
       ) : filtrados.map((c) => {
         const isOpen = !!open[c.identificacion]
+        const cred = credByRuc?.[c.identificacion]
+        const claveVisible = revealed[c.identificacion]
+        const cargando = revealing[c.identificacion]
+        const { gastos = 0, retenciones = 0, ice = 0, calculo_ice = 0 } = c.totales || {}
+
         return (
           <div key={c.identificacion} className="cn-cont">
-            <button className="cn-cont-head" onClick={() => setOpen((o) => ({ ...o, [c.identificacion]: !o[c.identificacion] }))}>
-              <span className={`cn-caret ${isOpen ? 'open' : ''}`}>▸</span>
-              <span className="cn-cont-name">{c.nombre}</span>
-              <span className="cn-cont-ruc">{c.identificacion}</span>
-            </button>
+            <div className={`cn-cont-head ${isOpen ? 'open' : ''}`}>
+              {/* Caret */}
+              <button
+                className="cn-toggle"
+                onClick={() => setOpen((o) => ({ ...o, [c.identificacion]: !o[c.identificacion] }))}
+                title={isOpen ? 'Contraer' : 'Expandir períodos'}
+              >
+                <span className={`cn-caret ${isOpen ? 'open' : ''}`}>▸</span>
+              </button>
+
+              {/* Nombre + RUC */}
+              <div className="cn-info" onClick={() => setOpen((o) => ({ ...o, [c.identificacion]: !o[c.identificacion] }))}>
+                <span className="cn-cont-name">{c.nombre}</span>
+                <span className="cn-cont-ruc">{c.identificacion}</span>
+              </div>
+
+              {/* Credencial SRI (solo admin) */}
+              {esAdmin && (
+                <div className="cn-clave">
+                  {cred ? (
+                    <>
+                      <span className="cn-clave-user">🔐 {cred.username || '—'}</span>
+                      {claveVisible ? (
+                        <>
+                          <code className="cn-clave-val">{claveVisible}</code>
+                          <button
+                            className="cn-clave-btn"
+                            onClick={() => setRevealed((p) => ({ ...p, [c.identificacion]: null }))}
+                            title="Ocultar"
+                          >🙈</button>
+                        </>
+                      ) : (
+                        <button
+                          className="cn-clave-btn"
+                          onClick={() => revelar(c.identificacion, cred.id)}
+                          disabled={cargando}
+                          title="Revelar clave (auditado)"
+                        >{cargando ? '…' : '👁'}</button>
+                      )}
+                    </>
+                  ) : (
+                    <span className="cn-clave-none">sin clave</span>
+                  )}
+                </div>
+              )}
+
+              {/* Totales */}
+              <div className="cn-totales">
+                {gastos > 0 && <span className="cn-tot-chip gastos" title="Facturas de gastos">💸 {gastos}</span>}
+                {retenciones > 0 && <span className="cn-tot-chip ret" title="Retenciones">🧾 {retenciones}</span>}
+                {ice > 0 && <span className="cn-tot-chip ice" title="Ventas ICE">🥃 {ice}</span>}
+                {calculo_ice > 0 && <span className="cn-tot-chip calc" title="Cálculo ICE">🧮 {calculo_ice}</span>}
+                {gastos === 0 && retenciones === 0 && ice === 0 && calculo_ice === 0 && (
+                  <span className="cn-tot-vacio">sin datos</span>
+                )}
+              </div>
+            </div>
+
+            {/* Detalle por año/mes cuando está expandido */}
             {isOpen && (
               <div className="cn-anios">
                 {aniosDe(c.periodos).map(({ anio, meses }) => (
@@ -85,7 +184,12 @@ export default function ClientNavigator() {
                             {tipos.length === 0 ? (
                               <span className="cn-sin">sin datos</span>
                             ) : tipos.map((t) => (
-                              <button key={t.key} className="cn-tipo" onClick={() => abrir(t, p.client_id)} title={`Abrir ${t.label}`}>
+                              <button
+                                key={t.key}
+                                className="cn-tipo"
+                                onClick={() => abrir(t, p.client_id)}
+                                title={`Abrir ${t.label}`}
+                              >
                                 {t.icon} {t.label} <span className="cn-badge">{p.datos[t.key]}</span>
                               </button>
                             ))}
