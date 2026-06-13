@@ -1,12 +1,12 @@
 .ret-page {
-  padding: 26px 30px;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
   min-height: 100vh;
 }
 
-.ret-header h1 { margin: 0; font-size: 1.5rem; color: #0f172a; }
+.ret-header h1 { margin: 0; font-size: 1.2rem; color: #1a3d6b; font-weight: 700; }
 .ret-subhead { margin: 4px 0 0; color: #64748b; font-size: 0.9rem; }
 
 .ret-periodo-tag {
@@ -31,7 +31,7 @@
 }
 .ret-btn.primary { background: #0ea5e9; color: #fff; }
 .ret-btn.small { background: #fff; color: #334155; border: 1px solid #cbd5e1; padding: 8px 13px; font-size: 0.83rem; }
-.ret-btn.small:hover { background: #f8fafc; }
+.ret-btn.small:hover { background: #f6f8fb; }
 .ret-btn.danger { color: #dc2626; border-color: #fecaca; }
 
 /* Welcome */
@@ -155,7 +155,7 @@
 .ret-table .r { text-align: right; }
 .ret-table .agente { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
 .ret-table .total { font-weight: 700; color: #0369a1; }
-.ret-table tbody tr:hover { background: #f8fafc; }
+.ret-table tbody tr:hover { background: #f6f8fb; }
 .ret-table .row-dup { background: #fff1f2; color: #b91c1c; }
 .ret-table .sel-col { width: 34px; text-align: center; }
 .ret-table tr.row-sel { background: #eef2ff; }

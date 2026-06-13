@@ -1,5 +1,5 @@
-.re-page { padding: 26px 30px; display: flex; flex-direction: column; gap: 16px; min-height: 100vh; }
-.re-header h1 { margin: 0; font-size: 1.5rem; color: #0f172a; }
+.re-page { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; min-height: 100vh; }
+.re-header h1 { margin: 0; font-size: 1.2rem; color: #1a3d6b; font-weight: 700; }
 .re-sub { margin: 4px 0 0; color: #64748b; font-size: 0.9rem; }
 .re-note { font-size: 0.82rem; color: #92400e; background: #fffbeb; border-radius: 8px; padding: 8px 11px; margin: 0; }
 .re-hint { font-size: 0.78rem; color: #d97706; margin-left: 8px; }
@@ -59,10 +59,10 @@
 .re-table-wrap { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow-x: auto; }
 .re-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
 .re-table th, .re-table td { padding: 9px 12px; text-align: left; border-bottom: 1px solid #f1f5f9; }
-.re-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.3px; color: #64748b; font-weight: 700; background: #f8fafc; }
+.re-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.3px; color: #64748b; font-weight: 700; background: #f6f8fb; }
 .re-table .r { text-align: right; }
 .re-table .strong { font-weight: 700; color: #2563eb; }
-.re-table tbody tr:hover { background: #f8fafc; }
+.re-table tbody tr:hover { background: #f6f8fb; }
 .re-table tr.agua { opacity: 0.6; }
 .re-table tr.agua em { color: #94a3b8; font-style: italic; font-size: 0.78rem; }
 .re-vlink { margin-left: 6px; text-decoration: none; }

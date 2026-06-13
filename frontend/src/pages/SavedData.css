@@ -1,12 +1,12 @@
 .sd-page {
-  padding: 26px 30px;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 18px;
   min-height: 100vh;
 }
 
-.sd-header h1 { margin: 0; font-size: 1.5rem; color: #0f172a; }
+.sd-header h1 { margin: 0; font-size: 1.2rem; color: #1a3d6b; font-weight: 700; }
 .sd-sub { margin: 4px 0 0; color: #64748b; font-size: 0.9rem; }
 
 .sd-layout {
@@ -149,7 +149,7 @@
 }
 
 .sd-table .r { text-align: right; }
-.sd-table tbody tr:hover { background: #f8fafc; }
+.sd-table tbody tr:hover { background: #f6f8fb; }
 .sd-unclass td { color: #d97706; }
 
 /* Filtro por fecha de declaración + dato por contribuyente */

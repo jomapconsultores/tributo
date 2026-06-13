@@ -1,5 +1,5 @@
-.cp-page { padding: 26px 30px; display: flex; flex-direction: column; gap: 16px; min-height: 100vh; }
-.cp-header h1 { margin: 0; font-size: 1.5rem; color: #0f172a; }
+.cp-page { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; min-height: 100vh; }
+.cp-header h1 { margin: 0; font-size: 1.2rem; color: #1a3d6b; font-weight: 700; }
 .cp-sub { margin: 4px 0 0; color: #64748b; font-size: 0.9rem; }
 .cp-note { font-size: 0.82rem; color: #92400e; background: #fffbeb; border-radius: 8px; padding: 8px 11px; margin: 0; }
 
@@ -43,7 +43,7 @@
 .cp-scroll { overflow-x: auto; }
 .cp-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; white-space: nowrap; }
 .cp-table th, .cp-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #f1f5f9; }
-.cp-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.3px; color: #64748b; font-weight: 700; background: #f8fafc; }
+.cp-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.3px; color: #64748b; font-weight: 700; background: #f6f8fb; }
 .cp-table .r { text-align: right; }
 .cp-cod { font-family: monospace; font-size: 0.78rem; color: #334155; }
 .cp-falta { color: #d97706; font-style: italic; font-family: inherit; }

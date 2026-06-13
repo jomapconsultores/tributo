@@ -1,5 +1,5 @@
-.rec-page { padding: 26px 30px; display: flex; flex-direction: column; gap: 16px; min-height: 100vh; max-width: 760px; }
-.rec-header h1 { margin: 0; font-size: 1.5rem; color: #0f172a; }
+.rec-page { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; min-height: 100vh; max-width: 760px; }
+.rec-header h1 { margin: 0; font-size: 1.2rem; color: #1a3d6b; font-weight: 700; }
 .rec-sub { margin: 4px 0 0; color: #64748b; font-size: 0.9rem; }
 
 .rec-card { display: flex; gap: 16px; background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }

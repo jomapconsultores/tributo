@@ -3,7 +3,7 @@
   flex-direction: column;
   min-height: 100vh;
   background: #f1f5f9;
-  padding: 26px 30px;
+  padding: 20px 24px;
   gap: 18px;
 }
 
@@ -16,7 +16,7 @@
 .classifier-header h1 {
   margin: 0;
   color: #0f172a;
-  font-size: 1.5rem;
+  font-size: 1.2rem;
 }
 
 .classifier-sub {
