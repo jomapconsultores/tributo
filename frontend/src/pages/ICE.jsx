@@ -18,7 +18,7 @@ import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import BulkBar from '../components/BulkBar'
 import ClientSwitcher from '../components/ClientSwitcher'
-import ClaveRevealPanel from '../components/ClaveRevealPanel'
+import ClaveHeader from '../components/ClaveHeader'
 import './ICE.css'
 
 import { fmtMoney as money } from '../utils/format'
@@ -258,7 +258,7 @@ export default function ICE() {
       <header className="ice-header">
         <div>
           <h1>🥃 ICE - XML <span className="ice-periodo-tag">{periodoLargo(selectedClient)}</span></h1>
-          <p className="ice-subhead"><strong>{selectedClient.identificacion}</strong> — {selectedClient.nombre}</p>
+          <p className="ice-subhead"><strong>{selectedClient.identificacion}</strong> — {selectedClient.nombre}<ClaveHeader clientId={selectedClientId} /></p>
         </div>
         <div className="ice-year">
           <label>Año fiscal (tarifas)</label>
@@ -270,8 +270,6 @@ export default function ICE() {
       </header>
 
       <ClientSwitcher onNewClient={openNewClient} />
-
-      <ClaveRevealPanel clientId={selectedClientId} />
 
       {error && <div className="ice-error">⚠ {error}</div>}
 

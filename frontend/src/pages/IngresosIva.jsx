@@ -15,7 +15,7 @@ const descargarXmlsOriginales = async (cliente, clientId, tipo, modulo) => {
 }
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
-import ClaveRevealPanel from '../components/ClaveRevealPanel'
+import ClaveHeader from '../components/ClaveHeader'
 import './IngresosIva.css'
 
 import { fmtMoney as money } from '../utils/format'
@@ -148,10 +148,9 @@ export default function IngresosIva() {
   return (
     <div className="ing-iva">
       <ClientSwitcher onNewClient={openNewClient} />
-      <ClaveRevealPanel clientId={selectedClientId} />
       <header className="ing-iva-head">
         <div>
-          <h2>📈 Ingresos IVA — {selectedClient?.nombre}</h2>
+          <h2>📈 Ingresos IVA — {selectedClient?.nombre}<ClaveHeader clientId={selectedClientId} /></h2>
           <p className="ing-iva-sub">
             Facturas de venta SIN ICE. Sus totales se suman a los códigos 411–415 / 421–422 del
             formulario 104 (declaración IVA). Si una factura tiene ICE, subila en "ICE - XML".

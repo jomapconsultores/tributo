@@ -268,7 +268,15 @@ export default function Declaraciones({ tipo }) {
       <header className="dc-header">
         <div>
           <h1>{icon} Declaración {tipo}</h1>
-          <p className="dc-sub"><strong>{selectedClient.identificacion}</strong> — {selectedClient.nombre} · {nombreMes(selectedClient.periodo_mes)} {selectedClient.periodo_anio}</p>
+          <p className="dc-sub">
+            <strong>{selectedClient.identificacion}</strong> — {selectedClient.nombre} · {nombreMes(selectedClient.periodo_mes)} {selectedClient.periodo_anio}
+            {creds?.es_admin && creds?.credencial && (
+              <span className="clave-header-tag">
+                🔐 <strong>{creds.credencial.username || '—'}</strong>
+                {claveSRI && <code className="clave-header-code">{claveSRI}</code>}
+              </span>
+            )}
+          </p>
         </div>
       </header>
 

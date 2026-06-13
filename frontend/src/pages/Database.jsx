@@ -7,7 +7,7 @@ import UploadPanel from '../components/UploadPanel'
 import NewClientModal from '../components/NewClientModal'
 import ClientNavigator from '../components/ClientNavigator'
 import ClientSwitcher from '../components/ClientSwitcher'
-import ClaveRevealPanel from '../components/ClaveRevealPanel'
+import ClaveHeader from '../components/ClaveHeader'
 import { periodoLargo } from '../utils/periodo'
 import { fmtMoney } from '../utils/format'
 import './Database.css'
@@ -156,7 +156,7 @@ export default function Database() {
     <div className="db-page">
       <header className="db-header">
         <div>
-          <h1><span className="db-ruc">{selectedClient.identificacion}</span> {selectedClient.nombre} <span className="db-periodo-tag">{periodoLargo(selectedClient)}</span></h1>
+          <h1><span className="db-ruc">{selectedClient.identificacion}</span> {selectedClient.nombre} <span className="db-periodo-tag">{periodoLargo(selectedClient)}</span><ClaveHeader clientId={selectedClientId} /></h1>
         </div>
         <div className="db-header-actions">
           <button className="db-btn ghost" onClick={() => setEditClient(selectedClient)}>✏️ Editar</button>
@@ -165,8 +165,6 @@ export default function Database() {
       </header>
 
       <ClientSwitcher onNewClient={openNewClient} />
-
-      <ClaveRevealPanel clientId={selectedClientId} />
 
       {error && <div className="db-error">⚠ {error}</div>}
 

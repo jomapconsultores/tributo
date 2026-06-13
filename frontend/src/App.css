@@ -11,3 +11,16 @@
   margin: 0 auto;
   padding: 0 20px;
 }
+
+/* Clave SRI inline en encabezados de página */
+.clave-header-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #eef4fb; border: 1px solid #b9d3e8; border-radius: 6px;
+  padding: 2px 10px; font-size: 0.78rem; color: #1a5276;
+  margin-left: 10px; vertical-align: middle; font-weight: 500;
+}
+.clave-header-code {
+  font-family: monospace; font-size: 0.9em; background: #fff;
+  border: 1px solid #b9d3e8; border-radius: 3px; padding: 1px 7px;
+  color: #0d3349; letter-spacing: 0.5px;
+}
