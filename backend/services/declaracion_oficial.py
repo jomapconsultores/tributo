@@ -8,9 +8,31 @@ import openpyxl
 
 TEMPLATES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resources", "templates")
 
+# Mapeo de los casilleros INTERNOS del sistema a los OFICIALES del formulario
+# 104 del SRI (algunos no coinciden: 412 interno = ventas 5%, pero 412 oficial
+# = activos fijos). Solo se mapean las entradas (ventas/adquisiciones); el
+# formulario calcula el resto. Un valor None = no se traslada.
+MAP_IVA = {
+    # Ventas
+    "411": "411",   # 15% neto
+    "421": "421",   # 15% IVA
+    "412": "420",   # 5% neto   (oficial 420)
+    "422": "430",   # 5% IVA    (oficial 430)
+    "413": "413",   # 0% neto
+    "414": None,    # exentas (no hay casillero de ventas estándar)
+    "415": "441",   # no objeto neto
+    # Adquisiciones
+    "510": "510", "520": "520",   # 15% neto / IVA
+    "550": "550", "560": "560",   # 5% neto / IVA
+    "517": "517",                 # 0% neto
+    "518": "541",                 # no objeto neto
+    "519": "542",                 # exentas neto
+}
+
 
 def llenar_oficial(tipo, decl):
-    fname = "ice_form.xlsx" if str(tipo).upper() == "ICE" else "iva_form.xlsx"
+    es_ice = str(tipo).upper() == "ICE"
+    fname = "ice_form.xlsx" if es_ice else "iva_form.xlsx"
     path = os.path.join(TEMPLATES, fname)
     if not os.path.exists(path):
         raise FileNotFoundError("No está la plantilla oficial: " + fname)
@@ -21,8 +43,13 @@ def llenar_oficial(tipo, decl):
         if f.get("seccion") == "RESULTADO":
             continue
         cod = str(f.get("codigo", "")).strip()
-        if cod.isdigit():
-            valores[cod] = f.get("valor", 0)
+        if not cod.isdigit():
+            continue
+        if not es_ice:
+            cod = MAP_IVA.get(cod, cod)   # traducir al casillero oficial
+            if cod is None:
+                continue
+        valores[cod] = f.get("valor", 0)
 
     wb = openpyxl.load_workbook(path)
     llenados, omitidos = [], []
