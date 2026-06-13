@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, Fragment } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { declaracionesAPI, downloadBlob } from '../services/api'
-import { getRevealedCredentials } from '../services/credentialsCache'
+import { declaracionesAPI, credentialsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, nombreMes } from '../utils/periodo'
 import ClientSwitcher from '../components/ClientSwitcher'
@@ -103,19 +102,24 @@ export default function Declaraciones({ tipo }) {
 
   useEffect(() => { load() }, [load])
 
-  // Servicios contratados + clave SRI
+  // Servicios contratados + clave SRI (revela directamente para el cliente actual)
   useEffect(() => {
     setCreds(null); setClaveSRI('')
     if (!selectedClientId) return
+    let cancelled = false
     declaracionesAPI.credenciales(selectedClientId)
-      .then((r) => { setCreds(r.data) })
-      .catch(() => setCreds(null))
-    getRevealedCredentials()
-      .then((map) => {
-        const cred = map.get(selectedClientId)
-        if (cred?.password) setClaveSRI(cred.password)
+      .then(async (r) => {
+        if (cancelled) return
+        setCreds(r.data)
+        if (r.data?.es_admin && r.data?.credencial?.id) {
+          try {
+            const rev = await credentialsAPI.reveal(r.data.credencial.id)
+            if (!cancelled) setClaveSRI(rev.data?.password || '')
+          } catch { /* silencioso */ }
+        }
       })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) setCreds(null) })
+    return () => { cancelled = true }
   }, [selectedClientId])
 
   const guardar = async () => {

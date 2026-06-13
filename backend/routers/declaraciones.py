@@ -205,17 +205,20 @@ async def credenciales_cliente(client_id: str = Query(...), user_id: str = Depen
     credenciales con la declaración (punto 4)."""
     try:
         supabase = get_supabase_client()
-        assert_client_owner(client_id, user_id)
+        admin = es_admin(user_id)
+        # Los admins pueden ver cualquier cliente; el resto solo los propios.
+        if not admin:
+            assert_client_owner(client_id, user_id)
         cl = supabase.table("clients").select("identificacion,nombre,user_id").eq("id", client_id).execute().data
         if not cl:
-            return {"servicios": [], "es_admin": False, "credencial": None}
+            return {"servicios": [], "es_admin": admin, "credencial": None}
         ident = cl[0]["identificacion"]
-        # Todos los períodos (client_id) del mismo RUC del usuario
-        hermanos = supabase.table("clients").select("id").eq("identificacion", ident).eq("user_id", user_id).execute().data or []
+        owner_uid = cl[0]["user_id"]  # propietario real del cliente
+        # Todos los períodos del mismo RUC (usando el user_id del propietario)
+        hermanos = supabase.table("clients").select("id").eq("identificacion", ident).eq("user_id", owner_uid).execute().data or []
         ids = [h["id"] for h in hermanos] or [client_id]
         servicios = supabase.table("client_services").select("service,active").in_("client_id", ids).eq("active", True).execute().data or []
         servicios = sorted({s["service"] for s in servicios})
-        admin = es_admin(user_id)
         credencial = None
         if admin:
             cred = supabase.table("service_credentials").select("id,service,username").in_("client_id", ids).eq("service", "sri_portal").execute().data

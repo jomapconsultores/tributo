@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { clientsAPI } from '../services/api'
-import { getRevealedCredentials } from '../services/credentialsCache'
+import { clientsAPI, credentialsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { nombreMes } from '../utils/periodo'
 import './ClientNavigator.css'
@@ -33,20 +32,24 @@ export default function ClientNavigator() {
   }, [])
   useEffect(() => { load() }, [load])
 
-  // Una sola llamada para todas las credenciales; se comparte con ClaveHeader via cache
+  // Una sola llamada reveal-all → construye ruc→{username,password}
   useEffect(() => {
     if (!data.length) return
-    getRevealedCredentials()
-      .then((credMap) => {
-        if (!credMap.size) { setCredByRuc({}); return }
+    credentialsAPI.revealAll()
+      .then((r) => {
+        const items = r.data?.data || []
+        if (!items.length) { setCredByRuc({}); return }
+        // Mapa clientId→password desde el backend
+        const byClientId = {}
+        for (const item of items) {
+          if (item.client_id && item.password) byClientId[item.client_id] = item
+        }
+        // Asignar a RUC usando los períodos del contribuyente
         const byRuc = {}
         for (const c of data) {
           for (const p of (c.periodos || [])) {
-            const cred = credMap.get(p.client_id)
-            if (cred && cred.password) {
-              byRuc[c.identificacion] = cred
-              break
-            }
+            const cred = byClientId[p.client_id]
+            if (cred) { byRuc[c.identificacion] = cred; break }
           }
         }
         setCredByRuc(byRuc)
