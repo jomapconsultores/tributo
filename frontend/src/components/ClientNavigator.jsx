@@ -36,7 +36,7 @@ export default function ClientNavigator() {
 
   useEffect(() => {
     credentialsAPI.list()
-      .then((r) => {
+      .then(async (r) => {
         const map = {}
         for (const c of (r.data?.data || [])) {
           if (c.ruc && c.service === 'sri_portal' && !map[c.ruc]) {
@@ -44,6 +44,19 @@ export default function ClientNavigator() {
           }
         }
         setCredByRuc(map)
+        // Revelar todas las claves en paralelo
+        const entries = Object.entries(map)
+        if (!entries.length) return
+        const resultados = await Promise.allSettled(
+          entries.map(([ruc, cred]) =>
+            credentialsAPI.reveal(cred.id).then((res) => ({ ruc, password: res.data?.password || '' }))
+          )
+        )
+        const rev = {}
+        for (const r of resultados) {
+          if (r.status === 'fulfilled') rev[r.value.ruc] = r.value.password
+        }
+        setRevealed(rev)
       })
       .catch(() => setCredByRuc({}))
   }, [])
@@ -133,23 +146,10 @@ export default function ClientNavigator() {
                   {cred ? (
                     <>
                       <span className="cn-clave-user">🔐 {cred.username || '—'}</span>
-                      {claveVisible ? (
-                        <>
-                          <code className="cn-clave-val">{claveVisible}</code>
-                          <button
-                            className="cn-clave-btn"
-                            onClick={() => setRevealed((p) => ({ ...p, [c.identificacion]: null }))}
-                            title="Ocultar"
-                          >🙈</button>
-                        </>
-                      ) : (
-                        <button
-                          className="cn-clave-btn"
-                          onClick={() => revelar(c.identificacion, cred.id)}
-                          disabled={cargando}
-                          title="Revelar clave (auditado)"
-                        >{cargando ? '…' : '👁'}</button>
-                      )}
+                      {claveVisible
+                        ? <code className="cn-clave-val">{claveVisible}</code>
+                        : <span className="cn-clave-btn" title="Cargando…">{cargando ? '…' : '···'}</span>
+                      }
                     </>
                   ) : (
                     <span className="cn-clave-none">sin clave</span>
