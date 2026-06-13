@@ -63,6 +63,7 @@ class SubIn(BaseModel):
     precio_mensual: Optional[float] = None
     estado: Optional[str] = None          # prueba | activo | suspendido
     proximo_pago: Optional[str] = None    # YYYY-MM-DD
+    iva_incluido: Optional[bool] = None   # True = precios de este cliente ya incluyen IVA
 
 
 class PagoIn(BaseModel):
@@ -73,7 +74,7 @@ class PagoIn(BaseModel):
     metodo: Optional[str] = None
     nota: Optional[str] = None
     avanzar_mes: bool = True
-    iva_incluido: bool = False     # True = monto ya incluye IVA; False = sumar 15%
+    iva_incluido: Optional[bool] = None  # None = usar config del cliente; True/False = override
 
 
 def _aplicar_modulos(uid: str, modules: List[str], valid_until: Optional[str]):
@@ -102,7 +103,7 @@ async def list_users(_: str = Depends(require_admin)):
     admin_rows = sb.table("app_admins").select("user_id,role").execute().data or []
     roles = {a["user_id"]: (a.get("role") or "admin") for a in admin_rows}
     admins = set(roles.keys())
-    subs = {s["user_id"]: s for s in (sb.table("subscriptions").select("*").execute().data or [])}
+    subs = {s["user_id"]: s for s in (sb.table("subscriptions").select("user_id,plan,precio_mensual,estado,proximo_pago,iva_incluido").execute().data or [])}
     ip_rows = sb.table("user_ips").select("user_id").execute().data or []
     ip_count = {}
     for r in ip_rows:
@@ -119,7 +120,8 @@ async def list_users(_: str = Depends(require_admin)):
         if s:
             vencida = bool(s.get("proximo_pago")) and str(s["proximo_pago"]) < hoy
             sub = {"plan": s.get("plan"), "precio_mensual": s.get("precio_mensual"),
-                   "estado": s.get("estado"), "proximo_pago": s.get("proximo_pago"), "vencida": vencida}
+                   "estado": s.get("estado"), "proximo_pago": s.get("proximo_pago"),
+                   "iva_incluido": bool(s.get("iva_incluido")), "vencida": vencida}
         else:
             sub = None
         out.append({
@@ -160,10 +162,13 @@ async def registrar_pago(uid: str, body: PagoIn, _: str = Depends(require_admin)
     meses = body.meses if body.meses in DESCUENTOS else 1
     fecha = body.fecha or date.today().isoformat()
     periodo = body.periodo or (f"{meses} mes(es)")
-    if body.iva_incluido:
-        monto_final = round(body.monto, 2)
+    # Si no se especifica en el payload, usar la configuración guardada del cliente
+    if body.iva_incluido is None:
+        sub = sb.table("subscriptions").select("iva_incluido").eq("user_id", uid).execute().data
+        iva_incluido = bool(sub[0].get("iva_incluido")) if sub else False
     else:
-        monto_final = round(body.monto * 1.15, 2)
+        iva_incluido = body.iva_incluido
+    monto_final = round(body.monto, 2) if iva_incluido else round(body.monto * 1.15, 2)
     sb.table("pagos").insert({
         "user_id": uid, "monto": monto_final, "fecha": fecha,
         "periodo": periodo, "metodo": body.metodo, "nota": body.nota,

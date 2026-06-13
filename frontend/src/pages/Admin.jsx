@@ -46,6 +46,7 @@ export default function Admin() {
           precio: s.precio_mensual ?? '',
           estado: s.estado || 'prueba',
           proximo_pago: s.proximo_pago || '',
+          iva_incluido: s.iva_incluido || false,
         }
       }
       setEdit(e)
@@ -77,6 +78,7 @@ export default function Admin() {
       await adminAPI.setSubscription(uid, {
         plan: e.plan || null, precio_mensual: e.precio === '' ? null : parseFloat(e.precio),
         estado: e.estado || null, proximo_pago: e.proximo_pago || null,
+        iva_incluido: e.iva_incluido,
       })
       await load()
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy(false) }
@@ -89,7 +91,7 @@ export default function Admin() {
   }
   const registrarPago = (uid) => {
     const u = users.find((x) => x.user_id === uid)
-    setPagoModal({ uid, email: u?.email || uid, precio: parseFloat(edit[uid]?.precio) || 0 })
+    setPagoModal({ uid, email: u?.email || uid, precio: parseFloat(edit[uid]?.precio) || 0, iva_incluido: edit[uid]?.iva_incluido || false })
   }
   const confirmarPago = async ({ uid, meses, monto, iva_incluido }) => {
     setBusy(true)
@@ -124,6 +126,7 @@ export default function Admin() {
         <PagoModalForm
           email={pagoModal.email}
           precioBase={pagoModal.precio}
+          ivaIncluidoDefault={pagoModal.iva_incluido}
           onConfirm={(data) => confirmarPago({ uid: pagoModal.uid, ...data })}
           onCancel={() => setPagoModal(null)}
           busy={busy}
@@ -151,7 +154,7 @@ export default function Admin() {
           <table className="adm-table">
             <thead><tr>
               <th>Usuario</th>{MODS.map((m) => <th key={m.key} className="c">{m.label}</th>)}
-              <th>Estado</th><th>Precio</th><th>Próx. pago</th><th>Plan rápido</th><th></th>
+              <th>Estado</th><th>Precio</th><th className="c">+IVA</th><th>Próx. pago</th><th>Plan rápido</th><th></th>
             </tr></thead>
             <tbody>
               {users.map((u) => {
@@ -182,6 +185,9 @@ export default function Admin() {
                       </select>
                     </td>
                     <td><input className="adm-precio" type="number" step="0.01" disabled={u.is_admin} value={e.precio} onChange={(ev) => upd(u.user_id, { precio: ev.target.value })} /></td>
+                    <td className="c" title="¿Los valores de este cliente ya incluyen IVA?">
+                      <input type="checkbox" disabled={u.is_admin} checked={e.iva_incluido || false} onChange={(ev) => upd(u.user_id, { iva_incluido: ev.target.checked })} />
+                    </td>
                     <td><input type="date" disabled={u.is_admin} value={e.proximo_pago || ''} onChange={(ev) => upd(u.user_id, { proximo_pago: ev.target.value })} /></td>
                     <td>
                       <select disabled={u.is_admin} defaultValue="" onChange={(ev) => { aplicarPlan(u.user_id, ev.target.value); ev.target.value = '' }}>
@@ -229,10 +235,10 @@ export default function Admin() {
   )
 }
 
-function PagoModalForm({ email, precioBase, onConfirm, onCancel, busy }) {
+function PagoModalForm({ email, precioBase, ivaIncluidoDefault, onConfirm, onCancel, busy }) {
   const [meses, setMeses] = useState(1)
   const [monto, setMonto] = useState('')
-  const [ivaIncluido, setIvaIncluido] = useState(false)
+  const [ivaIncluido, setIvaIncluido] = useState(ivaIncluidoDefault || false)
   const inputRef = useRef(null)
 
   useEffect(() => {
