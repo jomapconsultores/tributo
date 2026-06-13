@@ -7,7 +7,7 @@
 .itabs-bar {
   display: flex;
   gap: 4px;
-  border-bottom: 2px solid #e2e8f0;
+  border-bottom: 2px solid #dbe3ec;
   margin-bottom: 14px;
 }
 
@@ -16,21 +16,21 @@
   border: none;
   border-bottom: 3px solid transparent;
   margin-bottom: -2px;
-  padding: 10px 18px;
-  font-size: 0.9rem;
+  padding: 9px 16px;
+  font-size: 0.85rem;
   font-weight: 600;
-  color: #64748b;
+  color: #6b7888;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.itabs-bar button:hover { color: #334155; }
+.itabs-bar button:hover { color: #1a3d6b; }
 
 .itabs-bar button.active {
-  color: #4f46e5;
-  border-bottom-color: #4f46e5;
+  color: #003399;
+  border-bottom-color: #003399;
 }
 
 .itabs-badge {
@@ -59,17 +59,18 @@
 
 .rs-block {
   background: #fff;
+  border: 1px solid #e8edf3;
   border-radius: 10px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px rgba(16, 40, 80, 0.05);
   overflow: hidden;
 }
 
 .rs-title {
   font-weight: 700;
-  font-size: 0.95rem;
-  color: #0f172a;
-  padding: 12px 16px 10px;
-  border-left: 5px solid;
+  font-size: 0.9rem;
+  color: #1a3d6b;
+  padding: 11px 16px 9px;
+  border-left: 4px solid;
 }
 
 .rs-scroll { overflow-x: auto; }
@@ -95,29 +96,29 @@
   font-weight: 700;
 }
 
-.rs-table .r { text-align: right; }
-.rs-table tbody tr:hover { background: #f8fafc; }
+.rs-table .r { text-align: right; font-variant-numeric: tabular-nums; }
+.rs-table tbody tr:hover { background: #f6f9fd; }
 
 .rs-total td {
   font-weight: 700;
-  color: #1e293b;
-  background: #f1f5f9;
-  border-top: 2px solid #cbd5e1;
+  color: #1a3d6b;
+  background: #f6f8fb;
+  border-top: 2px solid #cdd8e6;
 }
 
-.pend-table { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); }
+.pend-table { background: #fff; border: 1px solid #e8edf3; border-radius: 10px; box-shadow: 0 1px 3px rgba(16, 40, 80, 0.05); }
 
 .pend-cat-input {
   padding: 5px 9px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #cdd8e6;
   border-radius: 6px;
-  font-size: 0.82rem;
+  font-size: 0.81rem;
   outline: none;
   min-width: 180px;
   text-transform: uppercase;
 }
 
-.pend-cat-input:focus { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
+.pend-cat-input:focus { border-color: #003399; box-shadow: 0 0 0 2px rgba(0,51,153,0.15); }
 
 .pend-cat-input:disabled { background: #f1f5f9; color: #94a3b8; }
 
