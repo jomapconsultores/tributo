@@ -169,6 +169,16 @@ export const salesIvaAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+  // Sube el reporte/lista de claves (TXT del SRI: "Descargar reporte" de Emitidos)
+  processTxt: (clientId, file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('client_id', clientId)
+    return api.post('/api/sales-iva/process-txt', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000,  // baja por SOAP con reintentos; margen amplio
+    })
+  },
   delete: (id) => api.delete(`/api/sales-iva/${id}`),
   clear: (clientId) => api.delete('/api/sales-iva/clear', { params: { client_id: clientId } }),
   bulkMove: (ids, clientId) => api.post('/api/sales-iva/bulk-move', { ids, client_id: clientId }),

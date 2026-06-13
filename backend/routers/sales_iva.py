@@ -11,6 +11,7 @@ from auth import get_current_user
 from database import get_supabase_client
 from services.xml_parser_ventas import parse_venta_xml
 from services.xml_store import guardar_xml_original
+from services.sri_service import extract_claves_from_txt, descargar_multiples_xmls
 from database import fetch_all
 from tenancy import assert_client_owner
 
@@ -88,6 +89,74 @@ async def process_xml(
                     err_count += 1
         return {
             "ok": True,
+            "nuevas": new_count,
+            "duplicadas": dup_count,
+            "errores": err_count,
+            "rechazadas_por_ice": rej_count,
+            "rechazadas": rechazadas,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _guardar_venta(supabase, client_id, user_id, xml_content):
+    """Parsea un XML de venta y lo guarda en sales_iva. Devuelve uno de:
+    'new' | 'dup' | 'err' | 'con_ice'. (Reutilizado por process-xml y process-txt)."""
+    parsed = parse_venta_xml(xml_content)
+    if parsed is None:
+        return "err", None
+    if parsed.get("error") == "CON_ICE":
+        return "con_ice", parsed.get("factura_numero")
+    guardar_xml_original(supabase, user_id, client_id, "ingreso_iva", xml_content)
+    try:
+        supabase.table("sales_iva").insert({"client_id": client_id, "user_id": user_id, **parsed}).execute()
+        return "new", None
+    except Exception as e:
+        msg = str(e).lower()
+        if "duplicate" in msg or "unique" in msg:
+            return "dup", None
+        print(f"Error insertando sales_iva {parsed.get('unique_id')}: {e}")
+        return "err", None
+
+
+@router.post("/process-txt")
+async def process_txt(
+    file: UploadFile = File(...),
+    client_id: str = Form(...),
+    user_id: str = Depends(get_current_user),
+):
+    """Sube el reporte/lista de claves de acceso (TXT del SRI: 'Descargar reporte'
+    de Comprobantes Emitidos). Extrae las claves de 49 dígitos, baja los XML por
+    el servicio del SRI (con reintentos) y los guarda como ingresos (ventas)."""
+    try:
+        supabase = get_supabase_client()
+        assert_client_owner(client_id, user_id)
+        content = (await file.read()).decode("utf-8", errors="ignore")
+        claves = extract_claves_from_txt(content)
+        if not claves:
+            raise HTTPException(status_code=400, detail="No se encontraron claves de acceso (49 dígitos) en el archivo.")
+        xmls, no_descargadas = descargar_multiples_xmls(list(claves), max_workers=8, max_rondas=3)
+
+        new_count = dup_count = err_count = rej_count = 0
+        rechazadas = []
+        for xml_content in xmls:
+            estado, info = _guardar_venta(supabase, client_id, user_id, xml_content)
+            if estado == "new":
+                new_count += 1
+            elif estado == "dup":
+                dup_count += 1
+            elif estado == "con_ice":
+                rej_count += 1
+                rechazadas.append({"archivo": "(XML del SRI)", "factura": info, "motivo": "Contiene ICE — subir en módulo ICE-XML"})
+            else:
+                err_count += 1
+        return {
+            "ok": True,
+            "total_claves": len(claves),
+            "descargadas": len(xmls),
+            "no_descargadas": no_descargadas,
             "nuevas": new_count,
             "duplicadas": dup_count,
             "errores": err_count,

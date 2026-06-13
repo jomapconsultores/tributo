@@ -29,6 +29,7 @@ export default function IngresosIva() {
   const [search, setSearch] = useState('')
   const [dragActive, setDragActive] = useState(false)
   const xmlInputRef = useRef(null)
+  const txtInputRef = useRef(null)
 
   const load = useCallback(async () => {
     if (!selectedClientId) { setRows([]); return }
@@ -62,6 +63,28 @@ export default function IngresosIva() {
       alert('Error: ' + (err.response?.data?.detail || err.message))
     } finally {
       setBusy(''); if (xmlInputRef.current) xmlInputRef.current.value = ''
+    }
+  }
+
+  const handleUploadTxt = async (file) => {
+    if (!selectedClientId || !file) return
+    setBusy('Bajando los XML desde el SRI con las claves del reporte…')
+    try {
+      const res = await salesIvaAPI.processTxt(selectedClientId, file)
+      const d = res.data
+      const faltan = d.no_descargadas ?? 0
+      let msg = `Claves en el reporte: ${d.total_claves}\n` +
+                `Descargadas del SRI: ${d.descargadas} de ${d.total_claves}\n` +
+                `Nuevas: ${d.nuevas} · Duplicadas: ${d.duplicadas}`
+      if (d.rechazadas_por_ice > 0) msg += `\n⚠ ${d.rechazadas_por_ice} con ICE (van en "ICE - XML")`
+      if (faltan > 0) msg += `\n\n⚠ ${faltan} no se bajaron (SRI saturado). Vuelve a subir el mismo TXT: reintenta solo las que faltan.`
+      else msg += `\n\n✔ Se bajaron todas.`
+      alert(msg)
+      await load()
+    } catch (err) {
+      alert('Error: ' + (err.response?.data?.detail || err.message))
+    } finally {
+      setBusy(''); if (txtInputRef.current) txtInputRef.current.value = ''
     }
   }
 
@@ -165,6 +188,10 @@ export default function IngresosIva() {
           value={search} onChange={(e) => setSearch(e.target.value)}
         />
         <span className="ing-iva-count">{filtered.length} de {rows.length}</span>
+        <input ref={txtInputRef} type="file" accept=".txt" style={{ display: 'none' }} id="ing-iva-txt"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadTxt(f) }} />
+        <button className="ing-iva-clear" onClick={() => txtInputRef.current?.click()}
+          title="Sube el reporte TXT del SRI (Descargar reporte de Comprobantes Emitidos): baja los XML por las claves">📄 Subir reporte (TXT)</button>
         <button className="ing-iva-clear" onClick={() => descargarXmlsOriginales(selectedClient, selectedClientId, 'IngresosIVA', 'ingreso_iva')} title="Descargar los XML originales subidos">⬇ XML originales</button>
         {rows.length > 0 && (
           <button className="ing-iva-clear" onClick={handleClear}>Vaciar todo</button>
