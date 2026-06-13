@@ -307,208 +307,179 @@ export default function Declaraciones({ tipo }) {
         </div>
       )}
 
-      {/* Ingresos / Ventas — editable cuando no se tienen los XML (solo IVA) */}
+      {/* ── Fila IVA: Ventas · Crédito anterior · Factor (3 paneles en una línea) ── */}
       {isIVA && decl && (
-        <div className="dc-card-box dc-credit-box">
-          <h2 className="dc-h2">🧾 Ingresos / Ventas del período</h2>
-          <p className="dc-credit-help">
-            {resumen.ventas_manual
-              ? 'Ventas ingresadas manualmente (override). El IVA en ventas (421/422) se recalcula automáticamente y fluye al resto del cálculo.'
-              : 'Calculadas desde los comprobantes. Si no tenés los XML, editá la base de ventas y el IVA se recalcula solo (15% / 5%).'}
-          </p>
-          <div className="dc-credit-grid">
-            <div className="dc-credit-field">
-              <label>411 — Ventas gravadas 15% (base)</label>
-              {editV15 ? (
-                <div className="dc-credit-edit">
-                  <input type="number" step="0.01" autoFocus
-                    defaultValue={resumen.ventas_15 || 0}
-                    onBlur={(e) => aplicarOverride('v15', e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
-                </div>
-              ) : (
-                <div className="dc-credit-value">
-                  <strong>{money(resumen.ventas_15 || 0)}</strong>
-                  <button className="dc-btn-mini" onClick={() => setEditV15(true)} title="Editar">✎</button>
-                  {ventas15 != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('v15')} title="Volver al automático">↺</button>}
-                  <span style={{ marginLeft: 8, fontSize: 12, color: '#1a5276' }}>→ IVA 421: {money(resumen.iva_ventas_15 || 0)}</span>
-                </div>
-              )}
-            </div>
-            <div className="dc-credit-field">
-              <label>412 — Ventas gravadas 5% (base)</label>
-              {editV5 ? (
-                <div className="dc-credit-edit">
-                  <input type="number" step="0.01" autoFocus
-                    defaultValue={resumen.ventas_5 || 0}
-                    onBlur={(e) => aplicarOverride('v5', e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
-                </div>
-              ) : (
-                <div className="dc-credit-value">
-                  <strong>{money(resumen.ventas_5 || 0)}</strong>
-                  <button className="dc-btn-mini" onClick={() => setEditV5(true)} title="Editar">✎</button>
-                  {ventas5 != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('v5')} title="Volver al automático">↺</button>}
-                  <span style={{ marginLeft: 8, fontSize: 12, color: '#1a5276' }}>→ IVA 422: {money(resumen.iva_ventas_5 || 0)}</span>
-                </div>
-              )}
-            </div>
-            <div className="dc-credit-field">
-              <label>413 — Ventas tarifa 0% (base)</label>
-              {editV0 ? (
-                <div className="dc-credit-edit">
-                  <input type="number" step="0.01" autoFocus
-                    defaultValue={resumen.ventas_0 || 0}
-                    onBlur={(e) => aplicarOverride('v0', e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
-                </div>
-              ) : (
-                <div className="dc-credit-value">
-                  <strong>{money(resumen.ventas_0 || 0)}</strong>
-                  <button className="dc-btn-mini" onClick={() => setEditV0(true)} title="Editar">✎</button>
-                  {ventas0 != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('v0')} title="Volver al automático">↺</button>}
-                  <span style={{ marginLeft: 8, fontSize: 12, color: '#7f8c8d' }}>(sin IVA)</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Crédito tributario del mes anterior (solo IVA) */}
-      {isIVA && decl && (
-        <div className="dc-card-box dc-credit-box">
-          <h2 className="dc-h2">🔁 Crédito tributario del mes anterior</h2>
-          <p className="dc-credit-help">
-            {credAdq != null || credRet != null
-              ? 'Valores ingresados manualmente (override).'
-              : 'Pre-cargado del histórico (declaración del mes anterior). Si no hay historial, queda en 0 y podés editarlo.'}
-          </p>
-          <div className="dc-credit-grid">
-            <div className="dc-credit-field">
-              <label>605 — Crédito por adquisiciones</label>
-              {editAdq ? (
-                <div className="dc-credit-edit">
-                  <input
-                    type="number" step="0.01" autoFocus
-                    defaultValue={resumen.credito_mes_anterior_adquisiciones || 0}
-                    onBlur={(e) => aplicarOverride('adq', e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
-                  />
-                </div>
-              ) : (
-                <div className="dc-credit-value">
-                  <strong>{money(resumen.credito_mes_anterior_adquisiciones || 0)}</strong>
-                  <button className="dc-btn-mini" onClick={() => setEditAdq(true)} title="Editar">✎</button>
-                  {credAdq != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('adq')} title="Volver al automático">↺</button>}
-                </div>
-              )}
-            </div>
-            <div className="dc-credit-field">
-              <label>606 — Crédito por retenciones</label>
-              {editRet ? (
-                <div className="dc-credit-edit">
-                  <input
-                    type="number" step="0.01" autoFocus
-                    defaultValue={resumen.credito_mes_anterior_retenciones || 0}
-                    onBlur={(e) => aplicarOverride('ret', e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
-                  />
-                </div>
-              ) : (
-                <div className="dc-credit-value">
-                  <strong>{money(resumen.credito_mes_anterior_retenciones || 0)}</strong>
-                  <button className="dc-btn-mini" onClick={() => setEditRet(true)} title="Editar">✎</button>
-                  {credRet != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('ret')} title="Volver al automático">↺</button>}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Factor de proporcionalidad del crédito tributario (solo IVA) */}
-      {isIVA && decl && (
-        <div className="dc-card-box dc-credit-box">
-          <h2 className="dc-h2">⚖️ Factor de proporcionalidad del crédito IVA</h2>
-          <p className="dc-credit-help">
-            {factorProp != null
-              ? 'Factor ingresado manualmente.'
-              : 'Relación entre ingresos 15% y (15% + 0%). Solo esa proporción del IVA de compras es crédito; el resto NO es acreditable (va al gasto). Si solo hay ventas 15%, el factor es 100%.'}
-          </p>
-          <div className="dc-credit-grid">
-            <div className="dc-credit-field">
-              <label>Factor de proporcionalidad (0 a 1)</label>
-              {editFactor ? (
-                <div className="dc-credit-edit">
-                  <input type="number" step="0.0001" min="0" max="1" autoFocus
-                    defaultValue={resumen.factor_proporcionalidad ?? 1}
-                    onBlur={(e) => { const v = parseFloat(e.target.value); setFactorProp(isNaN(v) ? 0 : Math.max(0, Math.min(1, v))); setEditFactor(false) }}
-                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
-                </div>
-              ) : (
-                <div className="dc-credit-value">
-                  <strong>{((resumen.factor_proporcionalidad ?? 1) * 100).toFixed(2)}%</strong>
-                  <button className="dc-btn-mini" onClick={() => setEditFactor(true)} title="Editar">✎</button>
-                  {factorProp != null && <button className="dc-btn-mini" onClick={() => setFactorProp(null)} title="Volver al automático">↺</button>}
-                </div>
-              )}
-            </div>
-            <div className="dc-credit-field">
-              <label>564 — Crédito IVA acreditable (compras × factor)</label>
-              <div className="dc-credit-value">
-                <strong>{money(resumen.credito_adq_aplicable || 0)}</strong>
-                {(resumen.iva_no_acreditable || 0) > 0 && (
-                  <span style={{ marginLeft: 8, fontSize: 12, color: '#b9770e' }}>
-                    no acreditable (al gasto): {money(resumen.iva_no_acreditable)}
-                  </span>
+        <div className="dc-row-triple">
+          {/* Ingresos / Ventas */}
+          <div className="dc-card-box dc-credit-box">
+            <h2 className="dc-h2">🧾 Ingresos / Ventas</h2>
+            <p className="dc-credit-help dc-help-sm">
+              {resumen.ventas_manual ? 'Override manual activo.' : 'Desde comprobantes. Editá si no tenés XML.'}
+            </p>
+            <div className="dc-credit-grid">
+              <div className="dc-credit-field">
+                <label>411 — Base 15%</label>
+                {editV15 ? (
+                  <div className="dc-credit-edit">
+                    <input type="number" step="0.01" autoFocus
+                      defaultValue={resumen.ventas_15 || 0}
+                      onBlur={(e) => aplicarOverride('v15', e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
+                  </div>
+                ) : (
+                  <div className="dc-credit-value">
+                    <strong>{money(resumen.ventas_15 || 0)}</strong>
+                    <button className="dc-btn-mini" onClick={() => setEditV15(true)} title="Editar">✎</button>
+                    {ventas15 != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('v15')} title="Volver al automático">↺</button>}
+                    <span className="dc-hint-arrow">→ 421: {money(resumen.iva_ventas_15 || 0)}</span>
+                  </div>
                 )}
+              </div>
+              <div className="dc-credit-field">
+                <label>412 — Base 5%</label>
+                {editV5 ? (
+                  <div className="dc-credit-edit">
+                    <input type="number" step="0.01" autoFocus
+                      defaultValue={resumen.ventas_5 || 0}
+                      onBlur={(e) => aplicarOverride('v5', e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
+                  </div>
+                ) : (
+                  <div className="dc-credit-value">
+                    <strong>{money(resumen.ventas_5 || 0)}</strong>
+                    <button className="dc-btn-mini" onClick={() => setEditV5(true)} title="Editar">✎</button>
+                    {ventas5 != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('v5')} title="Volver al automático">↺</button>}
+                    <span className="dc-hint-arrow">→ 422: {money(resumen.iva_ventas_5 || 0)}</span>
+                  </div>
+                )}
+              </div>
+              <div className="dc-credit-field">
+                <label>413 — Tarifa 0%</label>
+                {editV0 ? (
+                  <div className="dc-credit-edit">
+                    <input type="number" step="0.01" autoFocus
+                      defaultValue={resumen.ventas_0 || 0}
+                      onBlur={(e) => aplicarOverride('v0', e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
+                  </div>
+                ) : (
+                  <div className="dc-credit-value">
+                    <strong>{money(resumen.ventas_0 || 0)}</strong>
+                    <button className="dc-btn-mini" onClick={() => setEditV0(true)} title="Editar">✎</button>
+                    {ventas0 != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('v0')} title="Volver al automático">↺</button>}
+                    <span className="dc-hint-arrow" style={{ color: '#7f8c8d' }}>(sin IVA)</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Crédito tributario del mes anterior */}
+          <div className="dc-card-box dc-credit-box">
+            <h2 className="dc-h2">🔁 Crédito mes anterior</h2>
+            <p className="dc-credit-help dc-help-sm">
+              {credAdq != null || credRet != null ? 'Override manual activo.' : 'Pre-cargado del mes anterior (0 si no hay historial).'}
+            </p>
+            <div className="dc-credit-grid">
+              <div className="dc-credit-field">
+                <label>605 — Por adquisiciones</label>
+                {editAdq ? (
+                  <div className="dc-credit-edit">
+                    <input type="number" step="0.01" autoFocus
+                      defaultValue={resumen.credito_mes_anterior_adquisiciones || 0}
+                      onBlur={(e) => aplicarOverride('adq', e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
+                  </div>
+                ) : (
+                  <div className="dc-credit-value">
+                    <strong>{money(resumen.credito_mes_anterior_adquisiciones || 0)}</strong>
+                    <button className="dc-btn-mini" onClick={() => setEditAdq(true)} title="Editar">✎</button>
+                    {credAdq != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('adq')} title="Volver al automático">↺</button>}
+                  </div>
+                )}
+              </div>
+              <div className="dc-credit-field">
+                <label>606 — Por retenciones</label>
+                {editRet ? (
+                  <div className="dc-credit-edit">
+                    <input type="number" step="0.01" autoFocus
+                      defaultValue={resumen.credito_mes_anterior_retenciones || 0}
+                      onBlur={(e) => aplicarOverride('ret', e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
+                  </div>
+                ) : (
+                  <div className="dc-credit-value">
+                    <strong>{money(resumen.credito_mes_anterior_retenciones || 0)}</strong>
+                    <button className="dc-btn-mini" onClick={() => setEditRet(true)} title="Editar">✎</button>
+                    {credRet != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('ret')} title="Volver al automático">↺</button>}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Factor de proporcionalidad */}
+          <div className="dc-card-box dc-credit-box">
+            <h2 className="dc-h2">⚖️ Factor proporcionalidad</h2>
+            <p className="dc-credit-help dc-help-sm">
+              {factorProp != null ? 'Override manual activo.' : 'Automático: ventas 15% ÷ (15%+0%). Si solo hay 15%, factor = 100%.'}
+            </p>
+            <div className="dc-credit-grid">
+              <div className="dc-credit-field">
+                <label>Factor (0 a 1)</label>
+                {editFactor ? (
+                  <div className="dc-credit-edit">
+                    <input type="number" step="0.0001" min="0" max="1" autoFocus
+                      defaultValue={resumen.factor_proporcionalidad ?? 1}
+                      onBlur={(e) => { const v = parseFloat(e.target.value); setFactorProp(isNaN(v) ? 0 : Math.max(0, Math.min(1, v))); setEditFactor(false) }}
+                      onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
+                  </div>
+                ) : (
+                  <div className="dc-credit-value">
+                    <strong>{((resumen.factor_proporcionalidad ?? 1) * 100).toFixed(2)}%</strong>
+                    <button className="dc-btn-mini" onClick={() => setEditFactor(true)} title="Editar">✎</button>
+                    {factorProp != null && <button className="dc-btn-mini" onClick={() => setFactorProp(null)} title="Volver al automático">↺</button>}
+                  </div>
+                )}
+              </div>
+              <div className="dc-credit-field">
+                <label>564 — Crédito acreditable</label>
+                <div className="dc-credit-value">
+                  <strong>{money(resumen.credito_adq_aplicable || 0)}</strong>
+                  {(resumen.iva_no_acreditable || 0) > 0 && (
+                    <span className="dc-hint-arrow" style={{ color: '#b9770e' }}>
+                      no acred.: {money(resumen.iva_no_acreditable)}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Rebajas y exenciones (solo ICE): auto del módulo ⚖️, casilla manual u override */}
+      {/* Rebajas y exenciones ICE — compacto en una sola línea */}
       {!isIVA && decl && (
         <div className="dc-card-box dc-credit-box">
           <h2 className="dc-h2">⚖️ Rebajas y exenciones</h2>
-          <p className="dc-credit-help">
-            {rebajaIce != null || exencionIce != null
-              ? 'Valores ingresados manualmente (override).'
-              : (resumen.productos_con_rebaja || []).length > 0 || (resumen.productos_exentos || []).length > 0
-                ? <>
-                    {(resumen.productos_exentos || []).length > 0 && `Exentos (Art. 77.1 LRTI, con cupo anual SRI): ${resumen.productos_exentos.map((p) => `${p.producto} (${p.pct}%)`).join(', ')}. `}
-                    {(resumen.productos_con_rebaja || []).length > 0 && `Con rebaja 50% tarifa específica (Art. 199.5 RLRTI): ${resumen.productos_con_rebaja.map((p) => `${p.producto} (${p.pct}%)`).join(', ')}.`}
-                  </>
-                : 'Sin productos que cumplan los requisitos en el módulo Rebajas y exenciones (≥70% nacional; cervezas solo nuevas marcas; exención requiere cupo anual SRI). Registralos ahí, marcá las casillas manuales o ingresá los valores a mano.'}
-          </p>
-          <div className="dc-credit-grid" style={{ marginBottom: 8 }}>
+          {(resumen.advertencias || []).map((a, i) => (
+            <p key={i} className="dc-credit-help" style={{ color: '#b9770e', fontWeight: 600, marginBottom: 6 }}>{a}</p>
+          ))}
+          <div className="dc-rebajas-row">
+            {/* ── Rebaja 50% ── */}
             <label className="dc-aplazar-control" title="Aplica el 50% de la tarifa específica total sin el cálculo del módulo">
               <input type="checkbox" checked={marcaReb} disabled={rebajaIce != null}
                 onChange={(e) => setMarcaReb(e.target.checked)} />
-              Aplica rebaja 50% (manual)
+              Rebaja 50%
             </label>
-            <label className="dc-aplazar-control" title="Exonera el ICE restante del período sin el cálculo del módulo">
-              <input type="checkbox" checked={marcaExe} disabled={exencionIce != null}
-                onChange={(e) => setMarcaExe(e.target.checked)} />
-              Aplica exención (manual)
-            </label>
-          </div>
-          {(resumen.advertencias || []).map((a, i) => (
-            <p key={i} className="dc-credit-help" style={{ color: '#b9770e', fontWeight: 600 }}>{a}</p>
-          ))}
-          <div className="dc-credit-grid">
             <div className="dc-credit-field">
-              <label>(−) Rebaja tarifa específica (componente nacional, 50%)</label>
+              <label className="dc-rebajas-lbl">(−) Rebaja tarifa específica</label>
               {editReb ? (
                 <div className="dc-credit-edit">
-                  <input
-                    type="number" step="0.01" autoFocus
+                  <input type="number" step="0.01" autoFocus
                     defaultValue={resumen.rebaja_ice || 0}
                     onBlur={(e) => aplicarOverride('reb', e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
-                  />
+                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
                 </div>
               ) : (
                 <div className="dc-credit-value">
@@ -518,16 +489,23 @@ export default function Declaraciones({ tipo }) {
                 </div>
               )}
             </div>
+
+            <div className="dc-rebajas-sep" />
+
+            {/* ── Exención ── */}
+            <label className="dc-aplazar-control" title="Exonera el ICE restante del período sin el cálculo del módulo">
+              <input type="checkbox" checked={marcaExe} disabled={exencionIce != null}
+                onChange={(e) => setMarcaExe(e.target.checked)} />
+              Exención
+            </label>
             <div className="dc-credit-field">
-              <label>(−) Exenciones</label>
+              <label className="dc-rebajas-lbl">(−) Exenciones</label>
               {editExe ? (
                 <div className="dc-credit-edit">
-                  <input
-                    type="number" step="0.01" autoFocus
+                  <input type="number" step="0.01" autoFocus
                     defaultValue={resumen.exencion_ice || 0}
                     onBlur={(e) => aplicarOverride('exe', e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
-                  />
+                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
                 </div>
               ) : (
                 <div className="dc-credit-value">
@@ -537,7 +515,24 @@ export default function Declaraciones({ tipo }) {
                 </div>
               )}
             </div>
+
+            {/* ── Nota de estado ── */}
+            <span className="dc-rebajas-hint">
+              {rebajaIce != null || exencionIce != null
+                ? 'Override manual'
+                : (resumen.productos_con_rebaja || []).length > 0 || (resumen.productos_exentos || []).length > 0
+                  ? 'Auto desde módulo'
+                  : 'Sin productos calificados'}
+            </span>
           </div>
+
+          {/* Detalle de productos (solo si hay) */}
+          {!rebajaIce && !exencionIce && ((resumen.productos_exentos || []).length > 0 || (resumen.productos_con_rebaja || []).length > 0) && (
+            <p className="dc-credit-help" style={{ marginTop: 6 }}>
+              {(resumen.productos_exentos || []).length > 0 && <>Exentos: <strong>{resumen.productos_exentos.map((p) => p.producto).join(', ')}</strong>. </>}
+              {(resumen.productos_con_rebaja || []).length > 0 && <>Rebaja: <strong>{resumen.productos_con_rebaja.map((p) => p.producto).join(', ')}</strong>.</>}
+            </p>
+          )}
         </div>
       )}
 

@@ -68,12 +68,27 @@
 /* Tarjetas de datos editables (crédito, factor, ventas, rebajas) */
 .dc-credit-box { border-left: 3px solid #003399; }
 .dc-credit-help { margin: 0 0 11px; color: #6b7888; font-size: 0.79rem; line-height: 1.4; }
+.dc-help-sm { margin-bottom: 8px; font-size: 0.72rem; }
 .dc-credit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .dc-credit-field label { display: block; font-size: 0.74rem; color: #51607a; margin-bottom: 4px; font-weight: 600; }
 .dc-credit-value { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .dc-credit-value strong { font-size: 1rem; color: #1a3d6b; font-variant-numeric: tabular-nums; }
-.dc-credit-edit input { padding: 6px 9px; border: 1px solid #003399; border-radius: 6px; width: 140px; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.dc-credit-edit input { padding: 6px 9px; border: 1px solid #003399; border-radius: 6px; width: 120px; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
 .dc-credit-edit input:focus { outline: none; box-shadow: 0 0 0 2px rgba(0,51,153,.18); }
+.dc-hint-arrow { font-size: 0.72rem; color: #1a5276; }
+
+/* ── Tres paneles IVA en una sola fila ── */
+.dc-row-triple { display: flex; gap: 10px; align-items: stretch; }
+.dc-row-triple > .dc-card-box { flex: 1; min-width: 0; }
+.dc-row-triple .dc-credit-grid { grid-template-columns: 1fr; gap: 8px; }
+@media (max-width: 860px) { .dc-row-triple { flex-direction: column; } }
+
+/* ── ICE Rebajas compacto en una sola línea ── */
+.dc-rebajas-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dc-rebajas-row .dc-credit-field { margin: 0; }
+.dc-rebajas-lbl { display: block; font-size: 0.68rem; color: #51607a; margin-bottom: 3px; font-weight: 600; white-space: nowrap; }
+.dc-rebajas-sep { width: 1px; height: 36px; background: #d9e4f1; flex-shrink: 0; margin: 0 4px; }
+.dc-rebajas-hint { font-size: 0.69rem; color: #94a3b8; margin-left: auto; white-space: nowrap; }
 
 /* Botones mini de edición */
 .dc-btn-mini { background: #fff; border: 1px solid #cdd8e6; border-radius: 5px; padding: 2px 7px; cursor: pointer; font-size: 0.78rem; color: #1a3d6b; }
