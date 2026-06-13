@@ -6,7 +6,7 @@
 
 /* Tamaño base global: 15px (en vez de 16) → toda la UI ~6% más compacta y
    profesional. Las medidas en rem de cada pantalla escalan a partir de aquí. */
-html { font-size: 15px; }
+html { font-size: 14px; }
 
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
