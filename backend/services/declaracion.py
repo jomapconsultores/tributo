@@ -471,5 +471,6 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
             "monto_aplazados_vencen": round(monto_aplazados_que_vencen, 2),
             "total_a_pagar": round(total_a_pagar, 2),
             "num_aplazados_vencen": len(pagos_aplazados_vencen_este_periodo),
+            "num_registros": len([r for r in ice_rows if (r.get("estado") or "OK") == "OK"]),
         },
     }

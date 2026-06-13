@@ -44,3 +44,8 @@
 .rp-add-btn { border: 1px dashed #94a3b8; background: #fff; color: #475569; border-radius: 7px; padding: 4px 12px; font-size: 0.78rem; cursor: pointer; }
 .rp-add-btn:hover { background: #f1f5f9; border-color: #64748b; }
 .rp-del { border: none; background: transparent; color: #dc2626; cursor: pointer; font-size: 0.9rem; }
+
+/* Opción "incluido IVA" y estado de declaración lista */
+.rp-iva-check { display: inline-flex; align-items: center; gap: 5px; font-size: .82rem; color: #1a5276; font-weight: 600; cursor: pointer; }
+.rp-total-desglose { display: block; font-size: .72rem; color: #5b6b7a; margin-top: 2px; }
+.rp-lista-badge { margin-left: 10px; padding: 1px 8px; background: #d5f5e3; color: #1e8449; border-radius: 10px; font-size: .68rem; font-weight: 700; }

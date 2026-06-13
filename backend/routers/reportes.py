@@ -12,8 +12,16 @@ from database import get_supabase_client, fetch_all
 from services.email_sender import enviar_correo, email_configurado
 
 DESTINO_ODOO = "johannanievecela@hotmail.com"
+IVA_RATE = 0.15  # IVA Ecuador vigente
 
 router = APIRouter(prefix="/api/reportes", tags=["reportes"])
+
+
+def _desglose_iva(total: float):
+    """Si el valor INCLUYE IVA, separa base imponible + IVA (15%)."""
+    base = round(total / (1 + IVA_RATE), 2)
+    iva = round(total - base, 2)
+    return base, iva
 
 # Conceptos/servicios que se facturan (lo que se hace por cliente)
 CONCEPTOS = [
@@ -82,7 +90,7 @@ def _filas_y_total(user_id):
     filas = []
     total = 0.0
     for ruc in sorted(nombre_por_ruc, key=lambda r: (nombre_por_ruc[r] or "").upper()):
-        def _fila(concepto, relevante, personalizado, g):
+        def _fila(concepto, relevante, hecho, personalizado, g):
             nonlocal total
             cobrar = bool(g["cobrar"]) if g else relevante
             valor = float(g["valor"]) if g and g.get("valor") is not None else 0.0
@@ -93,17 +101,17 @@ def _filas_y_total(user_id):
                 "contribuyente": nombre_por_ruc[ruc],
                 "concepto": concepto,
                 "relevante": relevante,
+                "hecho": hecho,   # declaración/anexo realmente realizado → "lista para facturar"
                 "personalizado": personalizado,
                 "cobrar": cobrar,
                 "valor": round(valor, 2),
             })
         for label, key in CONCEPTOS:
-            relevante = (key in serv_por_ruc.get(ruc, set())
-                         or (key == "anexo" and ruc in anexo_rucs)
-                         or (ruc, key) in decl_keys)
-            _fila(label, relevante, False, by_key.get((ruc, label)))
+            hecho = ((ruc, key) in decl_keys) or (key == "anexo" and ruc in anexo_rucs)
+            relevante = hecho or (key in serv_por_ruc.get(ruc, set()))
+            _fila(label, relevante, hecho, False, by_key.get((ruc, label)))
         for g in sorted(custom_por_ruc.get(ruc, []), key=lambda x: x["producto"].upper()):
-            _fila(g["producto"], False, True, g)
+            _fila(g["producto"], False, False, True, g)
     return filas, round(total, 2)
 
 
@@ -146,7 +154,7 @@ async def borrar_cobro(identificacion: str, producto: str, user_id: str = Depend
 
 
 @router.post("/enviar-correo")
-async def enviar_correo_reporte(user_id: str = Depends(get_current_user)):
+async def enviar_correo_reporte(iva_incluido: bool = False, user_id: str = Depends(get_current_user)):
     """Envía a Johanna (Odoo) el detalle de honorarios y el total a facturar.
     Requiere SMTP configurado; si no, devuelve configurado=False para que el
     front abra el correo redactado (mailto)."""
@@ -165,17 +173,33 @@ async def enviar_correo_reporte(user_id: str = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="No hay valores a cobrar para enviar.")
     bloques = []
     for ruc, g in por_ruc.items():
-        bloques.append(f"{g['nombre']} ({ruc})\n" + "\n".join(g["items"]) + f"\n   Subtotal: ${g['sub']:.2f}")
+        b = f"{g['nombre']} ({ruc})\n" + "\n".join(g["items"]) + f"\n   Subtotal: ${g['sub']:.2f}"
+        if iva_incluido:
+            base, iva = _desglose_iva(g["sub"])
+            b += f"\n   (Base imponible: ${base:.2f} + IVA 15%: ${iva:.2f})"
+        bloques.append(b)
+    if iva_incluido:
+        base_t, iva_t = _desglose_iva(total)
+        cierre = (f"\n\nTOTAL (IVA incluido): ${total:.2f}"
+                  f"\n   Base imponible: ${base_t:.2f}"
+                  f"\n   IVA 15%: ${iva_t:.2f}\n\nGracias.")
+    else:
+        cierre = f"\n\nTOTAL A FACTURAR: ${total:.2f}\n\nGracias."
     cuerpo = ("Hola Johanna,\n\nDetalle de honorarios para registrar la factura en Odoo:\n\n"
-              + "\n\n".join(bloques) + f"\n\nTOTAL A FACTURAR: ${total:.2f}\n\nGracias.")
+              + "\n\n".join(bloques) + cierre)
     ok, err = enviar_correo(DESTINO_ODOO, "Honorarios para facturar en Odoo", cuerpo)
     if not ok:
         raise HTTPException(status_code=400, detail=err or "No se pudo enviar el correo.")
-    return {"ok": True, "configurado": True, "destinatario": DESTINO_ODOO, "total": total}
+    resp = {"ok": True, "configurado": True, "destinatario": DESTINO_ODOO, "total": total}
+    if iva_incluido:
+        base_t, iva_t = _desglose_iva(total)
+        resp["base"] = base_t
+        resp["iva"] = iva_t
+    return resp
 
 
 @router.get("/export/excel")
-async def export_excel(user_id: str = Depends(get_current_user)):
+async def export_excel(iva_incluido: bool = False, user_id: str = Depends(get_current_user)):
     import xlsxwriter
     filas, total = _filas_y_total(user_id)
     out = io.BytesIO()
@@ -219,8 +243,12 @@ async def export_excel(user_id: str = Depends(get_current_user)):
         r += 1
         _subtotal(r, curr, sub)
     r += 1
-    ws.write(r, 3, "TOTAL", head)
+    ws.write(r, 3, "TOTAL" + (" (IVA incl.)" if iva_incluido else ""), head)
     ws.write_number(r, 4, total, tot)
+    if iva_incluido:
+        base_t, iva_t = _desglose_iva(total)
+        r += 1; ws.write(r, 3, "Base imponible", sub_lbl); ws.write_number(r, 4, base_t, sub_val)
+        r += 1; ws.write(r, 3, "IVA 15%", sub_lbl); ws.write_number(r, 4, iva_t, sub_val)
     ws.set_column(0, 0, 34)
     ws.set_column(1, 1, 16)
     ws.set_column(2, 2, 24)
@@ -234,7 +262,7 @@ async def export_excel(user_id: str = Depends(get_current_user)):
 
 
 @router.get("/export/pdf")
-async def export_pdf(user_id: str = Depends(get_current_user)):
+async def export_pdf(iva_incluido: bool = False, user_id: str = Depends(get_current_user)):
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.units import inch
     from reportlab.lib import colors
@@ -263,7 +291,11 @@ async def export_pdf(user_id: str = Depends(get_current_user)):
     if curr is not None:
         data.append(["", "", "", f"Subtotal {curr}", f"${sub:.2f}"])
         sub_rows.append(len(data) - 1)
-    data.append(["", "", "", "TOTAL", f"${total:.2f}"])
+    data.append(["", "", "", "TOTAL" + (" (IVA incl.)" if iva_incluido else ""), f"${total:.2f}"])
+    if iva_incluido:
+        base_t, iva_t = _desglose_iva(total)
+        data.append(["", "", "", "Base imponible", f"${base_t:.2f}"])
+        data.append(["", "", "", "IVA 15%", f"${iva_t:.2f}"])
     t = Table(data, repeatRows=1, colWidths=[2.2 * inch, 1.3 * inch, 1.7 * inch, 1.0 * inch, 0.9 * inch])
     estilo = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a5276")),

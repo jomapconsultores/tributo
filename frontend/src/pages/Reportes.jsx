@@ -11,6 +11,10 @@ export default function Reportes() {
   const [search, setSearch] = useState('')
   const [guardando, setGuardando] = useState('')
   const [colapsados, setColapsados] = useState(() => new Set())
+  // "Valores incluyen IVA (15%)": al marcar, se desglosa base imponible + IVA.
+  const [ivaIncluido, setIvaIncluido] = useState(() => localStorage.getItem('rpIvaIncluido') === '1')
+  useEffect(() => { try { localStorage.setItem('rpIvaIncluido', ivaIncluido ? '1' : '0') } catch { /* ignore */ } }, [ivaIncluido])
+  const desglosa = (t) => { const base = Math.round((t / 1.15) * 100) / 100; return { base, iva: Math.round((t - base) * 100) / 100 } }
 
   const cargar = useCallback(async () => {
     setLoading(true); setError('')
@@ -95,7 +99,7 @@ export default function Reportes() {
 
   const exportar = async (tipo) => {
     try {
-      const r = tipo === 'excel' ? await reportesAPI.exportExcel() : await reportesAPI.exportPdf()
+      const r = tipo === 'excel' ? await reportesAPI.exportExcel(ivaIncluido) : await reportesAPI.exportPdf(ivaIncluido)
       downloadBlob(r.data, `Reporte_Honorarios.${tipo === 'excel' ? 'xlsx' : 'pdf'}`,
         tipo === 'excel' ? undefined : 'application/pdf')
     } catch (e) { alert('Error al exportar: ' + (e.response?.data?.detail || e.message)) }
@@ -110,15 +114,20 @@ export default function Reportes() {
         .map((r) => `   - ${r.concepto}: ${money(r.valor)}`).join('\n')
       return `${g.contribuyente} (${g.identificacion})\n${items}\n   Subtotal: ${money(g.subtotal)}`
     }).join('\n\n')
-    const cuerpo = `Hola Johanna,\n\nDetalle de honorarios para registrar la factura en Odoo:\n\n${detalle}\n\nTOTAL A FACTURAR: ${money(totalGeneral)}\n\nGracias.`
+    let cierre = `\n\nTOTAL A FACTURAR: ${money(totalGeneral)}`
+    if (ivaIncluido) { const d = desglosa(totalGeneral); cierre = `\n\nTOTAL (IVA incluido): ${money(totalGeneral)}\n   Base imponible: ${money(d.base)}\n   IVA 15%: ${money(d.iva)}` }
+    const cuerpo = `Hola Johanna,\n\nDetalle de honorarios para registrar la factura en Odoo:\n\n${detalle}${cierre}\n\nGracias.`
     window.location.href = `mailto:johannanievecela@hotmail.com?subject=${encodeURIComponent('Honorarios para facturar en Odoo')}&body=${encodeURIComponent(cuerpo)}`
   }
 
   // Intenta el envío automático (servidor); si no está configurado, abre el redactado.
   const enviarAJohanna = async () => {
     try {
-      const r = await reportesAPI.enviarCorreo()
-      if (r.data?.ok) { alert(`✔ Correo enviado a Johanna (${r.data.destinatario}). Total: ${money(r.data.total)}`); return }
+      const r = await reportesAPI.enviarCorreo(ivaIncluido)
+      if (r.data?.ok) {
+        const extra = ivaIncluido && r.data.base != null ? ` (Base ${money(r.data.base)} + IVA ${money(r.data.iva)})` : ''
+        alert(`✔ Correo enviado a Johanna (${r.data.destinatario}). Total: ${money(r.data.total)}${extra}`); return
+      }
       abrirCorreoRedactado()  // no configurado
     } catch (e) {
       const msg = e.response?.data?.detail || ''
@@ -135,8 +144,11 @@ export default function Reportes() {
           <p className="rp-sub">Cada contribuyente (desplegable) con los servicios que se le hacen. Marca si se cobra y define el valor; se guarda solo. Puedes agregar rubros que no estén en la lista con "➕ Agregar rubro".</p>
         </div>
         <div className="rp-total-box">
-          <span className="rp-total-lbl">Total a cobrar{search ? ' (filtrado)' : ''}</span>
+          <span className="rp-total-lbl">Total a cobrar{search ? ' (filtrado)' : ''}{ivaIncluido ? ' (IVA incl.)' : ''}</span>
           <span className="rp-total-val">{money(search ? total : totalGeneral)}</span>
+          {ivaIncluido && (() => { const d = desglosa(search ? total : totalGeneral); return (
+            <span className="rp-total-desglose">Base {money(d.base)} + IVA 15% {money(d.iva)}</span>
+          ) })()}
         </div>
       </header>
 
@@ -147,6 +159,10 @@ export default function Reportes() {
         <button className="rp-btn" onClick={() => setColapsados(new Set(grupos.map((g) => g.identificacion)))}>▸ Contraer todo</button>
         <button className="rp-btn" onClick={() => setColapsados(new Set())}>▾ Expandir todo</button>
         <button className="rp-btn" onClick={cargar}>↻ Actualizar</button>
+        <label className="rp-iva-check" title="Si lo marcas, el valor se toma como IVA incluido y se desglosa base imponible + IVA (15%)">
+          <input type="checkbox" checked={ivaIncluido} onChange={(e) => setIvaIncluido(e.target.checked)} />
+          Valores incluyen IVA (15%)
+        </label>
         <button className="rp-btn" onClick={() => exportar('excel')} disabled={!rows.length}>⬇ Excel</button>
         <button className="rp-btn" onClick={() => exportar('pdf')} disabled={!rows.length}>⬇ PDF</button>
         <button className="rp-btn rp-btn-mail" onClick={enviarAJohanna} disabled={!rows.length} title="Enviar el detalle y total a Johanna para facturar en Odoo">✉ Enviar a Johanna (Odoo)</button>
@@ -208,6 +224,7 @@ function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onD
           <span className="rp-caret">{cerrado ? '▸' : '▾'}</span>
           <strong>{g.contribuyente || '—'}</strong>
           <span className="rp-grupo-ruc">{g.identificacion}</span>
+          {g.rows.some((r) => r.hecho) && <span className="rp-lista-badge" title="Tiene declaración/anexo realizado: lista para facturar">✓ Declaración lista</span>}
         </td>
         <td></td>
         <td className="r"><strong>{money(g.subtotal)}</strong></td>

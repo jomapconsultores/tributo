@@ -209,3 +209,10 @@
 }
 .dc-table-sri tr.dc-total .dc-cod { background: #ffbe3d !important; color: #5b4300; }
 .dc-table-sri tr.dc-row-diferido td { background: #fff7e6; font-style: italic; }
+
+/* Barra de conteo de comprobantes del período */
+.dc-conteos {
+  background: #eef5fb; border: 1px solid #cfe2f3; border-radius: 8px;
+  padding: 8px 14px; margin: 10px 0; font-size: .85rem; color: #1a5276;
+}
+.dc-conteos strong { color: #003399; }

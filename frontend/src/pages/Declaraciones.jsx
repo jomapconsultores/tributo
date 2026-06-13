@@ -124,7 +124,7 @@ export default function Declaraciones({ tipo }) {
       await declaracionesAPI.save(selectedClientId, tipo, decl, diferirMeses)
       setDiferirMeses(0)
       await load()
-      let msg = '✔ Declaración guardada.'
+      let msg = '✔ Declaración guardada. Queda LISTA para facturar (aparece marcada en Reportes).'
       if (diferirMeses > 0) {
         const venceMes = (selectedClient.periodo_mes + diferirMeses - 1) % 12 + 1
         const venceAnio = selectedClient.periodo_anio + Math.floor((selectedClient.periodo_mes + diferirMeses - 1) / 12)
@@ -611,6 +611,22 @@ export default function Declaraciones({ tipo }) {
             {' '}En <strong>{nombreMes(previewAplazamiento.venceMes)} {previewAplazamiento.venceAnio}</strong> el
             IVA diferido entrará automáticamente como casillero 480. Cambiá el dropdown a "No aplazar" para deshacer.
           </p>
+        </div>
+      )}
+
+      {decl && (
+        <div className="dc-conteos">
+          🧾 Comprobantes del período —{' '}
+          {isIVA ? (
+            <>
+              Ventas: <strong>{(resumen.num_ventas_ice || 0) + (resumen.num_ventas_iva_solo || 0)}</strong> ·{' '}
+              Compras: <strong>{resumen.num_facturas_ejercicio || 0}</strong> ·{' '}
+              Retenciones: <strong>{resumen.num_retenciones_periodo || 0}</strong> ·{' '}
+              Total: <strong>{(resumen.num_ventas_ice || 0) + (resumen.num_ventas_iva_solo || 0) + (resumen.num_facturas_ejercicio || 0) + (resumen.num_retenciones_periodo || 0)}</strong>
+            </>
+          ) : (
+            <>Registros ICE: <strong>{resumen.num_registros || 0}</strong></>
+          )}
         </div>
       )}
 
