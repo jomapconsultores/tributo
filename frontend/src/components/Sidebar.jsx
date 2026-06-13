@@ -115,8 +115,11 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
                 e.preventDefault()
                 alert(
                   '📥 Bajador-INGRESOS\n\n' +
-                  'Para instalarlo: ARRÁSTRA este botón hacia la barra de marcadores (favoritos) de tu navegador.\n\n' +
-                  'Sirve en el FACTURADOR del SRI (comprobantes emitidos): abre el menú de cada fila y descarga TODOS los XML.'
+                  'Para instalarlo: ARRÁSTRA este botón a la barra de marcadores (favoritos).\n\n' +
+                  'IMPORTANTE: úsalo en la CONSULTA de "Comprobantes electrónicos EMITIDOS"\n' +
+                  '(SRI en línea → Facturación Electrónica → Consultas → Emitidos), donde los XML\n' +
+                  'se bajan con íconos. Ahí pon Fecha inicio/fin, Consultar y toca el marcador.\n\n' +
+                  'En el FACTURADOR (pantalla de emisión) el SRI bloquea la descarga automática del XML.'
                 )
               }}
             >
