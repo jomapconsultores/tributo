@@ -46,13 +46,17 @@ def _filas_y_total(user_id):
     pre-marcando lo relevante (servicios contratados, anexos y declaraciones
     realmente hechas). Devuelve (filas, total_a_cobrar)."""
     sb = get_supabase_client()
-    rows_clients = fetch_all(lambda: sb.table("clients").select("id,identificacion,nombre").eq("user_id", user_id))
+    rows_clients = fetch_all(lambda: sb.table("clients").select("id,identificacion,nombre,iva_incluido").eq("user_id", user_id))
     nombre_por_ruc = {}
     id_to_ruc = {}
+    iva_por_ruc = {}
+    client_id_por_ruc = {}
     for c in rows_clients:
         ident = c["identificacion"]
         nombre_por_ruc.setdefault(ident, c.get("nombre") or "")
         id_to_ruc[c["id"]] = ident
+        iva_por_ruc.setdefault(ident, bool(c.get("iva_incluido")))
+        client_id_por_ruc.setdefault(ident, str(c["id"]))
     all_ids = list(id_to_ruc.keys())
 
     serv_por_ruc = {}
@@ -99,9 +103,11 @@ def _filas_y_total(user_id):
             filas.append({
                 "identificacion": ruc,
                 "contribuyente": nombre_por_ruc[ruc],
+                "client_id": client_id_por_ruc.get(ruc),
+                "iva_incluido": iva_por_ruc.get(ruc, False),
                 "concepto": concepto,
                 "relevante": relevante,
-                "hecho": hecho,   # declaración/anexo realmente realizado → "lista para facturar"
+                "hecho": hecho,
                 "personalizado": personalizado,
                 "cobrar": cobrar,
                 "valor": round(valor, 2),
@@ -113,6 +119,16 @@ def _filas_y_total(user_id):
         for g in sorted(custom_por_ruc.get(ruc, []), key=lambda x: x["producto"].upper()):
             _fila(g["producto"], False, False, True, g)
     return filas, round(total, 2)
+
+
+@router.put("/cliente-iva/{client_id}")
+async def set_cliente_iva(client_id: str, iva_incluido: bool, user_id: str = Depends(get_current_user)):
+    """Guarda si los valores de un contribuyente ya incluyen IVA."""
+    sb = get_supabase_client()
+    res = sb.table("clients").update({"iva_incluido": iva_incluido}).eq("id", client_id).eq("user_id", user_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    return {"ok": True}
 
 
 @router.get("/cobros")

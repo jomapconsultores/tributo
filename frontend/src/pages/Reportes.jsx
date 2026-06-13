@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { reportesAPI, downloadBlob } from '../services/api'
 import './Reportes.css'
 
@@ -11,8 +11,9 @@ export default function Reportes() {
   const [search, setSearch] = useState('')
   const [guardando, setGuardando] = useState('')
   const [colapsados, setColapsados] = useState(() => new Set())
-  // "Valores incluyen IVA (15%)": al marcar, se desglosa base imponible + IVA.
   const [ivaIncluido, setIvaIncluido] = useState(() => localStorage.getItem('rpIvaIncluido') === '1')
+  const [ivaClientes, setIvaClientes] = useState({}) // { client_id: bool }
+  const savingIva = useRef({})
   useEffect(() => { try { localStorage.setItem('rpIvaIncluido', ivaIncluido ? '1' : '0') } catch { /* ignore */ } }, [ivaIncluido])
   const desglosa = (t) => { const base = Math.round((t / 1.15) * 100) / 100; return { base, iva: Math.round((t - base) * 100) / 100 } }
 
@@ -20,7 +21,14 @@ export default function Reportes() {
     setLoading(true); setError('')
     try {
       const r = await reportesAPI.cobros()
-      setRows(r.data?.data || [])
+      const data = r.data?.data || []
+      setRows(data)
+      // Inicializar iva por client_id desde los datos
+      const ivaMap = {}
+      for (const row of data) {
+        if (row.client_id) ivaMap[row.client_id] = row.iva_incluido || false
+      }
+      setIvaClientes(ivaMap)
     } catch (e) {
       setError(e.response?.data?.detail || e.message)
     } finally { setLoading(false) }
@@ -46,6 +54,19 @@ export default function Reportes() {
       if (guardar) guardarFila(next[i])
       return next
     })
+  }
+
+  const toggleIvaCliente = async (clientId, actual) => {
+    if (savingIva.current[clientId]) return
+    savingIva.current[clientId] = true
+    const nuevo = !actual
+    setIvaClientes((prev) => ({ ...prev, [clientId]: nuevo }))
+    try {
+      await reportesAPI.setClienteIva(clientId, nuevo)
+    } catch (e) {
+      setIvaClientes((prev) => ({ ...prev, [clientId]: actual })) // revertir si falla
+      alert('No se pudo guardar: ' + (e.response?.data?.detail || e.message))
+    } finally { savingIva.current[clientId] = false }
   }
 
   const agregarRubro = async (ident, contribuyente) => {
@@ -80,7 +101,12 @@ export default function Reportes() {
   const grupos = useMemo(() => {
     const m = new Map()
     for (const r of filtradas) {
-      if (!m.has(r.identificacion)) m.set(r.identificacion, { identificacion: r.identificacion, contribuyente: r.contribuyente, rows: [] })
+      if (!m.has(r.identificacion)) m.set(r.identificacion, {
+        identificacion: r.identificacion,
+        contribuyente: r.contribuyente,
+        client_id: r.client_id,
+        rows: [],
+      })
       m.get(r.identificacion).rows.push(r)
     }
     const out = [...m.values()]
@@ -192,12 +218,16 @@ export default function Reportes() {
             <tbody>
               {grupos.map((g) => {
                 const cerrado = colapsados.has(g.identificacion)
+                const ivaGrupo = g.client_id ? (ivaClientes[g.client_id] ?? false) : false
                 return (
                   <Grupo key={g.identificacion} g={g} cerrado={cerrado}
                     onToggle={() => toggleGrupo(g.identificacion)}
                     rows={rows} setFila={setFila} guardando={guardando}
                     onAddRubro={() => agregarRubro(g.identificacion, g.contribuyente)}
-                    onDelRubro={borrarRubro} money={money} />
+                    onDelRubro={borrarRubro} money={money}
+                    ivaIncluido={ivaGrupo}
+                    onToggleIva={g.client_id ? () => toggleIvaCliente(g.client_id, ivaGrupo) : null}
+                    desglosa={desglosa} />
                 )
               })}
             </tbody>
@@ -216,18 +246,29 @@ export default function Reportes() {
   )
 }
 
-function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onDelRubro, money }) {
+function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onDelRubro, money, ivaIncluido, onToggleIva, desglosa }) {
+  const d = ivaIncluido && g.subtotal > 0 ? desglosa(g.subtotal) : null
   return (
     <>
-      <tr className="rp-grupo-head" onClick={onToggle}>
-        <td>
+      <tr className="rp-grupo-head">
+        <td onClick={onToggle} style={{ cursor: 'pointer' }}>
           <span className="rp-caret">{cerrado ? '▸' : '▾'}</span>
           <strong>{g.contribuyente || '—'}</strong>
           <span className="rp-grupo-ruc">{g.identificacion}</span>
           {g.rows.some((r) => r.hecho) && <span className="rp-lista-badge" title="Tiene declaración/anexo realizado: lista para facturar">✓ Declaración lista</span>}
         </td>
-        <td></td>
-        <td className="r"><strong>{money(g.subtotal)}</strong></td>
+        <td className="c">
+          {onToggleIva && (
+            <label className="rp-iva-toggle" title={ivaIncluido ? 'Valores incluyen IVA — clic para desactivar' : 'Clic para marcar que los valores incluyen IVA (15%)'}>
+              <input type="checkbox" checked={ivaIncluido} onChange={onToggleIva} onClick={(e) => e.stopPropagation()} />
+              <span>+IVA</span>
+            </label>
+          )}
+        </td>
+        <td className="r">
+          <strong>{money(g.subtotal)}</strong>
+          {d && <div className="rp-iva-desglose">Base {money(d.base)} · IVA {money(d.iva)}</div>}
+        </td>
         <td></td>
       </tr>
       {!cerrado && g.rows.map((r) => {

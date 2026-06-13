@@ -24,6 +24,7 @@ class ClientUpdate(BaseModel):
     periodo_anio: Optional[int] = None
     tipo_identificacion: Optional[str] = None
     notas: Optional[str] = None
+    iva_incluido: Optional[bool] = None
 
 
 @router.get("/")

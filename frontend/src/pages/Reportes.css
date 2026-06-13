@@ -40,9 +40,12 @@
 .rp-table tfoot td { background: #f6f8fb; border-top: 2px solid #003399; font-size: 0.92rem; }
 
 /* Grupos desplegables por contribuyente */
-.rp-grupo-head { cursor: pointer; background: #eef2f9; }
+.rp-grupo-head { background: #eef2f9; }
 .rp-grupo-head:hover { background: #e4ebf5; }
 .rp-grupo-head td { border-top: 2px solid #cdd8e6; color: #1a3d6b; }
+.rp-iva-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: .72rem; font-weight: 700; color: #1a5276; cursor: pointer; background: #d6eaf8; border-radius: 5px; padding: 2px 6px; }
+.rp-iva-toggle input { accent-color: #1a5276; }
+.rp-iva-desglose { font-size: .72rem; color: #0369a1; font-weight: 400; margin-top: 2px; }
 .rp-caret { display: inline-block; width: 16px; color: #003399; font-weight: 700; }
 .rp-grupo-ruc { font-family: monospace; font-size: 0.72rem; color: #6b7888; margin-left: 8px; }
 .rp-concepto { padding-left: 24px; }
