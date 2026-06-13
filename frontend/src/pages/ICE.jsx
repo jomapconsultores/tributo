@@ -18,6 +18,7 @@ import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import BulkBar from '../components/BulkBar'
 import ClientSwitcher from '../components/ClientSwitcher'
+import ClaveRevealPanel from '../components/ClaveRevealPanel'
 import './ICE.css'
 
 import { fmtMoney as money } from '../utils/format'
@@ -269,6 +270,8 @@ export default function ICE() {
       </header>
 
       <ClientSwitcher onNewClient={openNewClient} />
+
+      <ClaveRevealPanel clientId={selectedClientId} />
 
       {error && <div className="ice-error">⚠ {error}</div>}
 

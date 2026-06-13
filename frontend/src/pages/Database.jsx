@@ -7,6 +7,7 @@ import UploadPanel from '../components/UploadPanel'
 import NewClientModal from '../components/NewClientModal'
 import ClientNavigator from '../components/ClientNavigator'
 import ClientSwitcher from '../components/ClientSwitcher'
+import ClaveRevealPanel from '../components/ClaveRevealPanel'
 import { periodoLargo } from '../utils/periodo'
 import { fmtMoney } from '../utils/format'
 import './Database.css'
@@ -180,6 +181,8 @@ export default function Database() {
       </header>
 
       <ClientSwitcher onNewClient={openNewClient} />
+
+      <ClaveRevealPanel clientId={selectedClientId} />
 
       {error && <div className="db-error">⚠ {error}</div>}
 
