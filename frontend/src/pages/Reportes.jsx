@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { reportesAPI, downloadBlob } from '../services/api'
 import './Reportes.css'
 
-const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
+import { fmtMoney as money } from '../utils/format'
 
 export default function Reportes() {
   const [rows, setRows] = useState([])

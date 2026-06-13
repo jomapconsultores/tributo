@@ -17,7 +17,7 @@ import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import './IngresosIva.css'
 
-const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
+import { fmtMoney as money } from '../utils/format'
 
 export default function IngresosIva() {
   const { openNewClient } = useOutletContext()

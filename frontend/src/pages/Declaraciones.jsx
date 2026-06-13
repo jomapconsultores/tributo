@@ -6,7 +6,7 @@ import { periodoLargo, nombreMes } from '../utils/periodo'
 import ClientSwitcher from '../components/ClientSwitcher'
 import './Declaraciones.css'
 
-const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
+import { fmtMoney as money } from '../utils/format'
 
 // Casilleros TOTAL (resaltados en dorado, igual que el formulario oficial del SRI)
 const TOTALES_SRI = new Set([

@@ -8,6 +8,7 @@ import NewClientModal from '../components/NewClientModal'
 import ClientNavigator from '../components/ClientNavigator'
 import ClientSwitcher from '../components/ClientSwitcher'
 import { periodoLargo } from '../utils/periodo'
+import { fmtMoney } from '../utils/format'
 import './Database.css'
 
 export default function Database() {
@@ -184,7 +185,7 @@ export default function Database() {
 
       <div className="db-stats">
         <div className="stat-card"><span className="num">{invoices.length}</span><span className="lbl">Facturas</span></div>
-        <div className="stat-card"><span className="num">${totalAmount.toFixed(2)}</span><span className="lbl">Monto total</span></div>
+        <div className="stat-card"><span className="num">{fmtMoney(totalAmount)}</span><span className="lbl">Monto total</span></div>
         <div className="stat-card warn"><span className="num">{unclassified}</span><span className="lbl">Sin clasificar</span></div>
         <div className="stat-card yanbal"><span className="num">{yanbalCount}</span><span className="lbl">Yanbal (desc.)</span></div>
       </div>

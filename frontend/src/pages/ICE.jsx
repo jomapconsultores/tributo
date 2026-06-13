@@ -20,7 +20,7 @@ import BulkBar from '../components/BulkBar'
 import ClientSwitcher from '../components/ClientSwitcher'
 import './ICE.css'
 
-const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
+import { fmtMoney as money } from '../utils/format'
 const n4 = (v) => (parseFloat(v) || 0).toFixed(4)
 
 export default function ICE() {

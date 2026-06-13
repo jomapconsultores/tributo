@@ -9,7 +9,7 @@ const GASTOS_PERSONALES = [
   'TURISMO', 'ARTE Y CULTURA', 'VARIOS',
 ]
 
-const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
+import { fmtMoney as money } from '../utils/format'
 
 // Filtro por tipo de valor: muestra solo facturas con monto > 0 en esa columna.
 const VALOR_OPCIONES = [

@@ -4,7 +4,7 @@ import { esPersonal, GASTOS_PERSONALES } from '../utils/categorias'
 import { classificationAPI } from '../services/api'
 import './InvoiceTabs.css'
 
-const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
+import { fmtMoney as money } from '../utils/format'
 
 // Columnas del RESUMEN, en el mismo orden que la hoja RESUMEN del Excel.
 const RESUMEN_COLS = [

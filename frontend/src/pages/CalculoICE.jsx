@@ -7,7 +7,7 @@ import { calcRow, ivaRate, CATEGORIAS, CAT_LABEL } from '../utils/iceCalc'
 import ClientSwitcher from '../components/ClientSwitcher'
 import './CalculoICE.css'
 
-const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
+import { fmtMoney as money } from '../utils/format'
 
 const ANIOS = ['2021', '2022', '2023', '2024', '2025', '2026']
 

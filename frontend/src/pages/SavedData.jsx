@@ -5,7 +5,7 @@ import { nombreMes } from '../utils/periodo'
 import { infoDeclaracion } from '../utils/declaracionSRI'
 import './SavedData.css'
 
-const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
+import { fmtMoney as money } from '../utils/format'
 const DIAS_DECL = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28]
 const fechaCorta = (f) => `${String(f.getDate()).padStart(2, '0')}/${String(f.getMonth() + 1).padStart(2, '0')}/${f.getFullYear()}`
 

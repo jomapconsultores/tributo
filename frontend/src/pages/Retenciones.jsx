@@ -20,8 +20,7 @@ import RetentionReport from '../components/RetentionReport'
 import ClientSwitcher from '../components/ClientSwitcher'
 import './Retenciones.css'
 
-const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
-const pct = (v) => `${(parseFloat(v) || 0).toFixed(2)}%`
+import { fmtMoney as money, fmtPct as pct } from '../utils/format'
 
 export default function Retenciones() {
   const { openNewClient } = useOutletContext()
