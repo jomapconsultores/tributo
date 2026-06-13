@@ -1,180 +1,47 @@
-.ing-iva {
-  padding: 16px 24px;
-  max-width: 1400px;
-  margin: 0 auto;
-}
-.ing-iva-head {
-  margin: 12px 0 16px;
-}
-.ing-iva-head h2 {
-  margin: 0 0 4px;
-  font-size: 1.25rem;
-  color: #1e293b;
-}
-.ing-iva-sub {
-  margin: 0;
-  color: #64748b;
-  font-size: 0.85rem;
-  max-width: 880px;
-}
-.ing-iva-empty, .ing-iva-empty-tab {
-  text-align: center;
-  padding: 40px 20px;
-  color: #64748b;
-  background: #f8fafc;
-  border-radius: 8px;
-}
-.ing-iva-loading {
-  text-align: center;
-  padding: 30px;
-  color: #64748b;
-}
+/* ===========================================================
+   Ingresos IVA — diseño profesional y compacto (paleta SRI)
+   =========================================================== */
+.ing-iva { padding: 20px 24px; max-width: 1280px; margin: 0 auto; color: #1f2a3a; }
+.ing-iva-head { border-bottom: 2px solid #003399; padding-bottom: 10px; margin-bottom: 14px; }
+.ing-iva-head h2 { margin: 0 0 3px; font-size: 1.2rem; color: #1a3d6b; font-weight: 700; letter-spacing: .2px; }
+.ing-iva-sub { margin: 0; color: #6b7888; font-size: 0.8rem; max-width: 880px; line-height: 1.4; }
+.ing-iva-empty, .ing-iva-empty-tab { text-align: center; padding: 34px 20px; color: #6b7888; background: #fff; border: 1px solid #e8edf3; border-radius: 10px; font-size: .88rem; }
+.ing-iva-loading { text-align: center; padding: 28px; color: #6b7888; }
 
-.ing-iva-drop {
-  border: 2px dashed #cbd5e1;
-  border-radius: 8px;
-  padding: 20px;
-  text-align: center;
-  margin-bottom: 14px;
-  background: #f8fafc;
-  transition: border-color 0.15s, background 0.15s;
-}
-.ing-iva-drop.drag-active {
-  border-color: #0e7c4a;
-  background: #ecfdf5;
-}
-.drop-icon {
-  font-size: 1.5rem;
-  margin-right: 8px;
-}
-.ing-iva-pick {
-  color: #0e7c4a;
-  font-weight: 600;
-  text-decoration: underline;
-  cursor: pointer;
-  margin-left: 4px;
-}
-.ing-iva-busy {
-  margin-top: 8px;
-  color: #0e7c4a;
-  font-size: 0.85rem;
-}
-.ing-iva-error {
-  background: #fef2f2;
-  color: #b91c1c;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  margin-bottom: 10px;
-}
+.ing-iva-drop { border: 2px dashed #cdd8e6; border-radius: 10px; padding: 18px; text-align: center; margin-bottom: 12px; background: #f9fbfe; transition: border-color 0.15s, background 0.15s; }
+.ing-iva-drop.drag-active { border-color: #003399; background: #eef4fc; }
+.drop-icon { font-size: 1.4rem; margin-right: 8px; }
+.ing-iva-pick { color: #003399; font-weight: 600; text-decoration: underline; cursor: pointer; margin-left: 4px; }
+.ing-iva-busy { margin-top: 8px; color: #1a3d6b; font-size: 0.82rem; }
+.ing-iva-error { background: #fef2f2; color: #b91c1c; padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; margin-bottom: 10px; border: 1px solid #fecaca; }
 
-.ing-iva-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-.ing-iva-search {
-  flex: 1;
-  padding: 7px 10px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  font-size: 0.88rem;
-}
-.ing-iva-search:focus { outline: none; border-color: #0e7c4a; }
-.ing-iva-count {
-  color: #64748b;
-  font-size: 0.83rem;
-}
-.ing-iva-clear {
-  background: white;
-  border: 1px solid #dc2626;
-  color: #dc2626;
-  padding: 6px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.83rem;
-}
-.ing-iva-clear:hover { background: #fef2f2; }
+.ing-iva-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.ing-iva-search { flex: 1; min-width: 200px; padding: 7px 10px; border: 1px solid #cdd8e6; border-radius: 7px; font-size: 0.84rem; }
+.ing-iva-search:focus { outline: none; border-color: #003399; box-shadow: 0 0 0 2px rgba(0,51,153,.15); }
+.ing-iva-count { color: #6b7888; font-size: 0.8rem; }
+.ing-iva-clear { background: #fff; border: 1px solid #cdd8e6; color: #1a3d6b; padding: 6px 12px; border-radius: 7px; cursor: pointer; font-size: 0.8rem; }
+.ing-iva-clear:hover { background: #f4f8fc; }
 
-.ing-iva-tablewrap {
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  overflow-x: auto;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-}
-.ing-iva-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.83rem;
-}
-.ing-iva-table th, .ing-iva-table td {
-  padding: 7px 10px;
-  border-bottom: 1px solid #f1f5f9;
-}
-.ing-iva-table thead {
-  background: #f1f5f9;
-}
-.ing-iva-table th {
-  text-align: left;
-  font-weight: 600;
-  color: #475569;
-}
-.ing-iva-table th.r, .ing-iva-table td.r {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-.ing-iva-table td.total {
-  font-weight: 600;
-  color: #0e7c4a;
-}
-.ing-iva-table .mono {
-  font-family: 'Courier New', monospace;
-  font-size: 0.8rem;
-}
-.ing-iva-table tbody tr:hover { background: #f8fafc; }
+.ing-iva-tablewrap { background: #fff; border: 1px solid #e8edf3; border-radius: 10px; overflow-x: auto; box-shadow: 0 1px 2px rgba(16,40,80,.04); }
+.ing-iva-table { width: 100%; border-collapse: collapse; font-size: 0.81rem; }
+.ing-iva-table th, .ing-iva-table td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; }
+.ing-iva-table thead { background: #f6f8fb; }
+.ing-iva-table th { text-align: left; font-weight: 700; color: #6b7888; font-size: .68rem; text-transform: uppercase; letter-spacing: .3px; }
+.ing-iva-table th.r, .ing-iva-table td.r { text-align: right; font-variant-numeric: tabular-nums; }
+.ing-iva-table td.total { font-weight: 700; color: #1e8449; }
+.ing-iva-table .mono { font-family: 'Courier New', monospace; font-size: 0.78rem; }
+.ing-iva-table tbody tr:hover { background: #f6f9fd; }
 .cliente-name { display: block; }
-.cliente-id {
-  display: block;
-  font-family: 'Courier New', monospace;
-  font-size: 0.75rem;
-  color: #94a3b8;
-}
-.del-btn {
-  border: 1px solid #cbd5e1;
-  background: white;
-  color: #64748b;
-  border-radius: 4px;
-  width: 24px;
-  height: 24px;
-  cursor: pointer;
-  font-size: 0.8rem;
-}
-.del-btn:hover {
-  border-color: #dc2626;
-  color: #dc2626;
-  background: #fef2f2;
-}
-.ing-iva-table tfoot .totales td {
-  background: #f8fafc;
-  font-weight: 600;
-  border-top: 2px solid #cbd5e1;
-  border-bottom: none;
-  color: #1e293b;
-}
-.ing-iva-table tfoot .totales td.total { color: #0e7c4a; }
+.cliente-id { display: block; font-family: 'Courier New', monospace; font-size: 0.73rem; color: #94a3b8; }
+.del-btn { border: 1px solid #cdd8e6; background: #fff; color: #6b7888; border-radius: 5px; width: 24px; height: 24px; cursor: pointer; font-size: 0.8rem; }
+.del-btn:hover { border-color: #dc2626; color: #dc2626; background: #fef2f2; }
+.ing-iva-table tfoot .totales td { background: #f6f8fb; font-weight: 700; border-top: 2px solid #cdd8e6; border-bottom: none; color: #1a3d6b; }
+.ing-iva-table tfoot .totales td.total { color: #1e8449; }
 
-/* Resumen de ingresos — tarjetas compactas y ordenadas */
-.ing-iva-resumen {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 10px; margin: 12px 0;
-}
-.ing-card {
-  background: #fff; border: 1px solid #e3e9f0; border-left: 3px solid #1a5276;
-  border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px;
-}
-.ing-card-num { font-size: 1.05rem; font-weight: 700; color: #003399; }
-.ing-card-lbl { font-size: .72rem; color: #6b7a8a; text-transform: uppercase; letter-spacing: .3px; }
+/* Resumen en tarjetas — compacto y esquematizado */
+.ing-iva-resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 12px 0; }
+.ing-card { background: #fff; border: 1px solid #e8edf3; border-left: 3px solid #003399; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.ing-card-num { font-size: 1.05rem; font-weight: 700; color: #003399; font-variant-numeric: tabular-nums; }
+.ing-card-lbl { font-size: .7rem; color: #6b7888; text-transform: uppercase; letter-spacing: .3px; }
 .ing-card.total { border-left-color: #1e8449; background: #f6fcf8; }
 .ing-card.total .ing-card-num { color: #1e8449; }
