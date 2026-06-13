@@ -107,17 +107,17 @@ export default function Declaraciones({ tipo }) {
     setCreds(null); setClaveSRI('')
     if (!selectedClientId) return
     declaracionesAPI.credenciales(selectedClientId)
-      .then((r) => setCreds(r.data))
+      .then(async (r) => {
+        setCreds(r.data)
+        if (r.data?.es_admin && r.data?.credencial?.id) {
+          try {
+            const rev = await credentialsAPI.reveal(r.data.credencial.id)
+            setClaveSRI(rev.data?.password || '')
+          } catch { /* silencioso */ }
+        }
+      })
       .catch(() => setCreds(null))
   }, [selectedClientId])
-
-  const revelarClaveSRI = async () => {
-    if (!creds?.credencial?.id) return
-    try {
-      const r = await credentialsAPI.reveal(creds.credencial.id)
-      setClaveSRI(r.data?.password || '')
-    } catch (e) { alert('No se pudo revelar la clave: ' + (e.response?.data?.detail || e.message)) }
-  }
 
   const guardar = async () => {
     try {
@@ -292,10 +292,9 @@ export default function Declaraciones({ tipo }) {
           )}
           {creds.es_admin && creds.credencial && (
             <p className="dc-credit-help" style={{ marginTop: 6 }}>
-              🔐 Portal SRI · usuario: <strong>{creds.credencial.username || '—'}</strong>{' '}
-              {claveSRI
-                ? <>· clave: <code>{claveSRI}</code> <button className="dc-btn-mini" onClick={() => setClaveSRI('')} title="Ocultar">🙈</button></>
-                : <button className="dc-btn-mini" onClick={revelarClaveSRI} title="Revelar clave (auditado)">👁 Revelar clave</button>}
+              🔐 Portal SRI · usuario: <strong>{creds.credencial.username || '—'}</strong>
+              {claveSRI && <> · clave: <code>{claveSRI}</code></>}
+              {!claveSRI && <span style={{ color: '#94a3b8', fontSize: 12, marginLeft: 6 }}>cargando…</span>}
             </p>
           )}
         </div>
