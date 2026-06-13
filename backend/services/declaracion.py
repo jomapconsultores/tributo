@@ -128,15 +128,16 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     n_retenciones = sum(1 for r in ret_ok if _f(r.get("ret_iva")) > 0)
 
     # ── Factor de proporcionalidad del crédito tributario ────────────────
-    # Cuando hay ventas exentas / no objeto, solo una PROPORCIÓN del IVA de
-    # compras es crédito tributario; el resto NO es acreditable (va al gasto).
-    # Factor = ventas con derecho a crédito / total de ventas.
-    ventas_con_derecho = t_base_15 + t_base_5 + t_base_0
-    ventas_totales_factor = ventas_con_derecho + t_exento + t_no_obj
+    # Es la RELACIÓN entre los ingresos con tarifa 15% (que dan derecho a
+    # crédito) y el total 15% + 0%. Solo esa proporción del IVA de compras es
+    # crédito tributario; el resto NO es acreditable (va al gasto).
+    #   factor = (ventas 15% + 5%) / (ventas 15% + 5% + ventas 0%)
+    ventas_gravadas = t_base_15 + t_base_5          # tarifa distinta de cero (dan derecho)
+    ventas_factor_total = ventas_gravadas + t_base_0  # gravadas + tarifa 0%
     if factor_prop is not None:
         factor = max(0.0, min(1.0, _f(factor_prop)))
-    elif ventas_totales_factor > 0:
-        factor = ventas_con_derecho / ventas_totales_factor
+    elif ventas_factor_total > 0:
+        factor = ventas_gravadas / ventas_factor_total
     else:
         factor = 1.0
     factor = round(factor, 4)
@@ -231,7 +232,7 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
                           iva_diferido_actual))
 
     # Factor de proporcionalidad y crédito por adquisiciones
-    filas.append(fila("RESULTADO", "563", f"Factor de proporcionalidad para crédito tributario ({factor:.2%})", round(factor, 4)))
+    filas.append(fila("RESULTADO", "563", f"Factor de proporcionalidad — ventas 15% / (15% + 0%) ({factor:.2%})", round(factor, 4)))
     filas.append(fila("RESULTADO", "564", "Crédito tributario aplicable en este período (IVA compras × factor)",
                       credito_adq_aplicable, c_n_base_15 + c_n_base_5))
     if iva_no_acreditable > 0:

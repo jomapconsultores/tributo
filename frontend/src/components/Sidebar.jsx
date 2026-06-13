@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useClients } from '../context/ClientContext'
 import { useAccess, homeFor } from '../context/AccessContext'
 import bajadorBookmarklet from '../utils/bajador-facturas.bookmarklet.txt?raw'
+import bajadorIngresosBookmarklet from '../utils/bajador-ingresos.bookmarklet.txt?raw'
 import './Sidebar.css'
 
 export default function Sidebar({ onNewClient, onLogout, userEmail }) {
@@ -43,6 +44,9 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   // Asi el marcador siempre guarda el bookmarklet y no la URL de la pagina.
   const setBajadorHref = (el) => {
     if (el) el.setAttribute('href', bajadorBookmarklet.trim())
+  }
+  const setBajadorIngresosHref = (el) => {
+    if (el) el.setAttribute('href', bajadorIngresosBookmarklet.trim())
   }
 
   const path = location.pathname
@@ -102,6 +106,22 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
               <span className="nav-ico">📈</span>
               <span>Ingresos IVA</span>
             </button>
+            <a
+              ref={setBajadorIngresosHref}
+              className="nav-item submodule bajador-item"
+              draggable="true"
+              title="Arrástralo a tu barra de marcadores para instalarlo"
+              onClick={(e) => {
+                e.preventDefault()
+                alert(
+                  '📥 Bajador-INGRESOS\n\n' +
+                  'Para instalarlo: ARRÁSTRA este botón hacia la barra de marcadores (favoritos) de tu navegador.\n\n' +
+                  'Sirve en el FACTURADOR del SRI (comprobantes emitidos): abre el menú de cada fila y descarga TODOS los XML.'
+                )
+              }}
+            >
+              <span className="nav-ico">📥</span><span>Bajador-INGRESOS</span>
+            </a>
           </div>
         )}
 
@@ -124,18 +144,18 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
               <span>Cálculo ICE</span>
             </button>
             <button
-              className={`nav-item submodule ${isAnexo ? 'active' : ''}`}
-              onClick={() => navigate('/anexo-pvp-ice')}
-            >
-              <span className="nav-ico">📄</span>
-              <span>Anexo PVP+ICE</span>
-            </button>
-            <button
               className={`nav-item submodule ${isIceXml ? 'active' : ''}`}
               onClick={() => navigate('/ice')}
             >
               <span className="nav-ico">🥃</span>
               <span>ICE - XML</span>
+            </button>
+            <button
+              className={`nav-item submodule ${isAnexo ? 'active' : ''}`}
+              onClick={() => navigate('/anexo-pvp-ice')}
+            >
+              <span className="nav-ico">📄</span>
+              <span>Anexo PVP+ICE</span>
             </button>
             <button
               className={`nav-item submodule ${isCatalogo ? 'active' : ''}`}
@@ -210,13 +230,13 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
               onClick={(e) => {
                 e.preventDefault()
                 alert(
-                  '📥 Bajador-XML\n\n' +
+                  '📥 Bajador-GASTOS\n\n' +
                   'Para instalarlo: ARRÁSTRA este botón hacia la barra de marcadores (favoritos) de tu navegador.\n\n' +
-                  'Luego, dentro del portal del SRI, haz clic en el marcador para descargar TODOS los XML (todas las páginas).'
+                  'Sirve en el portal SRI de comprobantes RECIBIDOS: descarga TODOS los XML (todas las páginas).'
                 )
               }}
             >
-              <span className="nav-ico">📥</span><span>Bajador-XML</span>
+              <span className="nav-ico">📥</span><span>Bajador-GASTOS</span>
             </a>
           </div>
         )}

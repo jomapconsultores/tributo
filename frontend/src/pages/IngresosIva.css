@@ -164,3 +164,17 @@
   color: #1e293b;
 }
 .ing-iva-table tfoot .totales td.total { color: #0e7c4a; }
+
+/* Resumen de ingresos — tarjetas compactas y ordenadas */
+.ing-iva-resumen {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px; margin: 12px 0;
+}
+.ing-card {
+  background: #fff; border: 1px solid #e3e9f0; border-left: 3px solid #1a5276;
+  border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px;
+}
+.ing-card-num { font-size: 1.05rem; font-weight: 700; color: #003399; }
+.ing-card-lbl { font-size: .72rem; color: #6b7a8a; text-transform: uppercase; letter-spacing: .3px; }
+.ing-card.total { border-left-color: #1e8449; background: #f6fcf8; }
+.ing-card.total .ing-card-num { color: #1e8449; }

@@ -171,6 +171,18 @@ export default function IngresosIva() {
         )}
       </div>
 
+      {rows.length > 0 && (
+        <div className="ing-iva-resumen">
+          <div className="ing-card"><span className="ing-card-num">{filtered.length}</span><span className="ing-card-lbl">Facturas</span></div>
+          <div className="ing-card"><span className="ing-card-num">{money(totales.base_15)}</span><span className="ing-card-lbl">Base 15%</span></div>
+          <div className="ing-card"><span className="ing-card-num">{money(totales.iva_15)}</span><span className="ing-card-lbl">IVA 15%</span></div>
+          <div className="ing-card"><span className="ing-card-num">{money(totales.base_5 + totales.iva_5)}</span><span className="ing-card-lbl">5% (base+IVA)</span></div>
+          <div className="ing-card"><span className="ing-card-num">{money(totales.base_0)}</span><span className="ing-card-lbl">Base 0%</span></div>
+          <div className="ing-card"><span className="ing-card-num">{money(totales.exento_iva + totales.no_objeto_iva)}</span><span className="ing-card-lbl">Exento / No obj.</span></div>
+          <div className="ing-card total"><span className="ing-card-num">{money(totales.importe_total)}</span><span className="ing-card-lbl">Total facturado</span></div>
+        </div>
+      )}
+
       {loading ? (
         <div className="ing-iva-loading">Cargando…</div>
       ) : rows.length === 0 ? (

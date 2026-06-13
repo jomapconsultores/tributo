@@ -428,7 +428,7 @@ export default function Declaraciones({ tipo }) {
           <p className="dc-credit-help">
             {factorProp != null
               ? 'Factor ingresado manualmente.'
-              : 'Calculado de las ventas: proporción que da derecho a crédito (gravadas + 0%) sobre el total. Si hay ventas exentas/no objeto, parte del IVA de compras NO es crédito.'}
+              : 'Relación entre ingresos 15% y (15% + 0%). Solo esa proporción del IVA de compras es crédito; el resto NO es acreditable (va al gasto). Si solo hay ventas 15%, el factor es 100%.'}
           </p>
           <div className="dc-credit-grid">
             <div className="dc-credit-field">
