@@ -42,6 +42,11 @@ export default function Declaraciones({ tipo }) {
   const [editV5, setEditV5] = useState(false)
   const [editV0, setEditV0] = useState(false)
 
+  // Factor de proporcionalidad del crédito IVA: null = auto (calculado de las
+  // ventas); número 0..1 = override manual.
+  const [factorProp, setFactorProp] = useState(null)
+  const [editFactor, setEditFactor] = useState(false)
+
   // Rebajas y exenciones ICE: null = auto (precalculado del módulo Rebajas y
   // exenciones); número = override manual. Mismo patrón que 605/606.
   const [rebajaIce, setRebajaIce] = useState(null)
@@ -72,6 +77,7 @@ export default function Declaraciones({ tipo }) {
       if (ventas15 != null) params.ventas_15 = ventas15
       if (ventas5 != null) params.ventas_5 = ventas5
       if (ventas0 != null) params.ventas_0 = ventas0
+      if (factorProp != null) params.factor_prop = factorProp
       if (diferirMeses > 0) params.diferir_meses = diferirMeses
       const [c, s, a] = await Promise.all([
         declaracionesAPI.calcular(selectedClientId, tipo, params),
@@ -86,7 +92,7 @@ export default function Declaraciones({ tipo }) {
     } catch (e) {
       alert('Error: ' + (e.response?.data?.detail || e.message))
     } finally { setLoading(false) }
-  }, [selectedClientId, tipo, credAdq, credRet, rebajaIce, exencionIce, marcaReb, marcaExe, ventas15, ventas5, ventas0, diferirMeses, isIVA])
+  }, [selectedClientId, tipo, credAdq, credRet, rebajaIce, exencionIce, marcaReb, marcaExe, ventas15, ventas5, ventas0, factorProp, diferirMeses, isIVA])
 
   useEffect(() => { load() }, [load])
 
@@ -188,6 +194,7 @@ export default function Declaraciones({ tipo }) {
     if (ventas15 != null) ov.ventas_15 = ventas15
     if (ventas5 != null) ov.ventas_5 = ventas5
     if (ventas0 != null) ov.ventas_0 = ventas0
+    if (factorProp != null) ov.factor_prop = factorProp
     return ov
   }
 
@@ -386,7 +393,7 @@ export default function Declaraciones({ tipo }) {
               )}
             </div>
             <div className="dc-credit-field">
-              <label>606 — Crédito por retenciones</label>
+              <label>607 — Crédito por retenciones</label>
               {editRet ? (
                 <div className="dc-credit-edit">
                   <input
@@ -403,6 +410,48 @@ export default function Declaraciones({ tipo }) {
                   {credRet != null && <button className="dc-btn-mini" onClick={() => limpiarOverride('ret')} title="Volver al automático">↺</button>}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Factor de proporcionalidad del crédito tributario (solo IVA) */}
+      {isIVA && decl && (
+        <div className="dc-card-box dc-credit-box">
+          <h2 className="dc-h2">⚖️ Factor de proporcionalidad del crédito IVA</h2>
+          <p className="dc-credit-help">
+            {factorProp != null
+              ? 'Factor ingresado manualmente.'
+              : 'Calculado de las ventas: proporción que da derecho a crédito (gravadas + 0%) sobre el total. Si hay ventas exentas/no objeto, parte del IVA de compras NO es crédito.'}
+          </p>
+          <div className="dc-credit-grid">
+            <div className="dc-credit-field">
+              <label>Factor de proporcionalidad (0 a 1)</label>
+              {editFactor ? (
+                <div className="dc-credit-edit">
+                  <input type="number" step="0.0001" min="0" max="1" autoFocus
+                    defaultValue={resumen.factor_proporcionalidad ?? 1}
+                    onBlur={(e) => { const v = parseFloat(e.target.value); setFactorProp(isNaN(v) ? 0 : Math.max(0, Math.min(1, v))); setEditFactor(false) }}
+                    onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
+                </div>
+              ) : (
+                <div className="dc-credit-value">
+                  <strong>{((resumen.factor_proporcionalidad ?? 1) * 100).toFixed(2)}%</strong>
+                  <button className="dc-btn-mini" onClick={() => setEditFactor(true)} title="Editar">✎</button>
+                  {factorProp != null && <button className="dc-btn-mini" onClick={() => setFactorProp(null)} title="Volver al automático">↺</button>}
+                </div>
+              )}
+            </div>
+            <div className="dc-credit-field">
+              <label>564 — Crédito IVA acreditable (compras × factor)</label>
+              <div className="dc-credit-value">
+                <strong>{money(resumen.credito_adq_aplicable || 0)}</strong>
+                {(resumen.iva_no_acreditable || 0) > 0 && (
+                  <span style={{ marginLeft: 8, fontSize: 12, color: '#b9770e' }}>
+                    no acreditable (al gasto): {money(resumen.iva_no_acreditable)}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>

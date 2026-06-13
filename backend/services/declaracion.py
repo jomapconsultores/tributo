@@ -33,7 +33,8 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
                     credito_mes_anterior_adquisiciones=0, credito_mes_anterior_retenciones=0,
                     pagos_aplazados_vencen_este_periodo=None,
                     diferir_meses=0,
-                    override_ventas_15=None, override_ventas_5=None, override_ventas_0=None):
+                    override_ventas_15=None, override_ventas_5=None, override_ventas_0=None,
+                    factor_prop=None):
     """Formulario 104.
 
     Compras: solo gastos del EJERCICIO (con derecho a crédito). Personales van al IR.
@@ -126,36 +127,65 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     ret_iva_periodo = sum(_f(r.get("ret_iva")) for r in ret_ok)
     n_retenciones = sum(1 for r in ret_ok if _f(r.get("ret_iva")) > 0)
 
-    # ── Aplazamiento: si diferir_meses > 0, todo el IVA generado se mueve al 484 ──
-    # 481 = total ventas con cobro diferido (base imponible)
-    # 484 = IVA correspondiente al 481 (= iva_ventas total para nuestra simplificación)
+    # ── Factor de proporcionalidad del crédito tributario ────────────────
+    # Cuando hay ventas exentas / no objeto, solo una PROPORCIÓN del IVA de
+    # compras es crédito tributario; el resto NO es acreditable (va al gasto).
+    # Factor = ventas con derecho a crédito / total de ventas.
+    ventas_con_derecho = t_base_15 + t_base_5 + t_base_0
+    ventas_totales_factor = ventas_con_derecho + t_exento + t_no_obj
+    if factor_prop is not None:
+        factor = max(0.0, min(1.0, _f(factor_prop)))
+    elif ventas_totales_factor > 0:
+        factor = ventas_con_derecho / ventas_totales_factor
+    else:
+        factor = 1.0
+    factor = round(factor, 4)
+    credito_adq_aplicable = round(iva_compras * factor, 2)          # 564 (con derecho)
+    iva_no_acreditable = round(iva_compras - credito_adq_aplicable, 2)  # al costo/gasto
+
+    # ── Aplazamiento (Art. 67 LRTI) ──────────────────────────────────────
+    # 481 = ventas con cobro diferido; 484 = su IVA (no se causa hoy).
     diferir_meses = max(0, min(3, int(diferir_meses or 0)))
     if diferir_meses > 0:
         iva_diferido_actual = iva_ventas
-        ventas_diferidas_monto = t_base_15 + t_base_5  # base imponible de ventas
+        ventas_diferidas_monto = t_base_15 + t_base_5
     else:
         iva_diferido_actual = 0.0
         ventas_diferidas_monto = 0.0
-
     # 480 = IVA diferido de meses anteriores que VENCE este período (entra al causado)
     iva_recibido_aplazado = sum(_f(p.get("monto")) for p in pagos_aplazados_vencen_este_periodo)
-    monto_aplazados_que_vencen = iva_recibido_aplazado  # alias
+    monto_aplazados_que_vencen = iva_recibido_aplazado
 
-    # ── Cálculo del impuesto a pagar ─────────────────────────────────────
-    # Impuesto causado neto = (421+422) + 480 − 484
-    impuesto_causado_neto = iva_ventas + iva_recibido_aplazado - iva_diferido_actual
+    # ── Liquidación (formulario 104) ─────────────────────────────────────
+    # IVA generado del período (429), ajustado por aplazamientos.
+    iva_generado_periodo = iva_ventas + iva_recibido_aplazado - iva_diferido_actual
 
-    # Crédito total = compras + 605 + 606 + 609
-    credito_total = (iva_compras
-                     + _f(credito_mes_anterior_adquisiciones)
-                     + _f(credito_mes_anterior_retenciones)
-                     + ret_iva_periodo)
+    # 601 Impuesto causado  vs  602 Crédito del período por adquisiciones.
+    diferencia = iva_generado_periodo - credito_adq_aplicable
+    impuesto_causado = max(0.0, diferencia)          # 601
+    credito_periodo_adq = max(0.0, -diferencia)      # 602
 
-    # Resultado: si crédito ≥ causado_neto → SALDO A FAVOR (crédito tributario)
-    #            si crédito < causado_neto → IVA A PAGAR
-    iva_a_pagar = max(0.0, impuesto_causado_neto - credito_total)
-    saldo_a_favor = max(0.0, credito_total - impuesto_causado_neto)
+    # Créditos SEPARADOS por tipo (no se mezclan):
+    #  · ADQUISICIONES: crédito del período (602) + saldo mes anterior (605)
+    #  · RETENCIONES:   saldo mes anterior (607) + retenciones del período (609)
+    credito_adq_disp = credito_periodo_adq + _f(credito_mes_anterior_adquisiciones)
+    credito_ret_disp = _f(credito_mes_anterior_retenciones) + ret_iva_periodo
+
+    # Se aplican al impuesto causado: primero adquisiciones, luego retenciones.
+    causado_rest = impuesto_causado
+    usa_adq = min(causado_rest, credito_adq_disp); causado_rest -= usa_adq
+    sobra_adq = credito_adq_disp - usa_adq
+    usa_ret = min(causado_rest, credito_ret_disp); causado_rest -= usa_ret
+    sobra_ret = credito_ret_disp - usa_ret
+
+    iva_a_pagar = round(causado_rest, 2)                 # 619 / 902
+    credito_proximo_adq = round(sobra_adq, 2)            # 695 (próx. mes por adquisiciones)
+    credito_proximo_ret = round(sobra_ret, 2)            # 697 (próx. mes por retenciones)
+    saldo_a_favor = round(credito_proximo_adq + credito_proximo_ret, 2)
     total_a_pagar = iva_a_pagar
+    # Compat con el resto del sistema
+    impuesto_causado_neto = round(iva_generado_periodo - credito_adq_aplicable, 2)
+    credito_total = round(credito_adq_disp + credito_ret_disp, 2)
 
     def fila(seccion, codigo, concepto, valor, n=None):
         f = {"seccion": seccion, "codigo": codigo, "concepto": concepto, "valor": round(valor, 2)}
@@ -188,30 +218,44 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
         fila("ADQUISICIONES", "519", "Adquisiciones exentas de IVA", c_exento, c_n_exento),
 
         # ── RESULTADO ──
-        fila("RESULTADO", "601", "IVA generado en ventas (421+422)", iva_ventas),
+        fila("RESULTADO", "429", "IVA generado en ventas (421+422)", iva_ventas),
     ]
-    # ── Aplazamiento — entra ANTES del crédito (afecta causado neto) ──
+    # Aplazamientos que afectan el IVA generado del período
     if iva_recibido_aplazado > 0:
-        filas.append(fila("RESULTADO", "480", "IVA diferido de períodos anteriores que vence ahora (entra al causado)",
+        filas.append(fila("RESULTADO", "480", "(+) IVA diferido de períodos anteriores que vence ahora",
                           iva_recibido_aplazado, len(pagos_aplazados_vencen_este_periodo)))
     if diferir_meses > 0:
         filas.append(fila("RESULTADO", "481", f"Ventas con cobro diferido (plazo > {diferir_meses} mes{'es' if diferir_meses > 1 else ''})",
                           ventas_diferidas_monto, v_n_base_15 + v_n_base_5 + n_ventas_ice))
-        filas.append(fila("RESULTADO", "484", "IVA correspondiente al 481 (no se causa este período)",
+        filas.append(fila("RESULTADO", "484", "(−) IVA correspondiente al 481 (no se causa este período)",
                           iva_diferido_actual))
-    filas.append(fila("RESULTADO", "609.X", "Impuesto causado NETO (601 + 480 − 484)", impuesto_causado_neto))
+
+    # Crédito por adquisiciones (con factor de proporcionalidad)
+    filas.append(fila("RESULTADO", "564", f"Crédito tributario por adquisiciones (IVA compras × factor {factor:.2%})",
+                      credito_adq_aplicable, c_n_base_15 + c_n_base_5))
+    if iva_no_acreditable > 0:
+        filas.append(fila("RESULTADO", "—", "IVA NO acreditable por proporcionalidad (va al gasto/costo)", iva_no_acreditable))
+
+    # Impuesto causado / crédito del período
+    filas.append(fila("RESULTADO", "601", "Impuesto causado (IVA generado − crédito por adquisiciones)", impuesto_causado))
+    if credito_periodo_adq > 0:
+        filas.append(fila("RESULTADO", "602", "Crédito tributario del período por adquisiciones (a favor)", credito_periodo_adq))
+
+    # Créditos que se restan del impuesto causado — SEPARADOS por tipo
     filas.extend([
-        fila("RESULTADO", "602", "Crédito tributario por adquisiciones del período (520+560)", iva_compras, c_n_base_15 + c_n_base_5),
-        fila("RESULTADO", "605", "Saldo crédito tributario mes anterior por adquisiciones (editable)", _f(credito_mes_anterior_adquisiciones)),
-        fila("RESULTADO", "606", "Saldo crédito tributario mes anterior por retenciones (editable)", _f(credito_mes_anterior_retenciones)),
-        fila("RESULTADO", "609", "Retenciones de IVA del período (de comprobantes)", ret_iva_periodo, n_retenciones),
-        fila("RESULTADO", "619", "Total crédito tributario disponible (602+605+606+609)", credito_total),
+        fila("RESULTADO", "605", "(−) Saldo crédito tributario mes anterior por ADQUISICIONES (editable)", _f(credito_mes_anterior_adquisiciones)),
+        fila("RESULTADO", "607", "(−) Saldo crédito tributario mes anterior por RETENCIONES (editable)", _f(credito_mes_anterior_retenciones)),
+        fila("RESULTADO", "609", "(−) Retenciones de IVA que le efectuaron en el período", ret_iva_periodo, n_retenciones),
     ])
-    if saldo_a_favor > 0:
-        filas.append(fila("RESULTADO", "699", "✓ Saldo crédito tributario para el siguiente mes (crédito > causado neto)", saldo_a_favor))
-        filas.append(fila("RESULTADO", "902", "IVA a pagar del período", 0.0))
-    else:
-        filas.append(fila("RESULTADO", "902", "IVA a pagar del período (causado neto − crédito)", iva_a_pagar))
+
+    if iva_a_pagar > 0:
+        filas.append(fila("RESULTADO", "619", "Subtotal a pagar (impuesto causado − créditos)", iva_a_pagar))
+    # Arrastre al próximo mes — SEPARADO adquisiciones vs retenciones
+    if credito_proximo_adq > 0:
+        filas.append(fila("RESULTADO", "695", "✓ Crédito tributario próximo mes por ADQUISICIONES", credito_proximo_adq))
+    if credito_proximo_ret > 0:
+        filas.append(fila("RESULTADO", "697", "✓ Crédito tributario próximo mes por RETENCIONES", credito_proximo_ret))
+    filas.append(fila("RESULTADO", "902", "IVA a pagar del período", iva_a_pagar))
 
     return {
         "tipo": "IVA",
@@ -226,12 +270,21 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
             "iva_ventas_5": round(t_iva_5, 2),
             "ventas_manual": ventas_manual,
             "iva_compras": round(iva_compras, 2),
+            # Factor de proporcionalidad y crédito acreditable
+            "factor_proporcionalidad": factor,
+            "credito_adq_aplicable": round(credito_adq_aplicable, 2),
+            "iva_no_acreditable": round(iva_no_acreditable, 2),
+            "impuesto_causado": round(impuesto_causado, 2),
+            "credito_periodo_adquisiciones": round(credito_periodo_adq, 2),
             "credito_mes_anterior_adquisiciones": round(_f(credito_mes_anterior_adquisiciones), 2),
             "credito_mes_anterior_retenciones": round(_f(credito_mes_anterior_retenciones), 2),
             "ret_iva_periodo": round(ret_iva_periodo, 2),
             "credito_total": round(credito_total, 2),
             "impuesto_causado_neto": round(impuesto_causado_neto, 2),
             "iva_a_pagar": round(iva_a_pagar, 2),
+            # Arrastre al próximo mes SEPARADO por tipo de crédito
+            "credito_proximo_mes_adquisiciones": round(credito_proximo_adq, 2),
+            "credito_proximo_mes_retenciones": round(credito_proximo_ret, 2),
             "saldo_a_favor_proximo_mes": round(saldo_a_favor, 2),
             "monto_aplazados_vencen": round(monto_aplazados_que_vencen, 2),
             "total_a_pagar": round(total_a_pagar, 2),

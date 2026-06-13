@@ -59,12 +59,15 @@ def _cargar_credito_mes_anterior(supabase, client_id, user_id, mes, anio):
     if not res.data:
         return 0.0, 0.0
     datos = res.data[0].get("datos") or {}
-    # Saldo a favor del mes anterior se divide entre adq y ret según el resumen previo
+    # El crédito del mes anterior se arrastra SEPARADO: 695 (adquisiciones) → 605,
+    # 697 (retenciones) → 607. Compat: si la declaración previa es vieja y solo
+    # tiene saldo_a_favor_proximo_mes, se carga todo como adquisiciones.
     resumen = datos.get("resumen") or {}
-    return (
-        float(resumen.get("saldo_a_favor_proximo_mes") or 0),
-        0.0,  # las retenciones del mes anterior arrastran solo si quedaron sin usar; por simplicidad 0
-    )
+    adq = resumen.get("credito_proximo_mes_adquisiciones")
+    ret = resumen.get("credito_proximo_mes_retenciones")
+    if adq is None and ret is None:
+        return float(resumen.get("saldo_a_favor_proximo_mes") or 0), 0.0
+    return float(adq or 0), float(ret or 0)
 
 
 def _rebajas_por_producto(supabase, identificacion, user_id):
@@ -117,7 +120,7 @@ def _pagos_aplazados_vencen(supabase, client_id, user_id, mes, anio, tipo):
 
 def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, override_credito_ret=None, diferir_meses=0,
               override_rebaja=None, override_exencion=None, marcar_rebaja=False, marcar_exencion=False,
-              override_ventas_15=None, override_ventas_5=None, override_ventas_0=None):
+              override_ventas_15=None, override_ventas_5=None, override_ventas_0=None, factor_prop=None):
     c = _cliente(supabase, client_id)
     anio = c.get("periodo_anio") or 2026
     mes = c.get("periodo_mes") or 1
@@ -156,6 +159,7 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
             override_ventas_15=override_ventas_15,
             override_ventas_5=override_ventas_5,
             override_ventas_0=override_ventas_0,
+            factor_prop=factor_prop,
         )
         decl["aplazados_vencen"] = aplazados
     decl["cliente"] = c
@@ -178,6 +182,7 @@ async def calcular(
     ventas_15: Optional[float] = Query(None, description="Override manual de ventas gravadas 15% (411), si no hay XML"),
     ventas_5: Optional[float] = Query(None, description="Override manual de ventas gravadas 5% (412)"),
     ventas_0: Optional[float] = Query(None, description="Override manual de ventas tarifa 0% (413)"),
+    factor_prop: Optional[float] = Query(None, description="Override del factor de proporcionalidad (0..1) del crédito tributario IVA"),
     user_id: str = Depends(get_current_user),
 ):
     try:
@@ -186,7 +191,8 @@ async def calcular(
         return _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret, diferir_meses,
                          override_rebaja=rebaja_ice, override_exencion=exencion_ice,
                          marcar_rebaja=bool(rebaja_manual), marcar_exencion=bool(exencion_manual),
-                         override_ventas_15=ventas_15, override_ventas_5=ventas_5, override_ventas_0=ventas_0)
+                         override_ventas_15=ventas_15, override_ventas_5=ventas_5, override_ventas_0=ventas_0,
+                         factor_prop=factor_prop)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -345,7 +351,7 @@ async def export_oficial(client_id: str = Query(...), tipo: str = Query("IVA"),
                          rebaja_ice: Optional[float] = Query(None), exencion_ice: Optional[float] = Query(None),
                          rebaja_manual: int = Query(0), exencion_manual: int = Query(0),
                          ventas_15: Optional[float] = Query(None), ventas_5: Optional[float] = Query(None),
-                         ventas_0: Optional[float] = Query(None),
+                         ventas_0: Optional[float] = Query(None), factor_prop: Optional[float] = Query(None),
                          user_id: str = Depends(get_current_user)):
     """Llena el formulario oficial del SRI (borrador) con los valores calculados."""
     try:
@@ -354,7 +360,8 @@ async def export_oficial(client_id: str = Query(...), tipo: str = Query("IVA"),
         decl = _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret, 0,
                          override_rebaja=rebaja_ice, override_exencion=exencion_ice,
                          marcar_rebaja=bool(rebaja_manual), marcar_exencion=bool(exencion_manual),
-                         override_ventas_15=ventas_15, override_ventas_5=ventas_5, override_ventas_0=ventas_0)
+                         override_ventas_15=ventas_15, override_ventas_5=ventas_5, override_ventas_0=ventas_0,
+                         factor_prop=factor_prop)
         c = decl.get("cliente", {})
         data, llenados, omitidos = llenar_oficial(tipo, decl)
         label = f"Formulario_{tipo.upper()}_{c.get('identificacion','')}_{decl.get('anio')}{str(decl.get('mes') or '').zfill(2)}".replace(" ", "_")
@@ -379,7 +386,7 @@ async def export_excel(client_id: str = Query(...), tipo: str = Query("IVA"),
                        rebaja_ice: Optional[float] = Query(None), exencion_ice: Optional[float] = Query(None),
                        rebaja_manual: int = Query(0), exencion_manual: int = Query(0),
                        ventas_15: Optional[float] = Query(None), ventas_5: Optional[float] = Query(None),
-                       ventas_0: Optional[float] = Query(None),
+                       ventas_0: Optional[float] = Query(None), factor_prop: Optional[float] = Query(None),
                        user_id: str = Depends(get_current_user)):
     try:
         import xlsxwriter
@@ -388,7 +395,8 @@ async def export_excel(client_id: str = Query(...), tipo: str = Query("IVA"),
         decl = _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret, 0,
                          override_rebaja=rebaja_ice, override_exencion=exencion_ice,
                          marcar_rebaja=bool(rebaja_manual), marcar_exencion=bool(exencion_manual),
-                         override_ventas_15=ventas_15, override_ventas_5=ventas_5, override_ventas_0=ventas_0)
+                         override_ventas_15=ventas_15, override_ventas_5=ventas_5, override_ventas_0=ventas_0,
+                         factor_prop=factor_prop)
         c = decl.get("cliente", {})
         output = io.BytesIO()
         wb = xlsxwriter.Workbook(output, {"in_memory": True})
