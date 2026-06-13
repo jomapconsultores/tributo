@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from auth import get_current_user
 from database import get_supabase_client
-from routers.access import es_admin, MODULOS
+from routers.access import es_admin, es_super_admin, rol_de, MODULOS
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -28,6 +28,17 @@ async def require_admin(user_id: str = Depends(get_current_user)):
     if not es_admin(user_id):
         raise HTTPException(status_code=403, detail="Solo administradores")
     return user_id
+
+
+async def require_super_admin(user_id: str = Depends(get_current_user)):
+    """Solo el administrador máximo (no socios): gestión de roles."""
+    if not es_super_admin(user_id):
+        raise HTTPException(status_code=403, detail="Solo el administrador puede gestionar roles")
+    return user_id
+
+
+class RoleIn(BaseModel):
+    role: str   # 'admin' | 'socio' | 'cliente'
 
 
 class UserIn(BaseModel):
@@ -87,7 +98,9 @@ async def list_users(_: str = Depends(require_admin)):
         raise HTTPException(status_code=500, detail=f"No se pudo listar usuarios: {e}")
 
     mods = sb.table("user_modules").select("user_id,modulo,activo,valid_until").execute().data or []
-    admins = {a["user_id"] for a in (sb.table("app_admins").select("user_id").execute().data or [])}
+    admin_rows = sb.table("app_admins").select("user_id,role").execute().data or []
+    roles = {a["user_id"]: (a.get("role") or "admin") for a in admin_rows}
+    admins = set(roles.keys())
     subs = {s["user_id"]: s for s in (sb.table("subscriptions").select("*").execute().data or [])}
     ip_rows = sb.table("user_ips").select("user_id").execute().data or []
     ip_count = {}
@@ -113,6 +126,7 @@ async def list_users(_: str = Depends(require_admin)):
             "email": u.email,
             "created_at": str(u.created_at)[:10],
             "is_admin": uid in admins,
+            "role": roles.get(uid, "cliente"),
             "modules": by_user.get(uid, {}),
             "subscription": sub,
             "ips": ip_count.get(uid, 0),
@@ -225,6 +239,27 @@ async def create_user(body: UserIn, _: str = Depends(require_admin)):
 async def set_modules(uid: str, body: ModulesIn, _: str = Depends(require_admin)):
     _aplicar_modulos(uid, body.modules, body.valid_until)
     return {"ok": True}
+
+
+@router.put("/users/{uid}/role")
+async def set_role(uid: str, body: RoleIn, admin_id: str = Depends(require_super_admin)):
+    """Asigna el rol de un usuario. 'admin'/'socio' lo registran en app_admins;
+    'cliente' lo quita. Solo el administrador máximo puede hacerlo."""
+    role = (body.role or "").strip().lower()
+    if role not in ("admin", "socio", "cliente"):
+        raise HTTPException(status_code=400, detail="Rol inválido (admin | socio | cliente)")
+    sb = get_supabase_client()
+    if uid == admin_id and role != "admin":
+        raise HTTPException(status_code=400, detail="No puedes quitarte tu propio rol de administrador")
+    if role == "cliente":
+        sb.table("app_admins").delete().eq("user_id", uid).execute()
+    else:
+        existing = sb.table("app_admins").select("user_id").eq("user_id", uid).execute().data
+        if existing:
+            sb.table("app_admins").update({"role": role}).eq("user_id", uid).execute()
+        else:
+            sb.table("app_admins").insert({"user_id": uid, "role": role}).execute()
+    return {"ok": True, "role": role}
 
 
 @router.post("/users/{uid}/plan")

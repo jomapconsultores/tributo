@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { adminAPI } from '../services/api'
+import { useAccess } from '../context/AccessContext'
 import './Admin.css'
+
+const ROL_LBL = { admin: '👑 Administrador', socio: '🤝 Socio', cliente: '👤 Cliente' }
 
 const MODS = [
   { key: 'gastos', label: 'Gastos' },
@@ -17,6 +20,7 @@ const ESTADOS = ['prueba', 'activo', 'suspendido']
 const DESCUENTOS = { 1: 0, 3: 0.05, 6: 0.10, 12: 0.25 }
 
 export default function Admin() {
+  const { isSuperAdmin } = useAccess()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState({})
@@ -48,6 +52,14 @@ export default function Admin() {
       .finally(() => setLoading(false))
   }
   useEffect(load, [])
+
+  const cambiarRol = async (uid, role) => {
+    if (!window.confirm(`¿Cambiar el rol de este usuario a "${role}"?`)) return
+    setBusy(true)
+    try { await adminAPI.setRole(uid, role); await load() }
+    catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
+    finally { setBusy(false) }
+  }
 
   const upd = (uid, patch) => setEdit((e) => ({ ...e, [uid]: { ...e[uid], ...patch } }))
   const toggle = (uid, key) => {
@@ -142,7 +154,15 @@ export default function Admin() {
                   <tr key={u.user_id} className={venc ? 'vencida' : ''}>
                     <td>
                       <div className="adm-email">{u.email}</div>
-                      <div className="adm-meta">{u.is_admin ? '👑 admin' : ''} · alta {u.created_at}{venc ? ' · ⚠ vencida' : ''} · IPs {u.ips ?? 0}/3</div>
+                      <div className="adm-meta">{ROL_LBL[u.role] || '👤 Cliente'} · alta {u.created_at}{venc ? ' · ⚠ vencida' : ''} · IPs {u.ips ?? 0}/3</div>
+                      {isSuperAdmin && (
+                        <select className="adm-rol-select" value={u.role || 'cliente'} disabled={busy}
+                          onChange={(ev) => cambiarRol(u.user_id, ev.target.value)} title="Cambiar rol">
+                          <option value="cliente">👤 Cliente</option>
+                          <option value="socio">🤝 Socio</option>
+                          <option value="admin">👑 Administrador</option>
+                        </select>
+                      )}
                     </td>
                     {MODS.map((m) => (
                       <td key={m.key} className="c">

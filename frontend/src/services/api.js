@@ -42,6 +42,7 @@ export const adminAPI = {
   listUsers: () => api.get('/api/admin/users'),
   createUser: (data) => api.post('/api/admin/users', data),
   setModules: (uid, modules, valid_until = null) => api.put(`/api/admin/users/${uid}/modules`, { modules, valid_until }),
+  setRole: (uid, role) => api.put(`/api/admin/users/${uid}/role`, { role }),
   setPlan: (uid, plan, valid_until = null) => api.post(`/api/admin/users/${uid}/plan`, { plan, valid_until }),
   setSubscription: (uid, data) => api.put(`/api/admin/users/${uid}/subscription`, data),
   registrarPago: (uid, data) => api.post(`/api/admin/users/${uid}/pago`, data),

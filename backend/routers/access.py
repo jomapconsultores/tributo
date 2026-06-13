@@ -14,12 +14,28 @@ router = APIRouter(prefix="/api/access", tags=["access"])
 MODULOS = ["gastos", "retenciones", "ingresos_ice", "declaraciones"]
 
 
-def es_admin(user_id: str) -> bool:
+# Jerarquía de roles: 'admin' (máximo) → 'socio' → 'cliente'.
+# admin y socio comparten el acceso operativo (es_admin = True para ambos);
+# solo el 'admin' (super) puede gestionar roles de otros usuarios.
+def rol_de(user_id: str) -> str:
+    """Devuelve 'admin', 'socio' o 'cliente'."""
     try:
-        r = get_supabase_client().table("app_admins").select("user_id").eq("user_id", user_id).execute()
-        return bool(r.data)
+        r = get_supabase_client().table("app_admins").select("role").eq("user_id", user_id).execute().data
+        if r:
+            return r[0].get("role") or "admin"
+        return "cliente"
     except Exception:
-        return False
+        return "cliente"
+
+
+def es_admin(user_id: str) -> bool:
+    """True para administradores Y socios (acceso operativo completo)."""
+    return rol_de(user_id) in ("admin", "socio")
+
+
+def es_super_admin(user_id: str) -> bool:
+    """True solo para el administrador máximo (gestiona roles)."""
+    return rol_de(user_id) == "admin"
 
 
 def suscripcion(user_id: str):
@@ -76,6 +92,7 @@ async def me(user_id: str = Depends(get_current_user)):
     return {
         "modules": modulos_de(user_id),
         "is_admin": es_admin(user_id),
+        "role": rol_de(user_id),
         "subscription": {
             "estado": sub.get("estado"),
             "plan": sub.get("plan"),
