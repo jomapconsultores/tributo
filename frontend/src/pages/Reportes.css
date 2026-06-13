@@ -1,51 +1,59 @@
-.rp-page { padding: 20px 26px; }
-.rp-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
-.rp-header h1 { margin: 0 0 4px; color: #1a5276; }
-.rp-sub { margin: 0; color: #5d6d7e; max-width: 640px; }
-.rp-total-box { background: linear-gradient(135deg, #065f46, #059669); color: #fff; border-radius: 12px; padding: 12px 20px; text-align: right; min-width: 180px; }
-.rp-total-lbl { display: block; font-size: 12px; opacity: .9; }
-.rp-total-val { display: block; font-size: 1.7rem; font-weight: 800; }
+/* ===========================================================
+   Reportes de honorarios — diseño profesional (paleta SRI)
+   =========================================================== */
+.rp-page { padding: 20px 24px; max-width: 1180px; color: #1f2a3a; }
+.rp-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; border-bottom: 2px solid #003399; padding-bottom: 12px; }
+.rp-header h1 { margin: 0 0 3px; color: #1a3d6b; font-size: 1.2rem; font-weight: 700; letter-spacing: .2px; }
+.rp-sub { margin: 0; color: #6b7888; max-width: 640px; font-size: .8rem; line-height: 1.4; }
+.rp-total-box { background: linear-gradient(135deg, #0f6b4a, #1e8449); color: #fff; border-radius: 10px; padding: 11px 18px; text-align: right; min-width: 180px; }
+.rp-total-lbl { display: block; font-size: 11px; opacity: .92; text-transform: uppercase; letter-spacing: .3px; }
+.rp-total-val { display: block; font-size: 1.4rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 
-.rp-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
-.rp-search { flex: 1; min-width: 240px; border: 1px solid #cbd5e1; border-radius: 9px; padding: 9px 13px; font-size: 14px; }
-.rp-count { color: #64748b; font-size: 13px; }
-.rp-btn { border: 1px solid #aab7b8; background: #fff; border-radius: 8px; padding: 8px 12px; cursor: pointer; font-size: 13px; }
-.rp-btn:hover { background: #eaf2f8; }
+.rp-toolbar { display: flex; gap: 9px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.rp-search { flex: 1; min-width: 230px; border: 1px solid #cdd8e6; border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+.rp-search:focus { outline: none; border-color: #003399; box-shadow: 0 0 0 2px rgba(0,51,153,.15); }
+.rp-count { color: #6b7888; font-size: 12px; }
+.rp-btn { border: 1px solid #cdd8e6; background: #fff; border-radius: 7px; padding: 7px 12px; cursor: pointer; font-size: 12.5px; color: #1a3d6b; }
+.rp-btn:hover { background: #f4f8fc; }
+.rp-btn-mail { background: #003399; color: #fff; border-color: #003399; font-weight: 600; }
+.rp-btn-mail:hover { filter: brightness(1.1); background: #003399; }
 .rp-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; }
 
-.rp-table-wrap { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow-x: auto; }
-.rp-empty { padding: 32px; text-align: center; color: #94a3b8; }
-.rp-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.rp-table-wrap { background: #fff; border: 1px solid #e8edf3; border-radius: 10px; box-shadow: 0 1px 3px rgba(16,40,80,.05); overflow-x: auto; }
+.rp-empty { padding: 30px; text-align: center; color: #94a3b8; font-size: .88rem; }
+.rp-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
 .rp-table th, .rp-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; text-align: left; vertical-align: middle; }
-.rp-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: .3px; color: #64748b; font-weight: 700; background: #f8fafc; position: sticky; top: 0; }
-.rp-table .r { text-align: right; }
+.rp-table th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: .3px; color: #6b7888; font-weight: 700; background: #f6f8fb; position: sticky; top: 0; }
+.rp-table .r { text-align: right; font-variant-numeric: tabular-nums; }
 .rp-table .c { text-align: center; }
-.rp-ruc { font-family: monospace; color: #475569; font-size: 0.8rem; }
-.rp-marca { font-family: monospace; color: #334155; }
-.rp-row-newgroup td { border-top: 2px solid #d6dbdf; }
-.rp-row-off { background: #fafafa; color: #94a3b8; }
-.rp-valor { width: 96px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 5px 8px; text-align: right; font-size: 0.85rem; }
+.rp-ruc { font-family: monospace; color: #51607a; font-size: 0.78rem; }
+.rp-marca { font-family: monospace; color: #1f2a3a; }
+.rp-row-newgroup td { border-top: 2px solid #dbe3ec; }
+.rp-row-off { background: #fafbfc; color: #94a3b8; }
+.rp-valor { width: 96px; border: 1px solid #cdd8e6; border-radius: 6px; padding: 5px 8px; text-align: right; font-size: 0.84rem; font-variant-numeric: tabular-nums; }
+.rp-valor:focus { outline: none; border-color: #003399; }
 .rp-valor:disabled { background: #f1f5f9; color: #94a3b8; }
-.rp-money-prefix { color: #64748b; margin-right: 2px; }
-.rp-saving { display: block; font-size: 10px; color: #059669; }
-.rp-tag { color: #059669; margin-left: 6px; font-size: 9px; vertical-align: middle; }
-.rp-row-subtotal td { background: #eef5fb; color: #1a5276; font-weight: 700; border-bottom: 1px solid #d6dbdf; }
-.rp-table tfoot td { background: #f8fafc; border-top: 2px solid #1a5276; font-size: 0.95rem; }
+.rp-money-prefix { color: #6b7888; margin-right: 2px; }
+.rp-saving { display: block; font-size: 10px; color: #1e8449; }
+.rp-tag { color: #1e8449; margin-left: 6px; font-size: 9px; vertical-align: middle; }
+.rp-row-subtotal td { background: #eef2f9; color: #1a3d6b; font-weight: 700; border-bottom: 1px solid #dbe3ec; }
+.rp-table tfoot td { background: #f6f8fb; border-top: 2px solid #003399; font-size: 0.92rem; }
 
-/* Grupos desplegables por contribuyente + rubros personalizados */
-.rp-grupo-head { cursor: pointer; background: #eef5fb; }
-.rp-grupo-head:hover { background: #e3eef8; }
-.rp-grupo-head td { border-top: 2px solid #c9d6e3; color: #1a5276; }
-.rp-caret { display: inline-block; width: 16px; color: #1a5276; font-weight: 700; }
-.rp-grupo-ruc { font-family: monospace; font-size: 0.74rem; color: #64748b; margin-left: 8px; }
+/* Grupos desplegables por contribuyente */
+.rp-grupo-head { cursor: pointer; background: #eef2f9; }
+.rp-grupo-head:hover { background: #e4ebf5; }
+.rp-grupo-head td { border-top: 2px solid #cdd8e6; color: #1a3d6b; }
+.rp-caret { display: inline-block; width: 16px; color: #003399; font-weight: 700; }
+.rp-grupo-ruc { font-family: monospace; font-size: 0.72rem; color: #6b7888; margin-left: 8px; }
 .rp-concepto { padding-left: 24px; }
 .rp-badge-custom { margin-left: 8px; font-size: 0.62rem; background: #fde68a; color: #92400e; border-radius: 8px; padding: 1px 7px; vertical-align: middle; }
 .rp-addrow td { padding-left: 24px; background: #fcfcfd; }
-.rp-add-btn { border: 1px dashed #94a3b8; background: #fff; color: #475569; border-radius: 7px; padding: 4px 12px; font-size: 0.78rem; cursor: pointer; }
-.rp-add-btn:hover { background: #f1f5f9; border-color: #64748b; }
+.rp-add-btn { border: 1px dashed #aab7c6; background: #fff; color: #51607a; border-radius: 7px; padding: 4px 12px; font-size: 0.77rem; cursor: pointer; }
+.rp-add-btn:hover { background: #f4f8fc; border-color: #003399; }
 .rp-del { border: none; background: transparent; color: #dc2626; cursor: pointer; font-size: 0.9rem; }
 
 /* Opción "incluido IVA" y estado de declaración lista */
-.rp-iva-check { display: inline-flex; align-items: center; gap: 5px; font-size: .82rem; color: #1a5276; font-weight: 600; cursor: pointer; }
-.rp-total-desglose { display: block; font-size: .72rem; color: #5b6b7a; margin-top: 2px; }
+.rp-iva-check { display: inline-flex; align-items: center; gap: 5px; font-size: .8rem; color: #1a3d6b; font-weight: 600; cursor: pointer; }
+.rp-iva-check input { accent-color: #003399; }
+.rp-total-desglose { display: block; font-size: .72rem; color: #eafff5; margin-top: 2px; opacity: .95; }
 .rp-lista-badge { margin-left: 10px; padding: 1px 8px; background: #d5f5e3; color: #1e8449; border-radius: 10px; font-size: .68rem; font-weight: 700; }

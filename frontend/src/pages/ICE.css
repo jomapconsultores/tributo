@@ -1,8 +1,8 @@
-.ice-page { padding: 26px 30px; display: flex; flex-direction: column; gap: 16px; min-height: 100vh; }
+.ice-page { padding: 20px 24px; display: flex; flex-direction: column; gap: 12px; min-height: 100vh; max-width: 1280px; color: #1f2a3a; }
 
-.ice-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-.ice-header h1 { margin: 0; font-size: 1.5rem; color: #0f172a; }
-.ice-subhead { margin: 4px 0 0; color: #64748b; font-size: 0.9rem; }
+.ice-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; border-bottom: 2px solid #d97706; padding-bottom: 10px; }
+.ice-header h1 { margin: 0; font-size: 1.2rem; color: #1a3d6b; font-weight: 700; letter-spacing: .2px; }
+.ice-subhead { margin: 3px 0 0; color: #6b7888; font-size: 0.8rem; }
 .ice-periodo-tag { font-size: 0.7rem; font-weight: 700; color: #92400e; background: #fef3c7; padding: 3px 10px; border-radius: 20px; vertical-align: middle; margin-left: 8px; }
 
 .ice-year { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
@@ -10,10 +10,11 @@
 .ice-year select { padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem; font-weight: 600; }
 .ice-params { font-size: 0.74rem; color: #92400e; margin-top: 2px; }
 
-.ice-btn { border: none; border-radius: 8px; padding: 9px 16px; font-weight: 600; cursor: pointer; font-size: 0.88rem; }
+.ice-btn { border: 1px solid transparent; border-radius: 7px; padding: 8px 14px; font-weight: 600; cursor: pointer; font-size: 0.82rem; transition: filter .15s, background .15s; }
 .ice-btn.primary { background: #d97706; color: #fff; }
-.ice-btn.small { background: #fff; color: #334155; border: 1px solid #cbd5e1; padding: 8px 13px; font-size: 0.83rem; }
-.ice-btn.small:hover { background: #f8fafc; }
+.ice-btn.primary:hover { filter: brightness(1.07); }
+.ice-btn.small { background: #fff; color: #1a3d6b; border-color: #cdd8e6; padding: 7px 12px; font-size: 0.8rem; }
+.ice-btn.small:hover { background: #f4f8fc; }
 .ice-btn.danger { color: #dc2626; border-color: #fecaca; }
 .ice-btn.anexo { background: #7c3aed; color: #fff; padding: 8px 14px; font-size: 0.83rem; }
 
@@ -39,10 +40,10 @@
 .icc-name { font-weight: 700; color: #1e293b; margin-bottom: 4px; }
 .icc-id { color: #64748b; font-size: 0.8rem; }
 
-.ice-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-.ice-stats .stat-card { background: #fff; border-radius: 10px; padding: 14px 18px; display: flex; flex-direction: column; gap: 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-.ice-stats .num { font-size: 1.25rem; font-weight: 700; color: #1e293b; }
-.ice-stats .lbl { font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.3px; }
+.ice-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.ice-stats .stat-card { background: #fff; border: 1px solid #e8edf3; border-left: 3px solid #d97706; border-radius: 8px; padding: 10px 13px; display: flex; flex-direction: column; gap: 2px; }
+.ice-stats .num { font-size: 1.1rem; font-weight: 700; color: #1f2a3a; font-variant-numeric: tabular-nums; }
+.ice-stats .lbl { font-size: 0.7rem; color: #6b7888; text-transform: uppercase; letter-spacing: 0.3px; }
 .ice-stats .total .num { color: #d97706; }
 
 .ice-dropzone { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 22px; border: 2px dashed #fcd34d; border-radius: 12px; background: #fffbeb; color: #92400e; cursor: pointer; text-align: center; transition: background 0.15s, border-color 0.15s; }
@@ -60,13 +61,13 @@
 .ice-error { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; padding: 10px 14px; border-radius: 8px; font-size: 0.9rem; }
 .ice-empty { background: #fff; border-radius: 10px; padding: 40px; text-align: center; color: #94a3b8; }
 
-.ice-table-wrap, .ice-report { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow: hidden; }
-.ice-hint { padding: 8px 14px; font-size: 0.78rem; color: #94a3b8; border-bottom: 1px solid #eef2f6; }
+.ice-table-wrap, .ice-report { background: #fff; border: 1px solid #e8edf3; border-radius: 10px; box-shadow: 0 1px 3px rgba(16,40,80,.05); overflow: hidden; }
+.ice-hint { padding: 8px 14px; font-size: 0.76rem; color: #94a3b8; border-bottom: 1px solid #eef2f7; }
 .ice-scroll { overflow-x: auto; }
-.ice-table, .ice-rep-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; white-space: nowrap; }
-.ice-table th, .ice-table td, .ice-rep-table th, .ice-rep-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #f1f5f9; }
-.ice-table th, .ice-rep-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.3px; color: #64748b; font-weight: 700; background: #f8fafc; }
-.ice-table .r, .ice-rep-table .r { text-align: right; }
+.ice-table, .ice-rep-table { width: 100%; border-collapse: collapse; font-size: 0.79rem; white-space: nowrap; }
+.ice-table th, .ice-table td, .ice-rep-table th, .ice-rep-table td { padding: 7px 10px; text-align: left; border-bottom: 1px solid #f1f5f9; }
+.ice-table th, .ice-rep-table th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.3px; color: #6b7888; font-weight: 700; background: #f6f8fb; }
+.ice-table .r, .ice-rep-table .r { text-align: right; font-variant-numeric: tabular-nums; }
 .ice-table .ice-cli, .ice-table .ice-prod, .ice-rep-table .ice-prod { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
 .ice-table .total { font-weight: 700; color: #d97706; }
 .ice-table tbody tr:hover, .ice-rep-table tbody tr:hover { background: #f8fafc; }
