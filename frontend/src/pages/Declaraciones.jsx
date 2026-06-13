@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, Fragment } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { declaracionesAPI, credentialsAPI, downloadBlob } from '../services/api'
+import { declaracionesAPI, downloadBlob } from '../services/api'
+import { getRevealedCredentials } from '../services/credentialsCache'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, nombreMes } from '../utils/periodo'
 import ClientSwitcher from '../components/ClientSwitcher'
@@ -102,21 +103,19 @@ export default function Declaraciones({ tipo }) {
 
   useEffect(() => { load() }, [load])
 
-  // Servicios contratados + acceso al portal SRI del contribuyente (punto 4)
+  // Servicios contratados + clave SRI
   useEffect(() => {
     setCreds(null); setClaveSRI('')
     if (!selectedClientId) return
     declaracionesAPI.credenciales(selectedClientId)
-      .then(async (r) => {
-        setCreds(r.data)
-        if (r.data?.es_admin && r.data?.credencial?.id) {
-          try {
-            const rev = await credentialsAPI.reveal(r.data.credencial.id)
-            setClaveSRI(rev.data?.password || '')
-          } catch { /* silencioso */ }
-        }
-      })
+      .then((r) => { setCreds(r.data) })
       .catch(() => setCreds(null))
+    getRevealedCredentials()
+      .then((map) => {
+        const cred = map.get(selectedClientId)
+        if (cred?.password) setClaveSRI(cred.password)
+      })
+      .catch(() => {})
   }, [selectedClientId])
 
   const guardar = async () => {

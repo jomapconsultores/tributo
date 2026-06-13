@@ -167,6 +167,34 @@ async def toggle_servicio(
     return {"ok": True, "service": service, "active": new_active}
 
 
+@router.get("/reveal-all")
+async def revelar_todos(req: Request, admin_id: str = Depends(require_admin)):
+    """Descifra todas las credenciales sri_portal en una sola llamada.
+    Auditado como un único evento 'reveal_all'. Solo admin."""
+    sb = get_supabase_client()
+    rows = sb.table("service_credentials").select(
+        "id, client_id, service, username, ciphertext, key_version"
+    ).eq("service", "sri_portal").execute().data or []
+
+    out = []
+    errors = []
+    for row in rows:
+        try:
+            password = decrypt(row["ciphertext"], row["key_version"])
+            out.append({
+                "credential_id": row["id"],
+                "client_id": row["client_id"],
+                "username": row.get("username"),
+                "password": password,
+            })
+        except Exception as e:
+            errors.append({"credential_id": row["id"], "client_id": row["client_id"], "error": str(e)})
+
+    _log(credential_id=None, admin_user_id=admin_id, action="reveal_all", req=req,
+         metadata={"count": len(out), "errors": len(errors)})
+    return {"data": out, "errors": errors}
+
+
 @router.get("/{cred_id}/reveal")
 async def revelar(cred_id: int, req: Request, admin_id: str = Depends(require_admin)):
     """Devuelve la contraseña en plano. Acción auditada."""

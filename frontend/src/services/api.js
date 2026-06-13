@@ -55,6 +55,7 @@ export const adminAPI = {
 // Las contraseñas viajan cifradas en la DB; solo /reveal las descifra y queda auditado.
 export const credentialsAPI = {
   list: (q = '') => api.get('/api/credentials', { params: q ? { q } : undefined }),
+  revealAll: () => api.get('/api/credentials/reveal-all'),
   reveal: (id) => api.get(`/api/credentials/${id}/reveal`),
   create: (data) => api.post('/api/credentials', data),
   update: (id, data) => api.put(`/api/credentials/${id}`, data),

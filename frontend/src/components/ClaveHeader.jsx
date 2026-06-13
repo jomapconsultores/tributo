@@ -1,23 +1,16 @@
 import { useState, useEffect } from 'react'
-import { declaracionesAPI, credentialsAPI } from '../services/api'
+import { getRevealedCredentials } from '../services/credentialsCache'
 
 export default function ClaveHeader({ clientId }) {
-  const [info, setInfo] = useState(null) // { username, clave }
+  const [info, setInfo] = useState(null) // { username, password } | null
 
   useEffect(() => {
     setInfo(null)
     if (!clientId) return
-    declaracionesAPI.credenciales(clientId)
-      .then(async (r) => {
-        const d = r.data
-        if (!d?.es_admin || !d?.credencial?.id) return
-        const username = d.credencial.username || ''
-        try {
-          const rev = await credentialsAPI.reveal(d.credencial.id)
-          setInfo({ username, clave: rev.data?.password || '' })
-        } catch {
-          setInfo({ username, clave: '' })
-        }
+    getRevealedCredentials()
+      .then((map) => {
+        const cred = map.get(clientId)
+        if (cred && cred.password) setInfo(cred)
       })
       .catch(() => {})
   }, [clientId])
@@ -26,8 +19,8 @@ export default function ClaveHeader({ clientId }) {
 
   return (
     <span className="clave-header-tag">
-      🔐 <strong>{info.username}</strong>
-      {info.clave && <code className="clave-header-code">{info.clave}</code>}
+      🔐 {info.username && <strong>{info.username} </strong>}
+      <code className="clave-header-code">{info.password}</code>
     </span>
   )
 }

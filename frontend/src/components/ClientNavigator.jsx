@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { clientsAPI, credentialsAPI } from '../services/api'
+import { clientsAPI } from '../services/api'
+import { getRevealedCredentials } from '../services/credentialsCache'
 import { useClients } from '../context/ClientContext'
 import { nombreMes } from '../utils/periodo'
 import './ClientNavigator.css'
@@ -20,10 +21,8 @@ export default function ClientNavigator() {
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState({})
 
-  // Credenciales SRI — solo admin (si el endpoint falla, no es admin)
-  const [credByRuc, setCredByRuc] = useState(null) // null = aún cargando; {} = cargado
-  const [revealed, setRevealed] = useState({})     // { ruc: password }
-  const [revealing, setRevealing] = useState({})   // { ruc: bool }
+  // Credenciales SRI — solo admin; null = cargando, {} = sin acceso/sin creds
+  const [credByRuc, setCredByRuc] = useState(null) // { [ruc]: { username, password } }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -34,45 +33,26 @@ export default function ClientNavigator() {
   }, [])
   useEffect(() => { load() }, [load])
 
+  // Una sola llamada para todas las credenciales; se comparte con ClaveHeader via cache
   useEffect(() => {
-    credentialsAPI.list()
-      .then(async (r) => {
-        const map = {}
-        for (const c of (r.data?.data || [])) {
-          if (c.ruc && c.service === 'sri_portal' && !map[c.ruc]) {
-            map[c.ruc] = { id: c.id, username: c.username || '' }
+    if (!data.length) return
+    getRevealedCredentials()
+      .then((credMap) => {
+        if (!credMap.size) { setCredByRuc({}); return }
+        const byRuc = {}
+        for (const c of data) {
+          for (const p of (c.periodos || [])) {
+            const cred = credMap.get(p.client_id)
+            if (cred && cred.password) {
+              byRuc[c.identificacion] = cred
+              break
+            }
           }
         }
-        setCredByRuc(map)
-        // Revelar todas las claves en paralelo
-        const entries = Object.entries(map)
-        if (!entries.length) return
-        const resultados = await Promise.allSettled(
-          entries.map(([ruc, cred]) =>
-            credentialsAPI.reveal(cred.id).then((res) => ({ ruc, password: res.data?.password || '' }))
-          )
-        )
-        const rev = {}
-        for (const r of resultados) {
-          if (r.status === 'fulfilled') rev[r.value.ruc] = r.value.password
-        }
-        setRevealed(rev)
+        setCredByRuc(byRuc)
       })
       .catch(() => setCredByRuc({}))
-  }, [])
-
-  const revelar = async (ruc, credId) => {
-    if (revealing[ruc]) return
-    setRevealing((p) => ({ ...p, [ruc]: true }))
-    try {
-      const r = await credentialsAPI.reveal(credId)
-      setRevealed((p) => ({ ...p, [ruc]: r.data?.password || '' }))
-    } catch (e) {
-      alert('No se pudo revelar: ' + (e.response?.data?.detail || e.message))
-    } finally {
-      setRevealing((p) => ({ ...p, [ruc]: false }))
-    }
-  }
+  }, [data])
 
   useEffect(() => {
     if (focusIdent) {
@@ -103,8 +83,6 @@ export default function ClientNavigator() {
 
   if (loading) return <div className="cn-empty">Cargando base de datos…</div>
 
-  const esAdmin = credByRuc !== null && Object.keys(credByRuc).length >= 0
-
   return (
     <div className="cn-wrap">
       <input
@@ -117,9 +95,7 @@ export default function ClientNavigator() {
         <div className="cn-empty">Sin contribuyentes que coincidan.</div>
       ) : filtrados.map((c) => {
         const isOpen = !!open[c.identificacion]
-        const cred = credByRuc?.[c.identificacion]
-        const claveVisible = revealed[c.identificacion]
-        const cargando = revealing[c.identificacion]
+        const cred = credByRuc?.[c.identificacion] // { username, password } | undefined
         const { gastos = 0, retenciones = 0, ice = 0, calculo_ice = 0 } = c.totales || {}
 
         return (
@@ -141,15 +117,13 @@ export default function ClientNavigator() {
               </div>
 
               {/* Credencial SRI (solo admin) */}
-              {esAdmin && (
+              {credByRuc !== null && (
                 <div className="cn-clave">
                   {cred ? (
                     <>
-                      <span className="cn-clave-user">🔐 {cred.username || '—'}</span>
-                      {claveVisible
-                        ? <code className="cn-clave-val">{claveVisible}</code>
-                        : <span className="cn-clave-btn" title="Cargando…">{cargando ? '…' : '···'}</span>
-                      }
+                      {cred.username && <span className="cn-clave-user">🔐 {cred.username}</span>}
+                      {!cred.username && <span className="cn-clave-user">🔐</span>}
+                      <code className="cn-clave-val">{cred.password}</code>
                     </>
                   ) : (
                     <span className="cn-clave-none">sin clave</span>
