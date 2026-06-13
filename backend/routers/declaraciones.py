@@ -401,24 +401,39 @@ async def export_excel(client_id: str = Query(...), tipo: str = Query("IVA"),
         output = io.BytesIO()
         wb = xlsxwriter.Workbook(output, {"in_memory": True})
         ws = wb.add_worksheet(f"Declaración {tipo.upper()}")
-        title = wb.add_format({"bold": True, "font_color": "#1a5276", "font_size": 13})
-        head = wb.add_format({"bold": True, "bg_color": "#1a5276", "font_color": "white", "border": 1})
+        # Paleta oficial del SRI
+        title = wb.add_format({"bold": True, "font_color": "#003399", "font_size": 13})
+        head = wb.add_format({"bold": True, "bg_color": "#003399", "font_color": "white", "border": 1})
+        sec_fmt = wb.add_format({"bold": True, "bg_color": "#003399", "font_color": "white", "border": 1})
+        cod_fmt = wb.add_format({"border": 1, "bg_color": "#ccecff", "font_color": "#003399", "bold": True, "align": "center"})
         cell = wb.add_format({"border": 1})
         money = wb.add_format({"border": 1, "num_format": "#,##0.00"})
+        # Filas TOTAL (dorado)
+        cod_tot = wb.add_format({"border": 1, "bg_color": "#ffbe3d", "bold": True, "align": "center"})
+        cell_tot = wb.add_format({"border": 1, "bg_color": "#ffcc66", "bold": True})
+        money_tot = wb.add_format({"border": 1, "bg_color": "#ffcc66", "bold": True, "num_format": "#,##0.00"})
+        TOTALES = {"409", "419", "429", "499", "509", "519", "529", "620", "699", "859", "999", "399", "902"}
+
         ws.write(0, 0, f"DECLARACIÓN {tipo.upper()} — {c.get('identificacion','')} {c.get('nombre','')} · {decl.get('mes')}/{decl.get('anio')}", title)
         ws.write(2, 0, "Sección", head); ws.write(2, 1, "Código SRI", head)
         ws.write(2, 2, "Concepto", head); ws.write(2, 3, "# Fact.", head); ws.write(2, 4, "Valor", head)
         r = 3
+        secciones_escritas = set()
         for f in decl["filas"]:
-            ws.write(r, 0, f.get("seccion", ""), cell)
-            ws.write(r, 1, f.get("codigo", ""), cell)
-            ws.write(r, 2, f.get("concepto", ""), cell)
+            sec = f.get("seccion", "")
+            cod = str(f.get("codigo", ""))
+            es_total = cod in TOTALES
+            # Encabezado de sección (azul) una vez por sección
+            if sec and sec not in secciones_escritas:
+                secciones_escritas.add(sec)
+                ws.merge_range(r, 0, r, 4, sec, sec_fmt)
+                r += 1
+            ws.write(r, 0, sec, cell_tot if es_total else cell)
+            ws.write(r, 1, cod, cod_tot if es_total else cod_fmt)
+            ws.write(r, 2, f.get("concepto", ""), cell_tot if es_total else cell)
             n = f.get("num_comprobantes")
-            if n is not None:
-                ws.write(r, 3, n, cell)
-            else:
-                ws.write(r, 3, "", cell)
-            ws.write(r, 4, f.get("valor", 0), money)
+            ws.write(r, 3, n if n is not None else "", cell_tot if es_total else cell)
+            ws.write(r, 4, f.get("valor", 0), money_tot if es_total else money)
             r += 1
         ws.set_column(0, 0, 26); ws.set_column(1, 1, 11); ws.set_column(2, 2, 60); ws.set_column(3, 3, 9); ws.set_column(4, 4, 16)
         wb.close()

@@ -193,3 +193,19 @@
   color: #94a3b8;
   font-weight: 400;
 }
+
+/* ── Paleta oficial del SRI para la tabla de la declaración ── */
+.dc-table-sri .dc-sec td {
+  background: #003399; color: #fff; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .3px; font-size: .82rem;
+}
+.dc-table-sri .dc-cod {
+  background: #ccecff; color: #003399; font-weight: 700;
+  text-align: center; width: 70px;
+}
+.dc-table-sri tbody tr:not(.dc-sec):nth-child(even) td:not(.dc-cod) { background: #f4f8fc; }
+.dc-table-sri tr.dc-total td {
+  background: #ffcc66 !important; font-weight: 800; color: #5b4300;
+}
+.dc-table-sri tr.dc-total .dc-cod { background: #ffbe3d !important; color: #5b4300; }
+.dc-table-sri tr.dc-row-diferido td { background: #fff7e6; font-style: italic; }

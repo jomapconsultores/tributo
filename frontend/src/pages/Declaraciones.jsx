@@ -8,6 +8,12 @@ import './Declaraciones.css'
 
 const money = (v) => `$${(parseFloat(v) || 0).toFixed(2)}`
 
+// Casilleros TOTAL (resaltados en dorado, igual que el formulario oficial del SRI)
+const TOTALES_SRI = new Set([
+  '409', '419', '429', '499', '509', '519', '529', '620', '699', '859', '999',  // IVA
+  '399', '902',  // ICE
+])
+
 // Etiquetas legibles de los servicios contratados (client_services)
 const SERVICIO_LBL = {
   declaracion_iva: 'Declaración IVA', declaracion_ice: 'Declaración ICE',
@@ -393,7 +399,7 @@ export default function Declaraciones({ tipo }) {
               )}
             </div>
             <div className="dc-credit-field">
-              <label>607 — Crédito por retenciones</label>
+              <label>606 — Crédito por retenciones</label>
               {editRet ? (
                 <div className="dc-credit-edit">
                   <input
@@ -614,7 +620,7 @@ export default function Declaraciones({ tipo }) {
         <div className="dc-empty">Sin datos.</div>
       ) : (
         <div className="dc-card-box">
-          <table className="dc-table">
+          <table className="dc-table dc-table-sri">
             <thead><tr><th>Código SRI</th><th>Concepto</th><th className="r"># Fact.</th><th className="r">Valor</th></tr></thead>
             <tbody>
               {seccionesDisplay.map((sec) => (
@@ -622,8 +628,9 @@ export default function Declaraciones({ tipo }) {
                   <tr className="dc-sec"><td colSpan={4}>{sec}</td></tr>
                   {filasDisplay.filter((f) => f.seccion === sec).map((f, i) => {
                     const esCasilleroAplazado = ['480', '481', '484', '609.X', '699'].includes(f.codigo)
+                    const esTotal = TOTALES_SRI.has(f.codigo)
                     return (
-                      <tr key={sec + i} className={`${f.seccion === 'RESULTADO' ? 'dc-res' : ''} ${esCasilleroAplazado ? 'dc-row-diferido' : ''}`}>
+                      <tr key={sec + i} className={`${f.seccion === 'RESULTADO' ? 'dc-res' : ''} ${esTotal ? 'dc-total' : ''} ${esCasilleroAplazado ? 'dc-row-diferido' : ''}`}>
                         <td className="dc-cod">{f.codigo}</td>
                         <td>{f.concepto}</td>
                         <td className="r">{f.num_comprobantes != null ? f.num_comprobantes : ''}</td>

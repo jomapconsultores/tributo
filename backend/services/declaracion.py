@@ -230,32 +230,31 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
         filas.append(fila("RESULTADO", "484", "(−) IVA correspondiente al 481 (no se causa este período)",
                           iva_diferido_actual))
 
-    # Crédito por adquisiciones (con factor de proporcionalidad)
-    filas.append(fila("RESULTADO", "564", f"Crédito tributario por adquisiciones (IVA compras × factor {factor:.2%})",
+    # Factor de proporcionalidad y crédito por adquisiciones
+    filas.append(fila("RESULTADO", "563", f"Factor de proporcionalidad para crédito tributario ({factor:.2%})", round(factor, 4)))
+    filas.append(fila("RESULTADO", "564", "Crédito tributario aplicable en este período (IVA compras × factor)",
                       credito_adq_aplicable, c_n_base_15 + c_n_base_5))
     if iva_no_acreditable > 0:
-        filas.append(fila("RESULTADO", "—", "IVA NO acreditable por proporcionalidad (va al gasto/costo)", iva_no_acreditable))
+        filas.append(fila("RESULTADO", "565", "IVA NO considerado crédito tributario por el factor de proporcionalidad (al gasto)", iva_no_acreditable))
 
     # Impuesto causado / crédito del período
     filas.append(fila("RESULTADO", "601", "Impuesto causado (IVA generado − crédito por adquisiciones)", impuesto_causado))
     if credito_periodo_adq > 0:
         filas.append(fila("RESULTADO", "602", "Crédito tributario del período por adquisiciones (a favor)", credito_periodo_adq))
 
-    # Créditos que se restan del impuesto causado — SEPARADOS por tipo
+    # Créditos que se restan del impuesto causado — SEPARADOS por tipo (casilleros oficiales 605/606/609)
     filas.extend([
         fila("RESULTADO", "605", "(−) Saldo crédito tributario mes anterior por ADQUISICIONES (editable)", _f(credito_mes_anterior_adquisiciones)),
-        fila("RESULTADO", "607", "(−) Saldo crédito tributario mes anterior por RETENCIONES (editable)", _f(credito_mes_anterior_retenciones)),
+        fila("RESULTADO", "606", "(−) Saldo crédito tributario mes anterior por RETENCIONES (editable)", _f(credito_mes_anterior_retenciones)),
         fila("RESULTADO", "609", "(−) Retenciones de IVA que le efectuaron en el período", ret_iva_periodo, n_retenciones),
     ])
 
-    if iva_a_pagar > 0:
-        filas.append(fila("RESULTADO", "619", "Subtotal a pagar (impuesto causado − créditos)", iva_a_pagar))
-    # Arrastre al próximo mes — SEPARADO adquisiciones vs retenciones
+    filas.append(fila("RESULTADO", "620", "SUBTOTAL A PAGAR (impuesto causado − créditos)", iva_a_pagar))
+    # Arrastre al próximo mes — SEPARADO adquisiciones (615) vs retenciones (617)
     if credito_proximo_adq > 0:
-        filas.append(fila("RESULTADO", "695", "✓ Crédito tributario próximo mes por ADQUISICIONES", credito_proximo_adq))
+        filas.append(fila("RESULTADO", "615", "✓ Saldo crédito tributario próximo mes por ADQUISICIONES", credito_proximo_adq))
     if credito_proximo_ret > 0:
-        filas.append(fila("RESULTADO", "697", "✓ Crédito tributario próximo mes por RETENCIONES", credito_proximo_ret))
-    filas.append(fila("RESULTADO", "902", "IVA a pagar del período", iva_a_pagar))
+        filas.append(fila("RESULTADO", "617", "✓ Saldo crédito tributario próximo mes por RETENCIONES", credito_proximo_ret))
 
     return {
         "tipo": "IVA",
