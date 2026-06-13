@@ -6,7 +6,7 @@ import bajadorBookmarklet from '../utils/bajador-facturas.bookmarklet.txt?raw'
 import bajadorIngresosBookmarklet from '../utils/bajador-ingresos.bookmarklet.txt?raw'
 import './Sidebar.css'
 
-export default function Sidebar({ onNewClient, onLogout, userEmail }) {
+export default function Sidebar({ onNewClient, onLogout, userEmail, open = false }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { clients, selectedClientId, selectClient, setFocusIdent } = useClients()
@@ -77,7 +77,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail }) {
   const moduleHome = isRetenciones ? '/retenciones' : isCalculo ? '/calculo-ice' : isIceXml ? '/ice' : homeFor(has)
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${open ? 'is-open' : ''}`}>
       <div className="sidebar-brand">
         <span className="brand-icon">📑</span>
         <div>

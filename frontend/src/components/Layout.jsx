@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import NewClientModal from './NewClientModal'
 import AlertaDeclaracion from './AlertaDeclaracion'
@@ -31,12 +31,25 @@ function SubBanner() {
 
 export default function Layout({ user, onLogout }) {
   const [modalOpen, setModalOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const location = useLocation()
 
   const openNewClient = () => setModalOpen(true)
 
+  // En móvil, al navegar se cierra el menú deslizable.
+  useEffect(() => { setSidebarOpen(false) }, [location.pathname])
+
   return (
-    <div className="layout">
-      <Sidebar onNewClient={openNewClient} onLogout={onLogout} userEmail={user?.email} />
+    <div className={`layout ${sidebarOpen ? 'sidebar-open' : ''}`}>
+      {/* Barra superior solo en móvil: botón de menú */}
+      <header className="layout-topbar">
+        <button className="topbar-burger" onClick={() => setSidebarOpen((o) => !o)} aria-label="Menú">☰</button>
+        <span className="topbar-title">📑 Gestor SRI</span>
+      </header>
+
+      <div className="layout-overlay" onClick={() => setSidebarOpen(false)} />
+
+      <Sidebar open={sidebarOpen} onNewClient={openNewClient} onLogout={onLogout} userEmail={user?.email} />
       <main className="layout-content">
         <SubBanner />
         <AlertaDeclaracion />
