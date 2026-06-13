@@ -31,3 +31,17 @@
 
 /* Selector de rol (solo super-admin) */
 .adm-rol-select { margin-top: 4px; font-size: 0.72rem; padding: 2px 4px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; color: #334155; }
+
+/* Modal de pago */
+.pago-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.pago-modal { background: #fff; border-radius: 14px; padding: 28px 32px; min-width: 320px; max-width: 400px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,0.18); }
+.pago-title { margin: 0 0 4px; font-size: 1.1rem; color: #1a3d6b; font-weight: 700; }
+.pago-email { margin: 0 0 18px; color: #64748b; font-size: 0.85rem; }
+.pago-form { display: flex; flex-direction: column; gap: 14px; }
+.pago-label { display: flex; flex-direction: column; gap: 5px; font-size: 0.82rem; font-weight: 600; color: #334155; }
+.pago-select, .pago-input { border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 11px; font-size: 0.9rem; outline: none; }
+.pago-select:focus, .pago-input:focus { border-color: #2563eb; }
+.pago-check { display: flex; align-items: center; gap: 8px; font-size: 0.83rem; color: #334155; cursor: pointer; }
+.pago-preview { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 10px 14px; font-size: 0.82rem; color: #0369a1; display: flex; flex-direction: column; gap: 3px; }
+.pago-total { margin-top: 4px; font-size: 0.9rem; color: #1e40af; }
+.pago-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }

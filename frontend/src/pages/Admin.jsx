@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { adminAPI } from '../services/api'
 import { useAccess } from '../context/AccessContext'
 import './Admin.css'
@@ -27,6 +27,7 @@ export default function Admin() {
   const [nuevo, setNuevo] = useState({ email: '', password: '', plan: 'completo' })
   const [busy, setBusy] = useState(false)
   const [contactos, setContactos] = useState([])
+  const [pagoModal, setPagoModal] = useState(null) // { uid, email, precio }
 
   useEffect(() => { adminAPI.contactos().then((r) => setContactos(r.data?.data || [])).catch(() => {}) }, [])
 
@@ -86,21 +87,18 @@ export default function Admin() {
     try { await adminAPI.setPlan(uid, plan, null); await adminAPI.setSubscription(uid, { plan }); await load() }
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy(false) }
   }
-  const registrarPago = async (uid) => {
-    const mStr = prompt('Meses a pagar por anticipado (1, 3, 6 o 12):', '1')
-    if (mStr === null) return
-    let meses = parseInt(mStr, 10)
-    if (![1, 3, 6, 12].includes(meses)) meses = 1
-    const precio = parseFloat(edit[uid].precio) || 0
-    const desc = DESCUENTOS[meses]
-    const sugerido = (precio * meses * (1 - desc)).toFixed(2)
-    const monto = prompt(`Monto recibido (USD) por ${meses} mes(es)${desc ? ` — ${desc * 100}% descuento` : ''}:`, sugerido)
-    if (monto === null) return
+  const registrarPago = (uid) => {
+    const u = users.find((x) => x.user_id === uid)
+    setPagoModal({ uid, email: u?.email || uid, precio: parseFloat(edit[uid]?.precio) || 0 })
+  }
+  const confirmarPago = async ({ uid, meses, monto, iva_incluido }) => {
     setBusy(true)
     try {
-      const r = await adminAPI.registrarPago(uid, { monto: parseFloat(monto) || 0, meses, avanzar_mes: true })
+      const r = await adminAPI.registrarPago(uid, { monto: parseFloat(monto) || 0, meses, avanzar_mes: true, iva_incluido })
+      setPagoModal(null)
       await load()
-      alert(`✔ Pago registrado (${meses} mes(es) = ${meses * 30} días). Próximo pago: ${r.data.proximo_pago || '—'}`)
+      const total = iva_incluido ? parseFloat(monto) : parseFloat(monto) * 1.15
+      alert(`✔ Pago registrado — Total c/IVA: $${total.toFixed(2)} (${meses} mes(es)). Próximo pago: ${r.data.proximo_pago || '—'}`)
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy(false) }
   }
   const resetIps = async (uid) => {
@@ -122,6 +120,15 @@ export default function Admin() {
 
   return (
     <div className="adm-page">
+      {pagoModal && (
+        <PagoModalForm
+          email={pagoModal.email}
+          precioBase={pagoModal.precio}
+          onConfirm={(data) => confirmarPago({ uid: pagoModal.uid, ...data })}
+          onCancel={() => setPagoModal(null)}
+          busy={busy}
+        />
+      )}
       <header className="adm-header">
         <h1>🛠️ Administración de usuarios y cobros</h1>
         <p className="adm-sub">Crea cuentas, asigna módulos contratados y gestiona la suscripción mensual.</p>
@@ -217,6 +224,71 @@ export default function Admin() {
             </table>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function PagoModalForm({ email, precioBase, onConfirm, onCancel, busy }) {
+  const [meses, setMeses] = useState(1)
+  const [monto, setMonto] = useState('')
+  const [ivaIncluido, setIvaIncluido] = useState(false)
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    const desc = DESCUENTOS[meses] || 0
+    const sugerido = precioBase ? (precioBase * meses * (1 - desc)).toFixed(2) : ''
+    setMonto(sugerido)
+  }, [meses, precioBase])
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  const val = parseFloat(monto) || 0
+  const desc = DESCUENTOS[meses] || 0
+  const base = ivaIncluido ? val / 1.15 : val
+  const iva = ivaIncluido ? val - base : val * 0.15
+  const total = ivaIncluido ? val : val * 1.15
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    if (!val) return
+    onConfirm({ meses, monto: val, iva_incluido: ivaIncluido })
+  }
+
+  return (
+    <div className="pago-overlay">
+      <div className="pago-modal">
+        <h3 className="pago-title">💵 Registrar Pago</h3>
+        <p className="pago-email">{email}</p>
+        <form onSubmit={handleSubmit} className="pago-form">
+          <label className="pago-label">Meses
+            <select value={meses} onChange={(e) => setMeses(parseInt(e.target.value))} className="pago-select">
+              {[1, 3, 6, 12].map((m) => (
+                <option key={m} value={m}>{m} mes{m > 1 ? 'es' : ''}{DESCUENTOS[m] ? ` (−${DESCUENTOS[m] * 100}%)` : ''}</option>
+              ))}
+            </select>
+          </label>
+          <label className="pago-label">Valor ($)
+            <input ref={inputRef} type="number" step="0.01" min="0.01" value={monto}
+              onChange={(e) => setMonto(e.target.value)} className="pago-input" required />
+          </label>
+          <label className="pago-check">
+            <input type="checkbox" checked={ivaIncluido} onChange={(e) => setIvaIncluido(e.target.checked)} />
+            Valor ya incluye IVA (15%)
+          </label>
+          {val > 0 && (
+            <div className="pago-preview">
+              {desc > 0 && <div>Descuento: {desc * 100}%</div>}
+              <div>Base imponible: <strong>${base.toFixed(2)}</strong></div>
+              <div>IVA 15%: <strong>${iva.toFixed(2)}</strong></div>
+              <div className="pago-total">Total c/IVA: <strong>${total.toFixed(2)}</strong></div>
+            </div>
+          )}
+          <div className="pago-actions">
+            <button type="button" className="adm-btn" onClick={onCancel} disabled={busy}>Cancelar</button>
+            <button type="submit" className="adm-btn primary" disabled={busy || !val}>✔ Confirmar</button>
+          </div>
+        </form>
       </div>
     </div>
   )

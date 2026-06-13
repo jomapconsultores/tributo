@@ -73,6 +73,7 @@ class PagoIn(BaseModel):
     metodo: Optional[str] = None
     nota: Optional[str] = None
     avanzar_mes: bool = True
+    iva_incluido: bool = False     # True = monto ya incluye IVA; False = sumar 15%
 
 
 def _aplicar_modulos(uid: str, modules: List[str], valid_until: Optional[str]):
@@ -159,8 +160,12 @@ async def registrar_pago(uid: str, body: PagoIn, _: str = Depends(require_admin)
     meses = body.meses if body.meses in DESCUENTOS else 1
     fecha = body.fecha or date.today().isoformat()
     periodo = body.periodo or (f"{meses} mes(es)")
+    if body.iva_incluido:
+        monto_final = round(body.monto, 2)
+    else:
+        monto_final = round(body.monto * 1.15, 2)
     sb.table("pagos").insert({
-        "user_id": uid, "monto": body.monto, "fecha": fecha,
+        "user_id": uid, "monto": monto_final, "fecha": fecha,
         "periodo": periodo, "metodo": body.metodo, "nota": body.nota,
     }).execute()
     sub_upd = {"estado": "activo"}
