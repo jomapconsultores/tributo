@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from pydantic import BaseModel
 from auth import get_current_user
@@ -69,7 +69,6 @@ async def list_clients(user_id: str = Depends(get_current_user)):
 @router.get("/by-service")
 async def clients_by_service(service: str = Query(...), user_id: str = Depends(get_current_user)):
     """Identificaciones (RUCs) que tienen el servicio activo en client_services."""
-    from fastapi import Query as Q
     try:
         supabase = get_supabase_client()
         admin = es_admin(user_id)
