@@ -1,213 +1,331 @@
+/* ─── Sidebar — diseño profesional refinado ─── */
 .sidebar {
-  width: 260px;
-  min-width: 260px;
+  width: 264px;
+  min-width: 264px;
   height: 100vh;
-  background: #0f172a;
+  background: linear-gradient(180deg, #111827 0%, #0d1422 100%);
   color: #e2e8f0;
   display: flex;
   flex-direction: column;
   position: sticky;
   top: 0;
+  box-shadow: 2px 0 20px rgba(0, 0, 0, 0.45);
 }
 
+/* ── Brand ── */
 .sidebar-brand {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 20px 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 22px 18px 18px;
+  background: linear-gradient(135deg, #1e3a6e 0%, #0f2346 100%);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.25);
+  flex-shrink: 0;
 }
 
 .brand-icon {
-  font-size: 1.6rem;
+  font-size: 1.65rem;
+  filter: drop-shadow(0 0 6px rgba(99, 179, 237, 0.5));
 }
 
 .brand-title {
-  font-weight: 700;
+  font-weight: 800;
   font-size: 1.05rem;
   color: #fff;
+  letter-spacing: 0.3px;
+  line-height: 1.2;
 }
 
 .brand-sub {
-  font-size: 0.72rem;
-  color: #94a3b8;
+  font-size: 0.68rem;
+  color: #93bbdd;
+  letter-spacing: 0.3px;
+  margin-top: 2px;
+  opacity: 0.85;
 }
 
+/* ── Nav container ── */
 .sidebar-nav {
   flex: 1;
   overflow-y: auto;
-  padding: 14px 10px;
+  padding: 12px 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.10) transparent;
 }
+.sidebar-nav::-webkit-scrollbar { width: 4px; }
+.sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+.sidebar-nav::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
 
+/* ── Base nav item ── */
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   width: 100%;
   background: transparent;
   border: none;
-  color: #cbd5e1;
+  color: #94a3b8;
   text-align: left;
-  padding: 10px 12px;
+  padding: 9px 12px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 0.92rem;
-  transition: background 0.15s, color 0.15s;
+  font-size: 0.875rem;
+  transition: background 0.18s, color 0.18s, box-shadow 0.18s;
+  position: relative;
 }
 
 .nav-item:hover {
   background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  color: #e2e8f0;
 }
 
 .nav-item.active {
-  background: #4f46e5;
+  background: rgba(99, 130, 246, 0.18);
   color: #fff;
+  font-weight: 600;
 }
 
 .nav-ico {
   font-size: 1rem;
   width: 18px;
   text-align: center;
+  flex-shrink: 0;
 }
 
-/* Botones remarcados de módulo: GASTOS y RETENCIONES */
-.module-btn {
-  font-weight: 800;
-  letter-spacing: 0.6px;
-  font-size: 0.95rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  margin-bottom: 8px;
-  padding: 12px 14px;
-}
-
-.module-btn.gastos { background: rgba(16, 185, 129, 0.16); color: #6ee7b7; }
-.module-btn.gastos:hover { background: rgba(16, 185, 129, 0.28); color: #fff; }
-.module-btn.gastos.active { background: #059669; color: #fff; border-color: #10b981; }
-
-.module-btn.retenciones { background: rgba(14, 165, 233, 0.16); color: #7dd3fc; }
-.module-btn.retenciones:hover { background: rgba(14, 165, 233, 0.28); color: #fff; }
-.module-btn.retenciones.active { background: #0284c7; color: #fff; border-color: #0ea5e9; }
-
-.module-btn.ice { background: rgba(217, 119, 6, 0.18); color: #fcd34d; }
-.module-btn.ice:hover { background: rgba(217, 119, 6, 0.3); color: #fff; }
-.module-btn.ice.active { background: #d97706; color: #fff; border-color: #f59e0b; }
-
-.module-btn.declaraciones { background: rgba(37, 99, 235, 0.16); color: #93c5fd; }
-.module-btn.declaraciones:hover { background: rgba(37, 99, 235, 0.28); color: #fff; }
-.module-btn.declaraciones.active { background: #2563eb; color: #fff; border-color: #3b82f6; }
-.module-btn.declaraciones .caret { font-size: 0.7rem; transition: transform 0.15s; }
-.module-btn.declaraciones .caret.open { transform: rotate(90deg); }
-
-.module-btn.ingresos { background: rgba(217, 119, 6, 0.18); color: #fcd34d; }
-.module-btn.ingresos:hover { background: rgba(217, 119, 6, 0.3); color: #fff; }
-.module-btn.ingresos.active { background: rgba(217, 119, 6, 0.32); color: #fff; border-color: #f59e0b; }
-.module-btn.ingresos .caret { font-size: 0.7rem; transition: transform 0.15s; }
-.module-btn.ingresos .caret.open { transform: rotate(90deg); }
-
-/* Submódulos de INGRESOS+ICE */
-.submodule-list {
-  margin: 2px 0 8px 14px;
-  padding-left: 8px;
-  border-left: 1px solid rgba(255, 255, 255, 0.12);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.submodule { font-size: 0.85rem; color: #cbd5e1; padding: 8px 12px; }
-.submodule.active { background: #d97706; color: #fff; }
-
-/* Menú pequeño de información útil */
-.info-title {
-  font-size: 0.66rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #64748b;
-  padding: 8px 12px 3px;
-}
-.info-item {
-  font-size: 0.78rem;
-  color: #94a3b8;
-  padding: 6px 12px;
-  text-decoration: none;
-}
-.info-item:hover { color: #fff; }
-.info-item.active { background: #334155; color: #fff; }
-
-/* Toggle de clientes (desplegable) */
-.clients-toggle {
-  font-size: 0.85rem;
-  color: #94a3b8;
-  margin-left: 6px;
-}
-
-.clients-toggle .caret {
+/* ── Caret ── */
+.caret {
   display: inline-block;
-  transition: transform 0.15s;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
+  transition: transform 0.2s ease;
+  color: #64748b;
+  flex-shrink: 0;
 }
+.caret.open { transform: rotate(90deg); }
 
-.clients-toggle .caret.open { transform: rotate(90deg); }
-
-.level-1 {
+/* ── Módulos (botones de sección) ── */
+.module-btn {
   font-weight: 700;
-  font-size: 0.98rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  padding: 10px 12px;
+  margin-top: 4px;
+  border-radius: 8px;
+  border: none;
+  border-left: 3px solid transparent;
+  transition: background 0.18s, color 0.18s, border-color 0.18s;
 }
 
-/* Clasificador: menor jerarquía */
-.level-2 {
-  font-size: 0.85rem;
-  color: #94a3b8;
-  padding: 8px 12px;
+/* Gastos — verde esmeralda */
+.module-btn.gastos {
+  background: rgba(16, 185, 129, 0.09);
+  color: #6ee7b7;
+  border-left-color: rgba(16, 185, 129, 0.4);
 }
+.module-btn.gastos:hover { background: rgba(16, 185, 129, 0.18); color: #a7f3d0; }
+.module-btn.gastos.active { background: rgba(16, 185, 129, 0.22); color: #fff; border-left-color: #10b981; }
 
-.level-2.active {
-  background: #334155;
+/* Retenciones — azul cielo */
+.module-btn.retenciones {
+  background: rgba(14, 165, 233, 0.09);
+  color: #7dd3fc;
+  border-left-color: rgba(14, 165, 233, 0.4);
+}
+.module-btn.retenciones:hover { background: rgba(14, 165, 233, 0.18); color: #bae6fd; }
+.module-btn.retenciones.active { background: rgba(14, 165, 233, 0.22); color: #fff; border-left-color: #0ea5e9; }
+
+/* Ingresos ICE — ámbar */
+.module-btn.ingresos {
+  background: rgba(217, 119, 6, 0.10);
+  color: #fcd34d;
+  border-left-color: rgba(217, 119, 6, 0.45);
+}
+.module-btn.ingresos:hover { background: rgba(217, 119, 6, 0.20); color: #fde68a; }
+.module-btn.ingresos.active { background: rgba(217, 119, 6, 0.24); color: #fff; border-left-color: #f59e0b; }
+
+/* Declaraciones — índigo */
+.module-btn.declaraciones {
+  background: rgba(99, 102, 241, 0.10);
+  color: #a5b4fc;
+  border-left-color: rgba(99, 102, 241, 0.4);
+}
+.module-btn.declaraciones:hover { background: rgba(99, 102, 241, 0.20); color: #c7d2fe; }
+.module-btn.declaraciones.active { background: rgba(99, 102, 241, 0.24); color: #fff; border-left-color: #6366f1; }
+
+/* Devoluciones — rosa/fucsia */
+.module-btn.devoluciones {
+  background: rgba(236, 72, 153, 0.09);
+  color: #f9a8d4;
+  border-left-color: rgba(236, 72, 153, 0.4);
+}
+.module-btn.devoluciones:hover { background: rgba(236, 72, 153, 0.18); color: #fce7f3; }
+.module-btn.devoluciones.active { background: rgba(236, 72, 153, 0.22); color: #fff; border-left-color: #ec4899; }
+
+/* Módulos sin color de clase (Reportes, Admin) */
+.module-btn:not(.gastos):not(.retenciones):not(.ingresos):not(.declaraciones):not(.devoluciones) {
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+  border-left-color: rgba(255,255,255,0.15);
+}
+.module-btn:not(.gastos):not(.retenciones):not(.ingresos):not(.declaraciones):not(.devoluciones):hover {
+  background: rgba(255, 255, 255, 0.10);
   color: #fff;
 }
+.module-btn:not(.gastos):not(.retenciones):not(.ingresos):not(.declaraciones):not(.devoluciones).active {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  border-left-color: rgba(255,255,255,0.5);
+}
 
-/* Bajador de facturas: enlace arrastrable */
+/* ── Submódulos ── */
+.submodule-list {
+  margin: 2px 0 6px 18px;
+  padding-left: 10px;
+  border-left: 1px solid rgba(255, 255, 255, 0.09);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.submodule {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  padding: 7px 11px;
+  border-radius: 7px;
+  text-transform: none;
+  font-weight: 500;
+  letter-spacing: 0;
+  border-left: none;
+}
+.submodule:hover { background: rgba(255,255,255,0.06); color: #e2e8f0; }
+.submodule.active { background: rgba(255,255,255,0.10); color: #fff; font-weight: 600; }
+
+/* ── Información útil ── */
+.info-title {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #475569;
+  padding: 10px 12px 3px;
+  font-weight: 600;
+}
+
+.info-item {
+  font-size: 0.78rem;
+  color: #64748b;
+  padding: 6px 11px;
+  text-decoration: none;
+  border-radius: 7px;
+}
+.info-item:hover { color: #e2e8f0; background: rgba(255,255,255,0.05); }
+.info-item.active { background: rgba(255,255,255,0.08); color: #e2e8f0; }
+
+/* ── Bajador (arrastrable) ── */
 .bajador-item {
   text-decoration: none;
   cursor: grab;
 }
-
 .bajador-item:active { cursor: grabbing; }
-
 .bajador-item::after {
   content: '⠿';
   margin-left: auto;
-  color: #64748b;
-  font-size: 0.9rem;
-}
-
-.bajador-item:hover::after { color: #cbd5e1; }
-
-.client-list {
-  margin: 4px 0 4px 14px;
-  padding-left: 8px;
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.client-item {
+  color: #475569;
   font-size: 0.85rem;
-  padding: 7px 10px;
+  flex-shrink: 0;
 }
+.bajador-item:hover::after { color: #94a3b8; }
 
-.client-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #64748b;
+/* ── Nivel 1: Base de datos ── */
+.level-1 {
+  font-weight: 700;
+  font-size: 0.84rem;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+.level-1:hover { color: #e2e8f0; }
+.level-1.active { background: rgba(255,255,255,0.08); color: #fff; }
+
+/* ── Divider ── */
+.nav-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.10), transparent);
+  margin: 10px 8px;
   flex-shrink: 0;
 }
 
-.client-item.active .client-dot {
-  background: #fff;
+/* ── Clientes toggle ── */
+.clients-toggle {
+  font-size: 0.82rem;
+  color: #64748b;
+  padding: 8px 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
+.clients-toggle:hover { color: #cbd5e1; }
+.clients-toggle.active { color: #fff; background: rgba(255,255,255,0.07); }
+
+.client-badge {
+  margin-left: auto;
+  background: rgba(99, 130, 246, 0.25);
+  color: #a5b4fc;
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* ── Lista de clientes ── */
+.client-list {
+  margin: 3px 0 6px 18px;
+  padding-left: 10px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.client-search {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 7px;
+  color: #e2e8f0;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  outline: none;
+  margin-bottom: 5px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.client-search::placeholder { color: #475569; }
+.client-search:focus { border-color: rgba(99, 130, 246, 0.5); background: rgba(255,255,255,0.09); }
+
+.client-item {
+  font-size: 0.82rem;
+  padding: 6px 10px;
+  border-radius: 7px;
+  gap: 8px;
+}
+.client-item:hover { background: rgba(255,255,255,0.06); }
+.client-item.active { background: rgba(99,130,246,0.16); }
+
+.client-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #334155;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.client-item:hover .client-dot { background: #94a3b8; }
+.client-item.active .client-dot { background: #818cf8; }
 
 .client-info {
   flex: 1;
@@ -220,96 +338,83 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: #cbd5e1;
+  font-size: 0.82rem;
 }
+.client-item.active .client-name { color: #fff; }
 
 .client-periodo {
-  font-size: 0.68rem;
-  color: #94a3b8;
-  text-transform: uppercase;
+  font-size: 0.65rem;
+  color: #475569;
   letter-spacing: 0.3px;
+  margin-top: 1px;
 }
-
-.client-item.active .client-periodo {
-  color: #c7d2fe;
-}
-
-.client-badge {
-  background: rgba(255, 255, 255, 0.15);
-  color: #e2e8f0;
-  border-radius: 10px;
-  padding: 1px 7px;
-  font-size: 0.7rem;
-  font-weight: 600;
-}
-
-.client-item.active .client-badge {
-  background: rgba(255, 255, 255, 0.25);
-}
+.client-item.active .client-periodo { color: #818cf8; }
 
 .client-empty {
-  font-size: 0.78rem;
-  color: #64748b;
-  padding: 6px 10px;
+  font-size: 0.76rem;
+  color: #475569;
+  padding: 5px 10px;
   font-style: italic;
 }
 
-.client-search {
-  width: 100%;
-  box-sizing: border-box;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 7px;
-  color: #e2e8f0;
-  padding: 7px 10px;
-  font-size: 0.8rem;
-  outline: none;
-  margin-bottom: 6px;
-}
-.client-search::placeholder { color: #94a3b8; }
-.client-search:focus { border-color: #818cf8; }
-
+/* ── Nuevo cliente ── */
 .add-client {
-  color: #818cf8;
-  font-size: 0.82rem;
+  color: #6366f1;
+  font-size: 0.80rem;
+  font-weight: 600;
+  margin-top: 4px;
+  border: 1px dashed rgba(99, 102, 241, 0.3);
+  border-radius: 7px;
+  padding: 7px 10px;
 }
+.add-client:hover { color: #a5b4fc; background: rgba(99,102,241,0.10); border-color: rgba(99,102,241,0.5); }
 
-.add-client:hover {
-  color: #a5b4fc;
-}
-
-.nav-divider {
-  height: 1px;
-  background: rgba(255, 255, 255, 0.08);
-  margin: 12px 6px;
-}
-
+/* ── Footer ── */
 .sidebar-footer {
   padding: 14px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(0,0,0,0.15);
+  flex-shrink: 0;
 }
 
 .user-email {
-  font-size: 0.75rem;
-  color: #94a3b8;
+  font-size: 0.72rem;
+  color: #475569;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  letter-spacing: 0.2px;
 }
 
 .logout-link {
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #cbd5e1;
-  padding: 6px 12px;
-  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: #64748b;
+  padding: 7px 12px;
+  border-radius: 7px;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   width: 100%;
+  transition: background 0.18s, color 0.18s, border-color 0.18s;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+.logout-link:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
 }
 
-.logout-link:hover {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #fca5a5;
+/* ── Mobile overlay ── */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    left: -280px;
+    z-index: 200;
+    transition: left 0.25s ease;
+    width: 264px;
+  }
+  .sidebar.is-open { left: 0; box-shadow: 4px 0 32px rgba(0,0,0,0.6); }
 }
