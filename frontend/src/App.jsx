@@ -27,6 +27,7 @@ const Normativa                = lazy(() => import('./pages/Normativa'))
 const Reportes                 = lazy(() => import('./pages/Reportes'))
 const Admin                    = lazy(() => import('./pages/Admin'))
 const AdminCredentials         = lazy(() => import('./pages/AdminCredentials'))
+const OdooFacturacion          = lazy(() => import('./pages/OdooFacturacion'))
 
 const PageLoader = () => <div className="loading">Cargando…</div>
 
@@ -124,6 +125,7 @@ function App() {
               <Route path="/reportes" element={<Reportes />} />
               <Route path="/admin" element={<RequireAdmin><Admin /></RequireAdmin>} />
               <Route path="/admin/credenciales" element={<RequireAdmin><AdminCredentials /></RequireAdmin>} />
+              <Route path="/odoo-facturacion" element={<RequireAdmin><OdooFacturacion /></RequireAdmin>} />
               <Route path="/sin-acceso" element={<SinAcceso />} />
               <Route path="*" element={<HomeRedirect />} />
             </Route>

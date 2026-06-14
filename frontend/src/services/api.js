@@ -336,6 +336,12 @@ export const memoryAPI = {
   save: (mem_key, tarjeta_credito) => api.post('/api/memory/', { mem_key, tarjeta_credito }),
 }
 
+// ODOO: facturación directa desde honorarios (solo admin)
+export const odooAPI = {
+  estado: () => api.get('/api/odoo/estado'),
+  facturar: (body) => api.post('/api/odoo/facturar', body),
+}
+
 // Helper de descarga de blobs
 export const downloadBlob = (data, filename, type) => {
   const url = window.URL.createObjectURL(new Blob([data], type ? { type } : undefined))
