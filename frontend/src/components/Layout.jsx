@@ -4,6 +4,7 @@ import Sidebar from './Sidebar'
 import NewClientModal from './NewClientModal'
 import AlertaDeclaracion from './AlertaDeclaracion'
 import { useAccess } from '../context/AccessContext'
+import { accessAPI } from '../services/api'
 import './Layout.css'
 
 function diasHasta(fecha) {
@@ -38,6 +39,12 @@ export default function Layout({ user, onLogout }) {
 
   // En móvil, al navegar se cierra el menú deslizable.
   useEffect(() => { setSidebarOpen(false) }, [location.pathname])
+
+  // Keep-alive: ping cada 9 min para que Render free no duerma el backend
+  useEffect(() => {
+    const id = setInterval(() => { accessAPI.me().catch(() => {}) }, 9 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [])
 
   return (
     <div className={`layout ${sidebarOpen ? 'sidebar-open' : ''}`}>

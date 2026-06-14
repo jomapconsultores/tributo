@@ -7,6 +7,7 @@ from auth import get_current_user
 from database import get_supabase_client, fetch_all
 from services.declaracion import declaracion_iva, declaracion_ice
 from services.declaracion_oficial import llenar_oficial
+from services.credentials_crypto import decrypt
 from tenancy import assert_client_owner
 from routers.access import es_admin
 
@@ -198,32 +199,35 @@ async def calcular(
 
 
 @router.get("/credenciales")
-async def credenciales_cliente(client_id: str = Query(...), user_id: str = Depends(get_current_user)):
-    """Para la pantalla de declaración: servicios contratados del contribuyente
-    (compartidos por RUC) y, solo para administradores, el acceso al portal SRI
-    (usuario + id de credencial para revelar la clave). Relaciona las
-    credenciales con la declaración (punto 4)."""
+async def credenciales_cliente(client_id: str = Query(...), reveal: bool = Query(False), user_id: str = Depends(get_current_user)):
+    """Servicios contratados + credencial SRI (admin). Con reveal=true devuelve
+    la clave descifrada en un solo viaje, evitando la llamada /reveal separada."""
     try:
         supabase = get_supabase_client()
         admin = es_admin(user_id)
-        # Los admins pueden ver cualquier cliente; el resto solo los propios.
         if not admin:
             assert_client_owner(client_id, user_id)
         cl = supabase.table("clients").select("identificacion,nombre,user_id").eq("id", client_id).execute().data
         if not cl:
             return {"servicios": [], "es_admin": admin, "credencial": None}
         ident = cl[0]["identificacion"]
-        owner_uid = cl[0]["user_id"]  # propietario real del cliente
-        # Todos los períodos del mismo RUC (usando el user_id del propietario)
+        owner_uid = cl[0]["user_id"]
         hermanos = supabase.table("clients").select("id").eq("identificacion", ident).eq("user_id", owner_uid).execute().data or []
         ids = [h["id"] for h in hermanos] or [client_id]
         servicios = supabase.table("client_services").select("service,active").in_("client_id", ids).eq("active", True).execute().data or []
         servicios = sorted({s["service"] for s in servicios})
         credencial = None
         if admin:
-            cred = supabase.table("service_credentials").select("id,service,username").in_("client_id", ids).eq("service", "sri_portal").execute().data
+            cols = "id,service,username,ciphertext,key_version" if reveal else "id,service,username"
+            cred = supabase.table("service_credentials").select(cols).in_("client_id", ids).eq("service", "sri_portal").execute().data
             if cred:
-                credencial = {"id": cred[0]["id"], "service": cred[0]["service"], "username": cred[0].get("username")}
+                c = cred[0]
+                credencial = {"id": c["id"], "service": c["service"], "username": c.get("username")}
+                if reveal and c.get("ciphertext"):
+                    try:
+                        credencial["password"] = decrypt(c["ciphertext"], c.get("key_version", 1))
+                    except Exception:
+                        credencial["password"] = None
         return {"servicios": servicios, "es_admin": admin, "credencial": credencial}
     except HTTPException:
         raise

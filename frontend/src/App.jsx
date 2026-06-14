@@ -1,35 +1,38 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
-import Login from './pages/Login'
-import Landing from './pages/Landing'
-import ResetPassword from './pages/ResetPassword'
-import Database from './pages/Database'
-import Classifier from './pages/Classifier'
-import SavedData from './pages/SavedData'
-import Retenciones from './pages/Retenciones'
-import ICE from './pages/ICE'
-import CalculoICE from './pages/CalculoICE'
-import AnexoPVPICE from './pages/AnexoPVPICE'
-import IngresosIva from './pages/IngresosIva'
-import RecursosICE from './pages/RecursosICE'
-import Declaraciones from './pages/Declaraciones'
-import DevolucionesIvaTerceraEdad from './pages/DevolucionesIvaTerceraEdad'
-import CatalogoProductos from './pages/CatalogoProductos'
-import Compradores from './pages/Compradores'
-import RebajasExenciones from './pages/RebajasExenciones'
-import Normativa from './pages/Normativa'
-import Reportes from './pages/Reportes'
-import Admin from './pages/Admin'
-import AdminCredentials from './pages/AdminCredentials'
-import Layout from './components/Layout'
-import { ClientProvider } from './context/ClientContext'
 import { AccessProvider, useAccess, homeFor } from './context/AccessContext'
+import { ClientProvider } from './context/ClientContext'
+import Layout from './components/Layout'
 import './App.css'
 
-// Bloquea una ruta si el usuario no tiene el módulo contratado
+// Lazy-load every page: first load only downloads the current route's chunk
+const Login                    = lazy(() => import('./pages/Login'))
+const Landing                  = lazy(() => import('./pages/Landing'))
+const ResetPassword            = lazy(() => import('./pages/ResetPassword'))
+const Database                 = lazy(() => import('./pages/Database'))
+const Classifier               = lazy(() => import('./pages/Classifier'))
+const SavedData                = lazy(() => import('./pages/SavedData'))
+const Retenciones              = lazy(() => import('./pages/Retenciones'))
+const ICE                      = lazy(() => import('./pages/ICE'))
+const CalculoICE               = lazy(() => import('./pages/CalculoICE'))
+const AnexoPVPICE              = lazy(() => import('./pages/AnexoPVPICE'))
+const IngresosIva              = lazy(() => import('./pages/IngresosIva'))
+const RecursosICE              = lazy(() => import('./pages/RecursosICE'))
+const Declaraciones            = lazy(() => import('./pages/Declaraciones'))
+const DevolucionesIvaTerceraEdad = lazy(() => import('./pages/DevolucionesIvaTerceraEdad'))
+const CatalogoProductos        = lazy(() => import('./pages/CatalogoProductos'))
+const Compradores              = lazy(() => import('./pages/Compradores'))
+const RebajasExenciones        = lazy(() => import('./pages/RebajasExenciones'))
+const Normativa                = lazy(() => import('./pages/Normativa'))
+const Reportes                 = lazy(() => import('./pages/Reportes'))
+const Admin                    = lazy(() => import('./pages/Admin'))
+const AdminCredentials         = lazy(() => import('./pages/AdminCredentials'))
+
+const PageLoader = () => <div className="loading">Cargando…</div>
+
 function RequireModule({ modulo, children }) {
   const { has, loading } = useAccess()
-  if (loading) return <div className="loading">Cargando…</div>
+  if (loading) return <PageLoader />
   if (!has(modulo)) return <Navigate to={homeFor(has)} replace />
   return children
 }
@@ -45,13 +48,13 @@ function SinAcceso() {
 
 function HomeRedirect() {
   const { has, loading } = useAccess()
-  if (loading) return <div className="loading">Cargando…</div>
+  if (loading) return <PageLoader />
   return <Navigate to={homeFor(has)} replace />
 }
 
 function RequireAdmin({ children }) {
   const { isAdmin, loading, has } = useAccess()
-  if (loading) return <div className="loading">Cargando…</div>
+  if (loading) return <PageLoader />
   if (!isAdmin) return <Navigate to={homeFor(has)} replace />
   return children
 }
@@ -64,9 +67,7 @@ function App() {
     const token = localStorage.getItem('token')
     const userId = localStorage.getItem('userId')
     const email = localStorage.getItem('email')
-    if (token && userId) {
-      setUser({ token, userId, email })
-    }
+    if (token && userId) setUser({ token, userId, email })
     setLoading(false)
   }, [])
 
@@ -85,55 +86,52 @@ function App() {
     setUser(null)
   }
 
-  if (loading) {
-    return <div className="loading">Cargando...</div>
-  }
+  if (loading) return <PageLoader />
 
   return (
     <Router>
-      <Routes>
-        <Route
-          path="/login"
-          element={user ? <Navigate to="/" /> : <Login onLogin={handleLogin} />}
-        />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        {!user && <Route path="/" element={<Landing />} />}
-        {user ? (
-          <Route
-            element={
-              <AccessProvider>
-                <ClientProvider>
-                  <Layout user={user} onLogout={handleLogout} />
-                </ClientProvider>
-              </AccessProvider>
-            }
-          >
-            <Route path="/" element={<RequireModule modulo="gastos"><Database /></RequireModule>} />
-            <Route path="/clasificador" element={<RequireModule modulo="gastos"><Classifier /></RequireModule>} />
-            <Route path="/datos" element={<RequireModule modulo="gastos"><SavedData /></RequireModule>} />
-            <Route path="/retenciones" element={<RequireModule modulo="retenciones"><Retenciones /></RequireModule>} />
-            <Route path="/declaracion-iva" element={<RequireModule modulo="declaraciones"><Declaraciones tipo="IVA" /></RequireModule>} />
-            <Route path="/declaracion-ice" element={<RequireModule modulo="declaraciones"><Declaraciones tipo="ICE" /></RequireModule>} />
-            <Route path="/devoluciones-iva/tercera-edad" element={<RequireModule modulo="declaraciones"><DevolucionesIvaTerceraEdad /></RequireModule>} />
-            <Route path="/ingresos-iva" element={<RequireModule modulo="ingresos_ice"><IngresosIva /></RequireModule>} />
-            <Route path="/calculo-ice" element={<RequireModule modulo="ingresos_ice"><CalculoICE /></RequireModule>} />
-            <Route path="/anexo-pvp-ice" element={<RequireModule modulo="ingresos_ice"><AnexoPVPICE /></RequireModule>} />
-            <Route path="/recursos-ice" element={<RequireModule modulo="ingresos_ice"><RecursosICE /></RequireModule>} />
-            <Route path="/ice" element={<RequireModule modulo="ingresos_ice"><ICE /></RequireModule>} />
-            <Route path="/catalogo-productos" element={<RequireModule modulo="ingresos_ice"><CatalogoProductos /></RequireModule>} />
-            <Route path="/compradores" element={<RequireModule modulo="ingresos_ice"><Compradores /></RequireModule>} />
-            <Route path="/rebajas-exenciones" element={<RequireModule modulo="ingresos_ice"><RebajasExenciones /></RequireModule>} />
-            <Route path="/normativa" element={<Normativa />} />
-            <Route path="/reportes" element={<Reportes />} />
-            <Route path="/admin" element={<RequireAdmin><Admin /></RequireAdmin>} />
-            <Route path="/admin/credenciales" element={<RequireAdmin><AdminCredentials /></RequireAdmin>} />
-            <Route path="/sin-acceso" element={<SinAcceso />} />
-            <Route path="*" element={<HomeRedirect />} />
-          </Route>
-        ) : (
-          <Route path="*" element={<Navigate to="/" />} />
-        )}
-      </Routes>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/login" element={user ? <Navigate to="/" /> : <Login onLogin={handleLogin} />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          {!user && <Route path="/" element={<Landing />} />}
+          {user ? (
+            <Route
+              element={
+                <AccessProvider>
+                  <ClientProvider>
+                    <Layout user={user} onLogout={handleLogout} />
+                  </ClientProvider>
+                </AccessProvider>
+              }
+            >
+              <Route path="/" element={<RequireModule modulo="gastos"><Database /></RequireModule>} />
+              <Route path="/clasificador" element={<RequireModule modulo="gastos"><Classifier /></RequireModule>} />
+              <Route path="/datos" element={<RequireModule modulo="gastos"><SavedData /></RequireModule>} />
+              <Route path="/retenciones" element={<RequireModule modulo="retenciones"><Retenciones /></RequireModule>} />
+              <Route path="/declaracion-iva" element={<RequireModule modulo="declaraciones"><Declaraciones tipo="IVA" /></RequireModule>} />
+              <Route path="/declaracion-ice" element={<RequireModule modulo="declaraciones"><Declaraciones tipo="ICE" /></RequireModule>} />
+              <Route path="/devoluciones-iva/tercera-edad" element={<RequireModule modulo="declaraciones"><DevolucionesIvaTerceraEdad /></RequireModule>} />
+              <Route path="/ingresos-iva" element={<RequireModule modulo="ingresos_ice"><IngresosIva /></RequireModule>} />
+              <Route path="/calculo-ice" element={<RequireModule modulo="ingresos_ice"><CalculoICE /></RequireModule>} />
+              <Route path="/anexo-pvp-ice" element={<RequireModule modulo="ingresos_ice"><AnexoPVPICE /></RequireModule>} />
+              <Route path="/recursos-ice" element={<RequireModule modulo="ingresos_ice"><RecursosICE /></RequireModule>} />
+              <Route path="/ice" element={<RequireModule modulo="ingresos_ice"><ICE /></RequireModule>} />
+              <Route path="/catalogo-productos" element={<RequireModule modulo="ingresos_ice"><CatalogoProductos /></RequireModule>} />
+              <Route path="/compradores" element={<RequireModule modulo="ingresos_ice"><Compradores /></RequireModule>} />
+              <Route path="/rebajas-exenciones" element={<RequireModule modulo="ingresos_ice"><RebajasExenciones /></RequireModule>} />
+              <Route path="/normativa" element={<Normativa />} />
+              <Route path="/reportes" element={<Reportes />} />
+              <Route path="/admin" element={<RequireAdmin><Admin /></RequireAdmin>} />
+              <Route path="/admin/credenciales" element={<RequireAdmin><AdminCredentials /></RequireAdmin>} />
+              <Route path="/sin-acceso" element={<SinAcceso />} />
+              <Route path="*" element={<HomeRedirect />} />
+            </Route>
+          ) : (
+            <Route path="*" element={<Navigate to="/" />} />
+          )}
+        </Routes>
+      </Suspense>
     </Router>
   )
 }

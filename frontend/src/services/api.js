@@ -282,8 +282,8 @@ export const declaracionesAPI = {
     params: { client_id: clientId, tipo, credito_adq, credito_ret, diferir_meses, rebaja_ice, exencion_ice, rebaja_manual, exencion_manual, ventas_15, ventas_5, ventas_0 },
   }),
   list: (clientId, tipo) => api.get('/api/declaraciones/', { params: { client_id: clientId, tipo } }),
-  // Servicios contratados + acceso al portal SRI (admin) del contribuyente
-  credenciales: (clientId) => api.get('/api/declaraciones/credenciales', { params: { client_id: clientId } }),
+  // Servicios contratados + credencial SRI (admin). reveal=true descifra en un viaje.
+  credenciales: (clientId, reveal = false) => api.get('/api/declaraciones/credenciales', { params: { client_id: clientId, reveal: reveal || undefined } }),
   // diferir_pago_meses: 0/1/2/3 (IVA), 0/1 (ICE)
   save: (clientId, tipo, datos, diferir_pago_meses = 0) =>
     api.post('/api/declaraciones/', { client_id: clientId, tipo, datos, diferir_pago_meses }),
