@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client, fetch_all
 from services.sri_ruc import consultar_ruc
+from routers.access import es_admin
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
@@ -32,15 +33,17 @@ async def list_clients(user_id: str = Depends(get_current_user)):
     """Lista los clientes con estadísticas (# facturas y monto total)."""
     try:
         supabase = get_supabase_client()
-        clients = supabase.table("clients").select("*")\
-            .eq("user_id", user_id)\
-            .order("nombre")\
-            .order("periodo_anio", desc=True)\
-            .order("periodo_mes", desc=True)\
-            .execute().data or []
+        admin = es_admin(user_id)
+        q = supabase.table("clients").select("*").order("nombre").order("periodo_anio", desc=True).order("periodo_mes", desc=True)
+        if not admin:
+            q = q.eq("user_id", user_id)
+        clients = q.execute().data or []
 
-        # Estadísticas por cliente (paginado para no truncar conteos/sumas)
-        invoices = fetch_all(lambda: supabase.table("invoices").select("client_id, total, clasificacion").eq("user_id", user_id))
+        # Estadísticas por client_id (funciona independientemente del user_id)
+        client_ids = [c["id"] for c in clients]
+        if not client_ids:
+            return clients
+        invoices = fetch_all(lambda: supabase.table("invoices").select("client_id, total, clasificacion").in_("client_id", client_ids))
         stats = {}
         for inv in invoices:
             cid = inv.get("client_id")
@@ -76,12 +79,18 @@ async def contribuyentes(user_id: str = Depends(get_current_user)):
     (año, mes) → conteo de datos por tipo (gastos/retenciones/ice/calculo)."""
     try:
         supabase = get_supabase_client()
-        clients = supabase.table("clients").select(
-            "id,identificacion,nombre,tipo_identificacion,periodo_mes,periodo_anio"
-        ).eq("user_id", user_id).execute().data or []
+        admin = es_admin(user_id)
+        q = supabase.table("clients").select("id,identificacion,nombre,tipo_identificacion,periodo_mes,periodo_anio")
+        if not admin:
+            q = q.eq("user_id", user_id)
+        clients = q.execute().data or []
+
+        client_ids = [c["id"] for c in clients]
 
         def counts(table):
-            rows = fetch_all(lambda: supabase.table(table).select("client_id").eq("user_id", user_id))
+            if not client_ids:
+                return {}
+            rows = fetch_all(lambda: supabase.table(table).select("client_id").in_("client_id", client_ids))
             m = {}
             for r in rows:
                 cid = r.get("client_id")

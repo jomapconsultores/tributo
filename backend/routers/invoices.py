@@ -75,16 +75,23 @@ async def list_invoices(
     skip: int = 0,
     limit: int = 500
 ):
+    from routers.access import es_admin
     try:
         supabase = get_supabase_client()
+        admin = es_admin(user_id)
 
-        count_q = supabase.table("invoices").select("id", count="exact").eq("user_id", user_id)
-        data_q = supabase.table("invoices").select(INVOICE_COLUMNS).eq("user_id", user_id)
+        count_q = supabase.table("invoices").select("id", count="exact")
+        data_q = supabase.table("invoices").select(INVOICE_COLUMNS)
 
         if client_id:
-            assert_client_owner(client_id, user_id)
+            if not admin:
+                assert_client_owner(client_id, user_id)
             count_q = count_q.eq("client_id", client_id)
             data_q = data_q.eq("client_id", client_id)
+        else:
+            # Sin client_id: filtrar por usuario para no devolver toda la DB
+            count_q = count_q.eq("user_id", user_id)
+            data_q = data_q.eq("user_id", user_id)
 
         total = count_q.execute().count or 0
         response = data_q.order("fecha", desc=True).range(skip, skip + limit - 1).execute()

@@ -28,6 +28,7 @@ export default function Declaraciones({ tipo }) {
   const [saved, setSaved] = useState([])
   const [aplazados, setAplazados] = useState([])
   const [loading, setLoading] = useState(false)
+  const [clientSearch, setClientSearch] = useState('')
   // Credenciales/servicios del contribuyente (punto 4)
   const [creds, setCreds] = useState(null)
   const [claveSRI, setClaveSRI] = useState('')
@@ -207,6 +208,10 @@ export default function Declaraciones({ tipo }) {
   const icon = tipo === 'ICE' ? '🥃' : '🧾'
 
   if (!selectedClient) {
+    const q = clientSearch.trim().toLowerCase()
+    const clientesFiltrados = q
+      ? clients.filter((c) => [c.nombre, c.identificacion].some((f) => String(f || '').toLowerCase().includes(q)))
+      : clients
     return (
       <div className="dc-page">
         <div className="dc-welcome">
@@ -215,15 +220,28 @@ export default function Declaraciones({ tipo }) {
           <button className="dc-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
         </div>
         {clients.length > 0 && (
-          <div className="dc-grid">
-            {clients.map((c) => (
-              <button key={c.id} className="dc-card" onClick={() => selectClient(c.id)}>
-                <div className="dc-card-id">{c.identificacion}</div>
-                <div className="dc-card-name">{c.nombre}</div>
-                <div className="dc-card-per">{periodoLargo(c)}</div>
-              </button>
-            ))}
-          </div>
+          <>
+            <input
+              className="dc-client-search"
+              placeholder="🔍 Buscar por nombre o RUC…"
+              value={clientSearch}
+              onChange={(e) => setClientSearch(e.target.value)}
+              autoFocus
+            />
+            {clientesFiltrados.length === 0 ? (
+              <div className="dc-empty">Sin resultados para "{clientSearch}"</div>
+            ) : (
+              <div className="dc-grid">
+                {clientesFiltrados.map((c) => (
+                  <button key={c.id} className="dc-card" onClick={() => selectClient(c.id)}>
+                    <div className="dc-card-id">{c.identificacion}</div>
+                    <div className="dc-card-name">{c.nombre}</div>
+                    <div className="dc-card-per">{periodoLargo(c)}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     )
