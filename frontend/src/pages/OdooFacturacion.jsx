@@ -18,16 +18,16 @@ export default function OdooFacturacion() {
   const [estadoOdoo, setEstadoOdoo] = useState(null)
 
   useEffect(() => {
-    Promise.all([
-      reportesAPI.cobros(),
-      odooAPI.estado(),
-    ])
-      .then(([rCobros, rEstado]) => {
-        setFilas(rCobros.data.data || [])
-        setEstadoOdoo(rEstado.data)
-      })
+    // Cargamos cobros y estado Odoo por separado para que un fallo
+    // en Odoo no bloquee la visualización de los honorarios.
+    reportesAPI.cobros()
+      .then((r) => setFilas(r.data.data || []))
       .catch((e) => setError(e.response?.data?.detail || e.message))
       .finally(() => setLoading(false))
+
+    odooAPI.estado()
+      .then((r) => setEstadoOdoo(r.data))
+      .catch(() => setEstadoOdoo({ ok: false, error: 'No disponible' }))
   }, [])
 
   // Agrupar filas por contribuyente — solo cobrar=true y valor>0
