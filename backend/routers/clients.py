@@ -66,6 +66,28 @@ async def list_clients(user_id: str = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/by-service")
+async def clients_by_service(service: str = Query(...), user_id: str = Depends(get_current_user)):
+    """Identificaciones (RUCs) que tienen el servicio activo en client_services."""
+    from fastapi import Query as Q
+    try:
+        supabase = get_supabase_client()
+        admin = es_admin(user_id)
+        q = supabase.table("clients").select("id,identificacion")
+        if not admin:
+            q = q.eq("user_id", user_id)
+        clientes = q.execute().data or []
+        if not clientes:
+            return {"identificaciones": []}
+        ids = [c["id"] for c in clientes]
+        svc = supabase.table("client_services").select("client_id").in_("client_id", ids).eq("service", service).eq("active", True).execute().data or []
+        activos = {r["client_id"] for r in svc}
+        idents = list({c["identificacion"] for c in clientes if c["id"] in activos})
+        return {"identificaciones": idents}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/consulta-ruc")
 async def consulta_ruc(ruc: str, _: str = Depends(get_current_user)):
     """Datos básicos del RUC desde la API pública del SRI (razón social, estado,

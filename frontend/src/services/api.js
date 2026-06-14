@@ -76,6 +76,7 @@ export const clientsAPI = {
   update: (id, data) => api.put(`/api/clients/${id}`, data),
   delete: (id) => api.delete(`/api/clients/${id}`),
   summary: (identificacion) => api.get(`/api/clients/summary/${identificacion}`),
+  byService: (service) => api.get('/api/clients/by-service', { params: { service } }),
   consultaRuc: (ruc) => api.get('/api/clients/consulta-ruc', { params: { ruc } }),
 }
 

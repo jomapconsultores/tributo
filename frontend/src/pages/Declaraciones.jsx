@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, Fragment } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { declaracionesAPI, downloadBlob } from '../services/api'
+import { declaracionesAPI, clientsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, nombreMes } from '../utils/periodo'
 import ClientSwitcher from '../components/ClientSwitcher'
@@ -29,6 +29,8 @@ export default function Declaraciones({ tipo }) {
   const [aplazados, setAplazados] = useState([])
   const [loading, setLoading] = useState(false)
   const [clientSearch, setClientSearch] = useState('')
+  // RUCs que tienen el servicio activo (null = cargando, Set = listo)
+  const [idents_svc, setIdentsSvc] = useState(null)
   // Credenciales/servicios del contribuyente (punto 4)
   const [creds, setCreds] = useState(null)
   const [claveSRI, setClaveSRI] = useState('')
@@ -102,6 +104,15 @@ export default function Declaraciones({ tipo }) {
   }, [selectedClientId, tipo, credAdq, credRet, rebajaIce, exencionIce, marcaReb, marcaExe, ventas15, ventas5, ventas0, factorProp, diferirMeses, isIVA])
 
   useEffect(() => { load() }, [load])
+
+  // Cargar qué RUCs tienen el servicio IVA/ICE activo para filtrar la grilla
+  useEffect(() => {
+    setIdentsSvc(null)
+    const svc = tipo === 'IVA' ? 'declaracion_iva' : 'declaracion_ice'
+    clientsAPI.byService(svc)
+      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
+      .catch(() => setIdentsSvc(new Set()))
+  }, [tipo])
 
   // Servicios contratados + clave SRI en un solo viaje (reveal=true)
   useEffect(() => {
@@ -208,15 +219,24 @@ export default function Declaraciones({ tipo }) {
   const icon = tipo === 'ICE' ? '🥃' : '🧾'
 
   if (!selectedClient) {
+    // Solo clientes con el servicio marcado; si aún cargando mostrar todos
+    const conServicio = idents_svc
+      ? clients.filter((c) => idents_svc.has(c.identificacion))
+      : clients
     const q = clientSearch.trim().toLowerCase()
     const clientesFiltrados = q
-      ? clients.filter((c) => [c.nombre, c.identificacion].some((f) => String(f || '').toLowerCase().includes(q)))
-      : clients
+      ? conServicio.filter((c) => [c.nombre, c.identificacion].some((f) => String(f || '').toLowerCase().includes(q)))
+      : conServicio
+
     return (
       <div className="dc-page">
         <div className="dc-welcome">
           <h1>{icon} Declaración {tipo}</h1>
-          <p>Selecciona un contribuyente (RUC) y período para armar la declaración {tipo}.</p>
+          <p>
+            {idents_svc
+              ? `${conServicio.length} contribuyente(s) habilitado(s) para Declaración ${tipo}.`
+              : `Selecciona un contribuyente para la Declaración ${tipo}.`}
+          </p>
           <button className="dc-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
         </div>
         {clients.length > 0 && (
@@ -229,7 +249,11 @@ export default function Declaraciones({ tipo }) {
               autoFocus
             />
             {clientesFiltrados.length === 0 ? (
-              <div className="dc-empty">Sin resultados para "{clientSearch}"</div>
+              <div className="dc-empty">
+                {conServicio.length === 0
+                  ? `Ningún cliente tiene activo el servicio "Declaración ${tipo}". Actívalo en CREDENCIALES SRI.`
+                  : `Sin resultados para "${clientSearch}"`}
+              </div>
             ) : (
               <div className="dc-grid">
                 {clientesFiltrados.map((c) => (
