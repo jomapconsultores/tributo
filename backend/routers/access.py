@@ -4,6 +4,7 @@ Cada usuario tiene un conjunto de módulos activos en `user_modules`. Los admins
 (`app_admins`) tienen todos los módulos. `require_module(...)` se usa como
 dependencia de router para bloquear (403) el acceso a módulos no contratados.
 """
+import time
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
 from auth import get_current_user
@@ -13,19 +14,44 @@ router = APIRouter(prefix="/api/access", tags=["access"])
 
 MODULOS = ["gastos", "retenciones", "ingresos_ice", "declaraciones"]
 
+# ---------------------------------------------------------------------------
+# Caché en memoria para rol y módulos. Evita 1-3 consultas BD por request.
+# TTL corto (2 min) para que cambios de rol/suscripción surtan efecto pronto.
+# ---------------------------------------------------------------------------
+_role_cache: dict = {}   # user_id → (role, ts)
+_access_cache: dict = {} # user_id → (sub_dict, modules_list, ts)
+_TTL = 120               # segundos
+
+
+def _now():
+    return time.monotonic()
+
 
 # Jerarquía de roles: 'admin' (máximo) → 'socio' → 'cliente'.
 # admin y socio comparten el acceso operativo (es_admin = True para ambos);
 # solo el 'admin' (super) puede gestionar roles de otros usuarios.
 def rol_de(user_id: str) -> str:
-    """Devuelve 'admin', 'socio' o 'cliente'."""
+    """Devuelve 'admin', 'socio' o 'cliente'. Resultado cacheado 2 min."""
+    hit = _role_cache.get(user_id)
+    if hit and _now() - hit[1] < _TTL:
+        return hit[0]
     try:
         r = get_supabase_client().table("app_admins").select("role").eq("user_id", user_id).execute().data
-        if r:
-            return r[0].get("role") or "admin"
-        return "cliente"
+        role = r[0].get("role") or "admin" if r else "cliente"
     except Exception:
-        return "cliente"
+        role = "cliente"
+    _role_cache[user_id] = (role, _now())
+    return role
+
+
+def invalidar_cache_rol(user_id: str = None):
+    """Limpia el caché de rol tras cambio administrativo."""
+    if user_id:
+        _role_cache.pop(user_id, None)
+        _access_cache.pop(user_id, None)
+    else:
+        _role_cache.clear()
+        _access_cache.clear()
 
 
 def es_admin(user_id: str) -> bool:
@@ -56,25 +82,37 @@ def suscripcion(user_id: str):
     return s
 
 
-def modulos_de(user_id: str):
+def _cargar_acceso(user_id: str):
+    """Carga (y cachea) suscripción + módulos en una sola pasada."""
+    hit = _access_cache.get(user_id)
+    if hit and _now() - hit[2] < _TTL:
+        return hit[0], hit[1]
+
     if es_admin(user_id):
-        return list(MODULOS)
-    # Bloqueo por cobro: si la suscripción no está vigente, sin módulos
-    if not suscripcion(user_id).get("vigente", True):
-        return []
+        sub = suscripcion(user_id)
+        mods = list(MODULOS)
+        _access_cache[user_id] = (sub, mods, _now())
+        return sub, mods
+
+    sub = suscripcion(user_id)
+    if not sub.get("vigente", True):
+        _access_cache[user_id] = (sub, [], _now())
+        return sub, []
+
     try:
         rows = get_supabase_client().table("user_modules").select("modulo,activo,valid_until")\
             .eq("user_id", user_id).eq("activo", True).execute().data or []
     except Exception:
-        return []
+        rows = []
     hoy = date.today().isoformat()
-    out = []
-    for r in rows:
-        vu = r.get("valid_until")
-        if vu and str(vu) < hoy:
-            continue
-        out.append(r["modulo"])
-    return out
+    mods = [r["modulo"] for r in rows if not (r.get("valid_until") and str(r["valid_until"]) < hoy)]
+    _access_cache[user_id] = (sub, mods, _now())
+    return sub, mods
+
+
+def modulos_de(user_id: str):
+    _, mods = _cargar_acceso(user_id)
+    return mods
 
 
 def require_module(modulo: str):
@@ -88,9 +126,9 @@ def require_module(modulo: str):
 @router.get("/me")
 async def me(user_id: str = Depends(get_current_user)):
     """Módulos del usuario actual + si es administrador + estado de suscripción."""
-    sub = suscripcion(user_id)
+    sub, mods = _cargar_acceso(user_id)
     return {
-        "modules": modulos_de(user_id),
+        "modules": mods,
         "is_admin": es_admin(user_id),
         "role": rol_de(user_id),
         "subscription": {

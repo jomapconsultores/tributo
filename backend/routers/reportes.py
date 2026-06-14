@@ -3,6 +3,7 @@ que se les hace (declaraciones y anexos, esencialmente), indicando si se cobra
 y el valor a cobrar. Los valores se guardan (tabla reportes_honorarios) para
 reutilizarse a futuro. Exportable a Excel y PDF."""
 import io
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -62,26 +63,46 @@ def _filas_y_total(user_id):
     serv_por_ruc = {}
     anexo_rucs = set()
     decl_keys = set()
-    if all_ids:
-        servicios = fetch_all(lambda: sb.table("client_services").select("client_id,service").in_(
-            "client_id", all_ids).eq("active", True))
-        for s in servicios:
-            ruc = id_to_ruc.get(s["client_id"])
-            if ruc:
-                serv_por_ruc.setdefault(ruc, set()).add(s["service"])
-        anexos = fetch_all(lambda: sb.table("anexos").select("client_id").eq("user_id", user_id))
-        anexo_rucs = {id_to_ruc.get(a["client_id"]) for a in anexos}
-        decls = fetch_all(lambda: sb.table("declaraciones").select("client_id,tipo").eq("user_id", user_id))
-        for d in decls:
-            ruc = id_to_ruc.get(d["client_id"])
-            t = (d.get("tipo") or "").upper()
-            if ruc and t == "IVA":
-                decl_keys.add((ruc, "declaracion_iva"))
-            if ruc and t == "ICE":
-                decl_keys.add((ruc, "declaracion_ice"))
 
-    guardados = fetch_all(lambda: sb.table("reportes_honorarios").select(
-        "identificacion,producto,cobrar,valor").eq("user_id", user_id))
+    # Parallelizar las 4 consultas independientes entre sí
+    def _q_servicios():
+        if not all_ids:
+            return []
+        return fetch_all(lambda: sb.table("client_services").select("client_id,service").in_(
+            "client_id", all_ids).eq("active", True))
+
+    def _q_anexos():
+        return fetch_all(lambda: sb.table("anexos").select("client_id").eq("user_id", user_id))
+
+    def _q_decls():
+        return fetch_all(lambda: sb.table("declaraciones").select("client_id,tipo").eq("user_id", user_id))
+
+    def _q_guardados():
+        return fetch_all(lambda: sb.table("reportes_honorarios").select(
+            "identificacion,producto,cobrar,valor").eq("user_id", user_id))
+
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        f_svc = ex.submit(_q_servicios)
+        f_anx = ex.submit(_q_anexos)
+        f_dec = ex.submit(_q_decls)
+        f_grd = ex.submit(_q_guardados)
+        servicios = f_svc.result()
+        anexos_r   = f_anx.result()
+        decls_r    = f_dec.result()
+        guardados  = f_grd.result()
+
+    for s in servicios:
+        ruc = id_to_ruc.get(s["client_id"])
+        if ruc:
+            serv_por_ruc.setdefault(ruc, set()).add(s["service"])
+    anexo_rucs = {id_to_ruc.get(a["client_id"]) for a in anexos_r}
+    for d in decls_r:
+        ruc = id_to_ruc.get(d["client_id"])
+        t = (d.get("tipo") or "").upper()
+        if ruc and t == "IVA":
+            decl_keys.add((ruc, "declaracion_iva"))
+        if ruc and t == "ICE":
+            decl_keys.add((ruc, "declaracion_ice"))
     by_key = {(g["identificacion"], g["producto"]): g for g in guardados}
 
     fixed_labels = {label for label, _ in CONCEPTOS}
