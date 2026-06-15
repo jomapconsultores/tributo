@@ -241,6 +241,10 @@
   padding: 2px 0;
 }
 .of-linea-concepto { flex: 1; }
+.of-linea-iva {
+  display: inline-block; margin-left: 6px; font-size: 0.62rem; font-weight: 700;
+  color: #1a3d6b; background: #e9f1fb; border-radius: 5px; padding: 1px 6px; vertical-align: middle;
+}
 .of-linea-valor { font-weight: 600; color: #334155; }
 
 .of-desglose {

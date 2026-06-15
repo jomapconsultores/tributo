@@ -46,7 +46,7 @@ export default function OdooFacturacion() {
       // IVA por ítem: 'bruto' = total con IVA; 'base' = neto (Odoo agrega el 15% sobre la base).
       const bruto = f.iva_incluido ? f.valor : Math.round(f.valor * (1 + IVA) * 100) / 100
       const base = Math.round((bruto / (1 + IVA)) * 100) / 100
-      m[f.identificacion].lineas.push({ concepto: f.concepto, valor: base })
+      m[f.identificacion].lineas.push({ concepto: f.concepto, valor: base, iva_incluido: f.iva_incluido })
       m[f.identificacion].total = +(m[f.identificacion].total + bruto).toFixed(2)
     }
     return Object.values(m).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
@@ -194,15 +194,18 @@ export default function OdooFacturacion() {
                     </div>
                     <div className="of-grupo-total">
                       <span className="of-grupo-monto">{fmtMoney(g.total)}</span>
-                      <span className="of-iva-tag">IVA incl.</span>
+                      <span className="of-iva-tag" title="El total ya incluye el IVA 15%">con IVA</span>
                     </div>
                   </label>
 
                   <div className="of-lineas">
                     {g.lineas.map((l, li) => (
                       <div key={li} className="of-linea">
-                        <span className="of-linea-concepto">{l.concepto}</span>
-                        <span className="of-linea-valor">{fmtMoney(l.valor)}</span>
+                        <span className="of-linea-concepto">
+                          {l.concepto}
+                          <span className="of-linea-iva">{l.iva_incluido ? 'IVA incl.' : '+IVA'}</span>
+                        </span>
+                        <span className="of-linea-valor" title="Base imponible (Odoo agrega el IVA)">{fmtMoney(l.valor)}</span>
                       </div>
                     ))}
                     <div className="of-desglose">
