@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { reportesAPI, odooAPI } from '../services/api'
+import { reportesAPI, odooAPI, clientsAPI } from '../services/api'
 import './OdooFacturacion.css'
 
 const IVA = 0.15
@@ -16,6 +16,8 @@ export default function OdooFacturacion() {
   const [enviando, setEnviando] = useState(false)
   const [resultados, setResultados] = useState(null)
   const [estadoOdoo, setEstadoOdoo] = useState(null)
+  const [empresas, setEmpresas] = useState([])   // lista de empresas para elegir el RECEPTOR de la factura
+  const [receptor, setReceptor] = useState({})    // { [contribuyenteRuc]: { ruc, nombre } }
 
   useEffect(() => {
     // Cargamos cobros y estado Odoo por separado para que un fallo
@@ -33,6 +35,15 @@ export default function OdooFacturacion() {
     odooAPI.estado()
       .then((r) => setEstadoOdoo(r.data))
       .catch(() => setEstadoOdoo({ ok: false, error: 'No disponible' }))
+
+    // Lista de empresas/contribuyentes para elegir a quién se emite cada factura
+    clientsAPI.contribuyentes()
+      .then((r) => setEmpresas(
+        (r.data || [])
+          .map((c) => ({ ruc: c.identificacion, nombre: c.nombre || c.identificacion }))
+          .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
+      ))
+      .catch(() => setEmpresas([]))
   }, [])
 
   // Agrupar filas por contribuyente — solo cobrar=true y valor>0
@@ -51,6 +62,15 @@ export default function OdooFacturacion() {
     }
     return Object.values(m).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
   }, [filas])
+
+  // Por defecto, cada honorario se factura al mismo contribuyente (se puede cambiar).
+  useEffect(() => {
+    setReceptor((prev) => {
+      const next = { ...prev }
+      for (const g of grupos) if (!next[g.ruc]) next[g.ruc] = { ruc: g.ruc, nombre: g.nombre }
+      return next
+    })
+  }, [grupos])
 
   const toggleTodos = () => {
     if (seleccionados.size === grupos.length) {
@@ -76,12 +96,15 @@ export default function OdooFacturacion() {
     setResultados(null)
     try {
       const r = await odooAPI.facturar({
-        facturas: facturasSeleccionadas.map((g) => ({
-          ruc: g.ruc,
-          nombre: g.nombre,
-          lineas: g.lineas,   // 'valor' ya es la base neta; Odoo agrega el IVA 15%
-          iva_incluido: false,
-        })),
+        facturas: facturasSeleccionadas.map((g) => {
+          const dest = receptor[g.ruc] || { ruc: g.ruc, nombre: g.nombre }
+          return {
+            ruc: dest.ruc,        // RECEPTOR elegido (a quién se emite la factura)
+            nombre: dest.nombre,
+            lineas: g.lineas,     // 'valor' ya es la base neta; Odoo agrega el IVA 15%
+            iva_incluido: false,
+          }
+        }),
       })
       setResultados(r.data.resultados || [])
     } catch (e) {
@@ -184,8 +207,8 @@ export default function OdooFacturacion() {
                 <div key={g.ruc} className={`of-grupo ${sel ? 'selected' : ''}`}>
                   <div className="of-grupo-header">
                     <div className="of-grupo-info">
-                      <span className="of-grupo-nombre">{g.nombre || '(sin nombre)'}</span>
-                      <span className="of-grupo-ruc">RUC {g.ruc}</span>
+                      <span className="of-grupo-nombre">Honorarios de: {g.nombre || '(sin nombre)'}</span>
+                      <span className="of-grupo-ruc">Contribuyente · RUC {g.ruc}</span>
                     </div>
                     <div className="of-grupo-total">
                       <span className="of-grupo-monto">{fmtMoney(g.total)}</span>
@@ -195,10 +218,31 @@ export default function OdooFacturacion() {
                       type="button"
                       className={`of-marcar ${sel ? 'on' : ''}`}
                       onClick={() => toggle(g.ruc)}
-                      title={sel ? 'Esta empresa SÍ se facturará — clic para quitar' : 'Clic para facturar a esta empresa'}
+                      title={sel ? 'Se incluirá en la facturación — clic para quitar' : 'Clic para incluir en la facturación'}
                     >
-                      {sel ? '✔ Facturar a esta empresa' : '○ Marcar para facturar'}
+                      {sel ? '✔ Marcada para facturar' : '○ Marcar para facturar'}
                     </button>
+                  </div>
+
+                  {/* RECEPTOR de la factura: a qué empresa se emite (por defecto, el mismo contribuyente) */}
+                  <div className="of-receptor">
+                    <label htmlFor={`rec-${g.ruc}`}>🏢 Facturar a:</label>
+                    <select
+                      id={`rec-${g.ruc}`}
+                      value={(receptor[g.ruc]?.ruc) || g.ruc}
+                      onChange={(e) => {
+                        const emp = empresas.find((x) => x.ruc === e.target.value) || { ruc: e.target.value, nombre: e.target.value }
+                        setReceptor((p) => ({ ...p, [g.ruc]: emp }))
+                      }}
+                    >
+                      {(empresas.some((x) => x.ruc === g.ruc) ? empresas : [{ ruc: g.ruc, nombre: g.nombre }, ...empresas])
+                        .map((emp) => (
+                          <option key={emp.ruc} value={emp.ruc}>{emp.nombre} ({emp.ruc})</option>
+                        ))}
+                    </select>
+                    {receptor[g.ruc] && receptor[g.ruc].ruc !== g.ruc && (
+                      <span className="of-receptor-dif" title="La factura se emite a una empresa distinta del contribuyente">↪ distinto del contribuyente</span>
+                    )}
                   </div>
 
                   <div className="of-lineas">
