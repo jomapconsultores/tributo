@@ -190,7 +190,7 @@ export default function Retenciones() {
       <header className="ret-header">
         <div>
           <h1>🧾 Retenciones <span className="ret-periodo-tag">{periodoLargo(selectedClient)}</span></h1>
-          <p className="ret-subhead"><strong>{selectedClient.identificacion}</strong> — {selectedClient.nombre}</p>
+          <p className="ret-subhead"><strong className="sub-ruc">{selectedClient.identificacion}</strong> — {selectedClient.nombre}</p>
         </div>
       </header>
 

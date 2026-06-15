@@ -6,6 +6,9 @@
   font-size: 1.2em;
 }
 
+/* RUC del contribuyente, resaltado de forma consistente en los subtítulos de módulos */
+.sub-ruc { color: #003399; font-weight: 800; }
+
 .container {
   max-width: 1400px;
   margin: 0 auto;

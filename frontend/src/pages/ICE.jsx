@@ -258,7 +258,7 @@ export default function ICE() {
       <header className="ice-header">
         <div>
           <h1>🥃 ICE - XML <span className="ice-periodo-tag">{periodoLargo(selectedClient)}</span></h1>
-          <p className="ice-subhead"><strong>{selectedClient.identificacion}</strong> — {selectedClient.nombre}<ClaveHeader clientId={selectedClientId} /></p>
+          <p className="ice-subhead"><strong className="sub-ruc">{selectedClient.identificacion}</strong> — {selectedClient.nombre}<ClaveHeader clientId={selectedClientId} /></p>
         </div>
         <div className="ice-year">
           <label>Año fiscal (tarifas)</label>

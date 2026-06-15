@@ -162,7 +162,7 @@ export default function CalculoICE() {
       <header className="ci-header">
         <div>
           <h1>🧮 Cálculo ICE</h1>
-          <p className="ci-sub">{selectedClient.identificacion} — {selectedClient.nombre} · {periodoLargo(selectedClient)}</p>
+          <p className="ci-sub"><strong className="sub-ruc">{selectedClient.identificacion}</strong> — {selectedClient.nombre} · {periodoLargo(selectedClient)}</p>
         </div>
         <span className="ci-iva">IVA {Math.round(iva * 100)}%</span>
       </header>
