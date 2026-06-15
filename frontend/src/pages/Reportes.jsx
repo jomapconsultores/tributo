@@ -25,6 +25,8 @@ export default function Reportes() {
   const savingIva = useRef({})
   useEffect(() => { try { localStorage.setItem('rpIvaIncluido', ivaIncluido ? '1' : '0') } catch { /* ignore */ } }, [ivaIncluido])
   const desglosa = (t) => { const base = Math.round((t / 1.15) * 100) / 100; return { base, iva: Math.round((t - base) * 100) / 100 } }
+  // Total a cobrar por ítem (con IVA incluido): si es "+IVA" se suma el 15%; si ya está incluido, queda igual.
+  const bruto = (r) => (parseFloat(r.valor) || 0) * (r.iva_incluido ? 1 : 1.15)
 
   const cargar = useCallback(async () => {
     setLoading(true); setError('')
@@ -57,6 +59,7 @@ export default function Reportes() {
       await reportesAPI.guardarCobro({
         identificacion: fila.identificacion, producto: fila.concepto,
         cobrar: fila.cobrar, valor: parseFloat(fila.valor) || 0,
+        iva_incluido: !!fila.iva_incluido,
       })
       clearRpDraft(key)  // guardado confirmado: ya no hace falta el borrador local
     } catch (e) {
@@ -69,7 +72,7 @@ export default function Reportes() {
       const next = rs.map((r, idx) => (idx === i ? { ...r, ...cambios } : r))
       const f = next[i]
       // Guardar al instante en el navegador cada cambio (sobrevive a cortes de internet)
-      writeRpDraft(f.identificacion + '|' + f.concepto, { valor: f.valor, cobrar: f.cobrar })
+      writeRpDraft(f.identificacion + '|' + f.concepto, { valor: f.valor, cobrar: f.cobrar, iva_incluido: f.iva_incluido })
       if (guardar) guardarFila(f)
       return next
     })
@@ -129,16 +132,16 @@ export default function Reportes() {
       m.get(r.identificacion).rows.push(r)
     }
     const out = [...m.values()]
-    out.forEach((g) => { g.subtotal = g.rows.filter((r) => r.cobrar).reduce((s, r) => s + (parseFloat(r.valor) || 0), 0) })
+    out.forEach((g) => { g.subtotal = g.rows.filter((r) => r.cobrar).reduce((s, r) => s + bruto(r), 0) })
     return out
   }, [filtradas])
 
   const total = useMemo(
-    () => filtradas.filter((r) => r.cobrar).reduce((s, r) => s + (parseFloat(r.valor) || 0), 0),
+    () => filtradas.filter((r) => r.cobrar).reduce((s, r) => s + bruto(r), 0),
     [filtradas]
   )
   const totalGeneral = useMemo(
-    () => rows.filter((r) => r.cobrar).reduce((s, r) => s + (parseFloat(r.valor) || 0), 0),
+    () => rows.filter((r) => r.cobrar).reduce((s, r) => s + bruto(r), 0),
     [rows]
   )
 
@@ -204,10 +207,7 @@ export default function Reportes() {
         <button className="rp-btn" onClick={() => setColapsados(new Set(grupos.map((g) => g.identificacion)))}>▸ Contraer todo</button>
         <button className="rp-btn" onClick={() => setColapsados(new Set())}>▾ Expandir todo</button>
         <button className="rp-btn" onClick={cargar}>↻ Actualizar</button>
-        <label className="rp-iva-check" title="Si lo marcas, el valor se toma como IVA incluido y se desglosa base imponible + IVA (15%)">
-          <input type="checkbox" checked={ivaIncluido} onChange={(e) => setIvaIncluido(e.target.checked)} />
-          Valores incluyen IVA (15%)
-        </label>
+        <span className="rp-iva-hint" title="El IVA se define por cada valor: +IVA suma el 15%, o IVA incluido si ya viene con IVA.">ⓘ El IVA se marca por cada valor (+IVA / incl.)</span>
         <button className="rp-btn" onClick={() => exportar('excel')} disabled={!rows.length}>⬇ Excel</button>
         <button className="rp-btn" onClick={() => exportar('pdf')} disabled={!rows.length}>⬇ PDF</button>
         <button className="rp-btn rp-btn-odoo" onClick={() => navigate('/odoo-facturacion')} disabled={!rows.length} title="Pasar al módulo de Facturación Odoo para crear las facturas de lo marcado">🧾 Enviar a Odoo (facturación)</button>
@@ -237,16 +237,13 @@ export default function Reportes() {
             <tbody>
               {grupos.map((g) => {
                 const cerrado = colapsados.has(g.identificacion)
-                const ivaGrupo = g.client_id ? (ivaClientes[g.client_id] ?? false) : false
                 return (
                   <Grupo key={g.identificacion} g={g} cerrado={cerrado}
                     onToggle={() => toggleGrupo(g.identificacion)}
                     rows={rows} setFila={setFila} guardando={guardando}
                     onAddRubro={() => agregarRubro(g.identificacion, g.contribuyente)}
                     onDelRubro={borrarRubro} money={money}
-                    ivaIncluido={ivaGrupo}
-                    onToggleIva={g.client_id ? () => toggleIvaCliente(g.client_id, ivaGrupo) : null}
-                    desglosa={desglosa} />
+                    bruto={bruto} desglosa={desglosa} />
                 )
               })}
             </tbody>
@@ -265,8 +262,8 @@ export default function Reportes() {
   )
 }
 
-function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onDelRubro, money, ivaIncluido, onToggleIva, desglosa }) {
-  const d = ivaIncluido && g.subtotal > 0 ? desglosa(g.subtotal) : null
+function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onDelRubro, money, bruto, desglosa }) {
+  const d = g.subtotal > 0 ? desglosa(g.subtotal) : null
   return (
     <>
       <tr className="rp-grupo-head">
@@ -276,17 +273,10 @@ function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onD
           <span className="rp-grupo-ruc">{g.identificacion}</span>
           {g.rows.some((r) => r.hecho) && <span className="rp-lista-badge" title="Tiene declaración/anexo realizado: lista para facturar">✓ Declaración lista</span>}
         </td>
-        <td className="c">
-          {onToggleIva && (
-            <label className="rp-iva-toggle" title={ivaIncluido ? 'Valores incluyen IVA — clic para desactivar' : 'Clic para marcar que los valores incluyen IVA (15%)'}>
-              <input type="checkbox" checked={ivaIncluido} onChange={onToggleIva} onClick={(e) => e.stopPropagation()} />
-              <span>+IVA</span>
-            </label>
-          )}
-        </td>
+        <td className="c"></td>
         <td className="r">
           <strong>{money(g.subtotal)}</strong>
-          {d && <div className="rp-iva-desglose">Base {money(d.base)} · IVA {money(d.iva)}</div>}
+          {d && <div className="rp-iva-desglose">Base {money(d.base)} · IVA {money(d.iva)} (incl.)</div>}
         </td>
         <td></td>
       </tr>
@@ -305,12 +295,29 @@ function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onD
                 onChange={(e) => setFila(realIdx, { cobrar: e.target.checked }, true)} />
             </td>
             <td className="r">
-              <span className="rp-money-prefix">$</span>
-              <input className="rp-valor" type="number" step="0.01" min="0"
-                value={r.valor}
-                onChange={(e) => setFila(realIdx, { valor: e.target.value })}
-                onBlur={() => setFila(realIdx, {}, true)}
-                disabled={!r.cobrar} />
+              <div className="rp-valor-cell">
+                <span className="rp-money-prefix">$</span>
+                <input className="rp-valor" type="number" step="0.01" min="0"
+                  value={r.valor}
+                  onChange={(e) => setFila(realIdx, { valor: e.target.value })}
+                  onBlur={() => setFila(realIdx, {}, true)}
+                  disabled={!r.cobrar} />
+                <span className="rp-iva-mode" role="group" aria-label="Modo de IVA">
+                  <button type="button"
+                    className={`rp-iva-opt ${!r.iva_incluido ? 'on' : ''}`}
+                    title="El valor es neto; se le suma el 15% de IVA"
+                    onClick={() => setFila(realIdx, { iva_incluido: false }, true)}
+                    disabled={!r.cobrar}>+IVA</button>
+                  <button type="button"
+                    className={`rp-iva-opt ${r.iva_incluido ? 'on' : ''}`}
+                    title="El valor ya incluye el 15% de IVA"
+                    onClick={() => setFila(realIdx, { iva_incluido: true }, true)}
+                    disabled={!r.cobrar}>incl.</button>
+                </span>
+              </div>
+              {r.cobrar && (parseFloat(r.valor) || 0) > 0 && (
+                <div className="rp-bruto">Total c/IVA: {money(bruto(r))}</div>
+              )}
               {guardando === key && <span className="rp-saving">guardando…</span>}
             </td>
             <td className="c">

@@ -21,7 +21,12 @@ export default function OdooFacturacion() {
     // Cargamos cobros y estado Odoo por separado para que un fallo
     // en Odoo no bloquee la visualización de los honorarios.
     reportesAPI.cobros()
-      .then((r) => setFilas(r.data.data || []))
+      .then((r) => {
+        const data = r.data.data || []
+        setFilas(data)
+        // Pre-marcar TODAS las empresas que tienen valor a facturar
+        setSeleccionados(new Set(data.filter((f) => f.cobrar && f.valor > 0).map((f) => f.identificacion)))
+      })
       .catch((e) => setError(e.response?.data?.detail || e.message))
       .finally(() => setLoading(false))
 
@@ -36,16 +41,13 @@ export default function OdooFacturacion() {
     for (const f of filas) {
       if (!f.cobrar || !(f.valor > 0)) continue
       if (!m[f.identificacion]) {
-        m[f.identificacion] = {
-          ruc: f.identificacion,
-          nombre: f.contribuyente,
-          iva_incluido: f.iva_incluido,
-          lineas: [],
-          total: 0,
-        }
+        m[f.identificacion] = { ruc: f.identificacion, nombre: f.contribuyente, lineas: [], total: 0 }
       }
-      m[f.identificacion].lineas.push({ concepto: f.concepto, valor: f.valor })
-      m[f.identificacion].total = +(m[f.identificacion].total + f.valor).toFixed(2)
+      // IVA por ítem: 'bruto' = total con IVA; 'base' = neto (Odoo agrega el 15% sobre la base).
+      const bruto = f.iva_incluido ? f.valor : Math.round(f.valor * (1 + IVA) * 100) / 100
+      const base = Math.round((bruto / (1 + IVA)) * 100) / 100
+      m[f.identificacion].lineas.push({ concepto: f.concepto, valor: base })
+      m[f.identificacion].total = +(m[f.identificacion].total + bruto).toFixed(2)
     }
     return Object.values(m).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
   }, [filas])
@@ -77,8 +79,8 @@ export default function OdooFacturacion() {
         facturas: facturasSeleccionadas.map((g) => ({
           ruc: g.ruc,
           nombre: g.nombre,
-          lineas: g.lineas,
-          iva_incluido: g.iva_incluido,
+          lineas: g.lineas,   // 'valor' ya es la base neta; Odoo agrega el IVA 15%
+          iva_incluido: false,
         })),
       })
       setResultados(r.data.resultados || [])
@@ -176,8 +178,8 @@ export default function OdooFacturacion() {
           <div className="of-grupos">
             {grupos.map((g) => {
               const sel = seleccionados.has(g.ruc)
-              const base = g.iva_incluido ? +(g.total / (1 + IVA)).toFixed(2) : g.total
-              const iva = g.iva_incluido ? +(g.total - base).toFixed(2) : null
+              const base = +(g.total / (1 + IVA)).toFixed(2)
+              const iva = +(g.total - base).toFixed(2)
               return (
                 <div key={g.ruc} className={`of-grupo ${sel ? 'selected' : ''}`}>
                   <label className="of-grupo-header">
@@ -192,7 +194,7 @@ export default function OdooFacturacion() {
                     </div>
                     <div className="of-grupo-total">
                       <span className="of-grupo-monto">{fmtMoney(g.total)}</span>
-                      {g.iva_incluido && <span className="of-iva-tag">IVA incl.</span>}
+                      <span className="of-iva-tag">IVA incl.</span>
                     </div>
                   </label>
 
@@ -203,12 +205,10 @@ export default function OdooFacturacion() {
                         <span className="of-linea-valor">{fmtMoney(l.valor)}</span>
                       </div>
                     ))}
-                    {g.iva_incluido && (
-                      <div className="of-desglose">
-                        <span>Base imponible</span><span>{fmtMoney(base)}</span>
-                        <span>IVA 15%</span><span>{fmtMoney(iva)}</span>
-                      </div>
-                    )}
+                    <div className="of-desglose">
+                      <span>Base imponible</span><span>{fmtMoney(base)}</span>
+                      <span>IVA 15%</span><span>{fmtMoney(iva)}</span>
+                    </div>
                   </div>
                 </div>
               )

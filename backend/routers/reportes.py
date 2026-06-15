@@ -40,6 +40,7 @@ class CobroIn(BaseModel):
     marca: Optional[str] = ""
     cobrar: Optional[bool] = True
     valor: Optional[float] = 0
+    iva_incluido: Optional[bool] = False   # False = "+IVA" (se suma 15%); True = IVA ya incluido
 
 
 def _filas_y_total(user_id):
@@ -87,7 +88,7 @@ def _filas_y_total(user_id):
 
     def _q_guardados():
         return fetch_all(lambda: sb.table("reportes_honorarios").select(
-            "identificacion,producto,cobrar,valor").eq("user_id", user_id))
+            "identificacion,producto,cobrar,valor,iva_incluido").eq("user_id", user_id))
 
     with ThreadPoolExecutor(max_workers=4) as ex:
         f_svc = ex.submit(_q_servicios)
@@ -127,19 +128,25 @@ def _filas_y_total(user_id):
             nonlocal total
             cobrar = bool(g["cobrar"]) if g else relevante
             valor = float(g["valor"]) if g and g.get("valor") is not None else 0.0
+            # IVA por ítem: lo guardado manda; si no hay, cae al ajuste del cliente.
+            iva_incl = bool(g["iva_incluido"]) if g and g.get("iva_incluido") is not None else iva_por_ruc.get(ruc, False)
+            # "bruto" = total a cobrar con IVA incluido (base + 15%). Si el valor ya
+            # incluye IVA, el bruto es el mismo valor; si es "+IVA", se suma el 15%.
+            bruto = round(valor if iva_incl else valor * (1 + IVA_RATE), 2)
             if cobrar:
-                total += valor
+                total += bruto
             filas.append({
                 "identificacion": ruc,
                 "contribuyente": nombre_por_ruc[ruc],
                 "client_id": client_id_por_ruc.get(ruc),
-                "iva_incluido": iva_por_ruc.get(ruc, False),
+                "iva_incluido": iva_incl,
                 "concepto": concepto,
                 "relevante": relevante,
                 "hecho": hecho,
                 "personalizado": personalizado,
                 "cobrar": cobrar,
                 "valor": round(valor, 2),
+                "bruto": bruto,
             })
         for label, key in CONCEPTOS:
             hecho = ((ruc, key) in decl_keys) or (key == "anexo" and ruc in anexo_rucs)
@@ -182,6 +189,7 @@ async def guardar_cobro(entry: CobroIn, user_id: str = Depends(get_current_user)
             "marca": "",
             "cobrar": bool(entry.cobrar),
             "valor": float(entry.valor or 0),
+            "iva_incluido": bool(entry.iva_incluido),
             "updated_at": "now()",
         }, on_conflict="user_id,identificacion,producto").execute()
         return {"ok": True}
@@ -207,40 +215,31 @@ async def enviar_correo_reporte(iva_incluido: bool = False, user_id: str = Depen
         return {"ok": False, "configurado": False,
                 "error": "El envío automático no está configurado en el servidor."}
     filas, total = _filas_y_total(user_id)
-    # Agrupar por contribuyente, solo lo que se cobra con valor > 0
+    # 'bruto' = valor con IVA incluido por ítem (base + 15%). El total ya es con IVA.
     por_ruc = {}
     for f in filas:
-        if f["cobrar"] and f["valor"] > 0:
+        if f["cobrar"] and f.get("bruto", 0) > 0:
             g = por_ruc.setdefault(f["identificacion"], {"nombre": f["contribuyente"], "items": [], "sub": 0.0})
-            g["items"].append(f"   - {f['concepto']}: ${f['valor']:.2f}")
-            g["sub"] += f["valor"]
+            etiqueta = " (IVA incl.)" if f.get("iva_incluido") else " (+IVA)"
+            g["items"].append(f"   - {f['concepto']}: ${f['bruto']:.2f}{etiqueta}")
+            g["sub"] += f["bruto"]
     if not por_ruc:
         raise HTTPException(status_code=400, detail="No hay valores a cobrar para enviar.")
     bloques = []
     for ruc, g in por_ruc.items():
-        b = f"{g['nombre']} ({ruc})\n" + "\n".join(g["items"]) + f"\n   Subtotal: ${g['sub']:.2f}"
-        if iva_incluido:
-            base, iva = _desglose_iva(g["sub"])
-            b += f"\n   (Base imponible: ${base:.2f} + IVA 15%: ${iva:.2f})"
-        bloques.append(b)
-    if iva_incluido:
-        base_t, iva_t = _desglose_iva(total)
-        cierre = (f"\n\nTOTAL (IVA incluido): ${total:.2f}"
-                  f"\n   Base imponible: ${base_t:.2f}"
-                  f"\n   IVA 15%: ${iva_t:.2f}\n\nGracias.")
-    else:
-        cierre = f"\n\nTOTAL A FACTURAR: ${total:.2f}\n\nGracias."
+        base, iva = _desglose_iva(g["sub"])
+        bloques.append(f"{g['nombre']} ({ruc})\n" + "\n".join(g["items"])
+                       + f"\n   Subtotal: ${g['sub']:.2f}  (Base ${base:.2f} + IVA ${iva:.2f})")
+    base_t, iva_t = _desglose_iva(total)
+    cierre = (f"\n\nTOTAL A FACTURAR (IVA incl.): ${total:.2f}"
+              f"\n   Base imponible: ${base_t:.2f}\n   IVA 15%: ${iva_t:.2f}\n\nGracias.")
     cuerpo = ("Hola Johanna,\n\nDetalle de honorarios para registrar la factura en Odoo:\n\n"
               + "\n\n".join(bloques) + cierre)
     ok, err = enviar_correo(DESTINO_ODOO, "Honorarios para facturar en Odoo", cuerpo)
     if not ok:
         raise HTTPException(status_code=400, detail=err or "No se pudo enviar el correo.")
-    resp = {"ok": True, "configurado": True, "destinatario": DESTINO_ODOO, "total": total}
-    if iva_incluido:
-        base_t, iva_t = _desglose_iva(total)
-        resp["base"] = base_t
-        resp["iva"] = iva_t
-    return resp
+    return {"ok": True, "configurado": True, "destinatario": DESTINO_ODOO,
+            "total": total, "base": base_t, "iva": iva_t}
 
 
 @router.get("/export/excel")
@@ -281,19 +280,18 @@ async def export_excel(iva_incluido: bool = False, user_id: str = Depends(get_cu
         ws.write(r, 1, f["identificacion"], cell)
         ws.write(r, 2, f["concepto"], cell)
         ws.write(r, 3, "Sí" if f["cobrar"] else "No", si)
-        ws.write_number(r, 4, f["valor"] if f["cobrar"] else 0, money)
+        ws.write_number(r, 4, f["bruto"] if f["cobrar"] else 0, money)
         if f["cobrar"]:
-            sub += f["valor"]
+            sub += f["bruto"]
     if curr is not None:
         r += 1
         _subtotal(r, curr, sub)
     r += 1
-    ws.write(r, 3, "TOTAL" + (" (IVA incl.)" if iva_incluido else ""), head)
+    ws.write(r, 3, "TOTAL (IVA incl.)", head)
     ws.write_number(r, 4, total, tot)
-    if iva_incluido:
-        base_t, iva_t = _desglose_iva(total)
-        r += 1; ws.write(r, 3, "Base imponible", sub_lbl); ws.write_number(r, 4, base_t, sub_val)
-        r += 1; ws.write(r, 3, "IVA 15%", sub_lbl); ws.write_number(r, 4, iva_t, sub_val)
+    base_t, iva_t = _desglose_iva(total)
+    r += 1; ws.write(r, 3, "Base imponible", sub_lbl); ws.write_number(r, 4, base_t, sub_val)
+    r += 1; ws.write(r, 3, "IVA 15%", sub_lbl); ws.write_number(r, 4, iva_t, sub_val)
     ws.set_column(0, 0, 34)
     ws.set_column(1, 1, 16)
     ws.set_column(2, 2, 24)
@@ -330,17 +328,16 @@ async def export_pdf(iva_incluido: bool = False, user_id: str = Depends(get_curr
         curr = f["contribuyente"]
         data.append([f["contribuyente"], f["identificacion"], f["concepto"],
                      "Sí" if f["cobrar"] else "No",
-                     f"${f['valor']:.2f}" if f["cobrar"] else "$0.00"])
+                     f"${f['bruto']:.2f}" if f["cobrar"] else "$0.00"])
         if f["cobrar"]:
-            sub += f["valor"]
+            sub += f["bruto"]
     if curr is not None:
         data.append(["", "", "", f"Subtotal {curr}", f"${sub:.2f}"])
         sub_rows.append(len(data) - 1)
-    data.append(["", "", "", "TOTAL" + (" (IVA incl.)" if iva_incluido else ""), f"${total:.2f}"])
-    if iva_incluido:
-        base_t, iva_t = _desglose_iva(total)
-        data.append(["", "", "", "Base imponible", f"${base_t:.2f}"])
-        data.append(["", "", "", "IVA 15%", f"${iva_t:.2f}"])
+    data.append(["", "", "", "TOTAL (IVA incl.)", f"${total:.2f}"])
+    base_t, iva_t = _desglose_iva(total)
+    data.append(["", "", "", "Base imponible", f"${base_t:.2f}"])
+    data.append(["", "", "", "IVA 15%", f"${iva_t:.2f}"])
     t = Table(data, repeatRows=1, colWidths=[2.2 * inch, 1.3 * inch, 1.7 * inch, 1.0 * inch, 0.9 * inch])
     estilo = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a5276")),

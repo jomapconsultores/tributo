@@ -61,5 +61,18 @@
 /* Opción "incluido IVA" y estado de declaración lista */
 .rp-iva-check { display: inline-flex; align-items: center; gap: 5px; font-size: .8rem; color: #1a3d6b; font-weight: 600; cursor: pointer; }
 .rp-iva-check input { accent-color: #003399; }
+.rp-iva-hint { font-size: .76rem; color: #6b7888; font-style: italic; }
+
+/* IVA por ítem: control +IVA / incl. */
+.rp-valor-cell { display: inline-flex; align-items: center; gap: 4px; justify-content: flex-end; }
+.rp-iva-mode { display: inline-flex; border: 1px solid #cdd8e6; border-radius: 6px; overflow: hidden; }
+.rp-iva-opt {
+  border: none; background: #fff; color: #6b7888; cursor: pointer;
+  font-size: .68rem; font-weight: 700; padding: 4px 7px; line-height: 1;
+}
+.rp-iva-opt + .rp-iva-opt { border-left: 1px solid #cdd8e6; }
+.rp-iva-opt.on { background: #003399; color: #fff; }
+.rp-iva-opt:disabled { opacity: .45; cursor: default; }
+.rp-bruto { font-size: .7rem; color: #0369a1; text-align: right; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .rp-total-desglose { display: block; font-size: .72rem; color: #eafff5; margin-top: 2px; opacity: .95; }
 .rp-lista-badge { margin-left: 10px; padding: 1px 8px; background: #d5f5e3; color: #1e8449; border-radius: 10px; font-size: .68rem; font-weight: 700; }
