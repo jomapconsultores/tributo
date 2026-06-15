@@ -25,6 +25,20 @@ services:
         sync: false           # ej: https://tributos-web.onrender.com
       - key: FRONTEND_URL
         sync: false           # ej: https://tributos-web.onrender.com
+      # --- Movimientos: aviso por correo al administrador ---
+      - key: ACTIVITY_NOTIFY_EMAIL
+        value: jomapconsultores@gmail.com   # destino del aviso (no es secreto)
+      # SMTP para el envío real (definir en el dashboard de Render):
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
 
   # ---------- Frontend (React/Vite, sitio estático) ----------
   - type: static
