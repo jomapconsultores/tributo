@@ -1,7 +1,7 @@
 """Panel de administración (Fase 3). Solo para admins (app_admins).
 Permite listar/crear usuarios y asignar módulos/planes con vigencia."""
 from datetime import date, timedelta
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List
 from auth import get_current_user
