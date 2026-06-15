@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { reportesAPI, downloadBlob } from '../services/api'
 import './Reportes.css'
 
@@ -12,6 +13,7 @@ const writeRpDraft = (k, v) => { try { const d = readRpDrafts(); d[k] = v; local
 const clearRpDraft = (k) => { try { const d = readRpDrafts(); delete d[k]; localStorage.setItem(RP_DRAFT, JSON.stringify(d)) } catch { /* noop */ } }
 
 export default function Reportes() {
+  const navigate = useNavigate()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -208,7 +210,7 @@ export default function Reportes() {
         </label>
         <button className="rp-btn" onClick={() => exportar('excel')} disabled={!rows.length}>⬇ Excel</button>
         <button className="rp-btn" onClick={() => exportar('pdf')} disabled={!rows.length}>⬇ PDF</button>
-        <button className="rp-btn rp-btn-mail" onClick={enviarAJohanna} disabled={!rows.length} title="Enviar el detalle y total a Johanna para facturar en Odoo">✉ Enviar a Johanna (Odoo)</button>
+        <button className="rp-btn rp-btn-odoo" onClick={() => navigate('/odoo-facturacion')} disabled={!rows.length} title="Pasar al módulo de Facturación Odoo para crear las facturas de lo marcado">🧾 Enviar a Odoo (facturación)</button>
       </div>
 
       {error && <div className="rp-error">⚠ {error}</div>}

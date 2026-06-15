@@ -17,6 +17,9 @@
 .rp-btn:hover { background: #f4f8fc; }
 .rp-btn-mail { background: #003399; color: #fff; border-color: #003399; font-weight: 600; }
 .rp-btn-mail:hover { filter: brightness(1.1); background: #003399; }
+.rp-btn-odoo { background: #7c3aed; color: #fff; border-color: #7c3aed; font-weight: 600; }
+.rp-btn-odoo:hover { filter: brightness(1.08); background: #7c3aed; }
+.rp-btn-odoo:disabled { opacity: .55; cursor: default; }
 .rp-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; }
 
 .rp-table-wrap { background: #fff; border: 1px solid #e8edf3; border-radius: 10px; box-shadow: 0 1px 3px rgba(16,40,80,.05); overflow-x: auto; }
