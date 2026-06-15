@@ -340,6 +340,13 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
             <span>ACCESO A CLIENTES</span>
           </button>
           <button
+            className={`nav-item module-btn ${path === '/admin/permisos' ? 'active' : ''}`}
+            onClick={() => navigate('/admin/permisos')}
+          >
+            <span className="nav-ico">🛡️</span>
+            <span>PERMISOS</span>
+          </button>
+          <button
             className={`nav-item module-btn ${path === '/odoo-facturacion' ? 'active' : ''}`}
             onClick={() => navigate('/odoo-facturacion')}
           >

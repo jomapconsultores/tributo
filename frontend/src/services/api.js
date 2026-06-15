@@ -52,6 +52,7 @@ export const adminAPI = {
   pagos: (uid) => api.get(`/api/admin/users/${uid}/pagos`),
   contactos: () => api.get('/api/admin/contactos'),
   resetIps: (uid) => api.delete(`/api/admin/users/${uid}/ips`),
+  permisos: () => api.get('/api/admin/permisos'),
 }
 
 // Credenciales de servicios externos (portal SRI, etc.) — SOLO ADMIN

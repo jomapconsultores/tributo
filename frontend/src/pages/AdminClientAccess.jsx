@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { adminAPI } from '../services/api'
 import './AdminClientAccess.css'
 
 export default function AdminClientAccess() {
+  const [searchParams] = useSearchParams()
   const [users, setUsers] = useState([])
-  const [selectedUid, setSelectedUid] = useState('')
+  const [selectedUid, setSelectedUid] = useState(searchParams.get('uid') || '')
   const [grupos, setGrupos] = useState([])
   const [loadingUsers, setLoadingUsers] = useState(true)
   const [loadingAccess, setLoadingAccess] = useState(false)

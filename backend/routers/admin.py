@@ -225,6 +225,74 @@ async def reset_ips(uid: str, _: str = Depends(require_admin)):
     return {"ok": True}
 
 
+@router.get("/permisos")
+async def resumen_permisos(_: str = Depends(require_admin)):
+    """Resumen de módulos activos y clientes autorizados por usuario."""
+    sb = get_supabase_client()
+    try:
+        res = sb.auth.admin.list_users()
+        users = res if isinstance(res, list) else getattr(res, "users", []) or []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"No se pudo listar usuarios: {e}")
+
+    admin_rows = sb.table("app_admins").select("user_id,role").execute().data or []
+    roles = {a["user_id"]: (a.get("role") or "admin") for a in admin_rows}
+
+    mods_rows = sb.table("user_modules").select("user_id,modulo,activo").execute().data or []
+    mods_by_user: dict = {}
+    for m in mods_rows:
+        if m["activo"]:
+            mods_by_user.setdefault(m["user_id"], []).append(m["modulo"])
+
+    subs = {s["user_id"]: s for s in (sb.table("subscriptions").select(
+        "user_id,plan,estado,proximo_pago").execute().data or [])}
+
+    access_rows = sb.table("client_access").select("granted_to,client_id").execute().data or []
+    access_by_user: dict = {}
+    for a in access_rows:
+        access_by_user.setdefault(a["granted_to"], []).append(a["client_id"])
+
+    all_ids = list({cid for cids in access_by_user.values() for cid in cids})
+    clients_map: dict = {}
+    if all_ids:
+        for c in (sb.table("clients").select("id,identificacion,nombre").in_("id", all_ids).execute().data or []):
+            clients_map[c["id"]] = c
+
+    out = []
+    hoy = date.today().isoformat()
+    for u in users:
+        uid = str(u.id)
+        role = roles.get(uid, "cliente")
+        s = subs.get(uid)
+        by_ruc: dict = {}
+        for cid in access_by_user.get(uid, []):
+            c = clients_map.get(cid)
+            if c and c["identificacion"] not in by_ruc:
+                by_ruc[c["identificacion"]] = c["nombre"] or c["identificacion"]
+        clientes = sorted(
+            [{"identificacion": ruc, "nombre": nombre} for ruc, nombre in by_ruc.items()],
+            key=lambda x: (x["nombre"] or "").upper()
+        )
+        sub_info = None
+        if s:
+            sub_info = {
+                "plan": s.get("plan"),
+                "estado": s.get("estado"),
+                "proximo_pago": s.get("proximo_pago"),
+                "vencida": bool(s.get("proximo_pago")) and str(s["proximo_pago"]) < hoy,
+            }
+        out.append({
+            "user_id": uid,
+            "email": u.email,
+            "role": role,
+            "modulos_activos": sorted(mods_by_user.get(uid, [])),
+            "clientes_autorizados": clientes,
+            "subscription": sub_info,
+        })
+    out.sort(key=lambda x: x["email"] or "")
+    return out
+
+
 @router.get("/contactos")
 async def listar_contactos(_: str = Depends(require_admin)):
     sb = get_supabase_client()
