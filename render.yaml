@@ -25,10 +25,18 @@ services:
         sync: false           # ej: https://tributos-web.onrender.com
       - key: FRONTEND_URL
         sync: false           # ej: https://tributos-web.onrender.com
-      # --- Movimientos: aviso por correo al administrador ---
-      - key: ACTIVITY_NOTIFY_EMAIL
-        value: jomapconsultores@gmail.com   # destino del aviso (no es secreto)
-      # SMTP para el envío real (definir en el dashboard de Render):
+      # --- Odoo 19: facturación de honorarios ---
+      - key: ODOO_URL
+        value: https://cmaj-asociados-sas.odoo.com
+      - key: ODOO_DB
+        value: cmaj-asociados-sas
+      - key: ODOO_USERNAME
+        value: jomapconsultores@outlook.com
+      - key: ODOO_NOTIFY_EMAIL
+        value: johannanievecela@hotmail.com   # recibe el aviso al emitir (salvo si emite el admin)
+      - key: ODOO_API_KEY
+        sync: false           # SECRETO: definir en el dashboard de Render
+      # --- SMTP: necesario para el correo de facturación a Johanna ---
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT

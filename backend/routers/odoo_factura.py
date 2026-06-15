@@ -253,8 +253,7 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
             registrar(actor_user_id=user_id, action="emit", module="facturacion",
                       entity="Factura emitida en Odoo", identificacion=r.get("ruc"),
                       contribuyente=r.get("nombre"),
-                      metadata={"numero": r.get("numero"), "total": r.get("total")},
-                      notificar=False)
+                      metadata={"numero": r.get("numero"), "total": r.get("total")})
         # Aviso por correo a Johanna SALVO si emite el administrador (Marco Antonio)
         if not es_super_admin(user_id):
             threading.Thread(target=_notificar_johanna,
