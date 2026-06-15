@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, Fragment } from 'react'
+import useDraft from '../hooks/useDraft'
 import { useOutletContext } from 'react-router-dom'
 import { declaracionesAPI, clientsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
@@ -24,6 +25,12 @@ export default function Declaraciones({ tipo }) {
   const { openNewClient } = useOutletContext()
   const { clients, selectedClient, selectedClientId, selectClient } = useClients()
 
+  // Auto-guardado local: los valores que escribes (overrides) se guardan al
+  // instante en el navegador, por cliente+tipo. Si se cae el internet o recargas,
+  // no se pierden. dk(nombre) = clave del borrador (null si no hay cliente).
+  const draftKey = selectedClientId ? `draft:decl:${tipo}:${selectedClientId}` : null
+  const dk = (name) => (draftKey ? `${draftKey}:${name}` : null)
+
   const [decl, setDecl] = useState(null)
   const [saved, setSaved] = useState([])
   const [aplazados, setAplazados] = useState([])
@@ -37,37 +44,37 @@ export default function Declaraciones({ tipo }) {
 
   // Overrides editables del crédito tributario mes anterior (605/606)
   // null = usar el pre-cargado del backend; número = override manual
-  const [credAdq, setCredAdq] = useState(null)
-  const [credRet, setCredRet] = useState(null)
+  const [credAdq, setCredAdq] = useDraft(dk('credAdq'), null)
+  const [credRet, setCredRet] = useDraft(dk('credRet'), null)
   const [editAdq, setEditAdq] = useState(false)
   const [editRet, setEditRet] = useState(false)
 
   // Override manual de ventas/ingresos (cuando no se tienen los XML).
   // null = usar lo calculado de los comprobantes; número = ingresado a mano.
-  const [ventas15, setVentas15] = useState(null)
-  const [ventas5, setVentas5] = useState(null)
-  const [ventas0, setVentas0] = useState(null)
+  const [ventas15, setVentas15] = useDraft(dk('ventas15'), null)
+  const [ventas5, setVentas5] = useDraft(dk('ventas5'), null)
+  const [ventas0, setVentas0] = useDraft(dk('ventas0'), null)
   const [editV15, setEditV15] = useState(false)
   const [editV5, setEditV5] = useState(false)
   const [editV0, setEditV0] = useState(false)
 
   // Factor de proporcionalidad del crédito IVA: null = auto (calculado de las
   // ventas); número 0..1 = override manual.
-  const [factorProp, setFactorProp] = useState(null)
+  const [factorProp, setFactorProp] = useDraft(dk('factorProp'), null)
   const [editFactor, setEditFactor] = useState(false)
 
   // Rebajas y exenciones ICE: null = auto (precalculado del módulo Rebajas y
   // exenciones); número = override manual. Mismo patrón que 605/606.
-  const [rebajaIce, setRebajaIce] = useState(null)
-  const [exencionIce, setExencionIce] = useState(null)
+  const [rebajaIce, setRebajaIce] = useDraft(dk('rebajaIce'), null)
+  const [exencionIce, setExencionIce] = useDraft(dk('exencionIce'), null)
   const [editReb, setEditReb] = useState(false)
   const [editExe, setEditExe] = useState(false)
   // Casillas "aplica" manuales (sin cálculo del módulo): generan advertencia
-  const [marcaReb, setMarcaReb] = useState(false)
-  const [marcaExe, setMarcaExe] = useState(false)
+  const [marcaReb, setMarcaReb] = useDraft(dk('marcaReb'), false)
+  const [marcaExe, setMarcaExe] = useDraft(dk('marcaExe'), false)
 
   // Diferir pago al guardar: 0 (no diferir), 1, 2 o 3 meses
-  const [diferirMeses, setDiferirMeses] = useState(0)
+  const [diferirMeses, setDiferirMeses] = useDraft(dk('diferirMeses'), 0)
 
   const isIVA = tipo === 'IVA'
   const maxDiferir = isIVA ? 3 : 1
