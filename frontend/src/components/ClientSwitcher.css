@@ -111,6 +111,33 @@
 }
 .cs-drop-new:hover { background: #f5f3ff; }
 
+/* RUC del contribuyente seleccionado */
+.cs-ruc-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #eef2ff;
+  color: #3730a3;
+  border: 1px solid #e0e7ff;
+  border-radius: 8px;
+  padding: 6px 11px 6px 7px;
+  font-size: 0.83rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.cs-ruc-label {
+  font-size: 0.58rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6366f1;
+  background: #fff;
+  border-radius: 5px;
+  padding: 2px 5px;
+}
+
 /* Selector de período */
 .cs-sel {
   border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 11px;

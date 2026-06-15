@@ -99,6 +99,14 @@ export default function ClientSwitcher({ onNewClient }) {
         )}
       </div>
 
+      {/* RUC / cédula del contribuyente seleccionado (visible junto al nombre) */}
+      {current?.identificacion && (
+        <span className="cs-ruc-tag" title="RUC / Cédula del contribuyente">
+          <span className="cs-ruc-label">RUC</span>
+          {current.identificacion}
+        </span>
+      )}
+
       {/* Selector de período (se mantiene como select) */}
       <select className="cs-sel cs-per" value={selectedClientId || ''} onChange={cambiarPeriodo}>
         {periodos.map((c) => (
