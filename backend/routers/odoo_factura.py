@@ -69,11 +69,22 @@ def _notificar_johanna(*, actor_user_id: str, exitosas: list):
 # Helpers de conexión
 # ---------------------------------------------------------------------------
 
+# Valores por defecto de Odoo (PROVISIONAL, a pedido del cliente — opción B).
+# Las env vars del servidor, si existen, SIEMPRE tienen prioridad sobre estos.
+# Recomendado: regenerar la API key en Odoo y moverla a una env var secreta.
+_ODOO_DEFAULTS = {
+    "ODOO_URL": "https://cmaj-asociados-sas.odoo.com",
+    "ODOO_DB": "cmaj-asociados-sas",
+    "ODOO_USERNAME": "jomapconsultores@outlook.com",
+    "ODOO_API_KEY": "e56f2003a8b2c3fe0a408c08042432087e0090ea",
+}
+
+
 def _cfg():
-    url = os.getenv("ODOO_URL", "").rstrip("/")
-    db = os.getenv("ODOO_DB", "")
-    user = os.getenv("ODOO_USERNAME", "")
-    key = os.getenv("ODOO_API_KEY", "")
+    url = (os.getenv("ODOO_URL") or _ODOO_DEFAULTS["ODOO_URL"]).rstrip("/")
+    db = os.getenv("ODOO_DB") or _ODOO_DEFAULTS["ODOO_DB"]
+    user = os.getenv("ODOO_USERNAME") or _ODOO_DEFAULTS["ODOO_USERNAME"]
+    key = os.getenv("ODOO_API_KEY") or _ODOO_DEFAULTS["ODOO_API_KEY"]
     if not all([url, db, user, key]):
         raise HTTPException(status_code=503,
                             detail="Odoo no configurado en el servidor (env vars faltantes)")
