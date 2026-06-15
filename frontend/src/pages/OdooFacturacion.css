@@ -170,16 +170,30 @@
   align-items: center;
   gap: 12px;
   padding: 14px 16px;
-  cursor: pointer;
   user-select: none;
+  flex-wrap: wrap;
 }
-.of-grupo-header input[type="checkbox"] {
-  accent-color: #4f46e5;
-  width: 17px;
-  height: 17px;
+/* Botón grande "Facturar a esta empresa" */
+.of-marcar {
   flex-shrink: 0;
+  border: 1.5px solid #cbd5e1;
+  background: #fff;
+  color: #64748b;
+  font-weight: 700;
+  font-size: 0.82rem;
+  padding: 9px 14px;
+  border-radius: 9px;
   cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, color .15s, border-color .15s;
 }
+.of-marcar:hover { background: #f1f5f9; }
+.of-marcar.on {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+}
+.of-marcar.on:hover { filter: brightness(1.06); background: #16a34a; }
 
 .of-grupo-info {
   display: flex;

@@ -182,21 +182,24 @@ export default function OdooFacturacion() {
               const iva = +(g.total - base).toFixed(2)
               return (
                 <div key={g.ruc} className={`of-grupo ${sel ? 'selected' : ''}`}>
-                  <label className="of-grupo-header">
-                    <input
-                      type="checkbox"
-                      checked={sel}
-                      onChange={() => toggle(g.ruc)}
-                    />
+                  <div className="of-grupo-header">
                     <div className="of-grupo-info">
-                      <span className="of-grupo-nombre">{g.nombre}</span>
-                      <span className="of-grupo-ruc">{g.ruc}</span>
+                      <span className="of-grupo-nombre">{g.nombre || '(sin nombre)'}</span>
+                      <span className="of-grupo-ruc">RUC {g.ruc}</span>
                     </div>
                     <div className="of-grupo-total">
                       <span className="of-grupo-monto">{fmtMoney(g.total)}</span>
                       <span className="of-iva-tag" title="El total ya incluye el IVA 15%">con IVA</span>
                     </div>
-                  </label>
+                    <button
+                      type="button"
+                      className={`of-marcar ${sel ? 'on' : ''}`}
+                      onClick={() => toggle(g.ruc)}
+                      title={sel ? 'Esta empresa SÍ se facturará — clic para quitar' : 'Clic para facturar a esta empresa'}
+                    >
+                      {sel ? '✔ Facturar a esta empresa' : '○ Marcar para facturar'}
+                    </button>
+                  </div>
 
                   <div className="of-lineas">
                     {g.lineas.map((l, li) => (
