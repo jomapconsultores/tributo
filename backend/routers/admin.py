@@ -43,9 +43,9 @@ class RoleIn(BaseModel):
 
 class ClientAccessIn(BaseModel):
     identificacion: str
-    owner_user_id: str  # user_id del dueño original de los clientes
-    granted_to: str     # user_id del beneficiario
-    grant: bool         # True = otorgar, False = revocar
+    granted_to: str          # user_id del beneficiario
+    grant: bool              # True = otorgar, False = revocar
+    owner_user_id: Optional[str] = None  # ignorado — se busca por identificacion en todos los propietarios
 
 
 class UserIn(BaseModel):
@@ -364,25 +364,26 @@ async def set_plan(uid: str, body: PlanIn, _: str = Depends(require_admin)):
 
 @router.get("/client-access")
 async def listar_acceso_clientes(uid: str = Query(...), _: str = Depends(require_admin)):
-    """Devuelve todos los contribuyentes (agrupados por owner+identificacion)
-    con flag indicando si 'uid' tiene acceso a cada uno."""
+    """Devuelve todos los contribuyentes agrupados por identificacion (RUC/cédula),
+    sin duplicados aunque el mismo RUC exista en varios propietarios."""
     from database import fetch_all
     sb = get_supabase_client()
-    todos = fetch_all(lambda: sb.table("clients").select(
-        "id,identificacion,nombre,user_id,periodo_mes,periodo_anio"))
+    todos = fetch_all(lambda: sb.table("clients").select("id,identificacion,nombre"))
     access = sb.table("client_access").select("client_id").eq("granted_to", uid).execute().data or []
     granted_ids = {r["client_id"] for r in access}
 
     grupos: dict = {}
     for c in todos:
-        key = (c["user_id"], c["identificacion"])
-        g = grupos.setdefault(key, {
-            "identificacion": c["identificacion"],
-            "nombre": c["nombre"],
-            "owner_user_id": c["user_id"],
+        ident = c["identificacion"]
+        g = grupos.setdefault(ident, {
+            "identificacion": ident,
+            "nombre": c["nombre"] or ident,
             "client_ids": [],
         })
         g["client_ids"].append(c["id"])
+        # Usar el nombre más reciente/completo disponible
+        if c.get("nombre") and len(c["nombre"]) > len(g["nombre"]):
+            g["nombre"] = c["nombre"]
 
     result = []
     for g in grupos.values():
@@ -397,11 +398,10 @@ async def listar_acceso_clientes(uid: str = Query(...), _: str = Depends(require
 
 @router.put("/client-access")
 async def set_acceso_cliente(body: ClientAccessIn, admin_id: str = Depends(require_admin)):
-    """Otorga o revoca acceso a todos los períodos de un contribuyente para un usuario."""
+    """Otorga o revoca acceso a TODOS los períodos de un contribuyente (por RUC)
+    para un usuario, sin importar quién los creó."""
     sb = get_supabase_client()
-    clients = sb.table("clients").select("id") \
-        .eq("identificacion", body.identificacion) \
-        .eq("user_id", body.owner_user_id).execute().data or []
+    clients = sb.table("clients").select("id").eq("identificacion", body.identificacion).execute().data or []
     ids = [c["id"] for c in clients]
     if not ids:
         raise HTTPException(status_code=404, detail="Contribuyente no encontrado")
