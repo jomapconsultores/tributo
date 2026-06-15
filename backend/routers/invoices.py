@@ -9,7 +9,7 @@ from services.xml_parser import parse_xml_invoice
 from services.export_service import generate_excel, generate_pdf
 from services.xml_store import guardar_xml_original
 from database import fetch_all
-from tenancy import assert_client_owner
+from tenancy import assert_client_owner, shared_client_ids
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
 
@@ -89,9 +89,10 @@ async def list_invoices(
             count_q = count_q.eq("client_id", client_id)
             data_q = data_q.eq("client_id", client_id)
         else:
-            # Sin client_id: filtrar por usuario para no devolver toda la DB
-            count_q = count_q.eq("user_id", user_id)
-            data_q = data_q.eq("user_id", user_id)
+            if not data_admin:
+                # Sin client_id: filtrar por usuario para no devolver toda la DB
+                count_q = count_q.eq("user_id", user_id)
+                data_q = data_q.eq("user_id", user_id)
 
         total = count_q.execute().count or 0
         response = data_q.order("fecha", desc=True).range(skip, skip + limit - 1).execute()
@@ -300,10 +301,9 @@ async def delete_invoice(invoice_id: str, user_id: str = Depends(get_current_use
 
 def _fetch_for_export(supabase, client_id: Optional[str], user_id: str):
     def _q():
-        q = supabase.table("invoices").select("*").eq("user_id", user_id).order("fecha", desc=True)
         if client_id:
-            q = q.eq("client_id", client_id)
-        return q
+            return supabase.table("invoices").select("*").eq("client_id", client_id).order("fecha", desc=True)
+        return supabase.table("invoices").select("*").eq("user_id", user_id).order("fecha", desc=True)
     return fetch_all(_q)
 
 

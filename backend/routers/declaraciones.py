@@ -8,8 +8,8 @@ from database import get_supabase_client, fetch_all
 from services.declaracion import declaracion_iva, declaracion_ice
 from services.declaracion_oficial import llenar_oficial
 from services.credentials_crypto import decrypt
-from tenancy import assert_client_owner
-from routers.access import es_admin
+from tenancy import assert_client_owner, shared_client_ids
+from routers.access import es_admin, es_data_admin
 
 router = APIRouter(prefix="/api/declaraciones", tags=["declaraciones"])
 
@@ -34,7 +34,7 @@ class MarcarPagado(BaseModel):
 
 
 def _cliente(supabase, client_id):
-    c = supabase.table("clients").select("identificacion,nombre,periodo_mes,periodo_anio").eq("id", client_id).execute()
+    c = supabase.table("clients").select("identificacion,nombre,periodo_mes,periodo_anio,user_id").eq("id", client_id).execute()
     return c.data[0] if c.data else {}
 
 
@@ -47,14 +47,14 @@ def _periodo_anterior(mes, anio):
     return mes - 1, anio
 
 
-def _cargar_credito_mes_anterior(supabase, client_id, user_id, mes, anio):
+def _cargar_credito_mes_anterior(supabase, client_id, mes, anio):
     """Si existe una declaración IVA guardada del mes anterior, devuelve sus saldos
     remanentes (605 = adquisiciones, 606 = retenciones). Si no, devuelve ceros."""
     mes_ant, anio_ant = _periodo_anterior(mes, anio)
     if mes_ant is None:
         return 0.0, 0.0
     res = supabase.table("declaraciones").select("datos").eq(
-        "client_id", client_id).eq("user_id", user_id).eq("tipo", "IVA").eq(
+        "client_id", client_id).eq("tipo", "IVA").eq(
         "mes", mes_ant).eq("anio", anio_ant).order(
         "created_at", desc=True).limit(1).execute()
     if not res.data:
@@ -71,15 +71,16 @@ def _cargar_credito_mes_anterior(supabase, client_id, user_id, mes, anio):
     return float(adq or 0), float(ret or 0)
 
 
-def _rebajas_por_producto(supabase, identificacion, user_id):
+def _rebajas_por_producto(supabase, identificacion, owner_uid):
     """% de materia prima nacional calificada por producto, desde el módulo
     Rebajas y exenciones (misma regla que su pantalla: el agua no cuenta,
-    solo suman los proveedores calificados, cumple si el % es ≥ 70)."""
+    solo suman los proveedores calificados, cumple si el % es ≥ 70).
+    Usa owner_uid (user_id del dueño del cliente) para leer los datos correctos."""
     if not identificacion:
         return {}
     ingredientes = fetch_all(lambda: supabase.table("rebajas_ingredientes").select(
         "producto,ingrediente,cantidad,calificado").eq(
-        "identificacion", identificacion).eq("user_id", user_id))
+        "identificacion", identificacion).eq("user_id", owner_uid))
     por_prod = {}
     for r in ingredientes:
         if (r.get("ingrediente") or "").strip().upper() == "AGUA":
@@ -101,7 +102,7 @@ def _rebajas_por_producto(supabase, identificacion, user_id):
     # Condiciones normativas por producto (cerveza/nueva marca/cupo anual SRI)
     conds = supabase.table("rebajas_productos").select(
         "producto,es_cerveza,nueva_marca,cupo_anual_sri").eq(
-        "identificacion", identificacion).eq("user_id", user_id).execute()
+        "identificacion", identificacion).eq("user_id", owner_uid).execute()
     for r in (conds.data or []):
         p = (r.get("producto") or "").strip().upper()
         if p in out:
@@ -111,10 +112,10 @@ def _rebajas_por_producto(supabase, identificacion, user_id):
     return out
 
 
-def _pagos_aplazados_vencen(supabase, client_id, user_id, mes, anio, tipo):
+def _pagos_aplazados_vencen(supabase, client_id, mes, anio, tipo):
     """Devuelve los aplazamientos cuyo vencimiento cae EN este período (y siguen pendientes)."""
     res = supabase.table("pagos_aplazados").select("*").eq(
-        "client_id", client_id).eq("user_id", user_id).eq("tipo", tipo).eq(
+        "client_id", client_id).eq("tipo", tipo).eq(
         "estado", "pendiente").eq("vence_mes", mes).eq("vence_anio", anio).execute()
     return res.data or []
 
@@ -125,30 +126,32 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
     c = _cliente(supabase, client_id)
     anio = c.get("periodo_anio") or 2026
     mes = c.get("periodo_mes") or 1
+    # Para clientes compartidos: usar user_id del dueño del cliente para queries históricos
+    owner_uid = c.get("user_id") or user_id
     if tipo.upper() == "ICE":
-        ice = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id))
-        aplazados_ice = _pagos_aplazados_vencen(supabase, client_id, user_id, mes, anio, "ICE")
-        rebajas_prod = _rebajas_por_producto(supabase, c.get("identificacion") or "", user_id)
+        ice = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id))
+        aplazados_ice = _pagos_aplazados_vencen(supabase, client_id, mes, anio, "ICE")
+        rebajas_prod = _rebajas_por_producto(supabase, c.get("identificacion") or "", owner_uid)
         decl = declaracion_ice(ice, anio, pagos_aplazados_vencen_este_periodo=aplazados_ice,
                                rebajas_productos=rebajas_prod,
                                override_rebaja=override_rebaja, override_exencion=override_exencion,
                                marcar_rebaja=marcar_rebaja, marcar_exencion=marcar_exencion)
         decl["aplazados_vencen"] = aplazados_ice
     else:
-        invoices = fetch_all(lambda: supabase.table("invoices").select("*").eq("client_id", client_id).eq("user_id", user_id))
-        ventas_ice = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id))
-        ventas_iva = fetch_all(lambda: supabase.table("sales_iva").select("*").eq("client_id", client_id).eq("user_id", user_id))
-        retentions = fetch_all(lambda: supabase.table("retentions").select("*").eq("client_id", client_id).eq("user_id", user_id))
+        invoices = fetch_all(lambda: supabase.table("invoices").select("*").eq("client_id", client_id))
+        ventas_ice = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id))
+        ventas_iva = fetch_all(lambda: supabase.table("sales_iva").select("*").eq("client_id", client_id))
+        retentions = fetch_all(lambda: supabase.table("retentions").select("*").eq("client_id", client_id))
 
         # Crédito mes anterior: si el llamador envió override, usalo; si no, mirá historial
         if override_credito_adq is None:
-            cred_adq_prev, cred_ret_prev = _cargar_credito_mes_anterior(supabase, client_id, user_id, mes, anio)
+            cred_adq_prev, cred_ret_prev = _cargar_credito_mes_anterior(supabase, client_id, mes, anio)
         else:
             cred_adq_prev = float(override_credito_adq)
             cred_ret_prev = float(override_credito_ret or 0)
 
         # Pagos aplazados que vencen este período
-        aplazados = _pagos_aplazados_vencen(supabase, client_id, user_id, mes, anio, "IVA")
+        aplazados = _pagos_aplazados_vencen(supabase, client_id, mes, anio, "IVA")
 
         decl = declaracion_iva(
             invoices, ventas_ice, ventas_iva,
@@ -205,7 +208,8 @@ async def credenciales_cliente(client_id: str = Query(...), reveal: bool = Query
     try:
         supabase = get_supabase_client()
         admin = es_admin(user_id)
-        if not admin:
+        data_admin = es_data_admin(user_id)
+        if not data_admin:
             assert_client_owner(client_id, user_id)
         cl = supabase.table("clients").select("identificacion,nombre,user_id").eq("id", client_id).execute().data
         if not cl:
@@ -239,13 +243,32 @@ async def credenciales_cliente(client_id: str = Query(...), reveal: bool = Query
 async def listar(client_id: Optional[str] = Query(None), tipo: Optional[str] = Query(None), user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("declaraciones").select("*").eq("user_id", user_id)
         if client_id:
             assert_client_owner(client_id, user_id)
-            q = q.eq("client_id", client_id)
-        if tipo:
-            q = q.eq("tipo", tipo.upper())
-        return {"data": q.order("created_at", desc=True).execute().data or []}
+            q = supabase.table("declaraciones").select("*").eq("client_id", client_id)
+            if tipo:
+                q = q.eq("tipo", tipo.upper())
+            data = q.order("created_at", desc=True).execute().data or []
+        else:
+            q = supabase.table("declaraciones").select("*").eq("user_id", user_id)
+            if tipo:
+                q = q.eq("tipo", tipo.upper())
+            own = q.order("created_at", desc=True).execute().data or []
+            sids = shared_client_ids(user_id)
+            if sids:
+                sq = supabase.table("declaraciones").select("*").in_("client_id", sids)
+                if tipo:
+                    sq = sq.eq("tipo", tipo.upper())
+                sh = sq.order("created_at", desc=True).execute().data or []
+                seen, data = set(), []
+                for d in own + sh:
+                    if d["id"] not in seen:
+                        seen.add(d["id"])
+                        data.append(d)
+                data.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+            else:
+                data = own
+        return {"data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -314,14 +337,31 @@ async def listar_aplazados(
     """Lista pagos aplazados del usuario. Si client_id, solo de ese cliente."""
     try:
         supabase = get_supabase_client()
-        q = supabase.table("pagos_aplazados").select("*").eq("user_id", user_id)
         if client_id:
             assert_client_owner(client_id, user_id)
-            q = q.eq("client_id", client_id)
-        if estado:
-            q = q.eq("estado", estado)
-        res = q.order("vence_anio", desc=False).order("vence_mes", desc=False).execute()
-        return {"data": res.data or []}
+            q = supabase.table("pagos_aplazados").select("*").eq("client_id", client_id)
+            if estado:
+                q = q.eq("estado", estado)
+            data = q.order("vence_anio", desc=False).order("vence_mes", desc=False).execute().data or []
+        else:
+            q = supabase.table("pagos_aplazados").select("*").eq("user_id", user_id)
+            if estado:
+                q = q.eq("estado", estado)
+            own = q.order("vence_anio", desc=False).order("vence_mes", desc=False).execute().data or []
+            sids = shared_client_ids(user_id)
+            if sids:
+                sq = supabase.table("pagos_aplazados").select("*").in_("client_id", sids)
+                if estado:
+                    sq = sq.eq("estado", estado)
+                sh = sq.order("vence_anio", desc=False).order("vence_mes", desc=False).execute().data or []
+                seen, data = set(), []
+                for d in own + sh:
+                    if d["id"] not in seen:
+                        seen.add(d["id"])
+                        data.append(d)
+            else:
+                data = own
+        return {"data": data}
     except HTTPException:
         raise
     except Exception as e:

@@ -26,7 +26,7 @@ async def contar(client_id: str = Query(...), modulo: str = Query(...), user_id:
     assert_client_owner(client_id, user_id)
     sb = get_supabase_client()
     r = sb.table("xml_originales").select("id", count="exact").eq(
-        "user_id", user_id).eq("client_id", client_id).eq("modulo", modulo).execute()
+        "client_id", client_id).eq("modulo", modulo).execute()
     return {"count": r.count or 0}
 
 
@@ -35,7 +35,7 @@ async def descargar(client_id: str = Query(...), modulo: str = Query(...), user_
     assert_client_owner(client_id, user_id)
     sb = get_supabase_client()
     rows = sb.table("xml_originales").select("unique_id,xml_content").eq(
-        "user_id", user_id).eq("client_id", client_id).eq("modulo", modulo).execute().data or []
+        "client_id", client_id).eq("modulo", modulo).execute().data or []
     if not rows:
         raise HTTPException(status_code=404, detail="No hay XML originales guardados para este módulo y período. Se guardan automáticamente desde ahora, al subir nuevos XML.")
     cl = sb.table("clients").select("identificacion,nombre,periodo_mes,periodo_anio").eq("id", client_id).execute().data

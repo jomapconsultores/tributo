@@ -12,7 +12,7 @@ from services.ice_data import TAX_DB
 from services.codigos_ice import buscar_tokens_bd
 from services.compradores import extraer_compradores, upsert_compradores
 from services.xml_store import guardar_xml_original
-from tenancy import assert_client_owner
+from tenancy import assert_client_owner, shared_client_ids
 
 router = APIRouter(prefix="/api/ice", tags=["ice"])
 
@@ -43,14 +43,22 @@ async def tax_years(_: str = Depends(get_current_user)):
 async def list_ice(user_id: str = Depends(get_current_user), client_id: Optional[str] = Query(None)):
     try:
         supabase = get_supabase_client()
-        def _q():
-            q = supabase.table("ice_sales").select(ICE_COLUMNS).eq("user_id", user_id).order("fecha", desc=True)
-            if client_id:
-                q = q.eq("client_id", client_id)
-            return q
         if client_id:
             assert_client_owner(client_id, user_id)
-        return {"data": fetch_all(_q)}
+            data = fetch_all(lambda: supabase.table("ice_sales").select(ICE_COLUMNS).eq("client_id", client_id).order("fecha", desc=True))
+        else:
+            own = fetch_all(lambda: supabase.table("ice_sales").select(ICE_COLUMNS).eq("user_id", user_id).order("fecha", desc=True))
+            sids = shared_client_ids(user_id)
+            if sids:
+                sh = fetch_all(lambda: supabase.table("ice_sales").select(ICE_COLUMNS).in_("client_id", sids).order("fecha", desc=True))
+                seen, data = set(), []
+                for r in own + sh:
+                    if r["id"] not in seen:
+                        seen.add(r["id"])
+                        data.append(r)
+            else:
+                data = own
+        return {"data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -108,8 +116,9 @@ async def report(
         supabase = get_supabase_client()
         if client_id:
             assert_client_owner(client_id, user_id)
-        rows = fetch_all(lambda: (supabase.table("ice_sales").select("*").eq("user_id", user_id).eq("client_id", client_id))
-                         if client_id else supabase.table("ice_sales").select("*").eq("user_id", user_id))
+            rows = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id))
+        else:
+            rows = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("user_id", user_id))
         return full_report(rows, anio)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -205,7 +214,7 @@ async def get_anexo_rows(
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
-        rows = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id))
+        rows = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id))
         c = _cliente(supabase, client_id)
         cat = _catalogo_cliente(supabase, c.get("identificacion"), user_id)
         return anexo_rows(rows, c, c.get("periodo_anio") or 2026, c.get("periodo_mes") or 1, act_import, cat,
@@ -224,7 +233,7 @@ async def generar_anexo(
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
-        rows = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id).eq("user_id", user_id))
+        rows = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id))
         c = _cliente(supabase, client_id)
         anio = c.get("periodo_anio") or 2026
         mes = c.get("periodo_mes") or 1
@@ -245,8 +254,9 @@ async def export_pdf_endpoint(
         supabase = get_supabase_client()
         if client_id:
             assert_client_owner(client_id, user_id)
-        rows = fetch_all(lambda: (supabase.table("ice_sales").select("*").eq("user_id", user_id).eq("client_id", client_id))
-                         if client_id else supabase.table("ice_sales").select("*").eq("user_id", user_id))
+            rows = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id))
+        else:
+            rows = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("user_id", user_id))
         cliente = _cliente(supabase, client_id) if client_id else {}
         pdf = generate_ice_pdf(rows, anio, cliente)
         label = f"{cliente.get('identificacion','')}_{cliente.get('nombre','')}_ICE_{anio}".replace(" ", "_") if cliente else "ICE"
@@ -266,8 +276,9 @@ async def export_excel_endpoint(
         supabase = get_supabase_client()
         if client_id:
             assert_client_owner(client_id, user_id)
-        rows = fetch_all(lambda: (supabase.table("ice_sales").select("*").eq("user_id", user_id).eq("client_id", client_id))
-                         if client_id else supabase.table("ice_sales").select("*").eq("user_id", user_id))
+            rows = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id))
+        else:
+            rows = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("user_id", user_id))
         excel_bytes = generate_ice_excel(rows, anio)
         label = "ICE"
         if client_id:

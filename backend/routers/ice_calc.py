@@ -7,7 +7,7 @@ from database import get_supabase_client
 from services.ice_calc_report import full_report
 from services.ice_calc_export import generate_calc_excel, generate_calc_pdf
 from services.ice_calc_data import TARIFAS
-from tenancy import assert_client_owner
+from tenancy import assert_client_owner, shared_client_ids
 
 router = APIRouter(prefix="/api/ice-calc", tags=["ice-calc"])
 
@@ -62,11 +62,21 @@ async def get_tarifas(_: str = Depends(get_current_user)):
 async def list_calc(user_id: str = Depends(get_current_user), client_id: Optional[str] = Query(None)):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("ice_calc").select(COLUMNS).eq("user_id", user_id)
         if client_id:
             assert_client_owner(client_id, user_id)
-            q = q.eq("client_id", client_id)
-        rows = q.order("created_at").execute().data or []
+            rows = supabase.table("ice_calc").select(COLUMNS).eq("client_id", client_id).order("created_at").execute().data or []
+        else:
+            own = supabase.table("ice_calc").select(COLUMNS).eq("user_id", user_id).order("created_at").execute().data or []
+            sids = shared_client_ids(user_id)
+            if sids:
+                sh = supabase.table("ice_calc").select(COLUMNS).in_("client_id", sids).order("created_at").execute().data or []
+                seen, rows = set(), []
+                for r in own + sh:
+                    if r["id"] not in seen:
+                        seen.add(r["id"])
+                        rows.append(r)
+            else:
+                rows = own
         period = _period(supabase, client_id) if client_id else None
         return {"data": rows, "cliente": period}
     except Exception as e:
@@ -132,7 +142,7 @@ async def report(user_id: str = Depends(get_current_user), client_id: str = Quer
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
-        rows = supabase.table("ice_calc").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
+        rows = supabase.table("ice_calc").select("*").eq("client_id", client_id).execute().data or []
         c = _period(supabase, client_id)
         return full_report(rows, c.get("periodo_anio") or 2026, c.get("periodo_mes") or 1)
     except Exception as e:
@@ -141,7 +151,7 @@ async def report(user_id: str = Depends(get_current_user), client_id: str = Quer
 
 def _export(client_id, kind, user_id):
     supabase = get_supabase_client()
-    rows = supabase.table("ice_calc").select("*").eq("client_id", client_id).eq("user_id", user_id).execute().data or []
+    rows = supabase.table("ice_calc").select("*").eq("client_id", client_id).execute().data or []
     c = _period(supabase, client_id)
     anio = c.get("periodo_anio") or 2026
     mes = c.get("periodo_mes") or 1

@@ -8,7 +8,7 @@ from services.retention_parser import parse_retention_xml
 from services.retention_export import generate_retention_excel
 from services.xml_store import guardar_xml_original
 from database import fetch_all
-from tenancy import assert_client_owner
+from tenancy import assert_client_owner, shared_client_ids
 
 router = APIRouter(prefix="/api/retentions", tags=["retentions"])
 
@@ -52,12 +52,20 @@ async def list_retentions(
         supabase = get_supabase_client()
         if client_id:
             assert_client_owner(client_id, user_id)
-        def _q():
-            q = supabase.table("retentions").select(RETENTION_COLUMNS).eq("user_id", user_id).order("fecha", desc=True)
-            if client_id:
-                q = q.eq("client_id", client_id)
-            return q
-        return {"data": fetch_all(_q)}
+            data = fetch_all(lambda: supabase.table("retentions").select(RETENTION_COLUMNS).eq("client_id", client_id).order("fecha", desc=True))
+        else:
+            own = fetch_all(lambda: supabase.table("retentions").select(RETENTION_COLUMNS).eq("user_id", user_id).order("fecha", desc=True))
+            sids = shared_client_ids(user_id)
+            if sids:
+                sh = fetch_all(lambda: supabase.table("retentions").select(RETENTION_COLUMNS).in_("client_id", sids).order("fecha", desc=True))
+                seen, data = set(), []
+                for r in own + sh:
+                    if r["id"] not in seen:
+                        seen.add(r["id"])
+                        data.append(r)
+            else:
+                data = own
+        return {"data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -162,12 +170,9 @@ async def export_excel_endpoint(
         supabase = get_supabase_client()
         if client_id:
             assert_client_owner(client_id, user_id)
-        def _q():
-            q = supabase.table("retentions").select("*").eq("user_id", user_id).order("fecha", desc=True)
-            if client_id:
-                q = q.eq("client_id", client_id)
-            return q
-        rows = fetch_all(_q)
+            rows = fetch_all(lambda: supabase.table("retentions").select("*").eq("client_id", client_id).order("fecha", desc=True))
+        else:
+            rows = fetch_all(lambda: supabase.table("retentions").select("*").eq("user_id", user_id).order("fecha", desc=True))
         excel_bytes = generate_retention_excel(rows)
 
         label = "retenciones"

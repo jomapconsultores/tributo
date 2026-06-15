@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client
 from services.anexo_export import generar_anexo_excel, generar_anexo_pdf
-from tenancy import assert_client_owner
+from tenancy import assert_client_owner, shared_client_ids
 
 router = APIRouter(prefix="/api/anexos", tags=["anexos"])
 
@@ -31,11 +31,22 @@ class AnexoExport(BaseModel):
 async def listar(client_id: Optional[str] = Query(None), user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("anexos").select("id,client_id,tipo,datos,created_at").eq("user_id", user_id)
         if client_id:
             assert_client_owner(client_id, user_id)
-            q = q.eq("client_id", client_id)
-        return {"data": q.order("created_at", desc=True).execute().data or []}
+            data = supabase.table("anexos").select("id,client_id,tipo,datos,created_at").eq("client_id", client_id).order("created_at", desc=True).execute().data or []
+        else:
+            own = supabase.table("anexos").select("id,client_id,tipo,datos,created_at").eq("user_id", user_id).order("created_at", desc=True).execute().data or []
+            sids = shared_client_ids(user_id)
+            if sids:
+                sh = supabase.table("anexos").select("id,client_id,tipo,datos,created_at").in_("client_id", sids).order("created_at", desc=True).execute().data or []
+                seen, data = set(), []
+                for r in own + sh:
+                    if r["id"] not in seen:
+                        seen.add(r["id"])
+                        data.append(r)
+            else:
+                data = own
+        return {"data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -46,8 +46,16 @@ def _filas_y_total(user_id):
     """Construye las filas (contribuyente × concepto) con cobrar/valor guardados,
     pre-marcando lo relevante (servicios contratados, anexos y declaraciones
     realmente hechas). Devuelve (filas, total_a_cobrar)."""
+    from tenancy import shared_client_ids
     sb = get_supabase_client()
-    rows_clients = fetch_all(lambda: sb.table("clients").select("id,identificacion,nombre,iva_incluido").eq("user_id", user_id))
+    own_clients = fetch_all(lambda: sb.table("clients").select("id,identificacion,nombre,iva_incluido").eq("user_id", user_id))
+    sids = shared_client_ids(user_id)
+    if sids:
+        sh_clients = fetch_all(lambda: sb.table("clients").select("id,identificacion,nombre,iva_incluido").in_("id", sids))
+        seen_cids = {c["id"] for c in own_clients}
+        rows_clients = own_clients + [c for c in sh_clients if c["id"] not in seen_cids]
+    else:
+        rows_clients = own_clients
     nombre_por_ruc = {}
     id_to_ruc = {}
     iva_por_ruc = {}
