@@ -10,7 +10,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const navigate = useNavigate()
   const location = useLocation()
   const { clients, selectedClientId, selectClient, setFocusIdent } = useClients()
-  const { has, isAdmin } = useAccess()
+  const { has, isAdmin, isSuperAdmin } = useAccess()
   const [clientsOpen, setClientsOpen] = useState(true)
   const [ingresosIvaOpen, setIngresosIvaOpen] = useState(true)
   const [ingresosIceOpen, setIngresosIceOpen] = useState(true)
@@ -316,8 +316,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
 
         <div className="nav-divider" />
 
-        {/* Panel de administración (solo admins) */}
-        {isAdmin && (<>
+        {/* Panel de administración (solo administrador principal) */}
+        {isSuperAdmin && (<>
           <button
             className={`nav-item module-btn ${path === '/admin' ? 'active' : ''}`}
             onClick={() => navigate('/admin')}

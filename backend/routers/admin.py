@@ -25,8 +25,8 @@ PLAN_PRECIO = {"ice": 50, "gastos_ret": 50, "completo": 150}
 
 
 async def require_admin(user_id: str = Depends(get_current_user)):
-    if not es_admin(user_id):
-        raise HTTPException(status_code=403, detail="Solo administradores")
+    if not es_super_admin(user_id):
+        raise HTTPException(status_code=403, detail="Solo el administrador principal")
     return user_id
 
 

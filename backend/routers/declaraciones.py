@@ -221,7 +221,7 @@ async def credenciales_cliente(client_id: str = Query(...), reveal: bool = Query
         servicios = supabase.table("client_services").select("service,active").in_("client_id", ids).eq("active", True).execute().data or []
         servicios = sorted({s["service"] for s in servicios})
         credencial = None
-        if admin:
+        if data_admin:
             cols = "id,service,username,ciphertext,key_version" if reveal else "id,service,username"
             cred = supabase.table("service_credentials").select(cols).in_("client_id", ids).eq("service", "sri_portal").execute().data
             if cred:
@@ -232,7 +232,7 @@ async def credenciales_cliente(client_id: str = Query(...), reveal: bool = Query
                         credencial["password"] = decrypt(c["ciphertext"], c.get("key_version", 1))
                     except Exception:
                         credencial["password"] = None
-        return {"servicios": servicios, "es_admin": admin, "credencial": credencial}
+        return {"servicios": servicios, "es_admin": data_admin, "credencial": credencial}
     except HTTPException:
         raise
     except Exception as e:

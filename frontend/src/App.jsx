@@ -62,6 +62,13 @@ function RequireAdmin({ children }) {
   return children
 }
 
+function RequireSuperAdmin({ children }) {
+  const { isSuperAdmin, loading, has } = useAccess()
+  if (loading) return <PageLoader />
+  if (!isSuperAdmin) return <Navigate to={homeFor(has)} replace />
+  return children
+}
+
 function App() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -125,11 +132,11 @@ function App() {
               <Route path="/rebajas-exenciones" element={<RequireModule modulo="ingresos_ice"><RebajasExenciones /></RequireModule>} />
               <Route path="/normativa" element={<Normativa />} />
               <Route path="/reportes" element={<Reportes />} />
-              <Route path="/admin" element={<RequireAdmin><Admin /></RequireAdmin>} />
-              <Route path="/admin/credenciales" element={<RequireAdmin><AdminCredentials /></RequireAdmin>} />
-              <Route path="/odoo-facturacion" element={<RequireAdmin><OdooFacturacion /></RequireAdmin>} />
-              <Route path="/admin/acceso-clientes" element={<RequireAdmin><AdminClientAccess /></RequireAdmin>} />
-              <Route path="/admin/permisos" element={<RequireAdmin><AdminPermisos /></RequireAdmin>} />
+              <Route path="/admin" element={<RequireSuperAdmin><Admin /></RequireSuperAdmin>} />
+              <Route path="/admin/credenciales" element={<RequireSuperAdmin><AdminCredentials /></RequireSuperAdmin>} />
+              <Route path="/odoo-facturacion" element={<RequireSuperAdmin><OdooFacturacion /></RequireSuperAdmin>} />
+              <Route path="/admin/acceso-clientes" element={<RequireSuperAdmin><AdminClientAccess /></RequireSuperAdmin>} />
+              <Route path="/admin/permisos" element={<RequireSuperAdmin><AdminPermisos /></RequireSuperAdmin>} />
               <Route path="/sin-acceso" element={<SinAcceso />} />
               <Route path="*" element={<HomeRedirect />} />
             </Route>
