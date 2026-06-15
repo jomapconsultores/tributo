@@ -38,17 +38,9 @@
 }
 
 .brand-icon {
-  font-size: 1.5rem;
-  width: 42px;
-  height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-  background: linear-gradient(150deg, rgba(99, 179, 237, 0.25), rgba(59, 130, 246, 0.10));
-  border: 1px solid rgba(147, 197, 253, 0.30);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 4px 12px rgba(0, 0, 0, 0.25);
+  font-size: 1.65rem;
   flex-shrink: 0;
+  filter: drop-shadow(0 0 8px rgba(99, 179, 237, 0.45));
 }
 
 .brand-title {
@@ -141,8 +133,8 @@
   margin-top: 5px;
   border-radius: 9px;
   border: none;
-  border-left: 3px solid transparent;
-  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  background: transparent;
+  transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
 }
 
 /* Indicador de pestaña activa (barra a la izquierda) */
@@ -150,75 +142,52 @@
 .level-1.active::before {
   content: '';
   position: absolute;
-  left: -1px;
+  left: -2px;
   top: 50%;
   transform: translateY(-50%);
   width: 3px;
   height: 56%;
   border-radius: 0 3px 3px 0;
   background: currentColor;
-  opacity: 0.9;
+  opacity: 0.95;
 }
 
 /* Gastos — verde esmeralda */
-.module-btn.gastos {
-  background: rgba(16, 185, 129, 0.09);
-  color: #6ee7b7;
-  border-left-color: rgba(16, 185, 129, 0.4);
-}
-.module-btn.gastos:hover { background: rgba(16, 185, 129, 0.18); color: #a7f3d0; }
-.module-btn.gastos.active { background: rgba(16, 185, 129, 0.22); color: #fff; border-left-color: #10b981; box-shadow: inset 0 0 0 1px rgba(16,185,129,0.25); }
+.module-btn.gastos { color: #6ee7b7; }
+.module-btn.gastos:hover { background: rgba(16, 185, 129, 0.10); color: #a7f3d0; }
+.module-btn.gastos.active { background: rgba(16, 185, 129, 0.14); color: #d1fae5; }
 
 /* Retenciones — azul cielo */
-.module-btn.retenciones {
-  background: rgba(14, 165, 233, 0.09);
-  color: #7dd3fc;
-  border-left-color: rgba(14, 165, 233, 0.4);
-}
-.module-btn.retenciones:hover { background: rgba(14, 165, 233, 0.18); color: #bae6fd; }
-.module-btn.retenciones.active { background: rgba(14, 165, 233, 0.22); color: #fff; border-left-color: #0ea5e9; box-shadow: inset 0 0 0 1px rgba(14,165,233,0.25); }
+.module-btn.retenciones { color: #7dd3fc; }
+.module-btn.retenciones:hover { background: rgba(14, 165, 233, 0.10); color: #bae6fd; }
+.module-btn.retenciones.active { background: rgba(14, 165, 233, 0.14); color: #e0f2fe; }
 
 /* Ingresos ICE — ámbar */
-.module-btn.ingresos {
-  background: rgba(217, 119, 6, 0.10);
-  color: #fcd34d;
-  border-left-color: rgba(217, 119, 6, 0.45);
-}
-.module-btn.ingresos:hover { background: rgba(217, 119, 6, 0.20); color: #fde68a; }
-.module-btn.ingresos.active { background: rgba(217, 119, 6, 0.24); color: #fff; border-left-color: #f59e0b; box-shadow: inset 0 0 0 1px rgba(217,119,6,0.3); }
+.module-btn.ingresos { color: #fcd34d; }
+.module-btn.ingresos:hover { background: rgba(217, 119, 6, 0.12); color: #fde68a; }
+.module-btn.ingresos.active { background: rgba(217, 119, 6, 0.16); color: #fef3c7; }
 
 /* Declaraciones — índigo */
-.module-btn.declaraciones {
-  background: rgba(99, 102, 241, 0.10);
-  color: #a5b4fc;
-  border-left-color: rgba(99, 102, 241, 0.4);
-}
-.module-btn.declaraciones:hover { background: rgba(99, 102, 241, 0.20); color: #c7d2fe; }
-.module-btn.declaraciones.active { background: rgba(99, 102, 241, 0.24); color: #fff; border-left-color: #6366f1; box-shadow: inset 0 0 0 1px rgba(99,102,241,0.3); }
+.module-btn.declaraciones { color: #a5b4fc; }
+.module-btn.declaraciones:hover { background: rgba(99, 102, 241, 0.12); color: #c7d2fe; }
+.module-btn.declaraciones.active { background: rgba(99, 102, 241, 0.16); color: #e0e7ff; }
 
 /* Devoluciones — rosa/fucsia */
-.module-btn.devoluciones {
-  background: rgba(236, 72, 153, 0.09);
-  color: #f9a8d4;
-  border-left-color: rgba(236, 72, 153, 0.4);
-}
-.module-btn.devoluciones:hover { background: rgba(236, 72, 153, 0.18); color: #fce7f3; }
-.module-btn.devoluciones.active { background: rgba(236, 72, 153, 0.22); color: #fff; border-left-color: #ec4899; box-shadow: inset 0 0 0 1px rgba(236,72,153,0.3); }
+.module-btn.devoluciones { color: #f9a8d4; }
+.module-btn.devoluciones:hover { background: rgba(236, 72, 153, 0.10); color: #fce7f3; }
+.module-btn.devoluciones.active { background: rgba(236, 72, 153, 0.14); color: #fce7f3; }
 
 /* Módulos sin color de clase (Reportes, Admin) */
 .module-btn:not(.gastos):not(.retenciones):not(.ingresos):not(.declaraciones):not(.devoluciones) {
-  background: rgba(255, 255, 255, 0.05);
   color: #cbd5e1;
-  border-left-color: rgba(255,255,255,0.15);
 }
 .module-btn:not(.gastos):not(.retenciones):not(.ingresos):not(.declaraciones):not(.devoluciones):hover {
-  background: rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.08);
   color: #fff;
 }
 .module-btn:not(.gastos):not(.retenciones):not(.ingresos):not(.declaraciones):not(.devoluciones).active {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.10);
   color: #fff;
-  border-left-color: rgba(255,255,255,0.5);
 }
 
 /* ── Submódulos ── */
@@ -494,15 +463,10 @@
 
 /* ── Navegación rápida entre módulos (cliente seleccionado) ── */
 .sidebar-quick-nav {
-  margin: 7px 10px;
-  padding: 9px 11px;
-  background:
-    radial-gradient(120% 120% at 0% 0%, rgba(99, 102, 241, 0.16), transparent 60%),
-    rgba(99, 102, 241, 0.06);
-  border: 1px solid rgba(99, 102, 241, 0.22);
-  border-radius: 11px;
+  margin: 8px 12px 4px;
+  padding: 4px 0 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   flex-shrink: 0;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 .sqn-title {
   font-size: 0.68rem;
@@ -520,19 +484,19 @@
   gap: 5px;
 }
 .sqn-chip {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
+  border: none;
   color: #94a3b8;
   font-size: 0.70rem;
   font-weight: 600;
   padding: 4px 9px;
   border-radius: 7px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.12s;
+  transition: background 0.15s, color 0.15s, transform 0.12s;
   white-space: nowrap;
 }
-.sqn-chip:hover { background: rgba(99, 102, 241, 0.25); color: #e2e8f0; border-color: rgba(99,102,241,0.4); transform: translateY(-1px); }
-.sqn-chip.active { background: rgba(99, 102, 241, 0.35); color: #c7d2fe; border-color: rgba(99,102,241,0.6); }
+.sqn-chip:hover { background: rgba(99, 102, 241, 0.22); color: #e2e8f0; transform: translateY(-1px); }
+.sqn-chip.active { background: rgba(99, 102, 241, 0.30); color: #c7d2fe; }
 
 /* ── Mobile overlay ── */
 @media (max-width: 768px) {
