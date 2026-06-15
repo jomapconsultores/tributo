@@ -358,6 +358,19 @@
   font-style: italic;
 }
 
+/* ── Clientes compartidos ── */
+.client-shared-notice {
+  font-size: 0.68rem;
+  color: #818cf8;
+  padding: 4px 8px;
+  margin-bottom: 3px;
+  background: rgba(99, 102, 241, 0.08);
+  border-radius: 5px;
+  border-left: 2px solid rgba(99, 102, 241, 0.4);
+}
+.client-dot.shared { background: #818cf8; box-shadow: 0 0 4px rgba(99,102,241,0.5); }
+.client-shared-ico { font-size: 0.70rem; opacity: 0.8; }
+
 /* ── Nuevo cliente ── */
 .add-client {
   color: #6366f1;
@@ -406,6 +419,65 @@
   border-color: rgba(239, 68, 68, 0.35);
   color: #fca5a5;
 }
+
+/* ── Usuario activo (chip debajo del brand) ── */
+.sidebar-user-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 16px;
+  background: rgba(59, 130, 246, 0.10);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.15);
+  flex-shrink: 0;
+}
+.sidebar-user-ico { font-size: 0.8rem; opacity: 0.7; }
+.sidebar-user-email {
+  font-size: 0.70rem;
+  color: #93bbdd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+
+/* ── Navegación rápida entre módulos (cliente seleccionado) ── */
+.sidebar-quick-nav {
+  margin: 6px 10px;
+  padding: 8px 10px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.20);
+  border-radius: 9px;
+  flex-shrink: 0;
+}
+.sqn-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #a5b4fc;
+  letter-spacing: 0.3px;
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sqn-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.sqn-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: #94a3b8;
+  font-size: 0.70rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.sqn-chip:hover { background: rgba(99, 102, 241, 0.25); color: #e2e8f0; border-color: rgba(99,102,241,0.4); }
+.sqn-chip.active { background: rgba(99, 102, 241, 0.35); color: #c7d2fe; border-color: rgba(99,102,241,0.6); }
 
 /* ── Mobile overlay ── */
 @media (max-width: 768px) {

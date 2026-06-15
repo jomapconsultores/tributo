@@ -94,7 +94,7 @@ def _cargar_acceso(user_id: str):
     if hit and _now() - hit[2] < _TTL:
         return hit[0], hit[1]
 
-    if es_admin(user_id):
+    if es_super_admin(user_id):
         sub = suscripcion(user_id)
         mods = list(MODULOS)
         _access_cache[user_id] = (sub, mods, _now())

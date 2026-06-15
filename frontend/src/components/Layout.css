@@ -31,6 +31,7 @@
   }
   .topbar-burger { background: transparent; border: none; color: #fff; font-size: 1.5rem; line-height: 1; cursor: pointer; padding: 0 4px; }
   .topbar-title { font-weight: 700; font-size: 1rem; }
+  .topbar-user { margin-left: auto; font-size: 0.70rem; color: #93bbdd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
 
   /* Menú lateral como cajón deslizable */
   .sidebar {

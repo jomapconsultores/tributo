@@ -52,6 +52,7 @@ export default function Layout({ user, onLogout }) {
       <header className="layout-topbar">
         <button className="topbar-burger" onClick={() => setSidebarOpen((o) => !o)} aria-label="Menú">☰</button>
         <span className="topbar-title">📑 Gestor SRI</span>
+        {user?.email && <span className="topbar-user">👤 {user.email}</span>}
       </header>
 
       <div className="layout-overlay" onClick={() => setSidebarOpen(false)} />

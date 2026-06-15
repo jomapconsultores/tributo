@@ -49,6 +49,21 @@ async def list_clients(user_id: str = Depends(get_current_user)):
             propios = supabase.table("clients").select("*").eq("user_id", user_id).execute().data or []
             sids = _shared_ids(supabase, user_id)
             compartidos = supabase.table("clients").select("*").in_("id", sids).execute().data if sids else []
+
+            # Enriquecer clientes compartidos con info del propietario
+            compartidos_ids = {c["id"] for c in compartidos}
+            owner_uids = list({c["user_id"] for c in compartidos if c.get("user_id")})
+            owner_map = {}
+            if owner_uids:
+                try:
+                    rows = supabase.table("app_admins").select("user_id,email").in_("user_id", owner_uids).execute().data or []
+                    owner_map = {r["user_id"]: r["email"] for r in rows}
+                except Exception:
+                    pass
+            for c in compartidos:
+                c["is_shared"] = True
+                c["owner_email"] = owner_map.get(c.get("user_id"), "")
+
             seen, clients = set(), []
             for c in sorted(propios + compartidos, key=lambda x: ((x.get("nombre") or ""), -(x.get("periodo_anio") or 0), -(x.get("periodo_mes") or 0))):
                 if c["id"] not in seen:

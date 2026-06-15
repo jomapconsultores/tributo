@@ -24,11 +24,25 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const contribuyentes = []
   const vistos = new Set()
   for (const c of clients) {
-    if (vistos.has(c.identificacion)) continue
+    if (vistos.has(c.identificacion)) {
+      // Si algún período es compartido, marcar el contribuyente como compartido
+      const existing = contribuyentes.find((x) => x.identificacion === c.identificacion)
+      if (existing && c.is_shared) {
+        existing.is_shared = true
+        if (!existing.owner_email && c.owner_email) existing.owner_email = c.owner_email
+      }
+      continue
+    }
     vistos.add(c.identificacion)
-    contribuyentes.push({ identificacion: c.identificacion, nombre: c.nombre })
+    contribuyentes.push({
+      identificacion: c.identificacion,
+      nombre: c.nombre,
+      is_shared: !!c.is_shared,
+      owner_email: c.owner_email || '',
+    })
   }
   contribuyentes.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
+  const sharedCount = contribuyentes.filter((c) => c.is_shared).length
   const contribFiltrados = clientSearch.trim()
     ? contribuyentes.filter((c) => [c.nombre, c.identificacion].some((f) => String(f || '').toLowerCase().includes(clientSearch.toLowerCase())))
     : contribuyentes
@@ -85,6 +99,12 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
           <div className="brand-sub">Gastos · Retenciones · Tributos</div>
         </div>
       </div>
+      {userEmail && (
+        <div className="sidebar-user-chip">
+          <span className="sidebar-user-ico">👤</span>
+          <span className="sidebar-user-email" title={userEmail}>{userEmail}</span>
+        </div>
+      )}
 
       <nav className="sidebar-nav">
         {/* Módulo INGRESOS IVA (desplegable, solo IVA) */}
@@ -355,6 +375,33 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
           </button>
         </>)}
 
+        {/* Acceso rápido a módulos cuando hay un cliente seleccionado */}
+        {selectedClientId && (() => {
+          const cl = clients.find((c) => c.id === selectedClientId)
+          return cl ? (
+            <div className="sidebar-quick-nav">
+              <div className="sqn-title">📌 {cl.nombre}</div>
+              <div className="sqn-chips">
+                {has('gastos') && (
+                  <button className={`sqn-chip ${isGastos ? 'active' : ''}`} onClick={() => navigate('/')}>💸 Gastos</button>
+                )}
+                {has('retenciones') && (
+                  <button className={`sqn-chip ${isRetenciones ? 'active' : ''}`} onClick={() => navigate('/retenciones')}>🧾 Retenciones</button>
+                )}
+                {has('declaraciones') && (
+                  <button className={`sqn-chip ${isDeclIva ? 'active' : ''}`} onClick={() => navigate('/declaracion-iva')}>📋 Decl. IVA</button>
+                )}
+                {has('declaraciones') && (
+                  <button className={`sqn-chip ${isDeclIce ? 'active' : ''}`} onClick={() => navigate('/declaracion-ice')}>🥃 Decl. ICE</button>
+                )}
+                {has('ingresos_ice') && (
+                  <button className={`sqn-chip ${isCalculo ? 'active' : ''}`} onClick={() => navigate('/calculo-ice')}>🧮 Cálculo ICE</button>
+                )}
+              </div>
+            </div>
+          ) : null
+        })()}
+
         {/* Nivel 1: BASE DE DATOS */}
         <button
           className={`nav-item level-1 ${isDatabase && !selectedClientId ? 'active' : ''}`}
@@ -385,16 +432,24 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
             {contribFiltrados.length === 0 && (
               <div className="client-empty">{clients.length === 0 ? 'Sin clientes aún' : 'Sin coincidencias'}</div>
             )}
+            {sharedCount > 0 && !isSuperAdmin && (
+              <div className="client-shared-notice">
+                🔗 {sharedCount} compartido{sharedCount !== 1 ? 's' : ''} por el administrador
+              </div>
+            )}
             {contribFiltrados.map((c) => (
               <button
                 key={c.identificacion}
                 className="nav-item client-item"
                 onClick={() => verContribuyente(c.identificacion)}
-                title={`${c.identificacion} — ${c.nombre}`}
+                title={c.is_shared ? `${c.identificacion} — compartido por ${c.owner_email || 'administrador'}` : `${c.identificacion} — ${c.nombre}`}
               >
-                <span className="client-dot" />
+                <span className={`client-dot ${c.is_shared ? 'shared' : ''}`} />
                 <span className="client-info">
-                  <span className="client-name">{c.nombre}</span>
+                  <span className="client-name">
+                    {c.nombre}
+                    {c.is_shared && <span className="client-shared-ico" title={`Compartido por ${c.owner_email || 'administrador'}`}> 🔗</span>}
+                  </span>
                   <span className="client-periodo">{c.identificacion}</span>
                 </span>
               </button>
