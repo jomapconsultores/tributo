@@ -10,6 +10,7 @@ from services.export_service import generate_excel, generate_pdf
 from services.xml_store import guardar_xml_original
 from database import fetch_all
 from tenancy import assert_client_owner, shared_client_ids
+from services.activity import registrar
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
 
@@ -148,6 +149,9 @@ async def process_txt(
             else:
                 err_count += 1
 
+        if new_count:
+            registrar(actor_user_id=user_id, action="upload", module="gastos",
+                      entity="Facturas de gastos", client_id=client_id, cantidad=new_count)
         return {
             "processed": len(xmls),
             "new": new_count,
@@ -191,6 +195,9 @@ async def process_xml(
             else:
                 err_count += 1
 
+        if new_count:
+            registrar(actor_user_id=user_id, action="upload", module="gastos",
+                      entity="Facturas de gastos", client_id=client_id, cantidad=new_count)
         return {"new": new_count, "duplicates": dup_count, "errors": err_count}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

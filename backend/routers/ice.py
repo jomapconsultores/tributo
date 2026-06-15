@@ -12,6 +12,7 @@ from services.ice_data import TAX_DB
 from services.codigos_ice import buscar_tokens_bd
 from services.compradores import extraer_compradores, upsert_compradores
 from services.xml_store import guardar_xml_original
+from services.activity import registrar
 from tenancy import assert_client_owner, shared_client_ids
 
 router = APIRouter(prefix="/api/ice", tags=["ice"])
@@ -101,6 +102,9 @@ async def process_xml(
             upsert_compradores(supabase, user_id, c.get("identificacion"), list(compradores_xml.values()))
         except Exception as e:
             print(f"No se pudieron guardar los compradores: {e}")
+        if new_count:
+            registrar(actor_user_id=user_id, action="upload", module="ingresos_ice",
+                      entity="Ventas ICE (XML)", client_id=client_id, cantidad=new_count)
         return {"new": new_count, "duplicates": dup_count, "errors": err_count}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -299,6 +299,56 @@ async def listar_contactos(_: str = Depends(require_admin)):
     return {"data": sb.table("contactos").select("*").order("created_at", desc=True).execute().data or []}
 
 
+# ---------------------------------------------------------------------------
+# MOVIMIENTOS — bitácora de actividad de los usuarios (auditoría para el admin)
+# ---------------------------------------------------------------------------
+
+@router.get("/actividad")
+async def listar_actividad(
+    _: str = Depends(require_admin),
+    limit: int = Query(200, ge=1, le=1000),
+    actor: Optional[str] = Query(None),
+    identificacion: Optional[str] = Query(None),
+    module: Optional[str] = Query(None),
+):
+    """Lista los movimientos registrados, del más reciente al más antiguo."""
+    sb = get_supabase_client()
+    q = sb.table("activity_log").select("*").order("occurred_at", desc=True).limit(limit)
+    if actor:
+        q = q.eq("actor_user_id", actor)
+    if identificacion:
+        q = q.eq("identificacion", identificacion)
+    if module:
+        q = q.eq("module", module)
+    return {"data": q.execute().data or []}
+
+
+@router.get("/actividad/resumen")
+async def resumen_actividad(admin_id: str = Depends(require_admin)):
+    """Cuántos movimientos nuevos hay desde la última vez que el admin los revisó.
+    Sirve para la insignia (🔔) del sidebar."""
+    sb = get_supabase_client()
+    seen = sb.table("activity_seen").select("last_seen_at").eq("admin_user_id", admin_id).execute().data
+    last_seen = seen[0]["last_seen_at"] if seen else None
+    q = sb.table("activity_log").select("id", count="exact")
+    if last_seen:
+        q = q.gt("occurred_at", last_seen)
+    res = q.execute()
+    return {"nuevos": res.count or 0, "last_seen": last_seen}
+
+
+@router.post("/actividad/visto")
+async def marcar_actividad_vista(admin_id: str = Depends(require_admin)):
+    """Marca todos los movimientos actuales como vistos (pone el contador en 0)."""
+    from datetime import datetime, timezone
+    sb = get_supabase_client()
+    sb.table("activity_seen").upsert({
+        "admin_user_id": admin_id,
+        "last_seen_at": datetime.now(timezone.utc).isoformat(),
+    }, on_conflict="admin_user_id").execute()
+    return {"ok": True}
+
+
 @router.post("/users")
 async def create_user(body: UserIn, _: str = Depends(require_admin)):
     sb = get_supabase_client()

@@ -10,6 +10,7 @@ from services.declaracion_oficial import llenar_oficial
 from services.credentials_crypto import decrypt
 from tenancy import assert_client_owner, shared_client_ids
 from routers.access import es_admin, es_data_admin
+from services.activity import registrar
 
 router = APIRouter(prefix="/api/declaraciones", tags=["declaraciones"])
 
@@ -321,6 +322,10 @@ async def guardar(entry: SaveDecl, user_id: str = Depends(get_current_user)):
                     "vence_mes": vence_mes, "vence_anio": vence_anio,
                     "estado": "pendiente",
                 }).execute()
+        registrar(actor_user_id=user_id, action="save", module="declaraciones",
+                  entity=f"Declaración {tipo}", client_id=entry.client_id,
+                  identificacion=c.get("identificacion"), contribuyente=c.get("nombre"),
+                  metadata={"mes": mes, "anio": anio, "diferir_meses": diferir})
         return decl_record
     except HTTPException:
         raise

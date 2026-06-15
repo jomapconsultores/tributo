@@ -27,6 +27,7 @@ const Normativa                = lazy(() => import('./pages/Normativa'))
 const Reportes                 = lazy(() => import('./pages/Reportes'))
 const Admin                    = lazy(() => import('./pages/Admin'))
 const AdminCredentials         = lazy(() => import('./pages/AdminCredentials'))
+const Movimientos              = lazy(() => import('./pages/Movimientos'))
 const OdooFacturacion          = lazy(() => import('./pages/OdooFacturacion'))
 const AdminClientAccess        = lazy(() => import('./pages/AdminClientAccess'))
 const AdminPermisos            = lazy(() => import('./pages/AdminPermisos'))
@@ -137,6 +138,7 @@ function App() {
               <Route path="/odoo-facturacion" element={<RequireSuperAdmin><OdooFacturacion /></RequireSuperAdmin>} />
               <Route path="/admin/acceso-clientes" element={<RequireSuperAdmin><AdminClientAccess /></RequireSuperAdmin>} />
               <Route path="/admin/permisos" element={<RequireSuperAdmin><AdminPermisos /></RequireSuperAdmin>} />
+              <Route path="/movimientos" element={<RequireSuperAdmin><Movimientos /></RequireSuperAdmin>} />
               <Route path="/sin-acceso" element={<SinAcceso />} />
               <Route path="*" element={<HomeRedirect />} />
             </Route>

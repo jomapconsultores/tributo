@@ -55,6 +55,13 @@ export const adminAPI = {
   permisos: () => api.get('/api/admin/permisos'),
 }
 
+// MOVIMIENTOS: bitácora de actividad de los usuarios (solo admin)
+export const actividadAPI = {
+  list: (params = {}) => api.get('/api/admin/actividad', { params }),
+  resumen: () => api.get('/api/admin/actividad/resumen'),
+  marcarVisto: () => api.post('/api/admin/actividad/visto'),
+}
+
 // Credenciales de servicios externos (portal SRI, etc.) — SOLO ADMIN
 // Las contraseñas viajan cifradas en la DB; solo /reveal las descifra y queda auditado.
 export const credentialsAPI = {

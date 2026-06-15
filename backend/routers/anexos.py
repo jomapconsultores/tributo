@@ -6,6 +6,7 @@ from auth import get_current_user
 from database import get_supabase_client
 from services.anexo_export import generar_anexo_excel, generar_anexo_pdf
 from tenancy import assert_client_owner, shared_client_ids
+from services.activity import registrar
 
 router = APIRouter(prefix="/api/anexos", tags=["anexos"])
 
@@ -60,6 +61,8 @@ async def guardar(entry: AnexoIn, user_id: str = Depends(get_current_user)):
             "client_id": entry.client_id, "user_id": user_id,
             "tipo": entry.tipo.upper(), "datos": entry.datos,
         }).execute()
+        registrar(actor_user_id=user_id, action="save", module="anexos",
+                  entity=f"Anexo {entry.tipo.upper()}", client_id=entry.client_id)
         return res.data[0] if res.data else None
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

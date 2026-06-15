@@ -12,6 +12,7 @@ from database import get_supabase_client
 from services.xml_parser_ventas import parse_venta_xml
 from services.xml_store import guardar_xml_original
 from services.sri_service import extract_claves_from_txt, descargar_multiples_xmls
+from services.activity import registrar
 from database import fetch_all
 from tenancy import assert_client_owner, shared_client_ids
 
@@ -95,6 +96,9 @@ async def process_xml(
                 else:
                     print(f"Error insertando sales_iva {parsed.get('unique_id')}: {e}")
                     err_count += 1
+        if new_count:
+            registrar(actor_user_id=user_id, action="upload", module="ingresos_iva",
+                      entity="Ingresos IVA (ventas)", client_id=client_id, cantidad=new_count)
         return {
             "ok": True,
             "nuevas": new_count,
@@ -160,6 +164,9 @@ async def process_txt(
                 rechazadas.append({"archivo": "(XML del SRI)", "factura": info, "motivo": "Contiene ICE — subir en módulo ICE-XML"})
             else:
                 err_count += 1
+        if new_count:
+            registrar(actor_user_id=user_id, action="upload", module="ingresos_iva",
+                      entity="Ingresos IVA (ventas)", client_id=client_id, cantidad=new_count)
         return {
             "ok": True,
             "total_claves": len(claves),

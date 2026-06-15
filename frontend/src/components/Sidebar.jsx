@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useClients } from '../context/ClientContext'
 import { useAccess, homeFor } from '../context/AccessContext'
+import { actividadAPI } from '../services/api'
 import bajadorBookmarklet from '../utils/bajador-facturas.bookmarklet.txt?raw'
 import bajadorIngresosBookmarklet from '../utils/bajador-ingresos.bookmarklet.txt?raw'
 import './Sidebar.css'
@@ -19,6 +20,17 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const [declaracionesOpen, setDeclaracionesOpen] = useState(false)
   const [devolucionesOpen, setDevolucionesOpen] = useState(false)
   const [clientSearch, setClientSearch] = useState('')
+  const [movNuevos, setMovNuevos] = useState(0)
+
+  // Insignia de movimientos nuevos (solo admin). Se refresca al navegar y cuando
+  // la página de Movimientos avisa que ya fueron vistos.
+  useEffect(() => {
+    if (!isSuperAdmin) return
+    actividadAPI.resumen().then((r) => setMovNuevos(r.data?.nuevos || 0)).catch(() => {})
+    const onVista = () => setMovNuevos(0)
+    window.addEventListener('actividad-vista', onVista)
+    return () => window.removeEventListener('actividad-vista', onVista)
+  }, [isSuperAdmin, location.pathname])
 
   // Contribuyentes únicos (por identificación) para el listado por nombre
   const contribuyentes = []
@@ -344,6 +356,14 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
           >
             <span className="nav-ico">🛠️</span>
             <span>ADMINISTRACIÓN</span>
+          </button>
+          <button
+            className={`nav-item module-btn ${path === '/movimientos' ? 'active' : ''}`}
+            onClick={() => navigate('/movimientos')}
+          >
+            <span className="nav-ico">📜</span>
+            <span>MOVIMIENTOS</span>
+            {movNuevos > 0 && <span className="mov-badge">🔔 {movNuevos > 99 ? '99+' : movNuevos}</span>}
           </button>
           <button
             className={`nav-item module-btn ${path === '/admin/credenciales' ? 'active' : ''}`}

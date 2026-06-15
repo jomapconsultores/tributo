@@ -6,6 +6,7 @@ from auth import get_current_user
 from database import get_supabase_client, fetch_all
 from services.sri_ruc import consultar_ruc
 from routers.access import es_admin, es_data_admin
+from services.activity import registrar
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
@@ -303,7 +304,13 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
             "periodo_anio": entry.periodo_anio,
             "notas": entry.notas,
         }).execute()
-        return response.data[0] if response.data else None
+        nuevo = response.data[0] if response.data else None
+        if nuevo:
+            registrar(actor_user_id=user_id, action="create", module="clientes",
+                      entity="Nuevo cliente", client_id=nuevo.get("id"),
+                      identificacion=identificacion, contribuyente=entry.nombre.strip().upper(),
+                      metadata={"periodo": f"{entry.periodo_mes:02d}/{entry.periodo_anio}"})
+        return nuevo
     except HTTPException:
         raise
     except Exception as e:
