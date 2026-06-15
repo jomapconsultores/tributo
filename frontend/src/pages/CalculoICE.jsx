@@ -5,6 +5,7 @@ import { useClients } from '../context/ClientContext'
 import { periodoLargo, MESES } from '../utils/periodo'
 import { calcRow, ivaRate, CATEGORIAS, CAT_LABEL } from '../utils/iceCalc'
 import ClientSwitcher from '../components/ClientSwitcher'
+import useDraft from '../hooks/useDraft'
 import './CalculoICE.css'
 
 import { fmtMoney as money } from '../utils/format'
@@ -22,7 +23,7 @@ export default function CalculoICE() {
   const { clients, selectedClient, selectedClientId, selectClient } = useClients()
 
   const [rows, setRows] = useState([])
-  const [form, setForm] = useState(EMPTY)
+  const [form, setForm] = useDraft(selectedClientId ? `draft:calcice:form:${selectedClientId}` : null, EMPTY)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [catalogo, setCatalogo] = useState([])

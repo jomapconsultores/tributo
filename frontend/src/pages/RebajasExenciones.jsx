@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { rebajasAPI, productsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
+import useDraft from '../hooks/useDraft'
 import './RebajasExenciones.css'
 
 const EMPTY = { ingrediente: '', ruc_proveedor: '', proveedor_nombre: '', cantidad: '', unidad: 'ml', origen: 'NACIONAL', calificado: false }
@@ -18,7 +19,7 @@ export default function RebajasExenciones() {
   const [productos, setProductos] = useState([])
   const [producto, setProducto] = useState('')
   const [ings, setIngs] = useState([])
-  const [form, setForm] = useState(EMPTY)
+  const [form, setForm] = useDraft(ident && producto ? `draft:rebajas:form:${ident}:${producto}` : null, EMPTY)
   const [verif, setVerif] = useState(null) // { estado, texto }
   // Condiciones normativas del producto (Art. 82/77 LRTI, Art. 199.4/199.5 RLRTI)
   const [cond, setCond] = useState({ es_cerveza: false, nueva_marca: false, cupo_anual_sri: false })

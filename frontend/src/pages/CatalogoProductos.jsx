@@ -4,6 +4,7 @@ import { productsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import { buildCodProdICE, armarCodigo, descomponerCodigo, sinCeros } from '../utils/codigoICE'
+import useDraft from '../hooks/useDraft'
 import './CatalogoProductos.css'
 
 // Partes constitutivas del código de producto ICE (orden SRI)
@@ -30,7 +31,7 @@ export default function CatalogoProductos() {
   const ident = selectedClient?.identificacion
 
   const [rows, setRows] = useState([])
-  const [form, setForm] = useState(EMPTY)
+  const [form, setForm] = useDraft(ident ? `draft:productos:form:${ident}` : null, EMPTY)
   const [editId, setEditId] = useState(null)
   const [loading, setLoading] = useState(false)
 
