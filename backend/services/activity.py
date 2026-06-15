@@ -50,12 +50,22 @@ def _datos_cliente(client_id: str):
     return None, None
 
 
+def _es_administrador(uid: str) -> bool:
+    """True si el actor es el administrador principal (rol 'admin').
+    Sus acciones NO se notifican por correo (solo quedan en el sistema)."""
+    try:
+        from routers.access import es_super_admin
+        return es_super_admin(uid)
+    except Exception:
+        return False
+
+
 def _notificar_email(*, actor_email, action, entity, contribuyente, identificacion, cantidad):
     """Envía el aviso al administrador. Pensado para correr en un hilo aparte."""
     destino = (os.environ.get("ACTIVITY_NOTIFY_EMAIL") or "").strip()
     if not destino or not email_configurado():
         return
-    # No avisar al admin de sus propias acciones.
+    # No avisar al admin de sus propias acciones (por si actor == destino).
     if actor_email and actor_email.strip().lower() == destino.lower():
         return
     quien = actor_email or "Un usuario"
@@ -100,7 +110,8 @@ def registrar(*, actor_user_id, action, entity, module=None, client_id=None,
             "cantidad": cantidad,
             "metadata": metadata,
         }).execute()
-        if notificar:
+        # El correo se manda solo para acciones de socios/clientes, NO del admin.
+        if notificar and not _es_administrador(actor_user_id):
             threading.Thread(
                 target=_notificar_email,
                 kwargs=dict(actor_email=actor_email, action=action, entity=entity,

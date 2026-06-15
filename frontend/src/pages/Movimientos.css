@@ -52,11 +52,50 @@
 }
 .mv-search:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
 
+/* ── Filtro por fecha ── */
+.mv-fechas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: 10px;
+}
+.mv-fecha-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+}
+.mv-fecha-campo input {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+  color: #1e293b;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.mv-fecha-campo input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
+.mv-limpiar {
+  background: transparent;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.mv-limpiar:hover { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+
 .mv-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 10px;
+  margin-top: 12px;
 }
 .mv-chip {
   background: #f1f5f9;

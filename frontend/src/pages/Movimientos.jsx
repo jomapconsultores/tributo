@@ -38,6 +38,8 @@ export default function Movimientos() {
   const [error, setError] = useState('')
   const [filtro, setFiltro] = useState('')
   const [modFiltro, setModFiltro] = useState('')
+  const [desde, setDesde] = useState('')
+  const [hasta, setHasta] = useState('')
 
   const cargar = useCallback(() => {
     setLoading(true)
@@ -57,13 +59,24 @@ export default function Movimientos() {
 
   const filtrados = useMemo(() => {
     const q = filtro.trim().toLowerCase()
+    // Rango de fechas (inclusive). hasta = fin del día.
+    const desdeT = desde ? new Date(desde + 'T00:00:00').getTime() : null
+    const hastaT = hasta ? new Date(hasta + 'T23:59:59').getTime() : null
     return items.filter((m) => {
       if (modFiltro && m.module !== modFiltro) return false
+      if (desdeT || hastaT) {
+        const t = new Date(m.occurred_at).getTime()
+        if (desdeT && t < desdeT) return false
+        if (hastaT && t > hastaT) return false
+      }
       if (!q) return true
       return [m.actor_email, m.contribuyente, m.identificacion, m.entity]
         .some((f) => String(f || '').toLowerCase().includes(q))
     })
-  }, [items, filtro, modFiltro])
+  }, [items, filtro, modFiltro, desde, hasta])
+
+  const hayFiltro = !!(filtro || modFiltro || desde || hasta)
+  const limpiarFiltros = () => { setFiltro(''); setModFiltro(''); setDesde(''); setHasta('') }
 
   // Agrupar por día
   const grupos = useMemo(() => {
@@ -100,10 +113,23 @@ export default function Movimientos() {
       <div className="mv-filtros">
         <input
           className="mv-search"
-          placeholder="🔍 Buscar por usuario, contribuyente o proceso…"
+          placeholder="🔍 Buscar por nombre (usuario o contribuyente), RUC o proceso…"
           value={filtro}
           onChange={(e) => setFiltro(e.target.value)}
         />
+        <div className="mv-fechas">
+          <label className="mv-fecha-campo">
+            <span>Desde</span>
+            <input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} />
+          </label>
+          <label className="mv-fecha-campo">
+            <span>Hasta</span>
+            <input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} />
+          </label>
+          {hayFiltro && (
+            <button className="mv-limpiar" onClick={limpiarFiltros}>✕ Limpiar filtros</button>
+          )}
+        </div>
         <div className="mv-chips">
           <button className={`mv-chip ${!modFiltro ? 'active' : ''}`} onClick={() => setModFiltro('')}>Todos</button>
           {modulosPresentes.map((m) => (
@@ -121,7 +147,7 @@ export default function Movimientos() {
       {error && <div className="mv-error">{error}</div>}
       {loading && items.length === 0 && <div className="mv-empty">Cargando movimientos…</div>}
       {!loading && filtrados.length === 0 && !error && (
-        <div className="mv-empty">No hay movimientos {filtro || modFiltro ? 'que coincidan con el filtro' : 'registrados aún'}.</div>
+        <div className="mv-empty">No hay movimientos {hayFiltro ? 'que coincidan con el filtro' : 'registrados aún'}.</div>
       )}
 
       {grupos.map((g) => (
