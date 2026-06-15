@@ -166,6 +166,7 @@
 .mv-item.mv-decl     { border-left-color: #6366f1; }
 .mv-item.mv-anexos   { border-left-color: #8b5cf6; }
 .mv-item.mv-clientes { border-left-color: #ec4899; }
+.mv-item.mv-factura  { border-left-color: #14b8a6; }
 
 .mv-ico {
   font-size: 1.3rem;

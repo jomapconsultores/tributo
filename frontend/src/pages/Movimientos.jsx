@@ -11,8 +11,9 @@ const MOD = {
   declaraciones: { label: 'Declaraciones', ico: '📋', cls: 'mv-decl' },
   anexos:        { label: 'Anexos',        ico: '📄', cls: 'mv-anexos' },
   clientes:      { label: 'Clientes',      ico: '👤', cls: 'mv-clientes' },
+  facturacion:   { label: 'Facturación',   ico: '🧾', cls: 'mv-factura' },
 }
-const ACCION = { upload: 'subió', create: 'creó', save: 'guardó', delete: 'eliminó' }
+const ACCION = { upload: 'subió', create: 'creó', save: 'guardó', delete: 'eliminó', emit: 'emitió' }
 
 function fechaCorta(iso) {
   if (!iso) return ''

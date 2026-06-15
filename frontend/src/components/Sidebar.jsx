@@ -346,6 +346,15 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
           <span>REPORTES</span>
         </button>
 
+        {/* FACTURACIÓN ODOO: emitir factura de honorarios (admin, socio y clientes autorizados) */}
+        <button
+          className={`nav-item module-btn ${path === '/odoo-facturacion' ? 'active' : ''}`}
+          onClick={() => navigate('/odoo-facturacion')}
+        >
+          <span className="nav-ico">🧾</span>
+          <span>FACTURACIÓN ODOO</span>
+        </button>
+
         <div className="nav-divider" />
 
         {/* Panel de administración (solo administrador principal) */}
@@ -385,13 +394,6 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
           >
             <span className="nav-ico">🛡️</span>
             <span>PERMISOS</span>
-          </button>
-          <button
-            className={`nav-item module-btn ${path === '/odoo-facturacion' ? 'active' : ''}`}
-            onClick={() => navigate('/odoo-facturacion')}
-          >
-            <span className="nav-ico">🧾</span>
-            <span>FACTURACIÓN ODOO</span>
           </button>
         </>)}
 

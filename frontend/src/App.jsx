@@ -135,7 +135,7 @@ function App() {
               <Route path="/reportes" element={<Reportes />} />
               <Route path="/admin" element={<RequireSuperAdmin><Admin /></RequireSuperAdmin>} />
               <Route path="/admin/credenciales" element={<RequireSuperAdmin><AdminCredentials /></RequireSuperAdmin>} />
-              <Route path="/odoo-facturacion" element={<RequireSuperAdmin><OdooFacturacion /></RequireSuperAdmin>} />
+              <Route path="/odoo-facturacion" element={<OdooFacturacion />} />
               <Route path="/admin/acceso-clientes" element={<RequireSuperAdmin><AdminClientAccess /></RequireSuperAdmin>} />
               <Route path="/admin/permisos" element={<RequireSuperAdmin><AdminPermisos /></RequireSuperAdmin>} />
               <Route path="/movimientos" element={<RequireSuperAdmin><Movimientos /></RequireSuperAdmin>} />

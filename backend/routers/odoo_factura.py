@@ -7,16 +7,62 @@ Credenciales Odoo desde variables de entorno (nunca hardcodeadas):
   ODOO_API_KEY    (api key de Odoo)
 """
 import os
+import threading
 import xmlrpc.client
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from auth import get_current_user
-from routers.access import es_admin
+from routers.access import es_admin, es_super_admin, rol_de
+from database import get_supabase_client, fetch_all
+from tenancy import shared_client_ids
+from services.activity import registrar, _email_de
+from services.email_sender import enviar_correo, email_configurado
 
 router = APIRouter(prefix="/api/odoo", tags=["odoo"])
 
 IVA_RATE = 0.15
+
+# Destino del aviso de facturación (la responsable de facturación en Odoo).
+ODOO_NOTIFY_EMAIL = os.getenv("ODOO_NOTIFY_EMAIL", "johannanievecela@hotmail.com")
+
+
+def _idents_autorizadas(sb, user_id: str) -> set:
+    """RUCs/cédulas de los contribuyentes que el usuario puede facturar:
+    los propios + los compartidos por el administrador."""
+    idents = set()
+    for c in fetch_all(lambda: sb.table("clients").select("identificacion").eq("user_id", user_id)):
+        if c.get("identificacion"):
+            idents.add(c["identificacion"])
+    sids = shared_client_ids(user_id)
+    if sids:
+        for c in fetch_all(lambda: sb.table("clients").select("identificacion").in_("id", sids)):
+            if c.get("identificacion"):
+                idents.add(c["identificacion"])
+    return idents
+
+
+def _notificar_johanna(*, actor_user_id: str, exitosas: list):
+    """Avisa por correo a la responsable de facturación. Corre en hilo aparte.
+    No se llama cuando emite el administrador (Marco Antonio)."""
+    destino = (ODOO_NOTIFY_EMAIL or "").strip()
+    if not destino or not email_configurado():
+        return
+    actor = _email_de(actor_user_id) or "Un usuario"
+    lineas, total = [], 0.0
+    for r in exitosas:
+        t = float(r.get("total") or 0)
+        total += t
+        lineas.append(f"  - {r.get('nombre')} ({r.get('ruc')}): {r.get('numero') or 's/n'}  ${t:,.2f}")
+    cuerpo = (
+        f"{actor} emitió {len(exitosas)} factura(s) en Odoo:\n\n"
+        + "\n".join(lineas)
+        + f"\n\nTotal: ${total:,.2f}\n\nEmitidas según los permisos y empresas autorizadas."
+    )
+    try:
+        enviar_correo(destino, f"Factura(s) emitida(s) en Odoo — {len(exitosas)}", cuerpo)
+    except Exception as e:
+        print(f"[odoo] fallo aviso a {destino}: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -108,9 +154,7 @@ class FacturarBody(BaseModel):
 
 @router.get("/estado")
 async def odoo_estado(user_id: str = Depends(get_current_user)):
-    """Verifica que Odoo esté configurado y accesible. Solo admins."""
-    if not es_admin(user_id):
-        raise HTTPException(status_code=403, detail="Solo administradores")
+    """Verifica que Odoo esté configurado y accesible (cualquier usuario autenticado)."""
     try:
         url, db, user, key = _cfg()
         common = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/common", allow_none=True)
@@ -131,10 +175,15 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
       - Por cada línea, busca o crea el product.product por nombre (type=service).
       - Crea account.move (out_invoice) y la confirma con action_post.
     """
-    if not es_admin(user_id):
-        raise HTTPException(status_code=403, detail="Solo administradores")
     if not body.facturas:
         raise HTTPException(status_code=400, detail="No hay facturas para crear")
+
+    # Acceso: admin y socio pueden facturar cualquier empresa; un 'cliente' solo
+    # las empresas (contribuyentes) que le fueron autorizadas.
+    sb = get_supabase_client()
+    idents_ok = None
+    if rol_de(user_id) == "cliente":
+        idents_ok = _idents_autorizadas(sb, user_id)
 
     try:
         models, uid, db, key = _connect()
@@ -146,6 +195,10 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
     resultados = []
     for fac in body.facturas:
         try:
+            if idents_ok is not None and fac.ruc not in idents_ok:
+                resultados.append({"ruc": fac.ruc, "nombre": fac.nombre,
+                                   "ok": False, "error": "No autorizado para facturar a esta empresa"})
+                continue
             lineas_cobrables = [l for l in fac.lineas if l.valor > 0]
             if not lineas_cobrables:
                 resultados.append({"ruc": fac.ruc, "nombre": fac.nombre,
@@ -192,5 +245,20 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
         except Exception as e:
             resultados.append({"ruc": fac.ruc, "nombre": fac.nombre,
                                "ok": False, "error": str(e)})
+
+    exitosas = [r for r in resultados if r.get("ok")]
+    if exitosas:
+        # Queda en Movimientos (sin correo de actividad; el aviso es el de Johanna)
+        for r in exitosas:
+            registrar(actor_user_id=user_id, action="emit", module="facturacion",
+                      entity="Factura emitida en Odoo", identificacion=r.get("ruc"),
+                      contribuyente=r.get("nombre"),
+                      metadata={"numero": r.get("numero"), "total": r.get("total")},
+                      notificar=False)
+        # Aviso por correo a Johanna SALVO si emite el administrador (Marco Antonio)
+        if not es_super_admin(user_id):
+            threading.Thread(target=_notificar_johanna,
+                             kwargs=dict(actor_user_id=user_id, exitosas=exitosas),
+                             daemon=True).start()
 
     return {"resultados": resultados}
