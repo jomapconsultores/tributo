@@ -150,7 +150,7 @@ export default function IngresosIva() {
       <ClientSwitcher onNewClient={openNewClient} />
       <header className="ing-iva-head">
         <div>
-          <h2>📈 Ingresos IVA — {selectedClient?.nombre}<ClaveHeader clientId={selectedClientId} /></h2>
+          <h2>📈 Ingresos IVA — <span className="ing-iva-ruc">{selectedClient?.identificacion}</span> {selectedClient?.nombre}<ClaveHeader clientId={selectedClientId} /></h2>
           <p className="ing-iva-sub">
             Facturas de venta SIN ICE. Sus totales se suman a los códigos 411–415 / 421–422 del
             formulario 104 (declaración IVA). Si una factura tiene ICE, subila en "ICE - XML".
