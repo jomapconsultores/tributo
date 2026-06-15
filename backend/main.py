@@ -93,6 +93,94 @@ async def rate_limit(request: Request, call_next):
         break  # Solo aplica la primera regla que matchea
     return await call_next(request)
 
+
+# --- Bitácora de movimientos: registra AUTOMÁTICAMENTE toda acción que cambia
+# datos (POST/PUT/DELETE exitosos). Garantiza que quede "absolutamente todo",
+# sin tener que enganchar cada endpoint a mano. Los flujos con detalle fino
+# (subidas con cantidad/contribuyente, declaraciones, etc.) ya se registran en
+# sus routers; aquí se omiten para no duplicar. ----------------------------
+import base64 as _b64
+import json as _json
+import threading as _threading
+from services.activity import registrar as _registrar
+
+_AUDIT_LABELS = {
+    "invoices":       ("Facturas de gastos", "gastos"),
+    "classification": ("Clasificación de gastos", "gastos"),
+    "sales-iva":      ("Ingresos IVA", "ingresos_iva"),
+    "ice":            ("Ventas ICE", "ingresos_ice"),
+    "ice-calc":       ("Cálculo ICE", "ingresos_ice"),
+    "products":       ("Catálogo de productos", "ingresos_ice"),
+    "rebajas":        ("Rebajas y exenciones", "ingresos_ice"),
+    "compradores":    ("Compradores", "ingresos_ice"),
+    "retentions":     ("Retenciones", "retenciones"),
+    "declaraciones":  ("Declaración", "declaraciones"),
+    "anexos":         ("Anexo", "anexos"),
+    "clients":        ("Cliente", "clientes"),
+    "reportes":       ("Honorarios / reportes", "facturacion"),
+    "odoo":           ("Facturación Odoo", "facturacion"),
+}
+_AUDIT_ACTION = {"POST": "create", "PUT": "update", "PATCH": "update", "DELETE": "delete"}
+
+
+def _audit_ya_registrado(method: str, path: str) -> bool:
+    """True para los endpoints que YA se registran en detalle en su router."""
+    if path.endswith("/process-xml") or path.endswith("/process-txt"):
+        return True
+    if method == "POST" and path.rstrip("/") in (
+        "/api/declaraciones", "/api/anexos", "/api/clients", "/api/odoo/facturar"):
+        return True
+    return False
+
+
+def _audit_uid(request: Request):
+    auth = request.headers.get("authorization")
+    if not auth:
+        return None
+    try:
+        scheme, token = auth.split()
+        if scheme.lower() != "bearer":
+            return None
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        return _json.loads(_b64.urlsafe_b64decode(payload)).get("sub")
+    except Exception:
+        return None
+
+
+@app.middleware("http")
+async def audit_mutaciones(request: Request, call_next):
+    response = await call_next(request)
+    try:
+        method = request.method
+        if method in _AUDIT_ACTION and response.status_code < 400:
+            path = request.url.path
+            segs = path.split("/")
+            if len(segs) >= 3 and segs[1] == "api":
+                seg = segs[2]
+                if seg in _AUDIT_LABELS and not _audit_ya_registrado(method, path):
+                    uid = _audit_uid(request)
+                    if uid:
+                        label, module = _AUDIT_LABELS[seg]
+                        low = path.lower()
+                        action = _AUDIT_ACTION[method]
+                        if low.endswith("/clear") or "bulk-delete" in low:
+                            action = "delete"
+                        elif "bulk-move" in low:
+                            action = "update"
+                        client_id = request.query_params.get("client_id")
+                        _threading.Thread(
+                            target=_registrar,
+                            kwargs=dict(actor_user_id=uid, action=action, module=module,
+                                        entity=label, client_id=client_id,
+                                        metadata={"path": path, "method": method}),
+                            daemon=True,
+                        ).start()
+    except Exception as e:
+        print(f"[audit] {e}")
+    return response
+
+
 # Include routers — núcleo (sin restricción de módulo)
 app.include_router(auth.router)
 app.include_router(access.router)

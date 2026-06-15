@@ -13,7 +13,7 @@ const MOD = {
   clientes:      { label: 'Clientes',      ico: '👤', cls: 'mv-clientes' },
   facturacion:   { label: 'Facturación',   ico: '🧾', cls: 'mv-factura' },
 }
-const ACCION = { upload: 'subió', create: 'creó', save: 'guardó', delete: 'eliminó', emit: 'emitió' }
+const ACCION = { upload: 'subió', create: 'registró', save: 'guardó', delete: 'eliminó', emit: 'emitió', update: 'actualizó' }
 
 function fechaCorta(iso) {
   if (!iso) return ''
