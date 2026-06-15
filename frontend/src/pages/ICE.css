@@ -41,7 +41,7 @@
 .icc-id { color: #64748b; font-size: 0.8rem; }
 
 .ice-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
-.ice-stats .stat-card { background: #fff; border: 1px solid #e8edf3; border-left: 3px solid #d97706; border-radius: 8px; padding: 10px 13px; display: flex; flex-direction: column; gap: 2px; }
+.ice-stats .stat-card { background: #fff; border: 1px solid #e8edf3; border-radius: 8px; padding: 10px 13px; display: flex; flex-direction: column; gap: 2px; }
 .ice-stats .num { font-size: 1.1rem; font-weight: 700; color: #1f2a3a; font-variant-numeric: tabular-nums; }
 .ice-stats .lbl { font-size: 0.7rem; color: #6b7888; text-transform: uppercase; letter-spacing: 0.3px; }
 .ice-stats .total .num { color: #d97706; }

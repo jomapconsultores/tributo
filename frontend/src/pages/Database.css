@@ -44,12 +44,10 @@
 
 /* Resumen en tarjetas (stat-card) — compacto y esquematizado */
 .db-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
-.stat-card { background: #fff; border: 1px solid #e8edf3; border-left: 3px solid #003399; border-radius: 8px; padding: 10px 13px; display: flex; flex-direction: column; gap: 2px; }
+.stat-card { background: #fff; border: 1px solid #e8edf3; border-radius: 8px; padding: 10px 13px; display: flex; flex-direction: column; gap: 2px; }
 .stat-card .num { font-size: 1.1rem; font-weight: 700; color: #003399; font-variant-numeric: tabular-nums; }
 .stat-card .lbl { font-size: 0.7rem; color: #6b7888; text-transform: uppercase; letter-spacing: 0.3px; }
-.stat-card.warn { border-left-color: #d97706; }
 .stat-card.warn .num { color: #d97706; }
-.stat-card.yanbal { border-left-color: #7c3aed; }
 .stat-card.yanbal .num { color: #7c3aed; }
 
 .db-controls { display: flex; gap: 8px; flex-wrap: wrap; }

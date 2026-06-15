@@ -44,11 +44,11 @@
 .ci-toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .ci-cats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
-.ci-cat { background: #fff; border: 1px solid #e8edf3; border-radius: 8px; padding: 11px 14px; box-shadow: 0 1px 2px rgba(16,40,80,.04); border-left: 3px solid #cbd5e1; }
-.ci-cat.alcoholica { border-left-color: #7c3aed; }
-.ci-cat.artesanal { border-left-color: #16a34a; }
-.ci-cat.industrial { border-left-color: #0ea5e9; }
-.ci-cat.final { border-left-color: #d97706; background: #fffdf6; }
+.ci-cat { background: #fff; border: 1px solid #e8edf3; border-radius: 8px; padding: 11px 14px; box-shadow: 0 1px 2px rgba(16,40,80,.04); }
+.ci-cat.alcoholica .ci-cat-ice { color: #7c3aed; }
+.ci-cat.artesanal .ci-cat-ice { color: #16a34a; }
+.ci-cat.industrial .ci-cat-ice { color: #0284c7; }
+.ci-cat.final { background: #fffdf6; border-color: #f1e6cf; }
 .ci-cat-label { font-size: 0.7rem; color: #6b7888; text-transform: uppercase; letter-spacing: 0.3px; font-weight: 700; }
 .ci-cat-ice { font-size: 1.15rem; font-weight: 800; color: #1f2a3a; margin: 2px 0; font-variant-numeric: tabular-nums; }
 .ci-cat.final .ci-cat-ice { color: #d97706; }

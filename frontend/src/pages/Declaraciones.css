@@ -72,8 +72,7 @@
 .dc-del { border: none; background: transparent; cursor: pointer; opacity: .7; }
 .dc-del:hover { opacity: 1; }
 
-/* Tarjetas de datos editables (crédito, factor, ventas, rebajas) */
-.dc-credit-box { border-left: 3px solid #003399; }
+/* Tarjetas de datos editables (crédito, factor, ventas, rebajas) — sólidas, sin raya (heredan .dc-card-box) */
 .dc-credit-help { margin: 0 0 11px; color: #6b7888; font-size: 0.79rem; line-height: 1.4; }
 .dc-help-sm { margin-bottom: 8px; font-size: 0.72rem; }
 .dc-credit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -104,7 +103,7 @@
 .dc-btn-mini.danger:hover { background: #fef2f2; }
 
 /* Aplazamientos */
-.dc-aplazado-vencen { border-left: 3px solid #f59e0b; }
+.dc-aplazado-vencen { background: #fffbf4; border-color: #f3e6cf; }
 .dc-aplazado-list { list-style: none; margin: 0; padding: 0; }
 .dc-aplazado-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid #f1f5f9; font-size: 0.84rem; }
 .dc-aplazado-list li:last-child { border-bottom: none; }
