@@ -333,6 +333,13 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
             <span>CREDENCIALES SRI</span>
           </button>
           <button
+            className={`nav-item module-btn ${path === '/admin/acceso-clientes' ? 'active' : ''}`}
+            onClick={() => navigate('/admin/acceso-clientes')}
+          >
+            <span className="nav-ico">🔑</span>
+            <span>ACCESO A CLIENTES</span>
+          </button>
+          <button
             className={`nav-item module-btn ${path === '/odoo-facturacion' ? 'active' : ''}`}
             onClick={() => navigate('/odoo-facturacion')}
           >

@@ -29,16 +29,31 @@ class ClientUpdate(BaseModel):
     iva_incluido: Optional[bool] = None
 
 
+def _shared_ids(supabase, user_id: str) -> list:
+    """Client IDs que otro usuario compartió explícitamente con user_id."""
+    rows = supabase.table("client_access").select("client_id").eq("granted_to", user_id).execute().data or []
+    return [r["client_id"] for r in rows]
+
+
 @router.get("/")
 async def list_clients(user_id: str = Depends(get_current_user)):
     """Lista los clientes con estadísticas (# facturas y monto total)."""
     try:
         supabase = get_supabase_client()
         data_admin = es_data_admin(user_id)
-        q = supabase.table("clients").select("*").order("nombre").order("periodo_anio", desc=True).order("periodo_mes", desc=True)
-        if not data_admin:
-            q = q.eq("user_id", user_id)
-        clients = q.execute().data or []
+
+        if data_admin:
+            q = supabase.table("clients").select("*").order("nombre").order("periodo_anio", desc=True).order("periodo_mes", desc=True)
+            clients = q.execute().data or []
+        else:
+            propios = supabase.table("clients").select("*").eq("user_id", user_id).execute().data or []
+            sids = _shared_ids(supabase, user_id)
+            compartidos = supabase.table("clients").select("*").in_("id", sids).execute().data if sids else []
+            seen, clients = set(), []
+            for c in sorted(propios + compartidos, key=lambda x: ((x.get("nombre") or ""), -(x.get("periodo_anio") or 0), -(x.get("periodo_mes") or 0))):
+                if c["id"] not in seen:
+                    seen.add(c["id"])
+                    clients.append(c)
 
         # Estadísticas por client_id (funciona independientemente del user_id)
         client_ids = [c["id"] for c in clients]
@@ -73,10 +88,17 @@ async def clients_by_service(service: str = Query(...), user_id: str = Depends(g
     try:
         supabase = get_supabase_client()
         data_admin = es_data_admin(user_id)
-        q = supabase.table("clients").select("id,identificacion")
-        if not data_admin:
-            q = q.eq("user_id", user_id)
-        clientes = q.execute().data or []
+        if data_admin:
+            clientes = supabase.table("clients").select("id,identificacion").execute().data or []
+        else:
+            propios = supabase.table("clients").select("id,identificacion").eq("user_id", user_id).execute().data or []
+            sids = _shared_ids(supabase, user_id)
+            compartidos = supabase.table("clients").select("id,identificacion").in_("id", sids).execute().data if sids else []
+            seen, clientes = set(), []
+            for c in propios + compartidos:
+                if c["id"] not in seen:
+                    seen.add(c["id"])
+                    clientes.append(c)
         if not clientes:
             return {"identificaciones": []}
         ids = [c["id"] for c in clientes]
@@ -102,10 +124,18 @@ async def contribuyentes(user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
         data_admin = es_data_admin(user_id)
-        q = supabase.table("clients").select("id,identificacion,nombre,tipo_identificacion,periodo_mes,periodo_anio")
-        if not data_admin:
-            q = q.eq("user_id", user_id)
-        clients = q.execute().data or []
+        if data_admin:
+            q = supabase.table("clients").select("id,identificacion,nombre,tipo_identificacion,periodo_mes,periodo_anio")
+            clients = q.execute().data or []
+        else:
+            propios = supabase.table("clients").select("id,identificacion,nombre,tipo_identificacion,periodo_mes,periodo_anio").eq("user_id", user_id).execute().data or []
+            sids = _shared_ids(supabase, user_id)
+            compartidos = supabase.table("clients").select("id,identificacion,nombre,tipo_identificacion,periodo_mes,periodo_anio").in_("id", sids).execute().data if sids else []
+            seen, clients = set(), []
+            for c in propios + compartidos:
+                if c["id"] not in seen:
+                    seen.add(c["id"])
+                    clients.append(c)
 
         client_ids = [c["id"] for c in clients]
 

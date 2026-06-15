@@ -41,6 +41,13 @@ class RoleIn(BaseModel):
     role: str   # 'admin' | 'socio' | 'cliente'
 
 
+class ClientAccessIn(BaseModel):
+    identificacion: str
+    owner_user_id: str  # user_id del dueño original de los clientes
+    granted_to: str     # user_id del beneficiario
+    grant: bool         # True = otorgar, False = revocar
+
+
 class UserIn(BaseModel):
     email: str
     password: str
@@ -281,3 +288,66 @@ async def set_plan(uid: str, body: PlanIn, _: str = Depends(require_admin)):
     _aplicar_modulos(uid, mods, body.valid_until)
     _upsert_sub(uid, {"plan": plan, "precio_mensual": PLAN_PRECIO.get(plan)})
     return {"ok": True, "modules": mods}
+
+
+# ---------------------------------------------------------------------------
+# Gestión de acceso a clientes — admin asigna qué contribuyentes ve cada usuario
+# ---------------------------------------------------------------------------
+
+@router.get("/client-access")
+async def listar_acceso_clientes(uid: str = Query(...), _: str = Depends(require_admin)):
+    """Devuelve todos los contribuyentes (agrupados por owner+identificacion)
+    con flag indicando si 'uid' tiene acceso a cada uno."""
+    from database import fetch_all
+    sb = get_supabase_client()
+    todos = fetch_all(lambda: sb.table("clients").select(
+        "id,identificacion,nombre,user_id,periodo_mes,periodo_anio"))
+    access = sb.table("client_access").select("client_id").eq("granted_to", uid).execute().data or []
+    granted_ids = {r["client_id"] for r in access}
+
+    grupos: dict = {}
+    for c in todos:
+        key = (c["user_id"], c["identificacion"])
+        g = grupos.setdefault(key, {
+            "identificacion": c["identificacion"],
+            "nombre": c["nombre"],
+            "owner_user_id": c["user_id"],
+            "client_ids": [],
+        })
+        g["client_ids"].append(c["id"])
+
+    result = []
+    for g in grupos.values():
+        ids = g["client_ids"]
+        g["con_acceso"] = all(cid in granted_ids for cid in ids)
+        g["parcial"] = any(cid in granted_ids for cid in ids) and not g["con_acceso"]
+        result.append(g)
+
+    result.sort(key=lambda x: (x.get("nombre") or "").upper())
+    return {"data": result}
+
+
+@router.put("/client-access")
+async def set_acceso_cliente(body: ClientAccessIn, admin_id: str = Depends(require_admin)):
+    """Otorga o revoca acceso a todos los períodos de un contribuyente para un usuario."""
+    sb = get_supabase_client()
+    clients = sb.table("clients").select("id") \
+        .eq("identificacion", body.identificacion) \
+        .eq("user_id", body.owner_user_id).execute().data or []
+    ids = [c["id"] for c in clients]
+    if not ids:
+        raise HTTPException(status_code=404, detail="Contribuyente no encontrado")
+
+    if body.grant:
+        for cid in ids:
+            sb.table("client_access").upsert({
+                "client_id": cid,
+                "granted_to": body.granted_to,
+                "granted_by": admin_id,
+            }, on_conflict="client_id,granted_to").execute()
+    else:
+        for cid in ids:
+            sb.table("client_access").delete() \
+                .eq("client_id", cid).eq("granted_to", body.granted_to).execute()
+
+    return {"ok": True, "client_ids": ids, "grant": body.grant}

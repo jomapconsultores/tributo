@@ -39,6 +39,9 @@ export const contactoAPI = {
 
 // Administración (solo admins)
 export const adminAPI = {
+  // acceso a clientes compartidos
+  clientAccess: (uid) => api.get('/api/admin/client-access', { params: { uid } }),
+  setClientAccess: (body) => api.put('/api/admin/client-access', body),
   listUsers: () => api.get('/api/admin/users'),
   createUser: (data) => api.post('/api/admin/users', data),
   setModules: (uid, modules, valid_until = null) => api.put(`/api/admin/users/${uid}/modules`, { modules, valid_until }),
