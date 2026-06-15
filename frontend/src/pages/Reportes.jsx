@@ -4,6 +4,13 @@ import './Reportes.css'
 
 import { fmtMoney as money } from '../utils/format'
 
+// Borrador local de los valores a cobrar: si se va el internet o recargas, lo
+// que escribiste no se pierde. Se borra cuando el servidor confirma el guardado.
+const RP_DRAFT = 'draft:reportes:cobros'
+const readRpDrafts = () => { try { return JSON.parse(localStorage.getItem(RP_DRAFT) || '{}') } catch { return {} } }
+const writeRpDraft = (k, v) => { try { const d = readRpDrafts(); d[k] = v; localStorage.setItem(RP_DRAFT, JSON.stringify(d)) } catch { /* noop */ } }
+const clearRpDraft = (k) => { try { const d = readRpDrafts(); delete d[k]; localStorage.setItem(RP_DRAFT, JSON.stringify(d)) } catch { /* noop */ } }
+
 export default function Reportes() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -22,7 +29,13 @@ export default function Reportes() {
     try {
       const r = await reportesAPI.cobros()
       const data = r.data?.data || []
-      setRows(data)
+      // Sobreponer los borradores locales pendientes (valores aún no confirmados
+      // por el servidor, p.ej. si se cayó el internet) para no perderlos.
+      const drafts = readRpDrafts()
+      setRows(data.map((row) => {
+        const k = row.identificacion + '|' + row.concepto
+        return drafts[k] ? { ...row, ...drafts[k] } : row
+      }))
       // Inicializar iva por client_id desde los datos
       const ivaMap = {}
       for (const row of data) {
@@ -43,6 +56,7 @@ export default function Reportes() {
         identificacion: fila.identificacion, producto: fila.concepto,
         cobrar: fila.cobrar, valor: parseFloat(fila.valor) || 0,
       })
+      clearRpDraft(key)  // guardado confirmado: ya no hace falta el borrador local
     } catch (e) {
       alert('No se pudo guardar: ' + (e.response?.data?.detail || e.message))
     } finally { setGuardando('') }
@@ -51,7 +65,10 @@ export default function Reportes() {
   const setFila = (i, cambios, guardar = false) => {
     setRows((rs) => {
       const next = rs.map((r, idx) => (idx === i ? { ...r, ...cambios } : r))
-      if (guardar) guardarFila(next[i])
+      const f = next[i]
+      // Guardar al instante en el navegador cada cambio (sobrevive a cortes de internet)
+      writeRpDraft(f.identificacion + '|' + f.concepto, { valor: f.valor, cobrar: f.cobrar })
+      if (guardar) guardarFila(f)
       return next
     })
   }
