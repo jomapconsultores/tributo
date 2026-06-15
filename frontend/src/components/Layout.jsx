@@ -59,6 +59,12 @@ export default function Layout({ user, onLogout }) {
 
       <Sidebar open={sidebarOpen} onNewClient={openNewClient} onLogout={onLogout} userEmail={user?.email} />
       <main className="layout-content">
+        {user?.email && (
+          <div className="user-topbar">
+            <span className="user-topbar-ico">👤</span>
+            <span className="user-topbar-email">{user.email}</span>
+          </div>
+        )}
         <SubBanner />
         <AlertaDeclaracion />
         <Outlet context={{ openNewClient }} />

@@ -11,6 +11,26 @@
   overflow-y: auto;
 }
 
+/* Barra de usuario — siempre visible arriba del contenido */
+.user-topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 20px;
+  background: #0f172a;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.20);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.user-topbar-ico { font-size: 0.80rem; opacity: 0.75; }
+.user-topbar-email {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #93c5fd;
+  letter-spacing: 0.2px;
+}
+
 .sub-banner { padding: 10px 18px; font-size: 0.85rem; font-weight: 600; text-align: center; }
 .sub-banner.warn { background: #fef3c7; color: #92400e; }
 .sub-banner.danger { background: #fee2e2; color: #b91c1c; }
@@ -50,6 +70,9 @@
 
   /* Contenido a pantalla completa, scroll natural */
   .layout-content { height: auto; overflow-y: visible; }
+
+  /* En móvil el email ya aparece en el topbar superior */
+  .user-topbar { display: none; }
 
   /* Padding compacto en las páginas */
   .dc-page, .db-page, .ci-page, .ice-page, .ax-page, .ing-iva,
