@@ -75,16 +75,16 @@ async def list_invoices(
     skip: int = 0,
     limit: int = 500
 ):
-    from routers.access import es_admin
+    from routers.access import es_data_admin
     try:
         supabase = get_supabase_client()
-        admin = es_admin(user_id)
+        data_admin = es_data_admin(user_id)
 
         count_q = supabase.table("invoices").select("id", count="exact")
         data_q = supabase.table("invoices").select(INVOICE_COLUMNS)
 
         if client_id:
-            if not admin:
+            if not data_admin:
                 assert_client_owner(client_id, user_id)
             count_q = count_q.eq("client_id", client_id)
             data_q = data_q.eq("client_id", client_id)

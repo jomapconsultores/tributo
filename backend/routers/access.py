@@ -64,6 +64,12 @@ def es_super_admin(user_id: str) -> bool:
     return rol_de(user_id) == "admin"
 
 
+def es_data_admin(user_id: str) -> bool:
+    """True solo para 'admin': puede ver datos de TODOS los usuarios.
+    'socio' tiene acceso a todos los módulos pero solo ve sus propios datos."""
+    return rol_de(user_id) == "admin"
+
+
 def suscripcion(user_id: str):
     """Devuelve la suscripción del usuario con un flag 'vigente'.
     Sin suscripción registrada => vigente=True (no bloquea, compatibilidad)."""

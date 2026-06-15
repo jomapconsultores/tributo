@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client, fetch_all
 from services.sri_ruc import consultar_ruc
-from routers.access import es_admin
+from routers.access import es_admin, es_data_admin
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
@@ -34,9 +34,9 @@ async def list_clients(user_id: str = Depends(get_current_user)):
     """Lista los clientes con estadísticas (# facturas y monto total)."""
     try:
         supabase = get_supabase_client()
-        admin = es_admin(user_id)
+        data_admin = es_data_admin(user_id)
         q = supabase.table("clients").select("*").order("nombre").order("periodo_anio", desc=True).order("periodo_mes", desc=True)
-        if not admin:
+        if not data_admin:
             q = q.eq("user_id", user_id)
         clients = q.execute().data or []
 
@@ -72,9 +72,9 @@ async def clients_by_service(service: str = Query(...), user_id: str = Depends(g
     """Identificaciones (RUCs) que tienen el servicio activo en client_services."""
     try:
         supabase = get_supabase_client()
-        admin = es_admin(user_id)
+        data_admin = es_data_admin(user_id)
         q = supabase.table("clients").select("id,identificacion")
-        if not admin:
+        if not data_admin:
             q = q.eq("user_id", user_id)
         clientes = q.execute().data or []
         if not clientes:
@@ -101,9 +101,9 @@ async def contribuyentes(user_id: str = Depends(get_current_user)):
     (año, mes) → conteo de datos por tipo (gastos/retenciones/ice/calculo)."""
     try:
         supabase = get_supabase_client()
-        admin = es_admin(user_id)
+        data_admin = es_data_admin(user_id)
         q = supabase.table("clients").select("id,identificacion,nombre,tipo_identificacion,periodo_mes,periodo_anio")
-        if not admin:
+        if not data_admin:
             q = q.eq("user_id", user_id)
         clients = q.execute().data or []
 
