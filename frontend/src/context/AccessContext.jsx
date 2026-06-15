@@ -24,8 +24,8 @@ export function AccessProvider({ children }) {
       .catch(() => setState({ modules: [], isAdmin: false, role: 'cliente', subscription: null, loading: false }))
   }, [])
 
-  const has = (m) => state.isSuperAdmin || state.modules.includes(m)
   const isSuperAdmin = state.role === 'admin'
+  const has = (m) => isSuperAdmin || state.modules.includes(m)
   return (
     <AccessContext.Provider value={{ ...state, has, isSuperAdmin }}>
       {children}
