@@ -69,9 +69,26 @@ export default function AdminCredentials() {
   }
   useEffect(() => { load() }, [])
 
+  // Una fila por contribuyente (RUC): si ya tiene credencial se muestra tal cual;
+  // si NO la tiene (p.ej. cliente recién creado), aparece igual con opción de
+  // "＋ Clave" para agregarla. Así un cliente nuevo se refleja automáticamente.
+  const allRows = useMemo(() => {
+    const credByRuc = {}
+    for (const c of creds) { if (c.ruc && !credByRuc[c.ruc]) credByRuc[c.ruc] = c }
+    return contribs.map((ct) => {
+      const cred = credByRuc[ct.identificacion]
+      if (cred) return cred
+      return {
+        id: `noc-${ct.id}`, client_id: ct.id, ruc: ct.identificacion,
+        nombre: ct.nombre, username: null, notes: null, client_services: [],
+        needs_reentry: false, updated_at: null, _sinClave: true,
+      }
+    })
+  }, [creds, contribs])
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    let list = creds.filter((c) => {
+    let list = allRows.filter((c) => {
       const matchSearch = !q ||
         [c.nombre, c.ruc, c.username, c.notes].some((f) => String(f || '').toLowerCase().includes(q))
       const matchSvc = svcFilter.length === 0 ||
@@ -90,7 +107,7 @@ export default function AdminCredentials() {
       })
     }
     return list
-  }, [creds, search, svcFilter, diaFilter, ordenFecha])
+  }, [allRows, search, svcFilter, diaFilter, ordenFecha])
 
   // Auto-ocultar la contraseña revelada después de REVEAL_TTL_SECONDS
   useEffect(() => {
@@ -199,7 +216,7 @@ export default function AdminCredentials() {
           onChange={(e) => setSearch(e.target.value)}
         />
         <span className="adm-cred-count">
-          {filtered.length} de {creds.length}
+          {filtered.length} de {allRows.length}
         </span>
       </div>
 
@@ -256,9 +273,9 @@ export default function AdminCredentials() {
 
       {loading ? (
         <div className="adm-cred-loading">Cargando…</div>
-      ) : creds.length === 0 ? (
+      ) : allRows.length === 0 ? (
         <div className="adm-cred-empty">
-          Aún no hay credenciales guardadas. Usá "+ Nueva credencial" para agregar la primera.
+          Aún no hay contribuyentes. Creá un cliente primero.
         </div>
       ) : (
         <div className="adm-cred-tablewrap">
@@ -301,7 +318,7 @@ export default function AdminCredentials() {
                       return <span title={d.proximaFechaTexto}><strong>día {d.dia}</strong> · {fecha}</span>
                     })()}
                   </td>
-                  <td>{c.username || <span className="adm-cred-dim">(usa el RUC)</span>}</td>
+                  <td>{c.username || <span className="adm-cred-dim">{c._sinClave ? '(sin clave)' : '(usa el RUC)'}</span>}</td>
                   {CLIENT_SERVICES.map((s) => {
                     const checked = c.client_services?.includes(s.key) || false
                     return (
@@ -317,9 +334,16 @@ export default function AdminCredentials() {
                   })}
                   <td className="adm-cred-dim">{(c.updated_at || '').slice(0, 16).replace('T', ' ')}</td>
                   <td className="adm-cred-actions">
-                    <button className="btn-reveal" onClick={() => onReveal(c)}>👁</button>
-                    <button className="btn-edit" onClick={() => setEditor({ mode: 'edit', credential: c })}>✎</button>
-                    <button className="btn-del" onClick={() => onDelete(c)} disabled={busy}>🗑</button>
+                    {c._sinClave ? (
+                      <button className="btn-add-clave" title="Agregar la clave del portal SRI de este contribuyente"
+                        onClick={() => setEditor({ mode: 'create', presetClientId: c.client_id })}>＋ Clave</button>
+                    ) : (
+                      <>
+                        <button className="btn-reveal" onClick={() => onReveal(c)}>👁</button>
+                        <button className="btn-edit" onClick={() => setEditor({ mode: 'edit', credential: c })}>✎</button>
+                        <button className="btn-del" onClick={() => onDelete(c)} disabled={busy}>🗑</button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -347,6 +371,7 @@ export default function AdminCredentials() {
         <EditorModal
           mode={editor.mode}
           credential={editor.credential}
+          presetClientId={editor.presetClientId}
           contribs={contribs}
           onClose={() => setEditor(null)}
           onSaved={() => { setEditor(null); load() }}
@@ -397,10 +422,10 @@ function RevealModal({ reveal, onClose, onCopy }) {
   )
 }
 
-function EditorModal({ mode, credential, contribs, onClose, onSaved }) {
+function EditorModal({ mode, credential, presetClientId, contribs, onClose, onSaved }) {
   const isEdit = mode === 'edit'
   const [form, setForm] = useState({
-    client_id: credential?.client_id || '',
+    client_id: credential?.client_id || presetClientId || '',
     service: credential?.service || 'sri_portal',
     username: credential?.username || '',
     password: '',
