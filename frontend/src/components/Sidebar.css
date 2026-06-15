@@ -192,9 +192,7 @@
 
 /* ── Submódulos ── */
 .submodule-list {
-  margin: 3px 0 7px 19px;
-  padding-left: 11px;
-  border-left: 1px solid rgba(255, 255, 255, 0.09);
+  margin: 2px 0 7px 28px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -299,9 +297,8 @@
 
 /* ── Lista de clientes ── */
 .client-list {
-  margin: 4px 0 7px 19px;
-  padding-left: 11px;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 3px 0 7px 16px;
+  padding-right: 4px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -383,11 +380,8 @@
 .client-shared-notice {
   font-size: 0.68rem;
   color: #818cf8;
-  padding: 5px 9px;
-  margin-bottom: 4px;
-  background: rgba(99, 102, 241, 0.08);
-  border-radius: 6px;
-  border-left: 2px solid rgba(99, 102, 241, 0.4);
+  padding: 3px 10px 6px;
+  margin-bottom: 2px;
 }
 .client-dot.shared { background: #818cf8; box-shadow: 0 0 4px rgba(99,102,241,0.5); }
 .client-shared-ico { font-size: 0.70rem; opacity: 0.8; }
