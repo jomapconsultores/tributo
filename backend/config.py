@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # permite vars en .env no declaradas aquí (SMTP_*, ACTIVITY_NOTIFY_EMAIL, etc.)
 
 @lru_cache()
 def get_settings():
