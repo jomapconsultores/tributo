@@ -2,7 +2,12 @@ import { useState, useRef, useMemo, useEffect } from 'react'
 import { iceAPI, productsAPI, anexosAPI, compradoresAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoCorto } from '../utils/periodo'
+import useDraft from '../hooks/useDraft'
 import './AnexoPVPICE.css'
+
+// Auto-guardado offline: lo que cargues/edites en el anexo (tipo, cabecera y
+// filas) se respalda en el navegador y sobrevive a recargas y cortes de internet.
+const DRAFT = 'draft:anexo'
 
 // Columnas de detalle (ventas/vta) según el esquema SRI
 const COLS = {
@@ -89,18 +94,18 @@ const descomponerCodigo = (cod) => {
 
 export default function AnexoPVPICE() {
   const { clients } = useClients()
-  const [tipo, setTipo] = useState(null) // 'ICE' | 'PVP'
-  const [header, setHeader] = useState({})
-  const [rows, setRows] = useState([])
-  const [rucSel, setRucSel] = useState('')
-  const [clientSel, setClientSel] = useState('')
+  const [tipo, setTipo] = useDraft(`${DRAFT}:tipo`, null) // 'ICE' | 'PVP'
+  const [header, setHeader] = useDraft(`${DRAFT}:header`, {})
+  const [rows, setRows] = useDraft(`${DRAFT}:rows`, [])
+  const [rucSel, setRucSel] = useDraft(`${DRAFT}:rucSel`, '')
+  const [clientSel, setClientSel] = useDraft(`${DRAFT}:clientSel`, '')
   const [catalogo, setCatalogo] = useState([])
   const [catSel, setCatSel] = useState('')
   const [compradores, setCompradores] = useState([])
   const [compSel, setCompSel] = useState('')
   const [tipoImport, setTipoImport] = useState('ICE')
   const [saved, setSaved] = useState([])
-  const [savedId, setSavedId] = useState(null) // anexo guardado en edición (para actualizar, no duplicar)
+  const [savedId, setSavedId] = useDraft(`${DRAFT}:savedId`, null) // anexo guardado en edición (para actualizar, no duplicar)
   const [filtro, setFiltro] = useState('')
   const [busqCod, setBusqCod] = useState('')
   const [resCod, setResCod] = useState([])
@@ -532,7 +537,7 @@ export default function AnexoPVPICE() {
       <header className="ax-header">
         <div>
           <h1>📄 Anexo PVP+ICE</h1>
-          <p className="ax-sub">Editor de anexos SRI: carga un XML (ICE o PVP), edita cabecera y productos, y regenera el XML.</p>
+          <p className="ax-sub">Editor de anexos SRI: carga un XML (ICE o PVP), edita cabecera y productos, y regenera el XML. <strong>Lo que cargues/edites se respalda solo en este navegador</strong> (sobrevive a recargas); usá "🗄 Guardar anexo" para grabarlo en la base de datos.</p>
         </div>
         {tipo && <span className={`ax-badge ${tipo.toLowerCase()}`}>Anexo {tipo}</span>}
       </header>
