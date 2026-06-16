@@ -280,7 +280,36 @@
   color: #475569;
   padding: 2px 0;
 }
+/* Empresa emisora + panel de productos */
+.of-emisor-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: #eef4fc; border: 1px solid #d6e3f5; border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 12px;
+}
+.of-emisor { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 260px; }
+.of-emisor span { font-size: 0.84rem; font-weight: 700; color: #1e3a6e; white-space: nowrap; }
+.of-emisor select {
+  flex: 1; min-width: 180px; border: 1px solid #cbd5e1; border-radius: 7px;
+  padding: 7px 10px; font-size: 0.86rem; background: #fff; color: #1f2a3a; cursor: pointer;
+}
+.of-emisor select:focus { outline: none; border-color: #4f46e5; }
+.of-ver-prod {
+  border: 1px solid #cbd5e1; background: #fff; color: #1e3a6e; font-weight: 600;
+  font-size: 0.8rem; padding: 7px 12px; border-radius: 7px; cursor: pointer; white-space: nowrap;
+}
+.of-ver-prod:hover { background: #f1f5f9; }
+.of-prod-panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
+.of-prod-panel-head { font-size: 0.8rem; font-weight: 700; color: #1e3a6e; margin-bottom: 8px; }
+.of-prod-list { display: flex; flex-wrap: wrap; gap: 6px; max-height: 220px; overflow-y: auto; }
+.of-prod-chip { font-size: 0.74rem; background: #f1f5f9; color: #334155; border-radius: 6px; padding: 3px 9px; }
+.of-dim { color: #94a3b8; font-size: 0.8rem; }
+
 .of-linea-concepto { flex: 1; }
+.of-linea-prod {
+  flex-shrink: 0; max-width: 230px; border: 1px solid #cbd5e1; border-radius: 6px;
+  padding: 4px 8px; font-size: 0.76rem; background: #fff; color: #334155; cursor: pointer; margin: 0 8px;
+}
+.of-linea-prod:focus { outline: none; border-color: #4f46e5; }
 .of-linea-iva {
   display: inline-block; margin-left: 6px; font-size: 0.62rem; font-weight: 700;
   color: #1a3d6b; background: #e9f1fb; border-radius: 5px; padding: 1px 6px; vertical-align: middle;

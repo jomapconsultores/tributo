@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { reportesAPI, odooAPI, clientsAPI } from '../services/api'
+import { reportesAPI, odooAPI } from '../services/api'
 import './OdooFacturacion.css'
 
 const IVA = 0.15
@@ -16,8 +16,11 @@ export default function OdooFacturacion() {
   const [enviando, setEnviando] = useState(false)
   const [resultados, setResultados] = useState(null)
   const [estadoOdoo, setEstadoOdoo] = useState(null)
-  const [empresas, setEmpresas] = useState([])   // lista de empresas para elegir el RECEPTOR de la factura
-  const [receptor, setReceptor] = useState({})    // { [contribuyenteRuc]: { ruc, nombre } }
+  const [companias, setCompanias] = useState([])   // empresas EMISORAS (compañías Odoo)
+  const [companyId, setCompanyId] = useState('')    // emisor elegido
+  const [productos, setProductos] = useState([])    // productos/servicios existentes en Odoo
+  const [prodSel, setProdSel] = useState({})        // { "ruc|concepto": product_id }  (mapeo manual)
+  const [verProductos, setVerProductos] = useState(false)
 
   useEffect(() => {
     // Cargamos cobros y estado Odoo por separado para que un fallo
@@ -36,14 +39,19 @@ export default function OdooFacturacion() {
       .then((r) => setEstadoOdoo(r.data))
       .catch(() => setEstadoOdoo({ ok: false, error: 'No disponible' }))
 
-    // Lista de empresas/contribuyentes para elegir a quién se emite cada factura
-    clientsAPI.contribuyentes()
-      .then((r) => setEmpresas(
-        (r.data || [])
-          .map((c) => ({ ruc: c.identificacion, nombre: c.nombre || c.identificacion }))
-          .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
-      ))
-      .catch(() => setEmpresas([]))
+    // Empresas emisoras (compañías Odoo) y productos existentes en Odoo
+    odooAPI.empresas()
+      .then((r) => {
+        const list = r.data?.data || []
+        setCompanias(list)
+        // Emisor por defecto: la primera que tenga "ASOCIADOS", o la primera de la lista
+        const def = list.find((c) => /asociad/i.test(c.name)) || list[0]
+        if (def) setCompanyId((prev) => prev || String(def.id))
+      })
+      .catch(() => setCompanias([]))
+    odooAPI.productos()
+      .then((r) => setProductos(r.data?.data || []))
+      .catch(() => setProductos([]))
   }, [])
 
   // Agrupar filas por contribuyente — solo cobrar=true y valor>0
@@ -62,15 +70,6 @@ export default function OdooFacturacion() {
     }
     return Object.values(m).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
   }, [filas])
-
-  // Por defecto, cada honorario se factura al mismo contribuyente (se puede cambiar).
-  useEffect(() => {
-    setReceptor((prev) => {
-      const next = { ...prev }
-      for (const g of grupos) if (!next[g.ruc]) next[g.ruc] = { ruc: g.ruc, nombre: g.nombre }
-      return next
-    })
-  }, [grupos])
 
   const toggleTodos = () => {
     if (seleccionados.size === grupos.length) {
@@ -96,15 +95,17 @@ export default function OdooFacturacion() {
     setResultados(null)
     try {
       const r = await odooAPI.facturar({
-        facturas: facturasSeleccionadas.map((g) => {
-          const dest = receptor[g.ruc] || { ruc: g.ruc, nombre: g.nombre }
-          return {
-            ruc: dest.ruc,        // RECEPTOR elegido (a quién se emite la factura)
-            nombre: dest.nombre,
-            lineas: g.lineas,     // 'valor' ya es la base neta; Odoo agrega el IVA 15%
-            iva_incluido: false,
-          }
-        }),
+        company_id: companyId ? Number(companyId) : null,   // empresa EMISORA
+        facturas: facturasSeleccionadas.map((g) => ({
+          ruc: g.ruc,            // receptor = el contribuyente del honorario
+          nombre: g.nombre,
+          lineas: g.lineas.map((l) => ({
+            concepto: l.concepto,
+            valor: l.valor,       // base neta; Odoo agrega el IVA 15%
+            product_id: prodSel[`${g.ruc}|${l.concepto}`] || null,  // producto Odoo (o se crea)
+          })),
+          iva_incluido: false,
+        })),
       })
       setResultados(r.data.resultados || [])
     } catch (e) {
@@ -142,6 +143,29 @@ export default function OdooFacturacion() {
         </div>
       ) : (
         <>
+          {/* Empresa EMISORA (compañía Odoo) + ver productos existentes */}
+          <div className="of-emisor-bar">
+            <label className="of-emisor">
+              <span>🏢 Empresa que factura (emisor):</span>
+              <select value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+                {companias.length === 0 && <option value="">(cargando…)</option>}
+                {companias.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+              </select>
+            </label>
+            <button type="button" className="of-ver-prod" onClick={() => setVerProductos((v) => !v)}>
+              {verProductos ? 'Ocultar' : 'Ver'} productos de Odoo ({productos.length})
+            </button>
+          </div>
+          {verProductos && (
+            <div className="of-prod-panel">
+              <div className="of-prod-panel-head">Productos / servicios que ya existen en Odoo ({productos.length})</div>
+              <div className="of-prod-list">
+                {productos.map((p) => <span key={p.id} className="of-prod-chip">{p.name}</span>)}
+                {productos.length === 0 && <span className="of-dim">No se pudieron cargar productos de Odoo.</span>}
+              </div>
+            </div>
+          )}
+
           {/* Barra de acciones */}
           <div className="of-toolbar">
             <label className="of-check-all">
@@ -224,37 +248,28 @@ export default function OdooFacturacion() {
                     </button>
                   </div>
 
-                  {/* RECEPTOR de la factura: a qué empresa se emite (por defecto, el mismo contribuyente) */}
-                  <div className="of-receptor">
-                    <label htmlFor={`rec-${g.ruc}`}>🏢 Facturar a:</label>
-                    <select
-                      id={`rec-${g.ruc}`}
-                      value={(receptor[g.ruc]?.ruc) || g.ruc}
-                      onChange={(e) => {
-                        const emp = empresas.find((x) => x.ruc === e.target.value) || { ruc: e.target.value, nombre: e.target.value }
-                        setReceptor((p) => ({ ...p, [g.ruc]: emp }))
-                      }}
-                    >
-                      {(empresas.some((x) => x.ruc === g.ruc) ? empresas : [{ ruc: g.ruc, nombre: g.nombre }, ...empresas])
-                        .map((emp) => (
-                          <option key={emp.ruc} value={emp.ruc}>{emp.nombre} ({emp.ruc})</option>
-                        ))}
-                    </select>
-                    {receptor[g.ruc] && receptor[g.ruc].ruc !== g.ruc && (
-                      <span className="of-receptor-dif" title="La factura se emite a una empresa distinta del contribuyente">↪ distinto del contribuyente</span>
-                    )}
-                  </div>
-
                   <div className="of-lineas">
-                    {g.lineas.map((l, li) => (
+                    {g.lineas.map((l, li) => {
+                      const pkey = `${g.ruc}|${l.concepto}`
+                      return (
                       <div key={li} className="of-linea">
                         <span className="of-linea-concepto">
                           {l.concepto}
                           <span className="of-linea-iva">{l.iva_incluido ? 'IVA incl.' : '+IVA'}</span>
                         </span>
+                        <select
+                          className="of-linea-prod"
+                          value={prodSel[pkey] || ''}
+                          onChange={(e) => setProdSel((p) => ({ ...p, [pkey]: e.target.value }))}
+                          title="Producto de Odoo para este concepto. Si lo dejas en 'Crear nuevo', Odoo lo crea con el nombre del concepto."
+                        >
+                          <option value="">➕ Crear nuevo: «{l.concepto}»</option>
+                          {productos.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
                         <span className="of-linea-valor" title="Base imponible (Odoo agrega el IVA)">{fmtMoney(l.valor)}</span>
                       </div>
-                    ))}
+                      )
+                    })}
                     <div className="of-desglose">
                       <span>Base imponible</span><span>{fmtMoney(base)}</span>
                       <span>IVA 15%</span><span>{fmtMoney(iva)}</span>

@@ -9,7 +9,7 @@ Credenciales Odoo desde variables de entorno (nunca hardcodeadas):
 import os
 import threading
 import xmlrpc.client
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from auth import get_current_user
@@ -146,6 +146,7 @@ def _find_or_create_product(models, db, uid, key, nombre: str) -> int:
 class LineaIn(BaseModel):
     concepto: str
     valor: float
+    product_id: Optional[int] = None   # producto Odoo a usar; si no, se busca/crea por nombre
 
 
 class FacturaIn(BaseModel):
@@ -157,6 +158,7 @@ class FacturaIn(BaseModel):
 
 class FacturarBody(BaseModel):
     facturas: List[FacturaIn]
+    company_id: Optional[int] = None   # empresa EMISORA (compañía Odoo que factura)
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +177,38 @@ async def odoo_estado(user_id: str = Depends(get_current_user)):
         raise
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+@router.get("/empresas")
+async def odoo_empresas(user_id: str = Depends(get_current_user)):
+    """Empresas (compañías) en Odoo — la empresa EMISORA que factura al cliente."""
+    try:
+        models, uid, db, key = _connect()
+        ids = _x(models, db, uid, key, "res.company", "search", [[]])
+        rows = _x(models, db, uid, key, "res.company", "read", [ids], {"fields": ["id", "name"]})
+        return {"data": rows}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"data": [], "error": str(e)}
+
+
+@router.get("/productos")
+async def odoo_productos(user_id: str = Depends(get_current_user), q: Optional[str] = None):
+    """Productos/servicios que ya existen en Odoo (para mapear los conceptos a cobrar)."""
+    try:
+        models, uid, db, key = _connect()
+        domain = [["type", "=", "service"]]
+        if q:
+            domain.append(["name", "ilike", q])
+        ids = _x(models, db, uid, key, "product.product", "search", [domain], {"limit": 300})
+        rows = _x(models, db, uid, key, "product.product", "read", [ids], {"fields": ["id", "name"]})
+        rows.sort(key=lambda p: (p.get("name") or "").upper())
+        return {"data": rows}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"data": [], "error": str(e)}
 
 
 @router.post("/facturar")
@@ -222,7 +256,8 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
             for ln in lineas_cobrables:
                 # Si el valor YA incluye IVA, extraemos la base imponible
                 base = round(ln.valor / (1 + IVA_RATE), 2) if fac.iva_incluido else ln.valor
-                product_id = _find_or_create_product(models, db, uid, key, ln.concepto)
+                # Producto: usa el elegido en Odoo; si no, busca/crea por nombre (concepto)
+                product_id = ln.product_id or _find_or_create_product(models, db, uid, key, ln.concepto)
                 invoice_lines.append((0, 0, {
                     "product_id": product_id,
                     "name": ln.concepto,
@@ -230,11 +265,14 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
                     "price_unit": base,
                 }))
 
-            inv_id = _x(models, db, uid, key, "account.move", "create", [{
+            move_vals = {
                 "move_type": "out_invoice",
                 "partner_id": partner_id,
                 "invoice_line_ids": invoice_lines,
-            }])
+            }
+            if body.company_id:
+                move_vals["company_id"] = body.company_id
+            inv_id = _x(models, db, uid, key, "account.move", "create", [move_vals])
 
             # Confirmar la factura
             _x(models, db, uid, key, "account.move", "action_post", [[inv_id]])

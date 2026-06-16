@@ -350,6 +350,8 @@ export const memoryAPI = {
 // ODOO: facturación directa desde honorarios (solo admin)
 export const odooAPI = {
   estado: () => api.get('/api/odoo/estado'),
+  empresas: () => api.get('/api/odoo/empresas'),       // compañías emisoras en Odoo
+  productos: (q = '') => api.get('/api/odoo/productos', { params: q ? { q } : undefined }),
   facturar: (body) => api.post('/api/odoo/facturar', body),
 }
 
