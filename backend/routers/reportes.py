@@ -121,9 +121,19 @@ def _filas_y_total(user_id):
         if g["producto"] not in fixed_labels:
             custom_por_ruc.setdefault(g["identificacion"], []).append(g)
 
+    # Solo salen contribuyentes "con algo": con servicio contratado (credenciales),
+    # con declaración/anexo hecho, o con un cobro ya guardado. Los que no tienen
+    # nada NO aparecen en el reporte.
+    rucs_con_decl = {k[0] for k in decl_keys}
+    rucs_con_guardado = {g["identificacion"] for g in guardados}
+    def _activo(ruc):
+        return (bool(serv_por_ruc.get(ruc)) or ruc in anexo_rucs
+                or ruc in rucs_con_decl or ruc in rucs_con_guardado)
+
     filas = []
     total = 0.0
-    for ruc in sorted(nombre_por_ruc, key=lambda r: (nombre_por_ruc[r] or "").upper()):
+    rucs_orden = [r for r in sorted(nombre_por_ruc, key=lambda r: (nombre_por_ruc[r] or "").upper()) if _activo(r)]
+    for ruc in rucs_orden:
         def _fila(concepto, relevante, hecho, personalizado, g):
             nonlocal total
             cobrar = bool(g["cobrar"]) if g else relevante

@@ -19,7 +19,8 @@ export default function OdooFacturacion() {
   const [companias, setCompanias] = useState([])   // empresas EMISORAS (compañías Odoo)
   const [companyId, setCompanyId] = useState('')    // emisor elegido
   const [productos, setProductos] = useState([])    // productos/servicios existentes en Odoo
-  const [prodSel, setProdSel] = useState({})        // { "ruc|concepto": product_id }  (mapeo manual)
+  const [prodText, setProdText] = useState({})      // { "ruc|concepto": nombre de producto tecleado }
+  const [emisorPorGrupo, setEmisorPorGrupo] = useState({})  // { ruc: companyId } — emisor individual
   const [verProductos, setVerProductos] = useState(false)
 
   useEffect(() => {
@@ -95,14 +96,16 @@ export default function OdooFacturacion() {
     setResultados(null)
     try {
       const r = await odooAPI.facturar({
-        company_id: companyId ? Number(companyId) : null,   // empresa EMISORA
+        company_id: companyId ? Number(companyId) : null,   // emisor por defecto
         facturas: facturasSeleccionadas.map((g) => ({
           ruc: g.ruc,            // receptor = el contribuyente del honorario
           nombre: g.nombre,
+          company_id: Number(emisorPorGrupo[g.ruc] || companyId) || null,  // emisor INDIVIDUAL de esta factura
           lineas: g.lineas.map((l) => ({
             concepto: l.concepto,
             valor: l.valor,       // base neta; Odoo agrega el IVA 15%
-            product_id: prodSel[`${g.ruc}|${l.concepto}`] || null,  // producto Odoo (o se crea)
+            // nombre del producto a buscar/crear en Odoo (lo tecleado, o el concepto)
+            producto_nombre: (prodText[`${g.ruc}|${l.concepto}`] ?? l.concepto),
           })),
           iva_incluido: false,
         })),
@@ -146,7 +149,7 @@ export default function OdooFacturacion() {
           {/* Empresa EMISORA (compañía Odoo) + ver productos existentes */}
           <div className="of-emisor-bar">
             <label className="of-emisor">
-              <span>🏢 Empresa que factura (emisor):</span>
+              <span>🏢 Emisor por defecto (aplica a todos):</span>
               <select value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
                 {companias.length === 0 && <option value="">(cargando…)</option>}
                 {companias.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
@@ -221,6 +224,11 @@ export default function OdooFacturacion() {
             </div>
           )}
 
+          {/* Lista de productos de Odoo para autocompletar al teclear */}
+          <datalist id="of-odoo-prods">
+            {productos.map((p) => <option key={p.id} value={p.name} />)}
+          </datalist>
+
           {/* Tabla de contribuyentes */}
           <div className="of-grupos">
             {grupos.map((g) => {
@@ -248,24 +256,40 @@ export default function OdooFacturacion() {
                     </button>
                   </div>
 
+                  {/* Emisor INDIVIDUAL de esta factura */}
+                  <div className="of-receptor">
+                    <label htmlFor={`emi-${g.ruc}`}>🏢 Factura desde:</label>
+                    <select
+                      id={`emi-${g.ruc}`}
+                      value={emisorPorGrupo[g.ruc] ?? companyId}
+                      onChange={(e) => setEmisorPorGrupo((p) => ({ ...p, [g.ruc]: e.target.value }))}
+                    >
+                      {companias.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+                    </select>
+                  </div>
+
                   <div className="of-lineas">
                     {g.lineas.map((l, li) => {
                       const pkey = `${g.ruc}|${l.concepto}`
+                      const txt = prodText[pkey] ?? l.concepto
+                      const existe = productos.some((p) => (p.name || '').trim().toLowerCase() === txt.trim().toLowerCase())
                       return (
                       <div key={li} className="of-linea">
                         <span className="of-linea-concepto">
                           {l.concepto}
                           <span className="of-linea-iva">{l.iva_incluido ? 'IVA incl.' : '+IVA'}</span>
                         </span>
-                        <select
-                          className="of-linea-prod"
-                          value={prodSel[pkey] || ''}
-                          onChange={(e) => setProdSel((p) => ({ ...p, [pkey]: e.target.value }))}
-                          title="Producto de Odoo para este concepto. Si lo dejas en 'Crear nuevo', Odoo lo crea con el nombre del concepto."
-                        >
-                          <option value="">➕ Crear nuevo: «{l.concepto}»</option>
-                          {productos.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
+                        <span className="of-linea-prodwrap">
+                          <input
+                            className="of-linea-prod"
+                            list="of-odoo-prods"
+                            value={txt}
+                            onChange={(e) => setProdText((p) => ({ ...p, [pkey]: e.target.value }))}
+                            placeholder="Producto en Odoo…"
+                            title="Teclea para buscar el producto en Odoo. Si no existe, se crea con ese nombre."
+                          />
+                          <span className={`of-prod-tag ${existe ? 'ok' : 'new'}`}>{existe ? '✓ existe' : '➕ nuevo'}</span>
+                        </span>
                         <span className="of-linea-valor" title="Base imponible (Odoo agrega el IVA)">{fmtMoney(l.valor)}</span>
                       </div>
                       )

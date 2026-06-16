@@ -146,7 +146,8 @@ def _find_or_create_product(models, db, uid, key, nombre: str) -> int:
 class LineaIn(BaseModel):
     concepto: str
     valor: float
-    product_id: Optional[int] = None   # producto Odoo a usar; si no, se busca/crea por nombre
+    product_id: Optional[int] = None      # producto Odoo a usar (si se eligió uno)
+    producto_nombre: Optional[str] = None  # nombre del producto a buscar/crear (lo tecleado)
 
 
 class FacturaIn(BaseModel):
@@ -154,11 +155,12 @@ class FacturaIn(BaseModel):
     nombre: str
     lineas: List[LineaIn]
     iva_incluido: bool = False
+    company_id: Optional[int] = None   # empresa EMISORA de ESTA factura (override del global)
 
 
 class FacturarBody(BaseModel):
     facturas: List[FacturaIn]
-    company_id: Optional[int] = None   # empresa EMISORA (compañía Odoo que factura)
+    company_id: Optional[int] = None   # empresa EMISORA por defecto (si la factura no trae una)
 
 
 # ---------------------------------------------------------------------------
@@ -256,8 +258,10 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
             for ln in lineas_cobrables:
                 # Si el valor YA incluye IVA, extraemos la base imponible
                 base = round(ln.valor / (1 + IVA_RATE), 2) if fac.iva_incluido else ln.valor
-                # Producto: usa el elegido en Odoo; si no, busca/crea por nombre (concepto)
-                product_id = ln.product_id or _find_or_create_product(models, db, uid, key, ln.concepto)
+                # Producto: 1) el elegido por id; 2) buscar/crear por el nombre tecleado;
+                # 3) si no, por el concepto. _find_or_create busca y crea si no existe.
+                nombre_prod = (ln.producto_nombre or "").strip() or ln.concepto
+                product_id = ln.product_id or _find_or_create_product(models, db, uid, key, nombre_prod)
                 invoice_lines.append((0, 0, {
                     "product_id": product_id,
                     "name": ln.concepto,
@@ -270,8 +274,9 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
                 "partner_id": partner_id,
                 "invoice_line_ids": invoice_lines,
             }
-            if body.company_id:
-                move_vals["company_id"] = body.company_id
+            company = fac.company_id or body.company_id
+            if company:
+                move_vals["company_id"] = company
             inv_id = _x(models, db, uid, key, "account.move", "create", [move_vals])
 
             # Confirmar la factura

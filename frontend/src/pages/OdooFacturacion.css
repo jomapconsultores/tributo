@@ -305,11 +305,15 @@
 .of-dim { color: #94a3b8; font-size: 0.8rem; }
 
 .of-linea-concepto { flex: 1; }
+.of-linea-prodwrap { display: inline-flex; align-items: center; gap: 6px; margin: 0 8px; flex-shrink: 0; }
 .of-linea-prod {
-  flex-shrink: 0; max-width: 230px; border: 1px solid #cbd5e1; border-radius: 6px;
-  padding: 4px 8px; font-size: 0.76rem; background: #fff; color: #334155; cursor: pointer; margin: 0 8px;
+  width: 190px; border: 1px solid #cbd5e1; border-radius: 6px;
+  padding: 4px 8px; font-size: 0.76rem; background: #fff; color: #334155;
 }
 .of-linea-prod:focus { outline: none; border-color: #4f46e5; }
+.of-prod-tag { font-size: 0.62rem; font-weight: 700; border-radius: 5px; padding: 2px 6px; white-space: nowrap; }
+.of-prod-tag.ok { background: #dcfce7; color: #15803d; }
+.of-prod-tag.new { background: #fef3c7; color: #b45309; }
 .of-linea-iva {
   display: inline-block; margin-left: 6px; font-size: 0.62rem; font-weight: 700;
   color: #1a3d6b; background: #e9f1fb; border-radius: 5px; padding: 1px 6px; vertical-align: middle;
