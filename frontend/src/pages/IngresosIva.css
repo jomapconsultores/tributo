@@ -46,3 +46,22 @@
 .ing-card-lbl { font-size: .7rem; color: #6b7888; text-transform: uppercase; letter-spacing: .3px; }
 .ing-card.total { background: #f6fcf8; border-color: #d7eede; }
 .ing-card.total .ing-card-num { color: #1e8449; }
+
+/* Edición inline de una factura */
+.ing-iva-hint { font-size: .72rem; color: #94a3b8; margin-top: 4px; }
+.acciones { display: flex; gap: 4px; }
+.ed-btn { border: 1px solid #cdd8e6; background: #fff; color: #6b7888; border-radius: 5px; width: 24px; height: 24px; cursor: pointer; font-size: 0.8rem; }
+.ed-btn:hover { border-color: #2563eb; color: #2563eb; background: #eff5ff; }
+.ing-iva-table tr.editing td { background: #fbfdff; vertical-align: top; }
+.ed-in, .ed-num { width: 100%; border: 1px solid #cdd8e6; border-radius: 5px; padding: 4px 6px; font-size: .78rem; box-sizing: border-box; }
+.ed-in + .ed-in { margin-top: 4px; }
+.ed-in.mono { font-family: 'Courier New', monospace; }
+.ed-num { text-align: right; font-variant-numeric: tabular-nums; }
+.ed-in:focus, .ed-num:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,.15); }
+.ed-actions { display: flex; gap: 4px; }
+.ed-save, .ed-cancel { border: 1px solid #cdd8e6; background: #fff; border-radius: 5px; width: 26px; height: 26px; cursor: pointer; font-size: 0.85rem; font-weight: 700; }
+.ed-save { color: #1e8449; border-color: #b8e0c6; }
+.ed-save:hover { background: #ecfbf1; }
+.ed-save:disabled { opacity: .5; cursor: default; }
+.ed-cancel { color: #dc2626; border-color: #f0c4c4; }
+.ed-cancel:hover { background: #fef2f2; }

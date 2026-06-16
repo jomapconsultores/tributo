@@ -192,6 +192,7 @@ export const salesIvaAPI = {
       timeout: 300000,  // baja por SOAP con reintentos; margen amplio
     })
   },
+  update: (id, data) => api.put(`/api/sales-iva/${id}`, data),
   delete: (id) => api.delete(`/api/sales-iva/${id}`),
   clear: (clientId) => api.delete('/api/sales-iva/clear', { params: { client_id: clientId } }),
   bulkMove: (ids, clientId) => api.post('/api/sales-iva/bulk-move', { ids, client_id: clientId }),

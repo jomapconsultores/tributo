@@ -29,8 +29,45 @@ export default function IngresosIva() {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [dragActive, setDragActive] = useState(false)
+  const [editId, setEditId] = useState(null)
+  const [editData, setEditData] = useState({})
+  const [savingEdit, setSavingEdit] = useState(false)
   const xmlInputRef = useRef(null)
   const txtInputRef = useRef(null)
+
+  const NUM_FIELDS = ['no_objeto_iva', 'exento_iva', 'base_0', 'base_15', 'iva_15', 'base_5', 'iva_5']
+
+  const startEdit = (r) => {
+    setEditId(r.id)
+    setEditData({
+      fecha: r.fecha || '', factura_numero: r.factura_numero || '',
+      razon_social_cliente: r.razon_social_cliente || '', id_cliente: r.id_cliente || '',
+      no_objeto_iva: r.no_objeto_iva ?? 0, exento_iva: r.exento_iva ?? 0, base_0: r.base_0 ?? 0,
+      base_15: r.base_15 ?? 0, iva_15: r.iva_15 ?? 0, base_5: r.base_5 ?? 0, iva_5: r.iva_5 ?? 0,
+    })
+  }
+  const cancelEdit = () => { setEditId(null); setEditData({}) }
+  const setEf = (k, v) => setEditData((d) => ({ ...d, [k]: v }))
+  const editTotal = useMemo(
+    () => NUM_FIELDS.reduce((s, k) => s + (parseFloat(editData[k]) || 0), 0),
+    [editData]
+  )
+  const saveEdit = async () => {
+    setSavingEdit(true)
+    try {
+      const payload = {
+        fecha: editData.fecha, factura_numero: editData.factura_numero,
+        razon_social_cliente: editData.razon_social_cliente, id_cliente: editData.id_cliente,
+      }
+      // importe_total se omite: el backend lo recalcula como suma de bases+IVA
+      for (const k of NUM_FIELDS) payload[k] = parseFloat(editData[k]) || 0
+      await salesIvaAPI.update(editId, payload)
+      cancelEdit()
+      await load()
+    } catch (err) {
+      alert('Error: ' + (err.response?.data?.detail || err.message))
+    } finally { setSavingEdit(false) }
+  }
 
   const load = useCallback(async () => {
     if (!selectedClientId) { setRows([]); return }
@@ -47,7 +84,7 @@ export default function IngresosIva() {
 
   const handleUploadXml = async (files) => {
     if (!selectedClientId || !files.length) return
-    setBusy(`Procesando ${files.length} factura(s) XML…`)
+    setBusy(`Procesando ${files.length} factura(s) XML/PDF…`)
     try {
       const res = await salesIvaAPI.processXml(selectedClientId, files)
       const { nuevas, duplicadas, errores, rechazadas_por_ice, rechazadas } = res.data
@@ -96,8 +133,10 @@ export default function IngresosIva() {
   }
   const handleDrop = (e) => {
     e.preventDefault(); e.stopPropagation(); setDragActive(false)
-    const files = Array.from(e.dataTransfer.files || []).filter((f) => f.name.toLowerCase().endsWith('.xml'))
-    if (!files.length) { alert('Arrastra facturas XML de venta (ingresos IVA).'); return }
+    const files = Array.from(e.dataTransfer.files || []).filter((f) => {
+      const n = f.name.toLowerCase(); return n.endsWith('.xml') || n.endsWith('.pdf')
+    })
+    if (!files.length) { alert('Arrastra facturas de venta en XML o PDF (RIDE del SRI).'); return }
     handleUploadXml(files)
   }
 
@@ -165,17 +204,18 @@ export default function IngresosIva() {
       >
         <span className="drop-icon">📤</span>
         <div>
-          <strong>Arrastrá los XML acá</strong> o
+          <strong>Arrastrá XML o PDF acá</strong> o
           <input
             ref={xmlInputRef}
             type="file"
             multiple
-            accept=".xml"
+            accept=".xml,.pdf"
             onChange={(e) => handleUploadXml(Array.from(e.target.files || []))}
             style={{ display: 'none' }}
             id="ing-iva-upload"
           />
           <label htmlFor="ing-iva-upload" className="ing-iva-pick">elegilos</label>
+          <div className="ing-iva-hint">El PDF (RIDE del SRI) se lee automáticamente; podés corregir cualquier valor con ✎.</div>
         </div>
         {busy && <div className="ing-iva-busy">{busy}</div>}
       </div>
@@ -238,23 +278,48 @@ export default function IngresosIva() {
             </thead>
             <tbody>
               {filtered.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.fecha || '-'}</td>
-                  <td className="mono">{r.factura_numero || '-'}</td>
-                  <td title={r.razon_social_cliente}>
-                    <span className="cliente-name">{(r.razon_social_cliente || '').slice(0, 32)}</span>
-                    <span className="cliente-id">{r.id_cliente}</span>
-                  </td>
-                  <td className="r">{money(r.no_objeto_iva)}</td>
-                  <td className="r">{money(r.exento_iva)}</td>
-                  <td className="r">{money(r.base_0)}</td>
-                  <td className="r">{money(r.base_15)}</td>
-                  <td className="r">{money(r.iva_15)}</td>
-                  <td className="r">{money(r.base_5)}</td>
-                  <td className="r">{money(r.iva_5)}</td>
-                  <td className="r total">{money(r.importe_total)}</td>
-                  <td><button className="del-btn" onClick={() => handleDelete(r.id)} title="Eliminar">✕</button></td>
-                </tr>
+                editId === r.id ? (
+                  <tr key={r.id} className="editing">
+                    <td><input className="ed-in" value={editData.fecha} onChange={(e) => setEf('fecha', e.target.value)} placeholder="dd/mm/aaaa" /></td>
+                    <td><input className="ed-in mono" value={editData.factura_numero} onChange={(e) => setEf('factura_numero', e.target.value)} placeholder="001-001-000…" /></td>
+                    <td>
+                      <input className="ed-in" value={editData.razon_social_cliente} onChange={(e) => setEf('razon_social_cliente', e.target.value)} placeholder="Nombre cliente" />
+                      <input className="ed-in" value={editData.id_cliente} onChange={(e) => setEf('id_cliente', e.target.value)} placeholder="RUC / cédula" />
+                    </td>
+                    {NUM_FIELDS.map((k) => (
+                      <td className="r" key={k}>
+                        <input className="ed-num" type="number" step="0.01" value={editData[k]}
+                          onChange={(e) => setEf(k, e.target.value)} />
+                      </td>
+                    ))}
+                    <td className="r total">{money(editTotal)}</td>
+                    <td className="ed-actions">
+                      <button className="ed-save" onClick={saveEdit} disabled={savingEdit} title="Guardar">✔</button>
+                      <button className="ed-cancel" onClick={cancelEdit} title="Cancelar">✕</button>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={r.id}>
+                    <td>{r.fecha || '-'}</td>
+                    <td className="mono">{r.factura_numero || '-'}</td>
+                    <td title={r.razon_social_cliente}>
+                      <span className="cliente-name">{(r.razon_social_cliente || '').slice(0, 32)}</span>
+                      <span className="cliente-id">{r.id_cliente}</span>
+                    </td>
+                    <td className="r">{money(r.no_objeto_iva)}</td>
+                    <td className="r">{money(r.exento_iva)}</td>
+                    <td className="r">{money(r.base_0)}</td>
+                    <td className="r">{money(r.base_15)}</td>
+                    <td className="r">{money(r.iva_15)}</td>
+                    <td className="r">{money(r.base_5)}</td>
+                    <td className="r">{money(r.iva_5)}</td>
+                    <td className="r total">{money(r.importe_total)}</td>
+                    <td className="acciones">
+                      <button className="ed-btn" onClick={() => startEdit(r)} title="Editar">✎</button>
+                      <button className="del-btn" onClick={() => handleDelete(r.id)} title="Eliminar">✕</button>
+                    </td>
+                  </tr>
+                )
               ))}
             </tbody>
             <tfoot>

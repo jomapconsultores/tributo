@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client
 from services.xml_parser_ventas import parse_venta_xml
+from services.pdf_parser_ventas import parse_venta_pdf
 from services.xml_store import guardar_xml_original
 from services.sri_service import extract_claves_from_txt, descargar_multiples_xmls
 from services.activity import registrar
@@ -32,6 +33,25 @@ class BulkMove(BaseModel):
 
 class BulkIds(BaseModel):
     ids: List[str]
+
+
+class SaleUpdate(BaseModel):
+    """Edición manual de una factura de venta. Todos los campos son opcionales;
+    solo se actualizan los enviados."""
+    fecha: Optional[str] = None
+    tipo_id_cliente: Optional[str] = None
+    id_cliente: Optional[str] = None
+    razon_social_cliente: Optional[str] = None
+    factura_numero: Optional[str] = None
+    no_objeto_iva: Optional[float] = None
+    exento_iva: Optional[float] = None
+    base_0: Optional[float] = None
+    base_15: Optional[float] = None
+    iva_15: Optional[float] = None
+    base_5: Optional[float] = None
+    iva_5: Optional[float] = None
+    importe_total: Optional[float] = None
+    notas: Optional[str] = None
 
 
 @router.get("/")
@@ -70,8 +90,16 @@ async def process_xml(
         new_count = dup_count = err_count = rej_count = 0
         rechazadas = []  # facturas con ICE
         for file in files:
-            xml_content = (await file.read()).decode("utf-8", errors="ignore")
-            parsed = parse_venta_xml(xml_content)
+            raw = await file.read()
+            es_pdf = (file.filename or "").lower().endswith(".pdf") or raw[:5] == b"%PDF-"
+            if es_pdf:
+                # RIDE del SRI (cuando el XML no está disponible). No hay XML que
+                # archivar; los valores se pueden editar luego desde el módulo.
+                parsed = parse_venta_pdf(raw)
+                xml_content = None
+            else:
+                xml_content = raw.decode("utf-8", errors="ignore")
+                parsed = parse_venta_xml(xml_content)
             if parsed is None:
                 err_count += 1
                 continue
@@ -83,7 +111,8 @@ async def process_xml(
                     "motivo": parsed.get("message"),
                 })
                 continue
-            guardar_xml_original(supabase, user_id, client_id, "ingreso_iva", xml_content)
+            if xml_content:
+                guardar_xml_original(supabase, user_id, client_id, "ingreso_iva", xml_content)
             try:
                 supabase.table("sales_iva").insert({
                     "client_id": client_id, "user_id": user_id, **parsed
@@ -201,6 +230,40 @@ async def delete_one(sale_id: str, user_id: str = Depends(get_current_user)):
         supabase = get_supabase_client()
         supabase.table("sales_iva").delete().eq("id", sale_id).eq("user_id", user_id).execute()
         return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{sale_id}")
+async def update_sale(sale_id: str, body: SaleUpdate, user_id: str = Depends(get_current_user)):
+    """Edita los datos de una factura de venta ya ingresada (corrección manual,
+    típico tras leer un PDF). Si se tocan bases/IVA y no se envía importe_total,
+    se recalcula como suma de bases + IVA."""
+    try:
+        supabase = get_supabase_client()
+        cambios = body.dict(exclude_unset=True)
+        if not cambios:
+            raise HTTPException(status_code=400, detail="Sin cambios")
+        # Verificar propiedad y obtener fila actual
+        cur = supabase.table("sales_iva").select(COLUMNS).eq("id", sale_id).eq("user_id", user_id).limit(1).execute()
+        if not cur.data:
+            raise HTTPException(status_code=404, detail="Factura no encontrada")
+        row = {**cur.data[0], **cambios}
+        # Recalcular total si no se envió explícitamente
+        if "importe_total" not in cambios:
+            cambios["importe_total"] = round(
+                float(row.get("base_0") or 0) + float(row.get("base_15") or 0)
+                + float(row.get("iva_15") or 0) + float(row.get("base_5") or 0)
+                + float(row.get("iva_5") or 0) + float(row.get("no_objeto_iva") or 0)
+                + float(row.get("exento_iva") or 0), 2)
+        supabase.table("sales_iva").update(cambios).eq("id", sale_id).eq("user_id", user_id).execute()
+        registrar(actor_user_id=user_id, action="update", module="ingresos_iva",
+                  entity=f"Factura {row.get('factura_numero') or sale_id}",
+                  client_id=row.get("client_id"))
+        out = supabase.table("sales_iva").select(COLUMNS).eq("id", sale_id).limit(1).execute()
+        return {"ok": True, "data": out.data[0] if out.data else None}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
