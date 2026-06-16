@@ -9,12 +9,15 @@ from email.message import EmailMessage
 
 
 def _cfg():
+    # Emisor de las notificaciones: jomapconsultores@gmail.com (Gmail) por defecto.
+    # Solo falta definir SMTP_PASSWORD (contraseña de aplicación de Gmail) en el servidor.
+    user = (os.environ.get("SMTP_USER") or "jomapconsultores@gmail.com").strip()
     return {
-        "host": (os.environ.get("SMTP_HOST") or "").strip(),
+        "host": (os.environ.get("SMTP_HOST") or "smtp.gmail.com").strip(),
         "port": int(os.environ.get("SMTP_PORT") or "587"),
-        "user": (os.environ.get("SMTP_USER") or "").strip(),
+        "user": user,
         "password": os.environ.get("SMTP_PASSWORD") or "",
-        "from": (os.environ.get("SMTP_FROM") or os.environ.get("SMTP_USER") or "").strip(),
+        "from": (os.environ.get("SMTP_FROM") or user).strip(),
     }
 
 
