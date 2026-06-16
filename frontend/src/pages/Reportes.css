@@ -106,3 +106,13 @@
 .rp-sug-aplicar { border: 1px solid #1a56db; background: #fff; color: #1a56db; border-radius: 6px; padding: 0 8px; font-size: .68rem; font-weight: 700; cursor: pointer; line-height: 1.5; }
 .rp-sug-aplicar:hover { background: #1a56db; color: #fff; }
 .rp-sug-ok { color: #1e8449; font-weight: 700; }
+
+/* Tres campos de precio: Oficial / Desc% / Neto */
+.rp-precio-cell { display: flex; align-items: flex-end; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.rp-pc { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+.rp-pc > span { font-size: .58rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .3px; }
+.rp-pc input { width: 64px; padding: 3px 5px; border: 1px solid #cdd8e6; border-radius: 6px; font-size: .8rem; text-align: right; font-variant-numeric: tabular-nums; }
+.rp-pc-desc input { width: 52px; }
+.rp-pc-neto input { border-color: #1e8449; font-weight: 700; color: #1e8449; }
+.rp-pc input:disabled { background: #f4f6f9; color: #b6bfca; }
+.rp-pc input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,.12); }

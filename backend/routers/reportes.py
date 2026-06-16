@@ -71,6 +71,19 @@ CONCEPTO_MATCH = {
 # para no inventar un valor de IVA cuando el cliente no tiene esa línea.
 _HON_PRINCIPAL = re.compile(r"honorari|asesor|tribut|profesional|contabilidad|contable", re.I)
 
+# Precio OFICIAL (de lista) por concepto. Sobre este se aplica el descuento.
+PRECIO_OFICIAL = {
+    "declaracion_iva":   15.0,
+    "declaracion_ice":   15.0,
+    "declaracion_renta": 30.0,
+    "anexo":             15.0,
+    "devolucion_iva":    0.0,   # según cada caso
+}
+
+
+def _neto(oficial, descuento):
+    return round(float(oficial or 0) * (1 - float(descuento or 0) / 100.0), 2)
+
 
 def _tokens(s: str) -> set:
     import unicodedata
@@ -98,7 +111,9 @@ class CobroIn(BaseModel):
     producto: str            # nombre del concepto (ej. "Declaración IVA")
     marca: Optional[str] = ""
     cobrar: Optional[bool] = True
-    valor: Optional[float] = 0
+    valor: Optional[float] = 0          # NETO a cobrar (base sin IVA)
+    precio_oficial: Optional[float] = None  # precio de lista (price_unit en Odoo)
+    descuento: Optional[float] = 0      # % de descuento sobre el oficial (discount en Odoo)
     iva_incluido: Optional[bool] = False   # False = "+IVA" (se suma 15%); True = IVA ya incluido
 
 
@@ -156,7 +171,7 @@ def _filas_y_total(user_id):
 
     def _q_guardados():
         return fetch_all(lambda: sb.table("reportes_honorarios").select(
-            "identificacion,producto,cobrar,valor,iva_incluido,mes,anio").eq("user_id", user_id))
+            "identificacion,producto,cobrar,valor,precio_oficial,descuento,iva_incluido,mes,anio").eq("user_id", user_id))
 
     with ThreadPoolExecutor(max_workers=4) as ex:
         f_svc = ex.submit(_q_servicios)
@@ -290,15 +305,25 @@ def _filas_y_total(user_id):
                 sug_por_label[label] = s
         sin_odoo = es_vacio and not sug_por_label   # señal: sin valor en Odoo
 
-        def _fila(concepto, relevante, hecho, personalizado, g, arrastrado=False, odoo_val=None, origen="", sugerido=None):
+        def _fila(concepto, relevante, hecho, personalizado, g, oficial_std=0.0,
+                  arrastrado=False, odoo_sug=None, origen="", sugerido=None):
             nonlocal total
-            if odoo_val is not None:
-                cobrar, valor, iva_incl = True, float(odoo_val), False  # base sin IVA → "+IVA"
-            else:
-                cobrar = bool(g["cobrar"]) if g else relevante
-                valor = float(g["valor"]) if g and g.get("valor") is not None else 0.0
-                # IVA por ítem: lo guardado manda; si no hay, cae al ajuste del cliente.
-                iva_incl = bool(g["iva_incluido"]) if g and g.get("iva_incluido") is not None else iva_por_ruc.get(ruc, False)
+            if odoo_sug is not None:               # llenar desde Odoo (cliente vacío)
+                cobrar, iva_incl = True, False     # base sin IVA → "+IVA"
+                oficial = float(odoo_sug.get("oficial") or 0)
+                descuento = float(odoo_sug.get("descuento") or 0)
+                valor = float(odoo_sug.get("neto") or 0)
+            elif g:                                # valor guardado a mano
+                cobrar = bool(g["cobrar"])
+                valor = float(g["valor"]) if g.get("valor") is not None else 0.0
+                oficial = float(g["precio_oficial"]) if g.get("precio_oficial") is not None else (valor if valor else oficial_std)
+                descuento = float(g["descuento"]) if g.get("descuento") is not None else 0.0
+                iva_incl = bool(g["iva_incluido"]) if g.get("iva_incluido") is not None else iva_por_ruc.get(ruc, False)
+            else:                                  # sin datos: precio oficial de referencia, neto 0
+                cobrar = relevante
+                valor, descuento = 0.0, 0.0
+                oficial = float(oficial_std or 0)
+                iva_incl = iva_por_ruc.get(ruc, False)
             # "bruto" = total a cobrar con IVA incluido (base + 15%).
             bruto = round(valor if iva_incl else valor * (1 + IVA_RATE), 2)
             if cobrar:
@@ -315,6 +340,8 @@ def _filas_y_total(user_id):
                 "personalizado": personalizado,
                 "cobrar": cobrar,
                 "valor": round(valor, 2),
+                "precio_oficial": round(oficial, 2),
+                "descuento": round(descuento, 2),
                 "bruto": bruto,
                 "origen": origen,            # 'odoo' | 'manual' | ''
                 "sin_odoo": bool(sin_odoo),    # señal a nivel cliente
@@ -331,17 +358,18 @@ def _filas_y_total(user_id):
             realizado = ((ruc, key) in decl_ever) or (key == "anexo" and ruc in anexo_ever)
             relevante = realizado or (key in serv_por_ruc.get(ruc, set()))
             sug = sug_por_label.get(label)  # línea de Odoo de mayor relación
+            ofi = PRECIO_OFICIAL.get(key, 0.0)
             if es_vacio:
                 # Vacío: no se arrastra del mes anterior; lo llena Odoo (o queda en blanco).
                 if sug:
-                    _fila(label, relevante, hecho, False, None,
-                          odoo_val=float(sug["neto"]), origen="odoo", sugerido=sug)
+                    _fila(label, relevante, hecho, False, None, oficial_std=ofi,
+                          odoo_sug=sug, origen="odoo", sugerido=sug)
                 else:
-                    _fila(label, relevante, hecho, False, None)
+                    _fila(label, relevante, hecho, False, None, oficial_std=ofi)
             else:
                 g_cur = guardados_cur.get((ruc, label))
                 g_prev = prev_por_prod.get((ruc, label))
-                _fila(label, relevante, hecho, False, g_cur or g_prev,
+                _fila(label, relevante, hecho, False, g_cur or g_prev, oficial_std=ofi,
                       arrastrado=(g_cur is None and g_prev is not None),
                       origen="manual" if g_cur else "", sugerido=sug)
         for prod in sorted(custom_por_ruc.get(ruc, set()), key=str.upper):
@@ -382,6 +410,12 @@ async def guardar_cobro(entry: CobroIn, user_id: str = Depends(get_current_user)
     if not ident or not concepto:
         raise HTTPException(status_code=400, detail="Contribuyente y concepto son obligatorios")
     cur_mes, cur_anio = _periodo_actual()
+    # Neto = oficial × (1 - descuento/100) si vienen oficial+descuento; si no, el valor enviado.
+    oficial = entry.precio_oficial
+    descuento = float(entry.descuento or 0)
+    valor = float(entry.valor or 0)
+    if oficial is not None and float(oficial) > 0:
+        valor = _neto(oficial, descuento)
     try:
         sb.table("reportes_honorarios").upsert({
             "user_id": user_id,
@@ -389,7 +423,9 @@ async def guardar_cobro(entry: CobroIn, user_id: str = Depends(get_current_user)
             "producto": concepto,
             "marca": "",
             "cobrar": bool(entry.cobrar),
-            "valor": float(entry.valor or 0),
+            "valor": valor,
+            "precio_oficial": float(oficial) if oficial is not None else None,
+            "descuento": descuento,
             "iva_incluido": bool(entry.iva_incluido),
             "mes": cur_mes,
             "anio": cur_anio,

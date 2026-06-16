@@ -71,6 +71,8 @@ export default function Reportes() {
       await reportesAPI.guardarCobro({
         identificacion: fila.identificacion, producto: fila.concepto,
         cobrar: fila.cobrar, valor: parseFloat(fila.valor) || 0,
+        precio_oficial: fila.precio_oficial != null && fila.precio_oficial !== '' ? parseFloat(fila.precio_oficial) || 0 : null,
+        descuento: parseFloat(fila.descuento) || 0,
         iva_incluido: !!fila.iva_incluido,
       })
       clearRpDraft(key)  // guardado confirmado: ya no hace falta el borrador local
@@ -79,12 +81,34 @@ export default function Reportes() {
     } finally { setGuardando('') }
   }
 
+  // Edita oficial / descuento / neto manteniendo la relación neto = oficial×(1−desc/100).
+  const r2 = (n) => Math.round((parseFloat(n) || 0) * 100) / 100
+  const setPrecio = (i, campo, val, guardar = false) => {
+    setRows((rs) => {
+      const next = rs.map((r, idx) => {
+        if (idx !== i) return r
+        let oficial = parseFloat(r.precio_oficial) || 0
+        let desc = parseFloat(r.descuento) || 0
+        let neto = parseFloat(r.valor) || 0
+        const v = parseFloat(val) || 0
+        if (campo === 'oficial') { oficial = v; neto = r2(oficial * (1 - desc / 100)) }
+        else if (campo === 'descuento') { desc = Math.min(100, Math.max(0, v)); neto = r2(oficial * (1 - desc / 100)) }
+        else if (campo === 'neto') { neto = v; desc = oficial > 0 ? r2(Math.max(0, (1 - neto / oficial) * 100)) : 0 }
+        return { ...r, precio_oficial: oficial, descuento: desc, valor: neto }
+      })
+      const f = next[i]
+      writeRpDraft(f.identificacion + '|' + f.concepto, { valor: f.valor, cobrar: f.cobrar, iva_incluido: f.iva_incluido, precio_oficial: f.precio_oficial, descuento: f.descuento })
+      if (guardar) guardarFila(f)
+      return next
+    })
+  }
+
   const setFila = (i, cambios, guardar = false) => {
     setRows((rs) => {
       const next = rs.map((r, idx) => (idx === i ? { ...r, ...cambios } : r))
       const f = next[i]
       // Guardar al instante en el navegador cada cambio (sobrevive a cortes de internet)
-      writeRpDraft(f.identificacion + '|' + f.concepto, { valor: f.valor, cobrar: f.cobrar, iva_incluido: f.iva_incluido })
+      writeRpDraft(f.identificacion + '|' + f.concepto, { valor: f.valor, cobrar: f.cobrar, iva_incluido: f.iva_incluido, precio_oficial: f.precio_oficial, descuento: f.descuento })
       if (guardar) guardarFila(f)
       return next
     })
@@ -255,7 +279,7 @@ export default function Reportes() {
                 return (
                   <Grupo key={g.identificacion} g={g} cerrado={cerrado}
                     onToggle={() => toggleGrupo(g.identificacion)}
-                    rows={rows} setFila={setFila} guardando={guardando}
+                    rows={rows} setFila={setFila} setPrecio={setPrecio} guardando={guardando}
                     onAddRubro={() => agregarRubro(g.identificacion, g.contribuyente)}
                     onDelRubro={borrarRubro} money={money}
                     bruto={bruto} desglosa={desglosa}
@@ -280,7 +304,7 @@ export default function Reportes() {
   )
 }
 
-function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onDelRubro, money, bruto, desglosa, historial, histAbierto, onToggleHist }) {
+function Grupo({ g, cerrado, onToggle, rows, setFila, setPrecio, guardando, onAddRubro, onDelRubro, money, bruto, desglosa, historial, histAbierto, onToggleHist }) {
   const d = g.subtotal > 0 ? desglosa(g.subtotal) : null
   return (
     <>
@@ -317,28 +341,42 @@ function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onD
                 onChange={(e) => setFila(realIdx, { cobrar: e.target.checked }, true)} />
             </td>
             <td className="r">
-              <div className="rp-valor-cell">
-                <span className="rp-money-prefix">$</span>
-                <input className="rp-valor" type="number" step="0.01" min="0"
-                  value={r.valor}
-                  onChange={(e) => setFila(realIdx, { valor: e.target.value })}
-                  onBlur={() => setFila(realIdx, {}, true)}
-                  disabled={!r.cobrar} />
+              <div className="rp-precio-cell">
+                <label className="rp-pc" title="Precio oficial (de lista). A Odoo va como precio unitario.">
+                  <span>Oficial</span>
+                  <input type="number" step="0.01" min="0" value={r.precio_oficial ?? ''}
+                    onChange={(e) => setPrecio(realIdx, 'oficial', e.target.value)}
+                    onBlur={() => setPrecio(realIdx, 'oficial', r.precio_oficial, true)}
+                    disabled={!r.cobrar} />
+                </label>
+                <label className="rp-pc rp-pc-desc" title="% de descuento sobre el oficial. A Odoo va como descuento de la línea.">
+                  <span>Desc%</span>
+                  <input type="number" step="0.01" min="0" max="100" value={r.descuento ?? 0}
+                    onChange={(e) => setPrecio(realIdx, 'descuento', e.target.value)}
+                    onBlur={() => setPrecio(realIdx, 'descuento', r.descuento, true)}
+                    disabled={!r.cobrar} />
+                </label>
+                <label className="rp-pc rp-pc-neto" title="Neto a cobrar (oficial con el descuento). Si lo cambiás, el descuento se recalcula.">
+                  <span>Neto</span>
+                  <input type="number" step="0.01" min="0" value={r.valor}
+                    onChange={(e) => setPrecio(realIdx, 'neto', e.target.value)}
+                    onBlur={() => setPrecio(realIdx, 'neto', r.valor, true)}
+                    disabled={!r.cobrar} />
+                </label>
                 <span className="rp-iva-mode" role="group" aria-label="Modo de IVA">
-                  <button type="button"
-                    className={`rp-iva-opt ${!r.iva_incluido ? 'on' : ''}`}
-                    title="El valor es neto; se le suma el 15% de IVA"
-                    onClick={() => setFila(realIdx, { iva_incluido: false }, true)}
-                    disabled={!r.cobrar}>+IVA</button>
-                  <button type="button"
-                    className={`rp-iva-opt ${r.iva_incluido ? 'on' : ''}`}
-                    title="El valor ya incluye el 15% de IVA"
-                    onClick={() => setFila(realIdx, { iva_incluido: true }, true)}
-                    disabled={!r.cobrar}>incl.</button>
+                  <button type="button" className={`rp-iva-opt ${!r.iva_incluido ? 'on' : ''}`}
+                    title="El neto es base; se le suma el 15% de IVA"
+                    onClick={() => setFila(realIdx, { iva_incluido: false }, true)} disabled={!r.cobrar}>+IVA</button>
+                  <button type="button" className={`rp-iva-opt ${r.iva_incluido ? 'on' : ''}`}
+                    title="El neto ya incluye el 15% de IVA"
+                    onClick={() => setFila(realIdx, { iva_incluido: true }, true)} disabled={!r.cobrar}>incl.</button>
                 </span>
               </div>
               {r.cobrar && (parseFloat(r.valor) || 0) > 0 && (
-                <div className="rp-bruto">Total c/IVA: {money(bruto(r))}</div>
+                <div className="rp-bruto">
+                  {(parseFloat(r.descuento) || 0) > 0 && <span>oficial {money(r.precio_oficial)} −{r.descuento}% · </span>}
+                  Total c/IVA: {money(bruto(r))}
+                </div>
               )}
               {r.sugerido != null && (
                 <div className="rp-sugerido" title={`Última factura en Odoo: ${r.sugerido_concepto || ''}${r.sugerido_fecha ? ' · ' + r.sugerido_fecha : ''}`}>
@@ -348,7 +386,7 @@ function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onD
                     : <strong>{money(r.sugerido)}</strong>}
                   <span className="rp-sug-con"> {r.sugerido_concepto}</span>
                   {Math.abs((parseFloat(r.valor) || 0) - r.sugerido) > 0.005
-                    ? <button className="rp-sug-aplicar" onClick={() => setFila(realIdx, { valor: r.sugerido, iva_incluido: false, cobrar: true }, true)}>usar</button>
+                    ? <button className="rp-sug-aplicar" onClick={() => setFila(realIdx, { precio_oficial: r.sugerido_oficial, descuento: r.sugerido_descuento, valor: r.sugerido, iva_incluido: false, cobrar: true }, true)}>usar</button>
                     : <span className="rp-sug-ok"> ✓ aplicado</span>}
                 </div>
               )}

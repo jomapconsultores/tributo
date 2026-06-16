@@ -66,7 +66,11 @@ export default function OdooFacturacion() {
       // IVA por ítem: 'bruto' = total con IVA; 'base' = neto (Odoo agrega el 15% sobre la base).
       const bruto = f.iva_incluido ? f.valor : Math.round(f.valor * (1 + IVA) * 100) / 100
       const base = Math.round((bruto / (1 + IVA)) * 100) / 100
-      m[f.identificacion].lineas.push({ concepto: f.concepto, valor: base, iva_incluido: f.iva_incluido })
+      // Precio oficial (base) y descuento %, para que Odoo muestre el descuento.
+      const oficialBase = f.precio_oficial > 0
+        ? (f.iva_incluido ? Math.round((f.precio_oficial / (1 + IVA)) * 100) / 100 : f.precio_oficial)
+        : null
+      m[f.identificacion].lineas.push({ concepto: f.concepto, valor: base, iva_incluido: f.iva_incluido, precio_oficial: oficialBase, descuento: f.descuento || 0 })
       m[f.identificacion].total = +(m[f.identificacion].total + bruto).toFixed(2)
     }
     return Object.values(m).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
@@ -104,6 +108,8 @@ export default function OdooFacturacion() {
           lineas: g.lineas.map((l) => ({
             concepto: l.concepto,
             valor: l.valor,       // base neta; Odoo agrega el IVA 15%
+            precio_oficial: l.precio_oficial,   // price_unit en Odoo (si hay)
+            descuento: l.descuento || 0,        // discount % en Odoo
             // nombre del producto a buscar/crear en Odoo (lo tecleado, o el concepto)
             producto_nombre: (prodText[`${g.ruc}|${l.concepto}`] ?? l.concepto),
           })),

@@ -241,7 +241,9 @@ def valores_honorarios_por_ruc(idents: set, cache_key=None) -> dict:
 
 class LineaIn(BaseModel):
     concepto: str
-    valor: float
+    valor: float                          # NETO de la línea (base sin IVA si iva_incluido=False)
+    precio_oficial: Optional[float] = None  # precio de lista → price_unit en Odoo
+    descuento: Optional[float] = 0        # % de descuento → discount en Odoo
     product_id: Optional[int] = None      # producto Odoo a usar (si se eligió uno)
     producto_nombre: Optional[str] = None  # nombre del producto a buscar/crear (lo tecleado)
 
@@ -435,18 +437,25 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
 
             invoice_lines = []
             for ln in lineas_cobrables:
-                # Si el valor YA incluye IVA, extraemos la base imponible
-                base = round(ln.valor / (1 + IVA_RATE), 2) if fac.iva_incluido else ln.valor
                 # Producto: 1) el elegido por id; 2) buscar/crear por el nombre tecleado;
                 # 3) si no, por el concepto. _find_or_create busca y crea si no existe.
                 nombre_prod = (ln.producto_nombre or "").strip() or ln.concepto
                 product_id = ln.product_id or _find_or_create_product(models, db, uid, key, nombre_prod)
-                invoice_lines.append((0, 0, {
+                line_vals = {
                     "product_id": product_id,
                     "name": ln.concepto,
                     "quantity": 1.0,
-                    "price_unit": base,
-                }))
+                }
+                desc = float(ln.descuento or 0)
+                if ln.precio_oficial and float(ln.precio_oficial) > 0:
+                    # Respetar el PRECIO OFICIAL y mandar el DESCUENTO a Odoo.
+                    oficial = round(float(ln.precio_oficial) / (1 + IVA_RATE), 2) if fac.iva_incluido else float(ln.precio_oficial)
+                    line_vals["price_unit"] = oficial
+                    line_vals["discount"] = round(desc, 2)
+                else:
+                    # Sin precio oficial: el neto va directo (base imponible si trae IVA).
+                    line_vals["price_unit"] = round(ln.valor / (1 + IVA_RATE), 2) if fac.iva_incluido else ln.valor
+                invoice_lines.append((0, 0, line_vals))
 
             move_vals = {
                 "move_type": "out_invoice",
