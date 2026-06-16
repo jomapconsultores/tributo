@@ -25,6 +25,10 @@ IVA_RATE = 0.15
 
 # Destino del aviso de facturación (la responsable de facturación en Odoo).
 ODOO_NOTIFY_EMAIL = os.getenv("ODOO_NOTIFY_EMAIL", "johannanievecela@hotmail.com")
+# Empresa EMISORA que NO genera recordatorio de cobro (se excluye por nombre).
+EXCLUIR_EMISOR = os.getenv("ODOO_EXCLUIR_EMISOR", "marco antonio").strip().lower()
+# Token para que el cron semanal pueda llamar al recordatorio sin sesión.
+_CRON_DEFAULT = os.getenv("CRON_SECRET", "jomap-cobros-semanal-2026")
 
 
 def _idents_autorizadas(sb, user_id: str) -> set:
@@ -217,6 +221,53 @@ async def odoo_productos(user_id: str = Depends(get_current_user), q: Optional[s
         return {"data": [], "error": str(e)}
 
 
+@router.api_route("/recordatorio-cobros", methods=["GET", "POST"])
+async def recordatorio_cobros(token: Optional[str] = None):
+    """Recordatorio SEMANAL de cobros pendientes a Johanna (lo dispara el cron).
+    Incluye las facturas de venta posteadas sin pagar de TODAS las empresas
+    emisoras EXCEPTO 'Marco Antonio'. Protegido por token (no requiere sesión)."""
+    if not token or token != _CRON_DEFAULT:
+        raise HTTPException(status_code=401, detail="Token inválido")
+    destino = (ODOO_NOTIFY_EMAIL or "").strip()
+    if not destino:
+        return {"ok": False, "error": "Sin destinatario configurado"}
+    try:
+        models, uid, db, key = _connect()
+    except HTTPException as e:
+        return {"ok": False, "error": e.detail}
+    except Exception as e:
+        return {"ok": False, "error": f"Odoo: {e}"}
+
+    dom = [["move_type", "=", "out_invoice"], ["state", "=", "posted"],
+           ["payment_state", "in", ["not_paid", "partial"]]]
+    ids = _x(models, db, uid, key, "account.move", "search", [dom], {"limit": 1000})
+    rows = _x(models, db, uid, key, "account.move", "read", [ids],
+              {"fields": ["name", "partner_id", "amount_residual", "invoice_date", "company_id"]}) if ids else []
+    # Excluir la empresa emisora 'Marco Antonio'
+    pend = [r for r in rows if EXCLUIR_EMISOR not in ((r.get("company_id") or [0, ""])[1] or "").lower()]
+    if not pend:
+        return {"ok": True, "enviado": False, "motivo": "Sin cobros pendientes (o todos de Marco Antonio)"}
+
+    por_emisor, total = {}, 0.0
+    for r in pend:
+        comp = (r.get("company_id") or [0, "—"])[1]
+        partner = (r.get("partner_id") or [0, "—"])[1]
+        res = float(r.get("amount_residual") or 0)
+        total += res
+        por_emisor.setdefault(comp, []).append(
+            f"   - {partner}: {r.get('name')} — pendiente ${res:,.2f} (emitida {r.get('invoice_date') or 's/f'})")
+    bloques = [f"{comp}:\n" + "\n".join(items) for comp, items in por_emisor.items()]
+    cuerpo = ("Johanna, recordatorio semanal de COBROS pendientes (todas las empresas excepto Marco Antonio).\n"
+              "Por favor gestiona el cobro de estos valores:\n\n"
+              + "\n\n".join(bloques)
+              + f"\n\nTOTAL pendiente de cobro: ${total:,.2f}\n\nGracias.")
+    if not email_configurado():
+        return {"ok": False, "configurado": False, "facturas": len(pend),
+                "total": round(total, 2), "error": "SMTP no configurado en el servidor"}
+    ok, err = enviar_correo(destino, f"Recordatorio semanal de cobros — {len(pend)} factura(s)", cuerpo)
+    return {"ok": ok, "enviado": ok, "facturas": len(pend), "total": round(total, 2), "error": err}
+
+
 @router.post("/facturar")
 async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_current_user)):
     """Crea y confirma (posted) facturas de venta en Odoo. Solo admins.
@@ -306,16 +357,12 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
 
     exitosas = [r for r in resultados if r.get("ok")]
     if exitosas:
-        # Queda en Movimientos (sin correo de actividad; el aviso es el de Johanna)
+        # Queda en Movimientos. El aviso de cobro a Johanna es SEMANAL (cron →
+        # /api/odoo/recordatorio-cobros), no por cada emisión.
         for r in exitosas:
             registrar(actor_user_id=user_id, action="emit", module="facturacion",
                       entity="Factura emitida en Odoo", identificacion=r.get("ruc"),
                       contribuyente=r.get("nombre"),
                       metadata={"numero": r.get("numero"), "total": r.get("total")})
-        # Aviso por correo a Johanna SIEMPRE (para que gestione el cobro), sin
-        # importar quién emita; _notificar_johanna evita auto-avisarse a sí misma.
-        threading.Thread(target=_notificar_johanna,
-                         kwargs=dict(actor_user_id=user_id, exitosas=exitosas),
-                         daemon=True).start()
 
     return {"resultados": resultados}

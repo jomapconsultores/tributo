@@ -1,0 +1,28 @@
+name: Recordatorio semanal de cobros (Johanna)
+
+# Cada lunes a las 13:00 UTC (08:00 en Ecuador) dispara el recordatorio semanal:
+# el backend reúne las facturas de venta pendientes de cobro en Odoo (de todas
+# las empresas emisoras EXCEPTO "Marco Antonio") y le envía el detalle por correo
+# a Johanna (johannanievecela@hotmail.com) para que gestione el cobro.
+#
+# Requiere SMTP_* configurado en el servidor para que el correo se envíe.
+
+on:
+  schedule:
+    - cron: '0 13 * * 1'    # lunes 13:00 UTC
+  workflow_dispatch: {}      # permite ejecutarlo a mano desde la pestaña Actions
+
+jobs:
+  recordatorio:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enviar recordatorio de cobros a Johanna
+        run: |
+          for i in 1 2 3; do
+            if curl -fsS --max-time 120 -X POST \
+              "https://tributos-api.onrender.com/api/odoo/recordatorio-cobros?token=jomap-cobros-semanal-2026" ; then
+              echo ""; echo "Recordatorio disparado"; exit 0
+            fi
+            echo "Reintentando (backend arrancando en frio)..."; sleep 20
+          done
+          echo "No respondio; el proximo lunes reintenta"; exit 0
