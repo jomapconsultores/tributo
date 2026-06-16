@@ -16,7 +16,9 @@ def _cfg():
         "host": (os.environ.get("SMTP_HOST") or "smtp.gmail.com").strip(),
         "port": int(os.environ.get("SMTP_PORT") or "587"),
         "user": user,
-        "password": os.environ.get("SMTP_PASSWORD") or "",
+        # PROVISIONAL (opción B, a pedido): contraseña de aplicación de Gmail.
+        # Conviene regenerarla en Gmail y moverla a env var SMTP_PASSWORD.
+        "password": os.environ.get("SMTP_PASSWORD") or "skriipfixxlmgvlk",
         "from": (os.environ.get("SMTP_FROM") or user).strip(),
     }
 
