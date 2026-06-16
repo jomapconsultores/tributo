@@ -20,12 +20,21 @@ def _texto_pdf(pdf_bytes: bytes) -> str:
 
 
 def _num_antes(texto: str, etiqueta: str) -> float:
-    """Número (####.##) que aparece justo ANTES de la etiqueta dada.
-    Robusto ante números pegados (ej. '69.0060.00 SUBTOTAL 15%' → 60.00)."""
-    # Lookahead (?=\s|$): la etiqueta debe terminar en espacio/fin (cubre que
-    # termine en '%', donde \b no funciona).
-    m = re.search(r"(\d+\.\d{2})\s*" + re.escape(etiqueta) + r"(?=\s|$)", texto)
-    return float(m.group(1)) if m else 0.0
+    """ÚLTIMO importe (####.##) en la MISMA línea, justo ANTES de la etiqueta.
+
+    El RIDE suele pegar el valor de la "forma de pago" al subtotal en una sola
+    línea (ej. '11.5010.00 SUBTOTAL 15%'). findall separa los importes pegados
+    ('11.5010.00' → ['11.50', '10.00']) y tomamos el último, que es el correcto
+    (10.00, el subtotal). El lookbehind evita confundir la etiqueta dentro de una
+    palabra (p.ej. 'ICE' dentro de otra); el lookahead exige fin de palabra/línea
+    (cubre etiquetas terminadas en '%')."""
+    pat = r"(?<![A-Za-z])" + re.escape(etiqueta) + r"(?=\s|$)"
+    for m in re.finditer(pat, texto):
+        ini = texto.rfind("\n", 0, m.start()) + 1
+        nums = re.findall(r"\d+\.\d{2}", texto[ini:m.start()])
+        if nums:
+            return float(nums[-1])
+    return 0.0
 
 
 def _tipo_id(identificacion: str) -> str:
