@@ -99,3 +99,10 @@
 /* Señales de origen del valor a cobrar (Odoo) */
 .rp-sinodoo-badge { margin-left: 10px; padding: 1px 8px; background: #fdebd0; color: #b9770e; border-radius: 10px; font-size: .68rem; font-weight: 700; }
 .rp-odoo-tag { margin-left: 8px; padding: 1px 7px; background: #e8f0fe; color: #1a56db; border-radius: 9px; font-size: .64rem; font-weight: 700; letter-spacing: .3px; }
+
+/* Precio sugerido desde Odoo (por concepto, mayor relación) */
+.rp-sugerido { margin-top: 3px; font-size: .72rem; color: #1a56db; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.rp-sug-con { color: #6b7888; font-style: italic; }
+.rp-sug-aplicar { border: 1px solid #1a56db; background: #fff; color: #1a56db; border-radius: 6px; padding: 0 8px; font-size: .68rem; font-weight: 700; cursor: pointer; line-height: 1.5; }
+.rp-sug-aplicar:hover { background: #1a56db; color: #fff; }
+.rp-sug-ok { color: #1e8449; font-weight: 700; }

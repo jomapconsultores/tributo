@@ -204,7 +204,7 @@ export default function Reportes() {
       <header className="rp-header">
         <div>
           <h1>📑 Reportes — Honorarios a cobrar {periodo && <span className="rp-periodo">· {periodo.etiqueta}</span>}</h1>
-          <p className="rp-sub">Cada contribuyente (desplegable) con los servicios que se le hacen. Lo que tiene la declaración <strong>hecha este mes se pinta de verde</strong> (se debe facturar). El valor a cobrar se trae de la <strong>última factura del cliente en Odoo</strong> (base sin IVA, etiqueta "Odoo"); si Odoo no tiene factura, queda en blanco con la señal <strong>⚠ sin valor en Odoo</strong>. Lo que cargues a mano se respeta y se guarda.</p>
+          <p className="rp-sub">Cada contribuyente (desplegable) con los servicios que se le hacen. Lo que tiene la declaración <strong>hecha este mes se pinta de verde</strong> (se debe facturar). Cada concepto muestra el <strong>precio sugerido de Odoo</strong> (💡) tomado de la línea facturada de mayor relación (base sin IVA), con su concepto y fecha; el botón <strong>"usar"</strong> lo aplica. Si Odoo no tiene factura del cliente, queda en blanco con la señal <strong>⚠ sin valor en Odoo</strong>. Lo que cargues a mano se respeta y se guarda.</p>
         </div>
         <div className="rp-total-box">
           <span className="rp-total-lbl">Total a cobrar{search ? ' (filtrado)' : ''}{ivaIncluido ? ' (IVA incl.)' : ''}</span>
@@ -339,6 +339,15 @@ function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onD
               </div>
               {r.cobrar && (parseFloat(r.valor) || 0) > 0 && (
                 <div className="rp-bruto">Total c/IVA: {money(bruto(r))}</div>
+              )}
+              {r.sugerido != null && (
+                <div className="rp-sugerido" title={`Última factura en Odoo: ${r.sugerido_concepto || ''}${r.sugerido_fecha ? ' · ' + r.sugerido_fecha : ''}`}>
+                  💡 Odoo: <strong>{money(r.sugerido)}</strong>
+                  <span className="rp-sug-con"> {r.sugerido_concepto}</span>
+                  {Math.abs((parseFloat(r.valor) || 0) - r.sugerido) > 0.005
+                    ? <button className="rp-sug-aplicar" onClick={() => setFila(realIdx, { valor: r.sugerido, iva_incluido: false, cobrar: true }, true)}>usar</button>
+                    : <span className="rp-sug-ok"> ✓ aplicado</span>}
+                </div>
               )}
               {guardando === key && <span className="rp-saving">guardando…</span>}
             </td>

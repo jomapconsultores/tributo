@@ -153,7 +153,7 @@ def _find_or_create_product(models, db, uid, key, nombre: str) -> int:
 # Valor a cobrar por cliente (desde Odoo) — para prellenar Reportes
 # ---------------------------------------------------------------------------
 
-_HON_CACHE = {}      # cache_key -> (timestamp, {ruc_digitos: {...}})
+_HON_CACHE = {}      # cache_key -> (timestamp, {ruc_digitos: [líneas]})
 _HON_TTL = 120       # segundos
 
 
@@ -162,10 +162,12 @@ def _solo_digitos(s: str) -> str:
 
 
 def valores_honorarios_por_ruc(idents: set, cache_key=None) -> dict:
-    """Devuelve {ruc(dígitos): {'base', 'numero', 'fecha'}} con la BASE SIN IVA
-    (amount_untaxed) de la ÚLTIMA factura de venta emitida a cada cliente en Odoo,
-    referenciando por RUC (vat). Solo incluye los RUC presentes en `idents`.
-    Tolerante a fallos: si Odoo no responde devuelve {} (Reportes no se rompe)."""
+    """Devuelve {ruc(dígitos): [ {'concepto','base','numero','fecha'}, ... ]} con
+    TODAS las líneas de servicio distintas facturadas a cada cliente en Odoo (su
+    BASE SIN IVA = price_subtotal), referenciado por RUC (vat), más recientes
+    primero y sin repetir concepto. Reportes elige, por cada concepto, la línea de
+    MAYOR RELACIÓN. Solo incluye los RUC de `idents`. Tolerante a fallos: si Odoo
+    no responde devuelve {}."""
     if cache_key:
         c = _HON_CACHE.get(cache_key)
         if c and (time.time() - c[0]) < _HON_TTL:
@@ -178,20 +180,47 @@ def valores_honorarios_por_ruc(idents: set, cache_key=None) -> dict:
         ids = _x(models, db, uid, key, "account.move", "search", [dom],
                  {"order": "invoice_date desc, id desc", "limit": 3000})
         rows = _x(models, db, uid, key, "account.move", "read", [ids],
-                  {"fields": ["partner_id", "amount_untaxed", "invoice_date", "name"]}) if ids else []
+                  {"fields": ["partner_id", "amount_untaxed", "invoice_date", "name", "invoice_line_ids"]}) if ids else []
         pids = list({r["partner_id"][0] for r in rows if r.get("partner_id")})
         vat = {}
         if pids:
             for p in _x(models, db, uid, key, "res.partner", "read", [pids], {"fields": ["id", "vat"]}):
                 vat[p["id"]] = _solo_digitos(p.get("vat") or "")
-        # Las filas vienen ordenadas por fecha desc → la 1ª de cada RUC es la última factura.
+        # Solo facturas de clientes del programa (reduce mucho la lectura de líneas).
+        porruc = {}
         for r in rows:
-            pid = (r.get("partner_id") or [None])[0]
-            v = vat.get(pid, "")
-            if not v or v not in norm or v in out:
-                continue
-            out[v] = {"base": round(float(r.get("amount_untaxed") or 0), 2),
-                      "numero": r.get("name"), "fecha": r.get("invoice_date")}
+            v = vat.get((r.get("partner_id") or [None])[0], "")
+            if v and v in norm:
+                porruc.setdefault(v, []).append(r)   # ya vienen por fecha desc
+        line_ids = [lid for fs in porruc.values() for r in fs for lid in (r.get("invoice_line_ids") or [])]
+        lmap = {}
+        for i in range(0, len(line_ids), 500):
+            for l in _x(models, db, uid, key, "account.move.line", "read",
+                        [line_ids[i:i + 500]], {"fields": ["id", "name", "product_id", "price_subtotal"]}):
+                lmap[l["id"]] = l
+
+        def _lineas(r):
+            res = []
+            for lid in (r.get("invoice_line_ids") or []):
+                l = lmap.get(lid)
+                if not l:
+                    continue
+                pn = l["product_id"][1] if l.get("product_id") else (l.get("name") or "")
+                res.append((pn, float(l.get("price_subtotal") or 0)))
+            return res
+
+        for v, fs in porruc.items():
+            lineas, vistos = [], set()
+            for r in fs:  # facturas por fecha desc
+                for pn, sub in _lineas(r):
+                    clave = re.sub(r"[^a-z0-9]", "", (pn or "").lower())
+                    if not pn or sub <= 0 or clave in vistos:
+                        continue
+                    vistos.add(clave)
+                    lineas.append({"concepto": pn, "base": round(sub, 2),
+                                   "numero": r.get("name"), "fecha": r.get("invoice_date")})
+            if lineas:
+                out[v] = lineas
     except Exception as e:
         print(f"[odoo] valores_honorarios_por_ruc: {e}")
         out = {}

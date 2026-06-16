@@ -58,6 +58,40 @@ CONCEPTOS = [
     ("Devolución IVA", "devolucion_iva"),
 ]
 
+# Emparejamiento concepto ↔ línea de Odoo: (keyset = puntúa la relación;
+# required = palabra(s) distintivas, al menos una debe estar para considerar match).
+CONCEPTO_MATCH = {
+    "declaracion_iva":   ({"declaracion", "iva", "mensual", "impuesto", "impuestos", "honorario", "honorarios", "contable", "contabilidad"},
+                          {"declaracion", "iva", "honorario", "honorarios", "mensual", "contable", "contabilidad"}),
+    "declaracion_ice":   ({"declaracion", "ice", "mensual"}, {"ice"}),
+    "declaracion_renta": ({"declaracion", "renta", "impuesto", "impuestos"}, {"renta"}),
+    "anexo":             ({"anexo", "pvp", "gastos", "personales"}, {"anexo", "pvp"}),
+    "devolucion_iva":    ({"devolucion", "iva"}, {"devolucion"}),
+}
+# Para el concepto principal: línea de honorario genérico si no hubo match por tokens.
+_HON_PRINCIPAL = re.compile(r"declaraci|honorari|mensual|contab|anexo|estados? financ|devoluci|asesor|tribut|profesional", re.I)
+
+
+def _tokens(s: str) -> set:
+    import unicodedata
+    s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
+    return {t for t in re.findall(r"[a-z]+", s) if len(t) > 2}
+
+
+def _mejor_linea(lineas, keyset, required):
+    """Línea de Odoo (más reciente primero) de MAYOR RELACIÓN con el concepto:
+    debe compartir alguna palabra distintiva (`required`) y se elige la de más
+    tokens en común (`keyset`). None si ninguna califica."""
+    best, best_score = None, 0
+    for ln in lineas or []:
+        toks = _tokens(ln.get("concepto"))
+        if not (toks & required):
+            continue
+        sc = len(toks & keyset)
+        if sc > best_score:
+            best, best_score = ln, sc
+    return best
+
 
 class CobroIn(BaseModel):
     identificacion: str
@@ -210,9 +244,11 @@ def _filas_y_total(user_id):
         return (bool(serv_por_ruc.get(ruc)) or ruc in anexo_ever
                 or ruc in rucs_con_decl or ruc in rucs_con_guardado)
 
-    # Valor a cobrar desde Odoo (base sin IVA de la última factura emitida al
-    # cliente). Solo llena los "vacíos": clientes sin un cobro cargado a mano este
-    # período. Donde Odoo no tiene factura → queda en blanco con una señal.
+    # Precio SUGERIDO desde Odoo: el valor de la línea coherente con el honorario
+    # (declaración/honorario/anexo), no firma/cursos. Se muestra SIEMPRE como
+    # sugerido (con su concepto y fecha) para decidir; además LLENA los "vacíos"
+    # (clientes sin cobro cargado a mano este período). Si Odoo no tiene factura
+    # del cliente → queda en blanco con la señal.
     rucs_con_cur = {ruc for (ruc, _) in guardados_cur}
     odoo_por_ruc = {}
     try:
@@ -227,11 +263,8 @@ def _filas_y_total(user_id):
     rucs_orden = [r for r in sorted(nombre_por_ruc, key=lambda r: (nombre_por_ruc[r] or "").upper()) if _activo(r)]
     for ruc in rucs_orden:
         es_vacio = ruc not in rucs_con_cur  # sin cobro cargado a mano este período
-        odoo_info = odoo_por_ruc.get(re.sub(r"\D", "", ruc)) if es_vacio else None
-        odoo_base = float(odoo_info["base"]) if odoo_info and float(odoo_info.get("base") or 0) > 0 else None
-        usa_odoo = es_vacio and odoo_base is not None
-        sin_odoo = es_vacio and odoo_base is None   # señal: sin valor en Odoo
-        # Concepto que recibe el valor de Odoo: el primer relevante (o el primero).
+        odoo_lineas = odoo_por_ruc.get(re.sub(r"\D", "", ruc))  # lista de líneas o None
+        # Concepto principal: el primer relevante (o el primero).
         primary_label = None
         for label, key in CONCEPTOS:
             realiz = ((ruc, key) in decl_ever) or (key == "anexo" and ruc in anexo_ever)
@@ -240,8 +273,24 @@ def _filas_y_total(user_id):
                 break
         if primary_label is None:
             primary_label = CONCEPTOS[0][0]
+        # Honorario genérico (para el principal si ningún token emparejó).
+        principal = None
+        for ln in (odoo_lineas or []):
+            if _HON_PRINCIPAL.search(ln.get("concepto") or ""):
+                principal = ln
+                break
+        # Sugerido por concepto = línea de Odoo de MAYOR RELACIÓN con ese concepto.
+        sug_por_label = {}
+        for label, key in CONCEPTOS:
+            keyset, required = CONCEPTO_MATCH.get(key, (set(), set()))
+            s = _mejor_linea(odoo_lineas, keyset, required)
+            if s is None and label == primary_label:
+                s = principal
+            if s:
+                sug_por_label[label] = s
+        sin_odoo = es_vacio and not sug_por_label   # señal: sin valor en Odoo
 
-        def _fila(concepto, relevante, hecho, personalizado, g, arrastrado=False, odoo_val=None, origen=""):
+        def _fila(concepto, relevante, hecho, personalizado, g, arrastrado=False, odoo_val=None, origen="", sugerido=None):
             nonlocal total
             if odoo_val is not None:
                 cobrar, valor, iva_incl = True, float(odoo_val), False  # base sin IVA → "+IVA"
@@ -254,7 +303,7 @@ def _filas_y_total(user_id):
             bruto = round(valor if iva_incl else valor * (1 + IVA_RATE), 2)
             if cobrar:
                 total += bruto
-            filas.append({
+            fila = {
                 "identificacion": ruc,
                 "contribuyente": nombre_por_ruc[ruc],
                 "client_id": client_id_por_ruc.get(ruc),
@@ -267,17 +316,24 @@ def _filas_y_total(user_id):
                 "cobrar": cobrar,
                 "valor": round(valor, 2),
                 "bruto": bruto,
-                "origen": origen,          # 'odoo' | 'manual' | ''
-                "sin_odoo": bool(sin_odoo),  # señal a nivel cliente
-            })
+                "origen": origen,            # 'odoo' | 'manual' | ''
+                "sin_odoo": bool(sin_odoo),    # señal a nivel cliente
+            }
+            if sugerido:  # precio sugerido (con su concepto/fecha) para decidir
+                fila["sugerido"] = round(float(sugerido.get("base") or 0), 2)
+                fila["sugerido_concepto"] = sugerido.get("concepto") or ""
+                fila["sugerido_fecha"] = sugerido.get("fecha") or ""
+            filas.append(fila)
         for label, key in CONCEPTOS:
             hecho = ((ruc, key) in decl_mes) or (key == "anexo" and ruc in anexo_mes)
             realizado = ((ruc, key) in decl_ever) or (key == "anexo" and ruc in anexo_ever)
             relevante = realizado or (key in serv_por_ruc.get(ruc, set()))
+            sug = sug_por_label.get(label)  # línea de Odoo de mayor relación
             if es_vacio:
                 # Vacío: no se arrastra del mes anterior; lo llena Odoo (o queda en blanco).
-                if usa_odoo and label == primary_label:
-                    _fila(label, relevante, hecho, False, None, odoo_val=odoo_base, origen="odoo")
+                if sug:
+                    _fila(label, relevante, hecho, False, None,
+                          odoo_val=float(sug["base"]), origen="odoo", sugerido=sug)
                 else:
                     _fila(label, relevante, hecho, False, None)
             else:
@@ -285,7 +341,7 @@ def _filas_y_total(user_id):
                 g_prev = prev_por_prod.get((ruc, label))
                 _fila(label, relevante, hecho, False, g_cur or g_prev,
                       arrastrado=(g_cur is None and g_prev is not None),
-                      origen="manual" if g_cur else "")
+                      origen="manual" if g_cur else "", sugerido=sug)
         for prod in sorted(custom_por_ruc.get(ruc, set()), key=str.upper):
             g_cur = guardados_cur.get((ruc, prod))
             g_prev = prev_por_prod.get((ruc, prod))
