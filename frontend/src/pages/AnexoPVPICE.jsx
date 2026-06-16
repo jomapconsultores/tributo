@@ -108,7 +108,21 @@ export default function AnexoPVPICE() {
   const [partes, setPartes] = useState(null)
   const [marcaInfo, setMarcaInfo] = useState(null)
   const [lk, setLk] = useState({ presentacion: [], capacidad: [], unidad: [], pais: [], grado: [] })
+  const [dragActive, setDragActive] = useState(false)
   const fileRef = useRef(null)
+
+  // Arrastrar y soltar el XML del anexo (además de elegirlo con el botón)
+  const handleDrag = (e) => {
+    e.preventDefault(); e.stopPropagation()
+    if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true)
+    else if (e.type === 'dragleave') setDragActive(false)
+  }
+  const handleDrop = (e) => {
+    e.preventDefault(); e.stopPropagation(); setDragActive(false)
+    const file = Array.from(e.dataTransfer.files || []).find((f) => f.name.toLowerCase().endsWith('.xml'))
+    if (!file) { alert('Arrastra un archivo XML de anexo (ICE o PVP).'); return }
+    cargarXml(file)
+  }
 
   const codField = tipo === 'PVP' ? 'codProdPVP' : 'codProdICE'
 
@@ -535,6 +549,18 @@ export default function AnexoPVPICE() {
         </button>
         <button className="ax-btn green" onClick={exportarExcel} disabled={!tipo}>📊 Exportar Excel</button>
         <button className="ax-btn red" onClick={exportarPdf} disabled={!tipo}>📑 Exportar PDF</button>
+      </div>
+
+      {/* Zona de arrastre del XML (también se puede usar el botón "📂 Cargar XML") */}
+      <div
+        className={`ax-drop ${dragActive ? 'drag-active' : ''}`}
+        onDragEnter={handleDrag} onDragOver={handleDrag}
+        onDragLeave={handleDrag} onDrop={handleDrop}
+        onClick={() => fileRef.current?.click()}
+        title="Arrastra el XML aquí o haz clic para elegirlo"
+      >
+        <span className="ax-drop-icon">📥</span>
+        <span>Arrastrá el XML del anexo (ICE o PVP) aquí, o hacé clic para elegirlo</span>
       </div>
 
       {/* Relacionar productos */}

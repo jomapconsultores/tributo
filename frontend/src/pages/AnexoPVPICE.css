@@ -15,6 +15,12 @@
 .ax-btn.red { background: #e74c3c; }
 .ax-btn.yellow { background: #f1c40f; color: #1f2937; }
 
+/* Zona de arrastre del XML */
+.ax-drop { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 16px; border: 2px dashed #bcd0e6; border-radius: 10px; background: #f7fafd; color: #51607a; font-size: 0.85rem; cursor: pointer; transition: background .12s, border-color .12s; }
+.ax-drop:hover { background: #eef5fc; border-color: #3498db; }
+.ax-drop.drag-active { background: #e3f0ff; border-color: #2563eb; color: #1a3d6b; }
+.ax-drop-icon { font-size: 1.3rem; }
+
 .ax-relate { display: flex; gap: 18px; flex-wrap: wrap; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 14px; }
 .ax-relate-group { display: flex; align-items: center; gap: 8px; }
 .ax-relate-lbl { font-size: 0.78rem; font-weight: 700; color: #475569; }
