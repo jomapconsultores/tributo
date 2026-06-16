@@ -27,6 +27,9 @@ export default function Reportes() {
   }, [searchParams])
   const [guardando, setGuardando] = useState('')
   const [colapsados, setColapsados] = useState(() => new Set())
+  const [historial, setHistorial] = useState({})  // { ruc: [{anio,mes,etiqueta,subtotal,items}] }
+  const [periodo, setPeriodo] = useState(null)     // { mes, anio, etiqueta }
+  const [histAbierto, setHistAbierto] = useState(() => new Set())  // rucs con histórico expandido
   const [ivaIncluido, setIvaIncluido] = useState(() => localStorage.getItem('rpIvaIncluido') === '1')
   const [ivaClientes, setIvaClientes] = useState({}) // { client_id: bool }
   const savingIva = useRef({})
@@ -40,6 +43,8 @@ export default function Reportes() {
     try {
       const r = await reportesAPI.cobros()
       const data = r.data?.data || []
+      setHistorial(r.data?.historial || {})
+      setPeriodo(r.data?.periodo || null)
       // Sobreponer los borradores locales pendientes (valores aún no confirmados
       // por el servidor, p.ej. si se cayó el internet) para no perderlos.
       const drafts = readRpDrafts()
@@ -116,6 +121,9 @@ export default function Reportes() {
   }
 
   const toggleGrupo = (ident) => setColapsados((s) => {
+    const n = new Set(s); n.has(ident) ? n.delete(ident) : n.add(ident); return n
+  })
+  const toggleHist = (ident) => setHistAbierto((s) => {
     const n = new Set(s); n.has(ident) ? n.delete(ident) : n.add(ident); return n
   })
 
@@ -195,8 +203,8 @@ export default function Reportes() {
     <div className="rp-page">
       <header className="rp-header">
         <div>
-          <h1>📑 Reportes — Honorarios a cobrar</h1>
-          <p className="rp-sub">Cada contribuyente (desplegable) con los servicios que se le hacen. Marca si se cobra y define el valor; se guarda solo. Puedes agregar rubros que no estén en la lista con "➕ Agregar rubro".</p>
+          <h1>📑 Reportes — Honorarios a cobrar {periodo && <span className="rp-periodo">· {periodo.etiqueta}</span>}</h1>
+          <p className="rp-sub">Cada contribuyente (desplegable) con los servicios que se le hacen. Lo que tiene la declaración <strong>hecha este mes se pinta de verde</strong> (se debe facturar). El valor que cargas se guarda y se arrastra solo al mes siguiente; los meses anteriores quedan en el desplegable "🗂 Meses anteriores".</p>
         </div>
         <div className="rp-total-box">
           <span className="rp-total-lbl">Total a cobrar{search ? ' (filtrado)' : ''}{ivaIncluido ? ' (IVA incl.)' : ''}</span>
@@ -250,7 +258,10 @@ export default function Reportes() {
                     rows={rows} setFila={setFila} guardando={guardando}
                     onAddRubro={() => agregarRubro(g.identificacion, g.contribuyente)}
                     onDelRubro={borrarRubro} money={money}
-                    bruto={bruto} desglosa={desglosa} />
+                    bruto={bruto} desglosa={desglosa}
+                    historial={historial[g.identificacion] || []}
+                    histAbierto={histAbierto.has(g.identificacion)}
+                    onToggleHist={() => toggleHist(g.identificacion)} />
                 )
               })}
             </tbody>
@@ -269,7 +280,7 @@ export default function Reportes() {
   )
 }
 
-function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onDelRubro, money, bruto, desglosa }) {
+function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onDelRubro, money, bruto, desglosa, historial, histAbierto, onToggleHist }) {
   const d = g.subtotal > 0 ? desglosa(g.subtotal) : null
   return (
     <>
@@ -291,11 +302,13 @@ function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onD
         const realIdx = rows.indexOf(r)
         const key = r.identificacion + '|' + r.concepto
         return (
-          <tr key={key} className={!r.cobrar ? 'rp-row-off' : ''}>
+          <tr key={key} className={`${!r.cobrar ? 'rp-row-off ' : ''}${r.hecho ? 'rp-row-hecho' : ''}`}>
             <td className="rp-concepto">
+              {r.hecho && <span className="rp-check" title="Declaración hecha este mes: se debe facturar">✓</span>}
               {r.concepto}
-              {r.relevante && <span className="rp-tag" title="Contratado o realizado">●</span>}
+              {r.relevante && !r.hecho && <span className="rp-tag" title="Contratado o realizado">●</span>}
               {r.personalizado && <span className="rp-badge-custom">rubro propio</span>}
+              {r.arrastrado && <span className="rp-arrastrado" title="Valor traído del mes anterior; ajústalo si cambió">↩ mes anterior</span>}
             </td>
             <td className="c">
               <input type="checkbox" checked={!!r.cobrar}
@@ -339,9 +352,32 @@ function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onD
         <tr className="rp-addrow">
           <td colSpan={4}>
             <button className="rp-add-btn" onClick={onAddRubro}>➕ Agregar rubro a {g.contribuyente}</button>
+            {historial.length > 0 && (
+              <button className="rp-hist-btn" onClick={onToggleHist}
+                title="Ver lo cobrado en meses anteriores">
+                {histAbierto ? '▾' : '▸'} 🗂 Meses anteriores ({historial.length})
+              </button>
+            )}
           </td>
         </tr>
       )}
+      {!cerrado && histAbierto && historial.map((p) => (
+        <tr key={`${g.identificacion}-${p.anio}-${p.mes}`} className="rp-hist-row">
+          <td colSpan={4}>
+            <div className="rp-hist-per">
+              <span className="rp-hist-mes">{p.etiqueta}</span>
+              <span className="rp-hist-items">
+                {p.items.map((it, i) => (
+                  <span key={i} className="rp-hist-item">
+                    {it.concepto}: {money(it.bruto)}{it.iva_incluido ? ' (incl.)' : ' (+IVA)'}
+                  </span>
+                ))}
+              </span>
+              <span className="rp-hist-sub">Subtotal {money(p.subtotal)}</span>
+            </div>
+          </td>
+        </tr>
+      ))}
     </>
   )
 }

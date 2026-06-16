@@ -76,3 +76,22 @@
 .rp-bruto { font-size: .7rem; color: #0369a1; text-align: right; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .rp-total-desglose { display: block; font-size: .72rem; color: #eafff5; margin-top: 2px; opacity: .95; }
 .rp-lista-badge { margin-left: 10px; padding: 1px 8px; background: #d5f5e3; color: #1e8449; border-radius: 10px; font-size: .68rem; font-weight: 700; }
+
+/* Período actual en el título */
+.rp-periodo { color: #1e8449; font-size: .62em; font-weight: 600; text-transform: capitalize; }
+
+/* Fila con declaración hecha este mes → verde claro (se debe facturar) */
+.rp-row-hecho td { background: #eafaf1 !important; }
+.rp-row-hecho:hover td { background: #ddf5e7 !important; }
+.rp-check { color: #1e8449; font-weight: 800; margin-right: 6px; }
+.rp-arrastrado { margin-left: 8px; padding: 1px 7px; background: #eef2f7; color: #6b7888; border-radius: 9px; font-size: .64rem; font-weight: 600; }
+
+/* Botón "Meses anteriores" y filas del histórico */
+.rp-hist-btn { margin-left: 14px; border: 1px solid #d6deea; background: #fff; color: #51607a; border-radius: 7px; padding: 4px 12px; font-size: 0.77rem; cursor: pointer; }
+.rp-hist-btn:hover { background: #f4f8fc; border-color: #003399; }
+.rp-hist-row td { background: #f7f9fc; padding: 4px 24px; border-bottom: 1px dashed #e6ecf3; }
+.rp-hist-per { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; font-size: .76rem; color: #51607a; }
+.rp-hist-mes { font-weight: 700; color: #1a3d6b; text-transform: capitalize; min-width: 110px; }
+.rp-hist-items { display: flex; flex-wrap: wrap; gap: 4px 12px; flex: 1; }
+.rp-hist-item { color: #6b7888; }
+.rp-hist-sub { font-weight: 700; color: #1e8449; font-variant-numeric: tabular-nums; }

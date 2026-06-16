@@ -4,6 +4,7 @@ y el valor a cobrar. Los valores se guardan (tabla reportes_honorarios) para
 reutilizarse a futuro. Exportable a Excel y PDF."""
 import io
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -14,8 +15,31 @@ from services.email_sender import enviar_correo, email_configurado
 
 DESTINO_ODOO = "johannanievecela@hotmail.com"
 IVA_RATE = 0.15  # IVA Ecuador vigente
+EC_TZ = timezone(timedelta(hours=-5))  # Ecuador (UTC-5, sin horario de verano)
+MESES_ES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
+            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 
 router = APIRouter(prefix="/api/reportes", tags=["reportes"])
+
+
+def _periodo_actual():
+    """Mes/año de cobro actual (hora Ecuador)."""
+    now = datetime.now(EC_TZ)
+    return now.month, now.year
+
+
+def _es_mes_actual(created_at, mes, anio) -> bool:
+    """¿La fecha (ISO) cae dentro del mes calendario (mes/anio) en hora Ecuador?"""
+    if not created_at:
+        return False
+    try:
+        dt = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.astimezone(EC_TZ)
+        return dt.month == mes and dt.year == anio
+    except Exception:
+        return False
 
 
 def _desglose_iva(total: float):
@@ -44,11 +68,16 @@ class CobroIn(BaseModel):
 
 
 def _filas_y_total(user_id):
-    """Construye las filas (contribuyente × concepto) con cobrar/valor guardados,
-    pre-marcando lo relevante (servicios contratados, anexos y declaraciones
-    realmente hechas). Devuelve (filas, total_a_cobrar)."""
+    """Construye las filas (contribuyente × concepto) del PERÍODO ACTUAL con
+    cobrar/valor guardados, pre-marcando lo relevante (servicios contratados,
+    anexos y declaraciones). Marca en verde (`hecho`) lo declarado ESTE mes
+    calendario y arrastra los valores del mes anterior cuando no hay del actual.
+    Devuelve (filas, total_a_cobrar, historial) donde historial es
+    {ruc: [{anio, mes, etiqueta, subtotal, items:[...]}]} de meses anteriores."""
     from tenancy import shared_client_ids
     sb = get_supabase_client()
+    cur_mes, cur_anio = _periodo_actual()
+    cur_key = cur_anio * 100 + cur_mes
     own_clients = fetch_all(lambda: sb.table("clients").select("id,identificacion,nombre,iva_incluido").eq("user_id", user_id))
     sids = shared_client_ids(user_id)
     if sids:
@@ -70,8 +99,6 @@ def _filas_y_total(user_id):
     all_ids = list(id_to_ruc.keys())
 
     serv_por_ruc = {}
-    anexo_rucs = set()
-    decl_keys = set()
 
     # Parallelizar las 4 consultas independientes entre sí
     def _q_servicios():
@@ -80,15 +107,21 @@ def _filas_y_total(user_id):
         return fetch_all(lambda: sb.table("client_services").select("client_id,service").in_(
             "client_id", all_ids).eq("active", True))
 
+    # Declaraciones/anexos por CLIENTE visible (propio o compartido), no por quién
+    # los hizo: el verde señala que el trabajo del contribuyente está hecho.
     def _q_anexos():
-        return fetch_all(lambda: sb.table("anexos").select("client_id").eq("user_id", user_id))
+        if not all_ids:
+            return []
+        return fetch_all(lambda: sb.table("anexos").select("client_id,created_at").in_("client_id", all_ids))
 
     def _q_decls():
-        return fetch_all(lambda: sb.table("declaraciones").select("client_id,tipo").eq("user_id", user_id))
+        if not all_ids:
+            return []
+        return fetch_all(lambda: sb.table("declaraciones").select("client_id,tipo,created_at").in_("client_id", all_ids))
 
     def _q_guardados():
         return fetch_all(lambda: sb.table("reportes_honorarios").select(
-            "identificacion,producto,cobrar,valor,iva_incluido").eq("user_id", user_id))
+            "identificacion,producto,cobrar,valor,iva_incluido,mes,anio").eq("user_id", user_id))
 
     with ThreadPoolExecutor(max_workers=4) as ex:
         f_svc = ex.submit(_q_servicios)
@@ -104,37 +137,83 @@ def _filas_y_total(user_id):
         ruc = id_to_ruc.get(s["client_id"])
         if ruc:
             serv_por_ruc.setdefault(ruc, set()).add(s["service"])
-    anexo_rucs = {id_to_ruc.get(a["client_id"]) for a in anexos_r}
+
+    # Declaraciones: "ever" (alguna vez) para decidir quién aparece y qué es
+    # relevante; "mes" (este mes calendario) para pintar en verde "se debe facturar".
+    _TIPO_KEY = {"IVA": "declaracion_iva", "ICE": "declaracion_ice", "RENTA": "declaracion_renta"}
+    decl_ever, decl_mes = set(), set()
     for d in decls_r:
         ruc = id_to_ruc.get(d["client_id"])
-        t = (d.get("tipo") or "").upper()
-        if ruc and t == "IVA":
-            decl_keys.add((ruc, "declaracion_iva"))
-        if ruc and t == "ICE":
-            decl_keys.add((ruc, "declaracion_ice"))
-    by_key = {(g["identificacion"], g["producto"]): g for g in guardados}
+        key = _TIPO_KEY.get((d.get("tipo") or "").upper())
+        if not ruc or not key:
+            continue
+        decl_ever.add((ruc, key))
+        if _es_mes_actual(d.get("created_at"), cur_mes, cur_anio):
+            decl_mes.add((ruc, key))
+    anexo_ever, anexo_mes = set(), set()
+    for a in anexos_r:
+        ruc = id_to_ruc.get(a["client_id"])
+        if not ruc:
+            continue
+        anexo_ever.add(ruc)
+        if _es_mes_actual(a.get("created_at"), cur_mes, cur_anio):
+            anexo_mes.add(ruc)
+
+    # Honorarios guardados, separados por período:
+    #  - guardados_cur: los del mes en curso (editables)
+    #  - prev_por_prod: el más reciente de meses anteriores (para arrastrar)
+    #  - historial:     todos los meses anteriores agrupados (solo lectura)
+    guardados_cur = {}
+    prev_por_prod = {}
+    hist = {}
+    for g in guardados:
+        ruc = g["identificacion"]
+        prod = g["producto"]
+        k = (ruc, prod)
+        pk = (g.get("anio") or 0) * 100 + (g.get("mes") or 0)
+        if pk == cur_key:
+            guardados_cur[k] = g
+        elif pk < cur_key:
+            prev = prev_por_prod.get(k)
+            if prev is None or ((prev.get("anio") or 0) * 100 + (prev.get("mes") or 0)) < pk:
+                prev_por_prod[k] = g
+            # Historial (solo lo que se cobró con valor)
+            if g.get("cobrar") and float(g.get("valor") or 0) > 0:
+                valor = float(g["valor"])
+                iva_incl = bool(g.get("iva_incluido"))
+                bruto = round(valor if iva_incl else valor * (1 + IVA_RATE), 2)
+                per = hist.setdefault(ruc, {}).setdefault(
+                    (g["anio"], g["mes"]),
+                    {"anio": g["anio"], "mes": g["mes"],
+                     "etiqueta": f"{MESES_ES[g['mes']]} {g['anio']}", "subtotal": 0.0, "items": []})
+                per["items"].append({"concepto": prod, "valor": round(valor, 2),
+                                     "iva_incluido": iva_incl, "bruto": bruto})
+                per["subtotal"] = round(per["subtotal"] + bruto, 2)
+
+    historial = {}
+    for ruc, perds in hist.items():
+        historial[ruc] = sorted(perds.values(), key=lambda p: (p["anio"], p["mes"]), reverse=True)
 
     fixed_labels = {label for label, _ in CONCEPTOS}
-    # Rubros personalizados guardados (conceptos que no están en la lista fija)
+    # Rubros personalizados activos (del mes actual o arrastrados del anterior)
     custom_por_ruc = {}
-    for g in guardados:
-        if g["producto"] not in fixed_labels:
-            custom_por_ruc.setdefault(g["identificacion"], []).append(g)
+    for (ruc, prod) in set(guardados_cur) | set(prev_por_prod):
+        if prod not in fixed_labels:
+            custom_por_ruc.setdefault(ruc, set()).add(prod)
 
-    # Solo salen contribuyentes "con algo": con servicio contratado (credenciales),
-    # con declaración/anexo hecho, o con un cobro ya guardado. Los que no tienen
-    # nada NO aparecen en el reporte.
-    rucs_con_decl = {k[0] for k in decl_keys}
+    # Solo salen contribuyentes "con algo": servicio contratado, declaración/anexo
+    # hecho alguna vez, o un cobro guardado (cualquier período).
+    rucs_con_decl = {k[0] for k in decl_ever}
     rucs_con_guardado = {g["identificacion"] for g in guardados}
     def _activo(ruc):
-        return (bool(serv_por_ruc.get(ruc)) or ruc in anexo_rucs
+        return (bool(serv_por_ruc.get(ruc)) or ruc in anexo_ever
                 or ruc in rucs_con_decl or ruc in rucs_con_guardado)
 
     filas = []
     total = 0.0
     rucs_orden = [r for r in sorted(nombre_por_ruc, key=lambda r: (nombre_por_ruc[r] or "").upper()) if _activo(r)]
     for ruc in rucs_orden:
-        def _fila(concepto, relevante, hecho, personalizado, g):
+        def _fila(concepto, relevante, hecho, personalizado, g, arrastrado=False):
             nonlocal total
             cobrar = bool(g["cobrar"]) if g else relevante
             valor = float(g["valor"]) if g and g.get("valor") is not None else 0.0
@@ -153,18 +232,26 @@ def _filas_y_total(user_id):
                 "concepto": concepto,
                 "relevante": relevante,
                 "hecho": hecho,
+                "arrastrado": arrastrado,
                 "personalizado": personalizado,
                 "cobrar": cobrar,
                 "valor": round(valor, 2),
                 "bruto": bruto,
             })
         for label, key in CONCEPTOS:
-            hecho = ((ruc, key) in decl_keys) or (key == "anexo" and ruc in anexo_rucs)
-            relevante = hecho or (key in serv_por_ruc.get(ruc, set()))
-            _fila(label, relevante, hecho, False, by_key.get((ruc, label)))
-        for g in sorted(custom_por_ruc.get(ruc, []), key=lambda x: x["producto"].upper()):
-            _fila(g["producto"], False, False, True, g)
-    return filas, round(total, 2)
+            hecho = ((ruc, key) in decl_mes) or (key == "anexo" and ruc in anexo_mes)
+            realizado = ((ruc, key) in decl_ever) or (key == "anexo" and ruc in anexo_ever)
+            relevante = realizado or (key in serv_por_ruc.get(ruc, set()))
+            g_cur = guardados_cur.get((ruc, label))
+            g_prev = prev_por_prod.get((ruc, label))
+            _fila(label, relevante, hecho, False, g_cur or g_prev,
+                  arrastrado=(g_cur is None and g_prev is not None))
+        for prod in sorted(custom_por_ruc.get(ruc, set()), key=str.upper):
+            g_cur = guardados_cur.get((ruc, prod))
+            g_prev = prev_por_prod.get((ruc, prod))
+            _fila(prod, False, False, True, g_cur or g_prev,
+                  arrastrado=(g_cur is None and g_prev is not None))
+    return filas, round(total, 2), historial
 
 
 @router.put("/cliente-iva/{client_id}")
@@ -179,18 +266,23 @@ async def set_cliente_iva(client_id: str, iva_incluido: bool, user_id: str = Dep
 
 @router.get("/cobros")
 async def cobros(user_id: str = Depends(get_current_user)):
-    filas, total = _filas_y_total(user_id)
-    return {"data": filas, "total_a_cobrar": total}
+    filas, total, historial = _filas_y_total(user_id)
+    cur_mes, cur_anio = _periodo_actual()
+    return {"data": filas, "total_a_cobrar": total, "historial": historial,
+            "periodo": {"mes": cur_mes, "anio": cur_anio,
+                        "etiqueta": f"{MESES_ES[cur_mes]} {cur_anio}"}}
 
 
 @router.put("/cobros")
 async def guardar_cobro(entry: CobroIn, user_id: str = Depends(get_current_user)):
-    """Guarda (upsert) el 'cobrar' y 'valor' de un contribuyente + concepto."""
+    """Guarda (upsert) el 'cobrar' y 'valor' de un contribuyente + concepto en el
+    período (mes/año) ACTUAL. Los meses anteriores quedan intactos como histórico."""
     sb = get_supabase_client()
     concepto = (entry.producto or "").strip()
     ident = (entry.identificacion or "").strip()
     if not ident or not concepto:
         raise HTTPException(status_code=400, detail="Contribuyente y concepto son obligatorios")
+    cur_mes, cur_anio = _periodo_actual()
     try:
         sb.table("reportes_honorarios").upsert({
             "user_id": user_id,
@@ -200,8 +292,10 @@ async def guardar_cobro(entry: CobroIn, user_id: str = Depends(get_current_user)
             "cobrar": bool(entry.cobrar),
             "valor": float(entry.valor or 0),
             "iva_incluido": bool(entry.iva_incluido),
+            "mes": cur_mes,
+            "anio": cur_anio,
             "updated_at": "now()",
-        }, on_conflict="user_id,identificacion,producto").execute()
+        }, on_conflict="user_id,identificacion,producto,mes,anio").execute()
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -224,7 +318,7 @@ async def enviar_correo_reporte(iva_incluido: bool = False, user_id: str = Depen
     if not email_configurado():
         return {"ok": False, "configurado": False,
                 "error": "El envío automático no está configurado en el servidor."}
-    filas, total = _filas_y_total(user_id)
+    filas, total, _ = _filas_y_total(user_id)
     # 'bruto' = valor con IVA incluido por ítem (base + 15%). El total ya es con IVA.
     por_ruc = {}
     for f in filas:
@@ -255,7 +349,7 @@ async def enviar_correo_reporte(iva_incluido: bool = False, user_id: str = Depen
 @router.get("/export/excel")
 async def export_excel(iva_incluido: bool = False, user_id: str = Depends(get_current_user)):
     import xlsxwriter
-    filas, total = _filas_y_total(user_id)
+    filas, total, _ = _filas_y_total(user_id)
     out = io.BytesIO()
     wb = xlsxwriter.Workbook(out, {"in_memory": True})
     ws = wb.add_worksheet("Honorarios")
@@ -321,7 +415,7 @@ async def export_pdf(iva_incluido: bool = False, user_id: str = Depends(get_curr
     from reportlab.lib import colors
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    filas, total = _filas_y_total(user_id)
+    filas, total, _ = _filas_y_total(user_id)
     out = io.BytesIO()
     doc = SimpleDocTemplate(out, pagesize=letter, topMargin=0.5 * inch, bottomMargin=0.5 * inch)
     st = getSampleStyleSheet()
