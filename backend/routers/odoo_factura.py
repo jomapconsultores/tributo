@@ -43,24 +43,28 @@ def _idents_autorizadas(sb, user_id: str) -> set:
 
 
 def _notificar_johanna(*, actor_user_id: str, exitosas: list):
-    """Avisa por correo a la responsable de facturación. Corre en hilo aparte.
-    No se llama cuando emite el administrador (Marco Antonio)."""
+    """Avisa por correo a la responsable de facturación (Johanna) para que gestione
+    el COBRO de las facturas emitidas. Corre en hilo aparte. Se avisa siempre,
+    salvo si quien emite es la propia destinataria (no se auto-notifica)."""
     destino = (ODOO_NOTIFY_EMAIL or "").strip()
     if not destino or not email_configurado():
         return
     actor = _email_de(actor_user_id) or "Un usuario"
+    if actor and actor.strip().lower() == destino.lower():
+        return  # quien emite es la propia Johanna: no auto-notificar
     lineas, total = [], 0.0
     for r in exitosas:
         t = float(r.get("total") or 0)
         total += t
         lineas.append(f"  - {r.get('nombre')} ({r.get('ruc')}): {r.get('numero') or 's/n'}  ${t:,.2f}")
     cuerpo = (
-        f"{actor} emitió {len(exitosas)} factura(s) en Odoo:\n\n"
+        f"Johanna, se emitieron {len(exitosas)} factura(s) en Odoo (por {actor}). "
+        "Por favor gestiona el COBRO de estos valores:\n\n"
         + "\n".join(lineas)
-        + f"\n\nTotal: ${total:,.2f}\n\nEmitidas según los permisos y empresas autorizadas."
+        + f"\n\nTotal a cobrar: ${total:,.2f}\n\nGracias."
     )
     try:
-        enviar_correo(destino, f"Factura(s) emitida(s) en Odoo — {len(exitosas)}", cuerpo)
+        enviar_correo(destino, f"Cobro pendiente — {len(exitosas)} factura(s) emitida(s) en Odoo", cuerpo)
     except Exception as e:
         print(f"[odoo] fallo aviso a {destino}: {e}")
 
@@ -308,10 +312,10 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
                       entity="Factura emitida en Odoo", identificacion=r.get("ruc"),
                       contribuyente=r.get("nombre"),
                       metadata={"numero": r.get("numero"), "total": r.get("total")})
-        # Aviso por correo a Johanna SALVO si emite el administrador (Marco Antonio)
-        if not es_super_admin(user_id):
-            threading.Thread(target=_notificar_johanna,
-                             kwargs=dict(actor_user_id=user_id, exitosas=exitosas),
-                             daemon=True).start()
+        # Aviso por correo a Johanna SIEMPRE (para que gestione el cobro), sin
+        # importar quién emita; _notificar_johanna evita auto-avisarse a sí misma.
+        threading.Thread(target=_notificar_johanna,
+                         kwargs=dict(actor_user_id=user_id, exitosas=exitosas),
+                         daemon=True).start()
 
     return {"resultados": resultados}
