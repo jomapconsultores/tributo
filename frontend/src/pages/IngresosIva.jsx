@@ -18,7 +18,7 @@ import ClientSwitcher from '../components/ClientSwitcher'
 import ClaveHeader from '../components/ClaveHeader'
 import './IngresosIva.css'
 
-import { fmtMoney as money } from '../utils/format'
+import { fmtMoney as money, msgFueraPeriodo } from '../utils/format'
 
 export default function IngresosIva() {
   const { openNewClient } = useOutletContext()
@@ -95,6 +95,7 @@ export default function IngresosIva() {
         if (rechazadas.length > 5) msg += `\n  …y ${rechazadas.length - 5} más`
         msg += `\n\nSubilas en el módulo "ICE - XML".`
       }
+      msg += msgFueraPeriodo(res.data)
       alert(msg)
       await load()
     } catch (err) {
@@ -117,6 +118,7 @@ export default function IngresosIva() {
       if (d.rechazadas_por_ice > 0) msg += `\n⚠ ${d.rechazadas_por_ice} con ICE (van en "ICE - XML")`
       if (faltan > 0) msg += `\n\n⚠ ${faltan} no se bajaron (SRI saturado). Vuelve a subir el mismo TXT: reintenta solo las que faltan.`
       else msg += `\n\n✔ Se bajaron todas.`
+      msg += msgFueraPeriodo(d)
       alert(msg)
       await load()
     } catch (err) {

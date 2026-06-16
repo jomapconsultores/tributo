@@ -7,6 +7,7 @@ from database import get_supabase_client
 from services.retention_parser import parse_retention_xml
 from services.retention_export import generate_retention_excel
 from services.xml_store import guardar_xml_original
+from services.periodo import periodo_cliente, es_de_otro_periodo, etiqueta_periodo
 from database import fetch_all
 from tenancy import assert_client_owner, shared_client_ids
 from services.activity import registrar
@@ -80,12 +81,18 @@ async def process_xml(
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
-        new_count = dup_count = err_count = 0
+        pmes, panio = periodo_cliente(supabase, client_id)
+        new_count = dup_count = err_count = fp_count = 0
+        fuera_periodo = []
         for file in files:
             xml_content = (await file.read()).decode("utf-8", errors="ignore")
             ret = parse_retention_xml(xml_content)
             if not ret:
                 err_count += 1
+                continue
+            if es_de_otro_periodo(ret.get("fecha"), pmes, panio):
+                fp_count += 1
+                fuera_periodo.append({"archivo": file.filename, "factura": ret.get("nro_comprobante"), "fecha": ret.get("fecha")})
                 continue
             guardar_xml_original(supabase, user_id, client_id, "retencion", xml_content)
             result = _store_retention(supabase, client_id, user_id, ret)
@@ -98,7 +105,9 @@ async def process_xml(
         if new_count:
             registrar(actor_user_id=user_id, action="upload", module="retenciones",
                       entity="Retenciones", client_id=client_id, cantidad=new_count)
-        return {"new": new_count, "duplicates": dup_count, "errors": err_count}
+        return {"new": new_count, "duplicates": dup_count, "errors": err_count,
+                "fuera_de_periodo": fp_count, "fuera_periodo": fuera_periodo,
+                "periodo": etiqueta_periodo(pmes, panio)}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

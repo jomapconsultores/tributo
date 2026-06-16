@@ -8,6 +8,7 @@ from services.sri_service import extract_claves_from_txt, descargar_multiples_xm
 from services.xml_parser import parse_xml_invoice
 from services.export_service import generate_excel, generate_pdf
 from services.xml_store import guardar_xml_original
+from services.periodo import periodo_cliente, es_de_otro_periodo, etiqueta_periodo
 from database import fetch_all
 from tenancy import assert_client_owner, shared_client_ids
 from services.activity import registrar
@@ -133,12 +134,18 @@ async def process_txt(
         errores = no_descargadas
 
         classification_map, card_memory = _load_maps(supabase)
+        pmes, panio = periodo_cliente(supabase, client_id)
 
-        new_count = dup_count = err_count = 0
+        new_count = dup_count = err_count = fp_count = 0
+        fuera_periodo = []
         for xml_content in xmls:
             invoice = parse_xml_invoice(xml_content, classification_map, card_memory)
             if not invoice:
                 err_count += 1
+                continue
+            if es_de_otro_periodo(invoice.get("fecha"), pmes, panio):
+                fp_count += 1
+                fuera_periodo.append({"archivo": "(XML del SRI)", "factura": invoice.get("factura_numero"), "fecha": invoice.get("fecha")})
                 continue
             guardar_xml_original(supabase, user_id, client_id, "gasto", xml_content)
             result = _store_invoice(supabase, client_id, user_id, invoice)
@@ -160,6 +167,9 @@ async def process_txt(
             "total_claves": len(claves),
             "descargadas": len(xmls),
             "no_descargadas": no_descargadas,
+            "fuera_de_periodo": fp_count,
+            "fuera_periodo": fuera_periodo,
+            "periodo": etiqueta_periodo(pmes, panio),
         }
     except HTTPException:
         raise
@@ -178,13 +188,19 @@ async def process_xml(
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
         classification_map, card_memory = _load_maps(supabase)
+        pmes, panio = periodo_cliente(supabase, client_id)
 
-        new_count = dup_count = err_count = 0
+        new_count = dup_count = err_count = fp_count = 0
+        fuera_periodo = []
         for file in files:
             xml_content = (await file.read()).decode('utf-8', errors='ignore')
             invoice = parse_xml_invoice(xml_content, classification_map, card_memory)
             if not invoice:
                 err_count += 1
+                continue
+            if es_de_otro_periodo(invoice.get("fecha"), pmes, panio):
+                fp_count += 1
+                fuera_periodo.append({"archivo": file.filename, "factura": invoice.get("factura_numero"), "fecha": invoice.get("fecha")})
                 continue
             guardar_xml_original(supabase, user_id, client_id, "gasto", xml_content)
             result = _store_invoice(supabase, client_id, user_id, invoice)
@@ -198,7 +214,9 @@ async def process_xml(
         if new_count:
             registrar(actor_user_id=user_id, action="upload", module="gastos",
                       entity="Facturas de gastos", client_id=client_id, cantidad=new_count)
-        return {"new": new_count, "duplicates": dup_count, "errors": err_count}
+        return {"new": new_count, "duplicates": dup_count, "errors": err_count,
+                "fuera_de_periodo": fp_count, "fuera_periodo": fuera_periodo,
+                "periodo": etiqueta_periodo(pmes, panio)}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

@@ -12,6 +12,7 @@ from database import get_supabase_client
 from services.xml_parser_ventas import parse_venta_xml
 from services.pdf_parser_ventas import parse_venta_pdf
 from services.xml_store import guardar_xml_original
+from services.periodo import periodo_cliente, es_de_otro_periodo, etiqueta_periodo
 from services.sri_service import extract_claves_from_txt, descargar_multiples_xmls
 from services.activity import registrar
 from database import fetch_all
@@ -87,8 +88,10 @@ async def process_xml(
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
-        new_count = dup_count = err_count = rej_count = 0
+        pmes, panio = periodo_cliente(supabase, client_id)
+        new_count = dup_count = err_count = rej_count = fp_count = 0
         rechazadas = []  # facturas con ICE
+        fuera_periodo = []  # facturas con fecha de otro mes
         for file in files:
             raw = await file.read()
             es_pdf = (file.filename or "").lower().endswith(".pdf") or raw[:5] == b"%PDF-"
@@ -109,6 +112,14 @@ async def process_xml(
                     "archivo": file.filename,
                     "factura": parsed.get("factura_numero"),
                     "motivo": parsed.get("message"),
+                })
+                continue
+            if es_de_otro_periodo(parsed.get("fecha"), pmes, panio):
+                fp_count += 1
+                fuera_periodo.append({
+                    "archivo": file.filename,
+                    "factura": parsed.get("factura_numero"),
+                    "fecha": parsed.get("fecha"),
                 })
                 continue
             if xml_content:
@@ -135,6 +146,9 @@ async def process_xml(
             "errores": err_count,
             "rechazadas_por_ice": rej_count,
             "rechazadas": rechazadas,
+            "fuera_de_periodo": fp_count,
+            "fuera_periodo": fuera_periodo,
+            "periodo": etiqueta_periodo(pmes, panio),
         }
     except HTTPException:
         raise
@@ -142,14 +156,16 @@ async def process_xml(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _guardar_venta(supabase, client_id, user_id, xml_content):
+def _guardar_venta(supabase, client_id, user_id, xml_content, pmes=None, panio=None):
     """Parsea un XML de venta y lo guarda en sales_iva. Devuelve uno de:
-    'new' | 'dup' | 'err' | 'con_ice'. (Reutilizado por process-xml y process-txt)."""
+    'new' | 'dup' | 'err' | 'con_ice' | 'fuera'. (Reutilizado por process-xml y process-txt)."""
     parsed = parse_venta_xml(xml_content)
     if parsed is None:
         return "err", None
     if parsed.get("error") == "CON_ICE":
         return "con_ice", parsed.get("factura_numero")
+    if es_de_otro_periodo(parsed.get("fecha"), pmes, panio):
+        return "fuera", {"factura": parsed.get("factura_numero"), "fecha": parsed.get("fecha")}
     guardar_xml_original(supabase, user_id, client_id, "ingreso_iva", xml_content)
     try:
         supabase.table("sales_iva").insert({"client_id": client_id, "user_id": user_id, **parsed}).execute()
@@ -180,10 +196,12 @@ async def process_txt(
             raise HTTPException(status_code=400, detail="No se encontraron claves de acceso (49 dígitos) en el archivo.")
         xmls, no_descargadas = descargar_multiples_xmls(list(claves), max_workers=8, max_rondas=3)
 
-        new_count = dup_count = err_count = rej_count = 0
+        pmes, panio = periodo_cliente(supabase, client_id)
+        new_count = dup_count = err_count = rej_count = fp_count = 0
         rechazadas = []
+        fuera_periodo = []
         for xml_content in xmls:
-            estado, info = _guardar_venta(supabase, client_id, user_id, xml_content)
+            estado, info = _guardar_venta(supabase, client_id, user_id, xml_content, pmes, panio)
             if estado == "new":
                 new_count += 1
             elif estado == "dup":
@@ -191,6 +209,9 @@ async def process_txt(
             elif estado == "con_ice":
                 rej_count += 1
                 rechazadas.append({"archivo": "(XML del SRI)", "factura": info, "motivo": "Contiene ICE — subir en módulo ICE-XML"})
+            elif estado == "fuera":
+                fp_count += 1
+                fuera_periodo.append({"archivo": "(XML del SRI)", "factura": info.get("factura"), "fecha": info.get("fecha")})
             else:
                 err_count += 1
         if new_count:
@@ -206,6 +227,9 @@ async def process_txt(
             "errores": err_count,
             "rechazadas_por_ice": rej_count,
             "rechazadas": rechazadas,
+            "fuera_de_periodo": fp_count,
+            "fuera_periodo": fuera_periodo,
+            "periodo": etiqueta_periodo(pmes, panio),
         }
     except HTTPException:
         raise

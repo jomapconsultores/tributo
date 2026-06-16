@@ -20,7 +20,7 @@ import RetentionReport from '../components/RetentionReport'
 import ClientSwitcher from '../components/ClientSwitcher'
 import './Retenciones.css'
 
-import { fmtMoney as money, fmtPct as pct } from '../utils/format'
+import { fmtMoney as money, fmtPct as pct, msgFueraPeriodo } from '../utils/format'
 
 export default function Retenciones() {
   const { openNewClient } = useOutletContext()
@@ -56,7 +56,7 @@ export default function Retenciones() {
     setBusy(`Procesando ${files.length} XML de retención…`)
     try {
       const res = await retentionsAPI.processXml(selectedClientId, files)
-      alert(`Nuevas: ${res.data.new} | Duplicadas: ${res.data.duplicates} | Errores: ${res.data.errors}`)
+      alert(`Nuevas: ${res.data.new} | Duplicadas: ${res.data.duplicates} | Errores: ${res.data.errors}` + msgFueraPeriodo(res.data))
       await load()
     } catch (err) {
       alert('Error: ' + (err.response?.data?.detail || err.message))
