@@ -132,6 +132,9 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     # crédito) y el total 15% + 0%. Solo esa proporción del IVA de compras es
     # crédito tributario; el resto NO es acreditable (va al gasto).
     #   factor = (ventas 15% + 5%) / (ventas 15% + 5% + ventas 0%)
+    # SIN VENTAS en el período: el factor es 0 → NO se genera crédito tributario
+    # (el IVA de compras va al gasto). Si en un caso se requiere el crédito, el
+    # usuario puede fijar el factor a mano (override factor_prop).
     ventas_gravadas = t_base_15 + t_base_5          # tarifa distinta de cero (dan derecho)
     ventas_factor_total = ventas_gravadas + t_base_0  # gravadas + tarifa 0%
     if factor_prop is not None:
@@ -139,7 +142,7 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     elif ventas_factor_total > 0:
         factor = ventas_gravadas / ventas_factor_total
     else:
-        factor = 1.0
+        factor = 0.0   # sin ventas → no hay derecho a crédito tributario
     factor = round(factor, 4)
     credito_adq_aplicable = round(iva_compras * factor, 2)          # 564 (con derecho)
     iva_no_acreditable = round(iva_compras - credito_adq_aplicable, 2)  # al costo/gasto
