@@ -7,6 +7,8 @@ Credenciales Odoo desde variables de entorno (nunca hardcodeadas):
   ODOO_API_KEY    (api key de Odoo)
 """
 import os
+import re
+import time
 import threading
 import xmlrpc.client
 from typing import List, Optional
@@ -145,6 +147,57 @@ def _find_or_create_product(models, db, uid, key, nombre: str) -> int:
         "type": "service",
         "invoice_policy": "order",
     }])
+
+
+# ---------------------------------------------------------------------------
+# Valor a cobrar por cliente (desde Odoo) — para prellenar Reportes
+# ---------------------------------------------------------------------------
+
+_HON_CACHE = {}      # cache_key -> (timestamp, {ruc_digitos: {...}})
+_HON_TTL = 120       # segundos
+
+
+def _solo_digitos(s: str) -> str:
+    return re.sub(r"\D", "", s or "")
+
+
+def valores_honorarios_por_ruc(idents: set, cache_key=None) -> dict:
+    """Devuelve {ruc(dígitos): {'base', 'numero', 'fecha'}} con la BASE SIN IVA
+    (amount_untaxed) de la ÚLTIMA factura de venta emitida a cada cliente en Odoo,
+    referenciando por RUC (vat). Solo incluye los RUC presentes en `idents`.
+    Tolerante a fallos: si Odoo no responde devuelve {} (Reportes no se rompe)."""
+    if cache_key:
+        c = _HON_CACHE.get(cache_key)
+        if c and (time.time() - c[0]) < _HON_TTL:
+            return c[1]
+    norm = {_solo_digitos(i) for i in idents if i}
+    out = {}
+    try:
+        models, uid, db, key = _connect()
+        dom = [["move_type", "=", "out_invoice"], ["state", "=", "posted"]]
+        ids = _x(models, db, uid, key, "account.move", "search", [dom],
+                 {"order": "invoice_date desc, id desc", "limit": 3000})
+        rows = _x(models, db, uid, key, "account.move", "read", [ids],
+                  {"fields": ["partner_id", "amount_untaxed", "invoice_date", "name"]}) if ids else []
+        pids = list({r["partner_id"][0] for r in rows if r.get("partner_id")})
+        vat = {}
+        if pids:
+            for p in _x(models, db, uid, key, "res.partner", "read", [pids], {"fields": ["id", "vat"]}):
+                vat[p["id"]] = _solo_digitos(p.get("vat") or "")
+        # Las filas vienen ordenadas por fecha desc → la 1ª de cada RUC es la última factura.
+        for r in rows:
+            pid = (r.get("partner_id") or [None])[0]
+            v = vat.get(pid, "")
+            if not v or v not in norm or v in out:
+                continue
+            out[v] = {"base": round(float(r.get("amount_untaxed") or 0), 2),
+                      "numero": r.get("name"), "fecha": r.get("invoice_date")}
+    except Exception as e:
+        print(f"[odoo] valores_honorarios_por_ruc: {e}")
+        out = {}
+    if cache_key and out:
+        _HON_CACHE[cache_key] = (time.time(), out)
+    return out
 
 
 # ---------------------------------------------------------------------------

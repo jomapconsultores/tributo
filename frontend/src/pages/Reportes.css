@@ -95,3 +95,7 @@
 .rp-hist-items { display: flex; flex-wrap: wrap; gap: 4px 12px; flex: 1; }
 .rp-hist-item { color: #6b7888; }
 .rp-hist-sub { font-weight: 700; color: #1e8449; font-variant-numeric: tabular-nums; }
+
+/* Señales de origen del valor a cobrar (Odoo) */
+.rp-sinodoo-badge { margin-left: 10px; padding: 1px 8px; background: #fdebd0; color: #b9770e; border-radius: 10px; font-size: .68rem; font-weight: 700; }
+.rp-odoo-tag { margin-left: 8px; padding: 1px 7px; background: #e8f0fe; color: #1a56db; border-radius: 9px; font-size: .64rem; font-weight: 700; letter-spacing: .3px; }

@@ -3,6 +3,7 @@ que se les hace (declaraciones y anexos, esencialmente), indicando si se cobra
 y el valor a cobrar. Los valores se guardan (tabla reportes_honorarios) para
 reutilizarse a futuro. Exportable a Excel y PDF."""
 import io
+import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -209,18 +210,47 @@ def _filas_y_total(user_id):
         return (bool(serv_por_ruc.get(ruc)) or ruc in anexo_ever
                 or ruc in rucs_con_decl or ruc in rucs_con_guardado)
 
+    # Valor a cobrar desde Odoo (base sin IVA de la última factura emitida al
+    # cliente). Solo llena los "vacíos": clientes sin un cobro cargado a mano este
+    # período. Donde Odoo no tiene factura → queda en blanco con una señal.
+    rucs_con_cur = {ruc for (ruc, _) in guardados_cur}
+    odoo_por_ruc = {}
+    try:
+        from routers.odoo_factura import valores_honorarios_por_ruc
+        raw = valores_honorarios_por_ruc(set(nombre_por_ruc.keys()), cache_key=user_id)
+        odoo_por_ruc = {re.sub(r"\D", "", k): v for k, v in raw.items()}
+    except Exception as e:
+        print(f"[reportes] Odoo no disponible para honorarios: {e}")
+
     filas = []
     total = 0.0
     rucs_orden = [r for r in sorted(nombre_por_ruc, key=lambda r: (nombre_por_ruc[r] or "").upper()) if _activo(r)]
     for ruc in rucs_orden:
-        def _fila(concepto, relevante, hecho, personalizado, g, arrastrado=False):
+        es_vacio = ruc not in rucs_con_cur  # sin cobro cargado a mano este período
+        odoo_info = odoo_por_ruc.get(re.sub(r"\D", "", ruc)) if es_vacio else None
+        odoo_base = float(odoo_info["base"]) if odoo_info and float(odoo_info.get("base") or 0) > 0 else None
+        usa_odoo = es_vacio and odoo_base is not None
+        sin_odoo = es_vacio and odoo_base is None   # señal: sin valor en Odoo
+        # Concepto que recibe el valor de Odoo: el primer relevante (o el primero).
+        primary_label = None
+        for label, key in CONCEPTOS:
+            realiz = ((ruc, key) in decl_ever) or (key == "anexo" and ruc in anexo_ever)
+            if realiz or (key in serv_por_ruc.get(ruc, set())):
+                primary_label = label
+                break
+        if primary_label is None:
+            primary_label = CONCEPTOS[0][0]
+
+        def _fila(concepto, relevante, hecho, personalizado, g, arrastrado=False, odoo_val=None, origen=""):
             nonlocal total
-            cobrar = bool(g["cobrar"]) if g else relevante
-            valor = float(g["valor"]) if g and g.get("valor") is not None else 0.0
-            # IVA por ítem: lo guardado manda; si no hay, cae al ajuste del cliente.
-            iva_incl = bool(g["iva_incluido"]) if g and g.get("iva_incluido") is not None else iva_por_ruc.get(ruc, False)
-            # "bruto" = total a cobrar con IVA incluido (base + 15%). Si el valor ya
-            # incluye IVA, el bruto es el mismo valor; si es "+IVA", se suma el 15%.
+            if odoo_val is not None:
+                cobrar, valor, iva_incl = True, float(odoo_val), False  # base sin IVA → "+IVA"
+            else:
+                cobrar = bool(g["cobrar"]) if g else relevante
+                valor = float(g["valor"]) if g and g.get("valor") is not None else 0.0
+                # IVA por ítem: lo guardado manda; si no hay, cae al ajuste del cliente.
+                iva_incl = bool(g["iva_incluido"]) if g and g.get("iva_incluido") is not None else iva_por_ruc.get(ruc, False)
+            # "bruto" = total a cobrar con IVA incluido (base + 15%).
             bruto = round(valor if iva_incl else valor * (1 + IVA_RATE), 2)
             if cobrar:
                 total += bruto
@@ -237,20 +267,31 @@ def _filas_y_total(user_id):
                 "cobrar": cobrar,
                 "valor": round(valor, 2),
                 "bruto": bruto,
+                "origen": origen,          # 'odoo' | 'manual' | ''
+                "sin_odoo": bool(sin_odoo),  # señal a nivel cliente
             })
         for label, key in CONCEPTOS:
             hecho = ((ruc, key) in decl_mes) or (key == "anexo" and ruc in anexo_mes)
             realizado = ((ruc, key) in decl_ever) or (key == "anexo" and ruc in anexo_ever)
             relevante = realizado or (key in serv_por_ruc.get(ruc, set()))
-            g_cur = guardados_cur.get((ruc, label))
-            g_prev = prev_por_prod.get((ruc, label))
-            _fila(label, relevante, hecho, False, g_cur or g_prev,
-                  arrastrado=(g_cur is None and g_prev is not None))
+            if es_vacio:
+                # Vacío: no se arrastra del mes anterior; lo llena Odoo (o queda en blanco).
+                if usa_odoo and label == primary_label:
+                    _fila(label, relevante, hecho, False, None, odoo_val=odoo_base, origen="odoo")
+                else:
+                    _fila(label, relevante, hecho, False, None)
+            else:
+                g_cur = guardados_cur.get((ruc, label))
+                g_prev = prev_por_prod.get((ruc, label))
+                _fila(label, relevante, hecho, False, g_cur or g_prev,
+                      arrastrado=(g_cur is None and g_prev is not None),
+                      origen="manual" if g_cur else "")
         for prod in sorted(custom_por_ruc.get(ruc, set()), key=str.upper):
             g_cur = guardados_cur.get((ruc, prod))
             g_prev = prev_por_prod.get((ruc, prod))
             _fila(prod, False, False, True, g_cur or g_prev,
-                  arrastrado=(g_cur is None and g_prev is not None))
+                  arrastrado=(g_cur is None and g_prev is not None),
+                  origen="manual" if g_cur else "")
     return filas, round(total, 2), historial
 
 

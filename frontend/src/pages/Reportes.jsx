@@ -204,7 +204,7 @@ export default function Reportes() {
       <header className="rp-header">
         <div>
           <h1>📑 Reportes — Honorarios a cobrar {periodo && <span className="rp-periodo">· {periodo.etiqueta}</span>}</h1>
-          <p className="rp-sub">Cada contribuyente (desplegable) con los servicios que se le hacen. Lo que tiene la declaración <strong>hecha este mes se pinta de verde</strong> (se debe facturar). El valor que cargas se guarda y se arrastra solo al mes siguiente; los meses anteriores quedan en el desplegable "🗂 Meses anteriores".</p>
+          <p className="rp-sub">Cada contribuyente (desplegable) con los servicios que se le hacen. Lo que tiene la declaración <strong>hecha este mes se pinta de verde</strong> (se debe facturar). El valor a cobrar se trae de la <strong>última factura del cliente en Odoo</strong> (base sin IVA, etiqueta "Odoo"); si Odoo no tiene factura, queda en blanco con la señal <strong>⚠ sin valor en Odoo</strong>. Lo que cargues a mano se respeta y se guarda.</p>
         </div>
         <div className="rp-total-box">
           <span className="rp-total-lbl">Total a cobrar{search ? ' (filtrado)' : ''}{ivaIncluido ? ' (IVA incl.)' : ''}</span>
@@ -290,6 +290,7 @@ function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onD
           <strong>{g.contribuyente || '—'}</strong>
           <span className="rp-grupo-ruc">{g.identificacion}</span>
           {g.rows.some((r) => r.hecho) && <span className="rp-lista-badge" title="Tiene declaración/anexo realizado: lista para facturar">✓ Declaración lista</span>}
+          {g.rows.some((r) => r.sin_odoo) && <span className="rp-sinodoo-badge" title="No se encontró una factura de este cliente en Odoo: el valor quedó en blanco. Cárgalo a mano o emítele una factura en Odoo.">⚠ sin valor en Odoo</span>}
         </td>
         <td className="c"></td>
         <td className="r">
@@ -309,6 +310,7 @@ function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onD
               {r.relevante && !r.hecho && <span className="rp-tag" title="Contratado o realizado">●</span>}
               {r.personalizado && <span className="rp-badge-custom">rubro propio</span>}
               {r.arrastrado && <span className="rp-arrastrado" title="Valor traído del mes anterior; ajústalo si cambió">↩ mes anterior</span>}
+              {r.origen === 'odoo' && <span className="rp-odoo-tag" title="Valor traído de la última factura emitida a este cliente en Odoo (base sin IVA). Ajústalo si cambió.">Odoo</span>}
             </td>
             <td className="c">
               <input type="checkbox" checked={!!r.cobrar}
