@@ -287,11 +287,44 @@ async def update_invoice(
                 update_data["total"] = total
 
         # Normalizar mayúsculas en clasificación
+        clasif_value = None
         if "clasificacion" in update_data and update_data["clasificacion"]:
             update_data["clasificacion"] = update_data["clasificacion"].upper()
+            clasif_value = update_data["clasificacion"]
 
         response = supabase.table("invoices").update(update_data).eq("id", invoice_id).eq("user_id", user_id).execute()
-        return response.data[0] if response.data else None
+        row = response.data[0] if response.data else None
+
+        reclasificadas = 0
+        # Clasificar por RUC: si se asignó una categoría real, (1) propagar a las
+        # demás facturas SIN CLASIFICAR del mismo proveedor y (2) recordar la regla
+        # para que las importaciones FUTURAS de ese RUC entren ya clasificadas.
+        if row and clasif_value and clasif_value != "SIN CLASIFICAR":
+            ruc = (row.get("ruc_proveedor") or "").strip()
+            if ruc:
+                try:
+                    from routers.classification import _propagate_classification
+                    reclasificadas = _propagate_classification(supabase, ruc, clasif_value, user_id)
+                except Exception as prop_e:
+                    print(f"Error propagando clasificacion {ruc}: {prop_e}")
+                try:
+                    nombre = (row.get("nombre_proveedor") or "").upper()
+                    existing = supabase.table("classification_map").select("id").eq(
+                        "ruc", ruc).eq("user_id", user_id).execute()
+                    if existing.data:
+                        supabase.table("classification_map").update(
+                            {"categoria": clasif_value, "nombre_proveedor": nombre}
+                        ).eq("ruc", ruc).eq("user_id", user_id).execute()
+                    else:
+                        supabase.table("classification_map").insert(
+                            {"user_id": user_id, "ruc": ruc, "nombre_proveedor": nombre, "categoria": clasif_value}
+                        ).execute()
+                except Exception as map_e:
+                    print(f"Error guardando regla de clasificacion {ruc}: {map_e}")
+
+        if row is not None:
+            return {**row, "reclasificadas": reclasificadas}
+        return None
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
