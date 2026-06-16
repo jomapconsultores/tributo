@@ -20,27 +20,35 @@ class ClassificationEntry(BaseModel):
 
 
 def _propagate_classification(supabase, ruc: str, categoria: str, user_id: str) -> int:
-    """Aplica la categoría a las facturas de ese RUC que estén SIN CLASIFICAR
-    (no pisa las que ya tienen una clasificación manual). Devuelve cuántas
-    facturas se actualizaron."""
+    """Aplica la categoría a TODAS las facturas de ese RUC del usuario: las que
+    están SIN CLASIFICAR y también las que ya tenían OTRA categoría. Así, al
+    cambiar la clasificación de un RUC, se reclasifican todos sus comprobantes
+    (una clasificación por RUC, consistente). Devuelve cuántas facturas cambiaron
+    de categoría (no cuenta las que ya tenían esa misma categoría)."""
     ruc = (ruc or "").strip()
     categoria = (categoria or "").strip().upper()
     if not ruc or not categoria:
         return 0
-    updated = 0
     try:
-        r = supabase.table("invoices").update({"clasificacion": categoria})\
-            .eq("ruc_proveedor", ruc).eq("clasificacion", "SIN CLASIFICAR").eq("user_id", user_id).execute()
-        updated += len(r.data or [])
+        rows = supabase.table("invoices").select("id,clasificacion")\
+            .eq("ruc_proveedor", ruc).eq("user_id", user_id).execute().data or []
     except Exception as e:
-        print(f"Error propagando clasificación (SIN CLASIFICAR) {ruc}: {e}")
-    try:
-        r = supabase.table("invoices").update({"clasificacion": categoria})\
-            .eq("ruc_proveedor", ruc).is_("clasificacion", "null").eq("user_id", user_id).execute()
-        updated += len(r.data or [])
-    except Exception as e:
-        print(f"Error propagando clasificación (null) {ruc}: {e}")
-    return updated
+        print(f"Error leyendo facturas del RUC {ruc}: {e}")
+        return 0
+    # Solo las que tienen una categoría distinta (incluye SIN CLASIFICAR / null)
+    a_cambiar = [r["id"] for r in rows
+                 if (r.get("clasificacion") or "").strip().upper() != categoria]
+    if not a_cambiar:
+        return 0
+    cambiadas = 0
+    for i in range(0, len(a_cambiar), 200):  # en lotes, por si el RUC tiene muchas
+        lote = a_cambiar[i:i + 200]
+        try:
+            r = supabase.table("invoices").update({"clasificacion": categoria}).in_("id", lote).execute()
+            cambiadas += len(r.data or [])
+        except Exception as e:
+            print(f"Error propagando clasificación {ruc}: {e}")
+    return cambiadas
 
 @router.get("/")
 async def list_classifications(user_id: str = Depends(get_current_user)):

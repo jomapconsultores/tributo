@@ -207,14 +207,15 @@ export default function InvoiceTable({ invoices, onInvoicesChange }) {
   }
 
   // Guarda la clasificación con un valor explícito (desde el combo de búsqueda).
-  // El backend propaga la categoría a las demás facturas SIN CLASIFICAR del mismo RUC.
+  // El backend propaga la categoría a TODAS las facturas del mismo RUC (sin
+  // clasificar o ya clasificadas con otra categoría): al cambiarla, se cambian todas.
   const saveClasif = async (inv, v) => {
     try {
       const res = await invoicesAPI.update(inv.id, { clasificacion: v })
       cancel()
       const n = res?.data?.reclasificadas || 0
       await onInvoicesChange()
-      if (n > 1) alert(`Se clasificaron ${n} gastos sin clasificar del mismo proveedor (RUC ${inv.ruc_proveedor}).`)
+      if (n >= 1) alert(`Se reclasificaron ${n} gasto(s) más del mismo proveedor (RUC ${inv.ruc_proveedor}) a "${v}".`)
     } catch (e) {
       alert('Error al guardar: ' + (e.response?.data?.detail || e.message))
     }

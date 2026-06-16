@@ -314,9 +314,10 @@ async def update_invoice(
         row = response.data[0] if response.data else None
 
         reclasificadas = 0
-        # Clasificar por RUC: si se asignó una categoría real, (1) propagar a las
-        # demás facturas SIN CLASIFICAR del mismo proveedor y (2) recordar la regla
-        # para que las importaciones FUTURAS de ese RUC entren ya clasificadas.
+        # Clasificar por RUC: si se asignó/cambió una categoría real, (1) propagar
+        # a TODAS las facturas del mismo proveedor (sin clasificar o ya clasificadas
+        # con otra categoría) y (2) recordar la regla para que las importaciones
+        # FUTURAS de ese RUC entren ya clasificadas.
         if row and clasif_value and clasif_value != "SIN CLASIFICAR":
             ruc = (row.get("ruc_proveedor") or "").strip()
             if ruc:
