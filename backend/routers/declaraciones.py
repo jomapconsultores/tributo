@@ -144,12 +144,13 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
         ventas_iva = fetch_all(lambda: supabase.table("sales_iva").select("*").eq("client_id", client_id))
         retentions = fetch_all(lambda: supabase.table("retentions").select("*").eq("client_id", client_id))
 
-        # Crédito mes anterior: si el llamador envió override, usalo; si no, mirá historial
-        if override_credito_adq is None:
-            cred_adq_prev, cred_ret_prev = _cargar_credito_mes_anterior(supabase, client_id, mes, anio)
-        else:
+        # Crédito mes anterior: parte del historial y cada casillero (605/606) se
+        # puede sobreescribir de forma INDEPENDIENTE si el usuario lo ingresa.
+        cred_adq_prev, cred_ret_prev = _cargar_credito_mes_anterior(supabase, client_id, mes, anio)
+        if override_credito_adq is not None:
             cred_adq_prev = float(override_credito_adq)
-            cred_ret_prev = float(override_credito_ret or 0)
+        if override_credito_ret is not None:
+            cred_ret_prev = float(override_credito_ret)
 
         # Pagos aplazados que vencen este período
         aplazados = _pagos_aplazados_vencen(supabase, client_id, mes, anio, "IVA")

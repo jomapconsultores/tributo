@@ -290,8 +290,8 @@ export const declaracionesAPI = {
   // rebaja_ice/exencion_ice: override manual de rebajas y exenciones ICE (si no, auto del módulo)
   // rebaja_manual/exencion_manual: casillas "aplica" sin cálculo (1/0) — generan advertencia
   // ventas_15/ventas_5/ventas_0: override manual de las ventas (cuando no hay XML)
-  calcular: (clientId, tipo, { credito_adq, credito_ret, diferir_meses, rebaja_ice, exencion_ice, rebaja_manual, exencion_manual, ventas_15, ventas_5, ventas_0 } = {}) => api.get('/api/declaraciones/calcular', {
-    params: { client_id: clientId, tipo, credito_adq, credito_ret, diferir_meses, rebaja_ice, exencion_ice, rebaja_manual, exencion_manual, ventas_15, ventas_5, ventas_0 },
+  calcular: (clientId, tipo, { credito_adq, credito_ret, diferir_meses, rebaja_ice, exencion_ice, rebaja_manual, exencion_manual, ventas_15, ventas_5, ventas_0, factor_prop } = {}) => api.get('/api/declaraciones/calcular', {
+    params: { client_id: clientId, tipo, credito_adq, credito_ret, diferir_meses, rebaja_ice, exencion_ice, rebaja_manual, exencion_manual, ventas_15, ventas_5, ventas_0, factor_prop },
   }),
   list: (clientId, tipo) => api.get('/api/declaraciones/', { params: { client_id: clientId, tipo } }),
   // Servicios contratados + credencial SRI (admin). reveal=true descifra en un viaje.
