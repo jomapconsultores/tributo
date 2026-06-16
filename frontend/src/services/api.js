@@ -352,6 +352,7 @@ export const odooAPI = {
   estado: () => api.get('/api/odoo/estado'),
   empresas: () => api.get('/api/odoo/empresas'),       // compañías emisoras en Odoo
   productos: (q = '') => api.get('/api/odoo/productos', { params: q ? { q } : undefined }),
+  cobrosPendientes: () => api.get('/api/odoo/cobros-pendientes'),  // clientes que deben (aviso al iniciar)
   facturar: (body) => api.post('/api/odoo/facturar', body),
 }
 

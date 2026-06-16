@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import NewClientModal from './NewClientModal'
 import AlertaDeclaracion from './AlertaDeclaracion'
+import CobrosPendientesModal from './CobrosPendientesModal'
 import { useAccess } from '../context/AccessContext'
 import { accessAPI } from '../services/api'
 import './Layout.css'
@@ -70,6 +71,7 @@ export default function Layout({ user, onLogout }) {
         <Outlet context={{ openNewClient }} />
       </main>
       <NewClientModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <CobrosPendientesModal />
     </div>
   )
 }

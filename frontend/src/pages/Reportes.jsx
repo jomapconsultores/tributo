@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { reportesAPI, downloadBlob } from '../services/api'
 import './Reportes.css'
 
@@ -14,10 +14,17 @@ const clearRpDraft = (k) => { try { const d = readRpDrafts(); delete d[k]; local
 
 export default function Reportes() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('q') || '')
+
+  // Si llegan con ?q= (ej. desde el aviso de cobros), enfocar ese cliente
+  useEffect(() => {
+    const q = searchParams.get('q')
+    if (q) setSearch(q)
+  }, [searchParams])
   const [guardando, setGuardando] = useState('')
   const [colapsados, setColapsados] = useState(() => new Set())
   const [ivaIncluido, setIvaIncluido] = useState(() => localStorage.getItem('rpIvaIncluido') === '1')

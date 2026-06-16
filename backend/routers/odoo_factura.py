@@ -221,6 +221,42 @@ async def odoo_productos(user_id: str = Depends(get_current_user), q: Optional[s
         return {"data": [], "error": str(e)}
 
 
+@router.get("/cobros-pendientes")
+async def cobros_pendientes(user_id: str = Depends(get_current_user)):
+    """Clientes con facturas de venta pendientes de cobro en Odoo (para el aviso
+    al iniciar sesión). Excluye la empresa emisora 'Marco Antonio'. Agrupado por
+    cliente con el monto total que falta por pagar."""
+    try:
+        models, uid, db, key = _connect()
+    except Exception:
+        return {"data": []}
+    dom = [["move_type", "=", "out_invoice"], ["state", "=", "posted"],
+           ["payment_state", "in", ["not_paid", "partial"]]]
+    ids = _x(models, db, uid, key, "account.move", "search", [dom], {"limit": 500})
+    rows = _x(models, db, uid, key, "account.move", "read", [ids],
+              {"fields": ["name", "partner_id", "amount_residual", "company_id"]}) if ids else []
+    rows = [r for r in rows if EXCLUIR_EMISOR not in ((r.get("company_id") or [0, ""])[1] or "").lower()]
+    if not rows:
+        return {"data": []}
+    # RUC (vat) de cada cliente para poder enlazar al módulo
+    pids = list({(r["partner_id"][0]) for r in rows if r.get("partner_id")})
+    vat = {}
+    if pids:
+        for p in _x(models, db, uid, key, "res.partner", "read", [pids], {"fields": ["id", "vat"]}):
+            vat[p["id"]] = (p.get("vat") or "")
+    por_cliente = {}
+    for r in rows:
+        pid = r.get("partner_id") or [0, "—"]
+        g = por_cliente.setdefault(pid[0], {"cliente": pid[1], "ruc": vat.get(pid[0], ""),
+                                            "pendiente": 0.0, "facturas": 0})
+        g["pendiente"] += float(r.get("amount_residual") or 0)
+        g["facturas"] += 1
+    data = sorted(por_cliente.values(), key=lambda x: -x["pendiente"])
+    for d in data:
+        d["pendiente"] = round(d["pendiente"], 2)
+    return {"data": data}
+
+
 @router.api_route("/recordatorio-cobros", methods=["GET", "POST"])
 async def recordatorio_cobros(token: Optional[str] = None):
     """Recordatorio SEMANAL de cobros pendientes a Johanna (lo dispara el cron).
