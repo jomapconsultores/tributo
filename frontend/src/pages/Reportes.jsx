@@ -342,7 +342,10 @@ function Grupo({ g, cerrado, onToggle, rows, setFila, guardando, onAddRubro, onD
               )}
               {r.sugerido != null && (
                 <div className="rp-sugerido" title={`Última factura en Odoo: ${r.sugerido_concepto || ''}${r.sugerido_fecha ? ' · ' + r.sugerido_fecha : ''}`}>
-                  💡 Odoo: <strong>{money(r.sugerido)}</strong>
+                  💡 Odoo:{' '}
+                  {r.sugerido_descuento > 0
+                    ? <span>oficial <strong>{money(r.sugerido_oficial)}</strong> −{r.sugerido_descuento}% = <strong>{money(r.sugerido)}</strong></span>
+                    : <strong>{money(r.sugerido)}</strong>}
                   <span className="rp-sug-con"> {r.sugerido_concepto}</span>
                   {Math.abs((parseFloat(r.valor) || 0) - r.sugerido) > 0.005
                     ? <button className="rp-sug-aplicar" onClick={() => setFila(realIdx, { valor: r.sugerido, iva_incluido: false, cobrar: true }, true)}>usar</button>

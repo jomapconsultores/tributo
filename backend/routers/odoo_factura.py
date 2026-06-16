@@ -162,12 +162,14 @@ def _solo_digitos(s: str) -> str:
 
 
 def valores_honorarios_por_ruc(idents: set, cache_key=None) -> dict:
-    """Devuelve {ruc(dígitos): [ {'concepto','base','numero','fecha'}, ... ]} con
-    TODAS las líneas de servicio distintas facturadas a cada cliente en Odoo (su
-    BASE SIN IVA = price_subtotal), referenciado por RUC (vat), más recientes
-    primero y sin repetir concepto. Reportes elige, por cada concepto, la línea de
-    MAYOR RELACIÓN. Solo incluye los RUC de `idents`. Tolerante a fallos: si Odoo
-    no responde devuelve {}."""
+    """Devuelve {ruc(dígitos): [ línea, ... ]} con TODAS las líneas de servicio
+    distintas facturadas a cada cliente en Odoo, referenciado por RUC (vat), más
+    recientes primero y sin repetir concepto. Cada línea trae:
+      concepto, oficial (price_unit = PRECIO OFICIAL), descuento (% por línea),
+      neto (precio_unit con el descuento aplicado, POR UNIDAD), numero, fecha.
+    Se usa el PRECIO UNITARIO (no el subtotal) porque la cantidad puede ser > 1
+    (varios meses en una factura). Reportes elige, por cada concepto, la línea de
+    MAYOR RELACIÓN. Tolerante a fallos: si Odoo no responde devuelve {}."""
     if cache_key:
         c = _HON_CACHE.get(cache_key)
         if c and (time.time() - c[0]) < _HON_TTL:
@@ -196,7 +198,7 @@ def valores_honorarios_por_ruc(idents: set, cache_key=None) -> dict:
         lmap = {}
         for i in range(0, len(line_ids), 500):
             for l in _x(models, db, uid, key, "account.move.line", "read",
-                        [line_ids[i:i + 500]], {"fields": ["id", "name", "product_id", "price_subtotal"]}):
+                        [line_ids[i:i + 500]], {"fields": ["id", "name", "product_id", "price_unit", "discount", "price_subtotal"]}):
                 lmap[l["id"]] = l
 
         def _lineas(r):
@@ -206,18 +208,22 @@ def valores_honorarios_por_ruc(idents: set, cache_key=None) -> dict:
                 if not l:
                     continue
                 pn = l["product_id"][1] if l.get("product_id") else (l.get("name") or "")
-                res.append((pn, float(l.get("price_subtotal") or 0)))
+                oficial = float(l.get("price_unit") or 0)
+                desc = float(l.get("discount") or 0)
+                neto = round(oficial * (1 - desc / 100.0), 2)  # precio UNITARIO con descuento
+                res.append((pn, oficial, desc, neto))
             return res
 
         for v, fs in porruc.items():
             lineas, vistos = [], set()
             for r in fs:  # facturas por fecha desc
-                for pn, sub in _lineas(r):
+                for pn, oficial, desc, neto in _lineas(r):
                     clave = re.sub(r"[^a-z0-9]", "", (pn or "").lower())
-                    if not pn or sub <= 0 or clave in vistos:
+                    if not pn or neto <= 0 or clave in vistos:
                         continue
                     vistos.add(clave)
-                    lineas.append({"concepto": pn, "base": round(sub, 2),
+                    lineas.append({"concepto": pn, "oficial": round(oficial, 2),
+                                   "descuento": round(desc, 2), "neto": neto,
                                    "numero": r.get("name"), "fecha": r.get("invoice_date")})
             if lineas:
                 out[v] = lineas

@@ -61,15 +61,15 @@ CONCEPTOS = [
 # Emparejamiento concepto ↔ línea de Odoo: (keyset = puntúa la relación;
 # required = palabra(s) distintivas, al menos una debe estar para considerar match).
 CONCEPTO_MATCH = {
-    "declaracion_iva":   ({"declaracion", "iva", "mensual", "impuesto", "impuestos", "honorario", "honorarios", "contable", "contabilidad"},
-                          {"declaracion", "iva", "honorario", "honorarios", "mensual", "contable", "contabilidad"}),
+    "declaracion_iva":   ({"declaracion", "iva", "mensual"}, {"iva"}),
     "declaracion_ice":   ({"declaracion", "ice", "mensual"}, {"ice"}),
     "declaracion_renta": ({"declaracion", "renta", "impuesto", "impuestos"}, {"renta"}),
-    "anexo":             ({"anexo", "pvp", "gastos", "personales"}, {"anexo", "pvp"}),
-    "devolucion_iva":    ({"devolucion", "iva"}, {"devolucion"}),
+    "anexo":             ({"anexo", "pvp", "gastos", "personales", "ice"}, {"anexo", "pvp"}),
+    "devolucion_iva":    ({"devolucion"}, {"devolucion"}),
 }
-# Para el concepto principal: línea de honorario genérico si no hubo match por tokens.
-_HON_PRINCIPAL = re.compile(r"declaraci|honorari|mensual|contab|anexo|estados? financ|devoluci|asesor|tribut|profesional", re.I)
+# Para el concepto principal: solo honorario GENÉRICO (no una declaración concreta),
+# para no inventar un valor de IVA cuando el cliente no tiene esa línea.
+_HON_PRINCIPAL = re.compile(r"honorari|asesor|tribut|profesional|contabilidad|contable", re.I)
 
 
 def _tokens(s: str) -> set:
@@ -319,8 +319,10 @@ def _filas_y_total(user_id):
                 "origen": origen,            # 'odoo' | 'manual' | ''
                 "sin_odoo": bool(sin_odoo),    # señal a nivel cliente
             }
-            if sugerido:  # precio sugerido (con su concepto/fecha) para decidir
-                fila["sugerido"] = round(float(sugerido.get("base") or 0), 2)
+            if sugerido:  # precio sugerido (oficial, descuento, neto) para decidir
+                fila["sugerido"] = round(float(sugerido.get("neto") or 0), 2)
+                fila["sugerido_oficial"] = round(float(sugerido.get("oficial") or 0), 2)
+                fila["sugerido_descuento"] = round(float(sugerido.get("descuento") or 0), 2)
                 fila["sugerido_concepto"] = sugerido.get("concepto") or ""
                 fila["sugerido_fecha"] = sugerido.get("fecha") or ""
             filas.append(fila)
@@ -333,7 +335,7 @@ def _filas_y_total(user_id):
                 # Vacío: no se arrastra del mes anterior; lo llena Odoo (o queda en blanco).
                 if sug:
                     _fila(label, relevante, hecho, False, None,
-                          odoo_val=float(sug["base"]), origen="odoo", sugerido=sug)
+                          odoo_val=float(sug["neto"]), origen="odoo", sugerido=sug)
                 else:
                     _fila(label, relevante, hecho, False, None)
             else:
