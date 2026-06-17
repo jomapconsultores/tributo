@@ -359,6 +359,7 @@ export const odooAPI = {
   crearCuentaCobrar: (ruc, nombre, company_id, codigo) => api.post('/api/odoo/crear-cuenta-cobrar', { ruc, nombre, company_id, codigo }),
   crearCliente: (ruc, nombre) => api.post('/api/odoo/crear-cliente', { ruc, nombre }),  // crea el cliente (res.partner) en Odoo
   estadoSri: (ids) => api.post('/api/odoo/estado-sri', { ids }),   // verifica/reintenta el envío al SRI
+  facturas: () => api.get('/api/odoo/facturas'),                   // facturas procesadas (emitidas) en Odoo
   facturar: (body) => api.post('/api/odoo/facturar', body),
 }
 

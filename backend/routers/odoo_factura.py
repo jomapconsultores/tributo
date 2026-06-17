@@ -663,6 +663,48 @@ async def estado_sri(body: IdsIn, user_id: str = Depends(get_current_user)):
     return {"data": out}
 
 
+@router.get("/facturas")
+async def odoo_facturas(user_id: str = Depends(get_current_user)):
+    """Facturas de venta (honorarios) emitidas/posteadas en Odoo, para el submenú
+    'Facturas procesadas' (con búsqueda por fecha/RUC/nombre). Las más recientes."""
+    try:
+        models, uid, db, key = _connect()
+    except Exception:
+        return {"data": []}
+    try:
+        comp = _x(models, db, uid, key, "res.company", "search", [[]])
+    except Exception:
+        comp = []
+    ctx = {"allowed_company_ids": comp} if comp else {}
+    dom = [["move_type", "=", "out_invoice"], ["state", "=", "posted"]]
+    ids = _x(models, db, uid, key, "account.move", "search", [dom],
+             {"order": "invoice_date desc, id desc", "limit": 800, "context": ctx})
+    rows = _x(models, db, uid, key, "account.move", "read", [ids],
+              {"fields": ["name", "invoice_date", "partner_id", "amount_total",
+                          "edi_state", "l10n_ec_authorization_number", "company_id"],
+               "context": ctx}) if ids else []
+    pids = list({r["partner_id"][0] for r in rows if r.get("partner_id")})
+    vat = {}
+    if pids:
+        for p in _x(models, db, uid, key, "res.partner", "read", [pids], {"fields": ["id", "vat"]}):
+            vat[p["id"]] = p.get("vat") or ""
+    data = []
+    for r in rows:
+        pid = r.get("partner_id") or [0, ""]
+        data.append({
+            "numero": r.get("name"),
+            "fecha": r.get("invoice_date"),
+            "ruc": vat.get(pid[0], ""),
+            "nombre": pid[1],
+            "total": r.get("amount_total"),
+            "empresa": (r.get("company_id") or [0, ""])[1],
+            "edi_state": r.get("edi_state"),
+            "autorizada": bool(r.get("l10n_ec_authorization_number")),
+            "autorizacion": r.get("l10n_ec_authorization_number") or None,
+        })
+    return {"data": data}
+
+
 @router.get("/cobros-pendientes")
 async def cobros_pendientes(user_id: str = Depends(get_current_user)):
     """Clientes con facturas de venta pendientes de cobro en Odoo (para el aviso

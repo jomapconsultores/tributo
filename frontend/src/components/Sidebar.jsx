@@ -19,6 +19,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const [retencionesOpen, setRetencionesOpen] = useState(false)
   const [declaracionesOpen, setDeclaracionesOpen] = useState(false)
   const [devolucionesOpen, setDevolucionesOpen] = useState(false)
+  const [odooOpen, setOdooOpen] = useState(false)
   const [clientSearch, setClientSearch] = useState('')
   const [movNuevos, setMovNuevos] = useState(0)
 
@@ -346,14 +347,25 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
           <span>REPORTES</span>
         </button>
 
-        {/* FACTURACIÓN ODOO: emitir factura de honorarios (admin, socio y clientes autorizados) */}
+        {/* FACTURACIÓN ODOO (desplegable): emitir y ver facturas procesadas */}
         <button
-          className={`nav-item module-btn ${path === '/odoo-facturacion' ? 'active' : ''}`}
-          onClick={() => navigate('/odoo-facturacion')}
+          className={`nav-item module-btn ${path.startsWith('/odoo-facturacion') ? 'active' : ''}`}
+          onClick={() => setOdooOpen((o) => !o)}
         >
+          <span className={`caret ${odooOpen ? 'open' : ''}`}>▸</span>
           <span className="nav-ico">🧾</span>
           <span>FACTURACIÓN ODOO</span>
         </button>
+        {odooOpen && (
+          <div className="submodule-list">
+            <button className={`nav-item submodule ${path === '/odoo-facturacion' ? 'active' : ''}`} onClick={() => navigate('/odoo-facturacion')}>
+              <span className="nav-ico">📤</span><span>Emitir facturas</span>
+            </button>
+            <button className={`nav-item submodule ${path === '/odoo-facturacion/procesadas' ? 'active' : ''}`} onClick={() => navigate('/odoo-facturacion/procesadas')}>
+              <span className="nav-ico">✅</span><span>Facturas procesadas</span>
+            </button>
+          </div>
+        )}
 
         <div className="nav-divider" />
 

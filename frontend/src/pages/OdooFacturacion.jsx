@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { reportesAPI, odooAPI } from '../services/api'
 import useDraft from '../hooks/useDraft'
 import './OdooFacturacion.css'
@@ -10,6 +11,7 @@ function fmtMoney(v) {
 }
 
 export default function OdooFacturacion() {
+  const navigate = useNavigate()
   const [filas, setFilas] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -176,7 +178,6 @@ export default function OdooFacturacion() {
   const verificando = grupos.some((g) => !cuentas[g.ruc])  // aún consultando a Odoo
   const gruposPorProcesar = useMemo(() => grupos.filter((g) => !esProcesadoEsteMes(g)), [grupos, cuentas])
   const gruposProcesados = useMemo(() => grupos.filter((g) => esProcesadoEsteMes(g)), [grupos, cuentas])
-  const [verProcesados, setVerProcesados] = useState(false)
 
   // Sacar de la selección cualquiera que ya esté procesado este mes (no duplicar).
   useEffect(() => {
@@ -397,29 +398,12 @@ export default function OdooFacturacion() {
             {productos.map((p) => <option key={p.id} value={p.name} />)}
           </datalist>
 
-          {/* Submenú: ya procesados este mes en Odoo (no se pueden re-procesar) */}
+          {/* Aviso: ya procesados este mes → viven en el submenú "Facturas procesadas" */}
           {gruposProcesados.length > 0 && (
             <div className="of-procesados">
-              <button type="button" className="of-procesados-head" onClick={() => setVerProcesados((v) => !v)}>
-                {verProcesados ? '▾' : '▸'} ✅ Ya procesados este mes en Odoo ({gruposProcesados.length}) — no se vuelven a facturar
+              <button type="button" className="of-procesados-head" onClick={() => navigate('/odoo-facturacion/procesadas')}>
+                ✅ {gruposProcesados.length} contribuyente(s) ya procesado(s) este mes — no se vuelven a facturar · ver en «Facturas procesadas» ›
               </button>
-              {verProcesados && (
-                <div className="of-procesados-list">
-                  {gruposProcesados.map((g) => {
-                    const uf = cuentas[g.ruc]?.ultima_factura || {}
-                    return (
-                      <div key={g.ruc} className="of-proc-row">
-                        <span className="of-proc-nombre">{g.nombre}</span>
-                        <span className="of-proc-num">{uf.numero}</span>
-                        <span className="of-proc-total">{fmtMoney(g.total)}</span>
-                        <span className={`of-res-sri ${uf.autorizada ? 'ok' : 'pend'}`}>
-                          {uf.autorizada ? '🧾 SRI autorizada' : '🧾 SRI pendiente'}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
             </div>
           )}
 
