@@ -152,10 +152,10 @@ export default function OdooFacturacion() {
   }
 
   const toggleTodos = () => {
-    if (seleccionados.size === grupos.length) {
+    if (seleccionados.size >= gruposPorProcesar.length && gruposPorProcesar.length > 0) {
       setSeleccionados(new Set())
     } else {
-      setSeleccionados(new Set(grupos.map((g) => g.ruc)))
+      setSeleccionados(new Set(gruposPorProcesar.map((g) => g.ruc)))
     }
   }
 
@@ -166,7 +166,29 @@ export default function OdooFacturacion() {
     setSeleccionados(s)
   }
 
-  const facturasSeleccionadas = grupos.filter((g) => seleccionados.has(g.ruc))
+  // Verificación BIDIRECCIONAL con Odoo: los que YA tienen factura de este mes en
+  // Odoo se consideran "procesados" y NO se pueden volver a procesar/duplicar.
+  const mesActualISO = (new Date()).toISOString().slice(0, 7)
+  const esProcesadoEsteMes = (g) => {
+    const uf = cuentas[g.ruc]?.ultima_factura
+    return !!uf && (uf.fecha || '').slice(0, 7) === mesActualISO
+  }
+  const verificando = grupos.some((g) => !cuentas[g.ruc])  // aún consultando a Odoo
+  const gruposPorProcesar = useMemo(() => grupos.filter((g) => !esProcesadoEsteMes(g)), [grupos, cuentas])
+  const gruposProcesados = useMemo(() => grupos.filter((g) => esProcesadoEsteMes(g)), [grupos, cuentas])
+  const [verProcesados, setVerProcesados] = useState(false)
+
+  // Sacar de la selección cualquiera que ya esté procesado este mes (no duplicar).
+  useEffect(() => {
+    const proc = new Set(gruposProcesados.map((g) => g.ruc))
+    if (!proc.size) return
+    setSeleccionados((prev) => {
+      const f = [...prev].filter((r) => !proc.has(r))
+      return f.length === prev.size ? prev : new Set(f)
+    })
+  }, [gruposProcesados])
+
+  const facturasSeleccionadas = gruposPorProcesar.filter((g) => seleccionados.has(g.ruc))
   const totalSeleccionado = facturasSeleccionadas.reduce((acc, g) => acc + g.total, 0)
 
   const enviar = async () => {
@@ -282,10 +304,11 @@ export default function OdooFacturacion() {
             <label className="of-check-all">
               <input
                 type="checkbox"
-                checked={seleccionados.size === grupos.length && grupos.length > 0}
+                checked={seleccionados.size >= gruposPorProcesar.length && gruposPorProcesar.length > 0}
                 onChange={toggleTodos}
               />
-              Seleccionar todos ({grupos.length})
+              Seleccionar todos por procesar ({gruposPorProcesar.length})
+              {verificando && <span className="of-verif"> · 🔄 verificando con Odoo…</span>}
             </label>
             <div className="of-toolbar-right">
               {facturasSeleccionadas.length > 0 && (
@@ -374,9 +397,38 @@ export default function OdooFacturacion() {
             {productos.map((p) => <option key={p.id} value={p.name} />)}
           </datalist>
 
-          {/* Tabla de contribuyentes */}
+          {/* Submenú: ya procesados este mes en Odoo (no se pueden re-procesar) */}
+          {gruposProcesados.length > 0 && (
+            <div className="of-procesados">
+              <button type="button" className="of-procesados-head" onClick={() => setVerProcesados((v) => !v)}>
+                {verProcesados ? '▾' : '▸'} ✅ Ya procesados este mes en Odoo ({gruposProcesados.length}) — no se vuelven a facturar
+              </button>
+              {verProcesados && (
+                <div className="of-procesados-list">
+                  {gruposProcesados.map((g) => {
+                    const uf = cuentas[g.ruc]?.ultima_factura || {}
+                    return (
+                      <div key={g.ruc} className="of-proc-row">
+                        <span className="of-proc-nombre">{g.nombre}</span>
+                        <span className="of-proc-num">{uf.numero}</span>
+                        <span className="of-proc-total">{fmtMoney(g.total)}</span>
+                        <span className={`of-res-sri ${uf.autorizada ? 'ok' : 'pend'}`}>
+                          {uf.autorizada ? '🧾 SRI autorizada' : '🧾 SRI pendiente'}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tabla de contribuyentes POR PROCESAR */}
           <div className="of-grupos">
-            {grupos.map((g) => {
+            {gruposPorProcesar.length === 0 && !verificando && (
+              <div className="of-dim" style={{ padding: '12px' }}>Todos los contribuyentes ya tienen su factura de este mes en Odoo. No hay nada por procesar.</div>
+            )}
+            {gruposPorProcesar.map((g) => {
               const sel = seleccionados.has(g.ruc)
               const base = +(g.total / (1 + IVA)).toFixed(2)
               const iva = +(g.total - base).toFixed(2)

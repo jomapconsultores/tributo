@@ -369,3 +369,14 @@
 
 /* Paso de envío al SRI */
 .of-sri-paso { margin-top: 8px; padding: 6px 12px; background: #eef5ff; border: 1px solid #d6e4f7; border-radius: 8px; font-size: .84rem; font-weight: 700; color: #1a3d6b; }
+
+/* Submenú de ya procesados este mes */
+.of-verif { color: #1a56db; font-weight: 600; font-size: .82rem; }
+.of-procesados { border: 1px solid #d7eede; background: #f6fcf8; border-radius: 10px; margin: 10px 0; overflow: hidden; }
+.of-procesados-head { width: 100%; text-align: left; border: none; background: #eafaf1; color: #1e8449; font-weight: 700; font-size: .86rem; padding: 9px 14px; cursor: pointer; }
+.of-procesados-head:hover { background: #ddf5e7; }
+.of-procesados-list { padding: 4px 14px 10px; }
+.of-proc-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 5px 0; border-bottom: 1px dashed #e6ecf3; font-size: .84rem; }
+.of-proc-nombre { font-weight: 600; color: #1a3d6b; min-width: 200px; flex: 1; }
+.of-proc-num { font-family: 'Courier New', monospace; color: #51607a; }
+.of-proc-total { font-weight: 700; color: #1e8449; font-variant-numeric: tabular-nums; }
