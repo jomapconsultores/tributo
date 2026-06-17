@@ -11,6 +11,9 @@ import re
 import time
 import threading
 import xmlrpc.client
+from datetime import datetime, timezone, timedelta
+
+_EC_TZ_ODOO = timezone(timedelta(hours=-5))  # Ecuador (UTC-5), para el mes en curso
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -792,10 +795,32 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
                 continue
 
             company = fac.company_id or body.company_id
-            # Impuesto IVA 15% (411, S) de la empresa emisora, para fijarlo en cada línea.
-            tax_id = _iva_15_s_id(models, db, uid, key, company)
 
             partner_id = _find_or_create_partner(models, db, uid, key, fac.ruc, fac.nombre)
+
+            # ANTI-DUPLICADO: si este cliente YA tiene una factura de este mes por esta
+            # empresa, NO se crea otra; se devuelve la existente para pasar al SRI.
+            ini_mes = datetime.now(_EC_TZ_ODOO).strftime("%Y-%m-01")
+            dom_dup = [["move_type", "=", "out_invoice"], ["partner_id", "=", partner_id],
+                       ["state", "=", "posted"], ["invoice_date", ">=", ini_mes]]
+            if company:
+                dom_dup.append(["company_id", "=", company])
+            ya = _x(models, db, uid, key, "account.move", "search", [dom_dup],
+                    {"limit": 1, "order": "id desc", "context": _ctx_emp(company)})
+            if ya:
+                m = _x(models, db, uid, key, "account.move", "read", [ya],
+                       {"fields": ["name", "amount_total", "state", "payment_state", "edi_state",
+                                   "l10n_ec_authorization_number"], "context": _ctx_emp(company)})[0]
+                resultados.append({
+                    "ruc": fac.ruc, "nombre": fac.nombre, "ok": True, "ya_existia": True,
+                    "odoo_id": ya[0], "numero": m.get("name"), "total": m.get("amount_total"),
+                    "estado": m.get("state"), "payment_state": m.get("payment_state"),
+                    "emisor_nombre": emp_nombre.get(company, ""),
+                })
+                continue  # no se duplica; el siguiente paso (SRI) lo maneja la verificación
+
+            # Impuesto IVA 15% (411, S) de la empresa emisora, para fijarlo en cada línea.
+            tax_id = _iva_15_s_id(models, db, uid, key, company)
 
             invoice_lines = []
             for ln in lineas_cobrables:

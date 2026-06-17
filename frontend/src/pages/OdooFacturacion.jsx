@@ -326,6 +326,7 @@ export default function OdooFacturacion() {
                       <span className="of-res-nombre">{r.nombre}</span>
                       <span className="of-res-num">{r.numero}</span>
                       <span className="of-res-total">{fmtMoney(r.total)}</span>
+                      {r.ya_existia && <span className="of-res-pago pend" title="Ya tenía factura este mes — no se duplicó; pasa al SRI">↩ ya emitida (no se duplicó)</span>}
                       {r.cobro_banco === 'registrado'
                         ? <span className="of-res-pago paid" title="Cobro registrado en el banco">💵 cobrada en banco</span>
                         : (r.payment_state === 'not_paid' || r.payment_state === 'partial')
