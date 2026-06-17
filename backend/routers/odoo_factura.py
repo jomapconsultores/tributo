@@ -363,6 +363,10 @@ class CrearClienteIn(BaseModel):
     nombre: str
 
 
+class IdsIn(BaseModel):
+    ids: List[int]
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -523,6 +527,50 @@ async def crear_cliente(body: CrearClienteIn, user_id: str = Depends(get_current
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"No se pudo crear el cliente: {e}")
+
+
+@router.post("/estado-sri")
+async def estado_sri(body: IdsIn, user_id: str = Depends(get_current_user)):
+    """Verifica el envío al SRI de las facturas (número de autorización / edi_state)
+    y, si alguna no se autorizó, reintenta el envío. Devuelve el estado por factura."""
+    try:
+        models, uid, db, key = _connect()
+    except HTTPException as e:
+        return {"data": [], "error": e.detail}
+    try:
+        comp_ids = _x(models, db, uid, key, "res.company", "search", [[]])
+    except Exception:
+        comp_ids = []
+    ctx = {"allowed_company_ids": comp_ids} if comp_ids else {}
+    campos = ["name", "state", "edi_state", "l10n_ec_authorization_number"]
+    out = []
+    for mid in body.ids:
+        try:
+            data = _x(models, db, uid, key, "account.move", "read", [[mid]], {"fields": campos, "context": ctx})
+            if not data:
+                out.append({"id": mid, "error": "no existe"})
+                continue
+            m = data[0]
+            # Reintentar el envío al SRI si está posteada pero aún no autorizada.
+            if m.get("state") == "posted" and m.get("edi_state") not in ("sent",):
+                try:
+                    _x(models, db, uid, key, "account.move", "action_process_edi_web_services", [[mid]], {"context": ctx})
+                except Exception:
+                    pass  # la acción puede correr aunque el retorno no serialice
+                try:
+                    m = _x(models, db, uid, key, "account.move", "read", [[mid]], {"fields": campos, "context": ctx})[0]
+                except Exception:
+                    pass
+            out.append({
+                "id": mid,
+                "numero": m.get("name"),
+                "estado": m.get("state"),
+                "edi_state": m.get("edi_state"),
+                "autorizacion": m.get("l10n_ec_authorization_number") or None,
+            })
+        except Exception as e:
+            out.append({"id": mid, "error": str(e)[:120]})
+    return {"data": out}
 
 
 @router.get("/cobros-pendientes")

@@ -349,3 +349,11 @@
 /* Estado del cliente (res.partner) en Odoo */
 .of-cliente-ok { font-size: .8rem; color: #1e8449; font-weight: 600; margin-top: 6px; }
 .of-cliente-falta { font-size: .8rem; color: #b9770e; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+
+/* Verificación de envío al SRI */
+.of-btn-sri { margin-left: auto; border: 1px solid #1a56db; background: #fff; color: #1a56db; border-radius: 7px; padding: 4px 12px; font-size: .8rem; font-weight: 700; cursor: pointer; }
+.of-btn-sri:hover { background: #1a56db; color: #fff; }
+.of-btn-sri:disabled { opacity: .6; cursor: default; }
+.of-res-sri { font-size: .74rem; font-weight: 700; padding: 1px 7px; border-radius: 9px; }
+.of-res-sri.ok { background: #d5f5e3; color: #1e8449; }
+.of-res-sri.pend { background: #fdebd0; color: #b9770e; }

@@ -193,12 +193,28 @@ export default function OdooFacturacion() {
           iva_incluido: false,
         })),
       })
-      setResultados(r.data.resultados || [])
+      const res = r.data.resultados || []
+      setResultados(res)
+      // Verificar el envío al SRI de las facturas creadas
+      verificarSri(res.filter((x) => x.ok && x.odoo_id).map((x) => x.odoo_id))
     } catch (e) {
       setResultados([{ ok: false, error: e.response?.data?.detail || e.message }])
     } finally {
       setEnviando(false)
     }
+  }
+
+  const [sriEstado, setSriEstado] = useState({})  // { odoo_id: {edi_state, autorizacion, numero} }
+  const [verificandoSri, setVerificandoSri] = useState(false)
+  const verificarSri = async (ids) => {
+    if (!ids || !ids.length) return
+    setVerificandoSri(true)
+    try {
+      const r = await odooAPI.estadoSri(ids)
+      const m = {}
+      for (const x of (r.data?.data || [])) m[x.id] = x
+      setSriEstado((prev) => ({ ...prev, ...m }))
+    } catch { /* noop */ } finally { setVerificandoSri(false) }
   }
 
   if (loading) return <div className="of-loading">Cargando honorarios…</div>
@@ -285,6 +301,13 @@ export default function OdooFacturacion() {
               <div className="of-res-summary">
                 {okCount > 0 && <span className="of-res-ok">✓ {okCount} factura{okCount !== 1 ? 's' : ''} creada{okCount !== 1 ? 's' : ''}</span>}
                 {errCount > 0 && <span className="of-res-err">✗ {errCount} error{errCount !== 1 ? 'es' : ''}</span>}
+                {okCount > 0 && (
+                  <button className="of-btn-sri" disabled={verificandoSri}
+                    onClick={() => verificarSri(resultados.filter((x) => x.ok && x.odoo_id).map((x) => x.odoo_id))}
+                    title="Verifica/reintenta el envío al SRI de las facturas creadas">
+                    {verificandoSri ? 'verificando…' : '🧾 Verificar envío al SRI'}
+                  </button>
+                )}
               </div>
               {resultados.map((r, i) => (
                 <div key={i} className={`of-res-row ${r.ok ? 'ok' : 'err'}`}>
@@ -303,6 +326,13 @@ export default function OdooFacturacion() {
                         <span className="of-res-pago err" title={r.cobro_banco}>⚠ no se registró el cobro</span>}
                       {r.impuesto_ok === false &&
                         <span className="of-res-pago err" title="La empresa no tiene IVA 15% (411,S)">⚠ sin IVA 15%</span>}
+                      {sriEstado[r.odoo_id] && (
+                        sriEstado[r.odoo_id].autorizacion
+                          ? <span className="of-res-sri ok" title={`Autorización SRI: ${sriEstado[r.odoo_id].autorizacion}`}>🧾 SRI autorizada</span>
+                          : sriEstado[r.odoo_id].edi_state === 'sent'
+                            ? <span className="of-res-sri ok">🧾 SRI enviada</span>
+                            : <span className="of-res-sri pend" title={`edi_state: ${sriEstado[r.odoo_id].edi_state || '-'}`}>🧾 SRI pendiente</span>
+                      )}
                     </>
                   ) : (
                     <>
