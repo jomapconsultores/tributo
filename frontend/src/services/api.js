@@ -354,9 +354,9 @@ export const odooAPI = {
   empresas: () => api.get('/api/odoo/empresas'),       // compañías emisoras en Odoo
   productos: (q = '') => api.get('/api/odoo/productos', { params: q ? { q } : undefined }),
   cobrosPendientes: () => api.get('/api/odoo/cobros-pendientes'),  // clientes que deben (aviso al iniciar)
-  cuentas: () => api.get('/api/odoo/cuentas'),                     // diarios de banco/efectivo
-  cuentasCobrar: (clientes) => api.post('/api/odoo/cuentas-cobrar', { clientes }),  // cuenta x cobrar por cliente
-  crearCuentaCobrar: (ruc, nombre) => api.post('/api/odoo/crear-cuenta-cobrar', { ruc, nombre }),
+  cuentas: (companyId) => api.get('/api/odoo/cuentas', { params: companyId ? { company_id: companyId } : undefined }),  // diarios de banco/efectivo (por empresa)
+  cuentasCobrar: (clientes) => api.post('/api/odoo/cuentas-cobrar', { clientes }),  // cuenta x cobrar por cliente (cada uno con su company_id)
+  crearCuentaCobrar: (ruc, nombre, company_id, codigo) => api.post('/api/odoo/crear-cuenta-cobrar', { ruc, nombre, company_id, codigo }),
   facturar: (body) => api.post('/api/odoo/facturar', body),
 }
 

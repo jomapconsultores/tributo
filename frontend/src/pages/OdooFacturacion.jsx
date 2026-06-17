@@ -24,8 +24,8 @@ export default function OdooFacturacion() {
   const [prodText, setProdText] = useDraft('draft:odoofac:prodText', {})       // { "ruc|concepto": nombre de producto tecleado }
   const [emisorPorGrupo, setEmisorPorGrupo] = useDraft('draft:odoofac:emisor', {})  // { ruc: companyId } — emisor individual
   const [verProductos, setVerProductos] = useState(false)
-  const [bancos, setBancos] = useState([])                  // diarios de banco/efectivo
-  const [cuentas, setCuentas] = useState({})                // { ruc: {existe, cuenta_id, cuenta_nombre, asignada} }
+  const [bancosPorEmpresa, setBancosPorEmpresa] = useState({})  // { companyId: [bancos] }
+  const [cuentas, setCuentas] = useState({})                // { ruc: {existe, cuenta_id, cuenta_nombre, asignada, siguiente_codigo} }
   const [destino, setDestino] = useDraft('draft:odoofac:destino', {})           // { ruc: 'cobrar' | journalId } — por cobrar o banco
   const [creandoCta, setCreandoCta] = useState('')
 
@@ -82,21 +82,31 @@ export default function OdooFacturacion() {
     return Object.values(m).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
   }, [filas])
 
-  // Cuentas por cobrar individuales (Odoo) y diarios de banco, para el registro contable
-  const rucsKey = grupos.map((g) => g.ruc).join(',')
+  // Empresa emisora de cada grupo (la elegida individualmente, o la global)
+  const grupoEmisor = (g) => Number(emisorPorGrupo[g.ruc] || companyId) || null
+
+  // Cuentas por cobrar (del plan de la empresa emisora de cada grupo) y bancos por empresa.
+  // Se recarga si cambia el emisor de algún grupo.
+  const cuentasKey = grupos.map((g) => `${g.ruc}:${emisorPorGrupo[g.ruc] || companyId}`).join(',')
   useEffect(() => {
-    if (!grupos.length) return
-    odooAPI.cuentas().then((r) => setBancos(r.data?.bancos || [])).catch(() => {})
-    odooAPI.cuentasCobrar(grupos.map((g) => ({ ruc: g.ruc, nombre: g.nombre })))
+    if (!grupos.length || !companyId) return
+    // Bancos por cada empresa emisora distinta
+    const empresas = [...new Set(grupos.map((g) => grupoEmisor(g)).filter(Boolean))]
+    empresas.forEach((cid) => {
+      odooAPI.cuentas(cid).then((r) => setBancosPorEmpresa((p) => ({ ...p, [cid]: r.data?.bancos || [] }))).catch(() => {})
+    })
+    // Cuenta por cobrar de cada cliente, en el plan de SU empresa emisora
+    odooAPI.cuentasCobrar(grupos.map((g) => ({ ruc: g.ruc, nombre: g.nombre, company_id: grupoEmisor(g) })))
       .then((r) => setCuentas(r.data?.data || {})).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rucsKey])
+  }, [cuentasKey])
 
   const crearCuenta = async (g) => {
     setCreandoCta(g.ruc)
     try {
-      const r = await odooAPI.crearCuentaCobrar(g.ruc, g.nombre)
-      setCuentas((prev) => ({ ...prev, [g.ruc]: { ...(prev[g.ruc] || {}), existe: true, cuenta_id: r.data.cuenta_id, cuenta_nombre: r.data.cuenta_nombre, asignada: true } }))
+      const info = cuentas[g.ruc] || {}
+      const r = await odooAPI.crearCuentaCobrar(g.ruc, g.nombre, grupoEmisor(g), info.siguiente_codigo || null)
+      setCuentas((prev) => ({ ...prev, [g.ruc]: { ...(prev[g.ruc] || {}), existe: true, cuenta_id: r.data.cuenta_id, cuenta_codigo: r.data.cuenta_codigo, cuenta_nombre: r.data.cuenta_nombre, asignada: true } }))
     } catch (e) {
       alert('No se pudo crear la cuenta: ' + (e.response?.data?.detail || e.message))
     } finally { setCreandoCta('') }
@@ -317,14 +327,17 @@ export default function OdooFacturacion() {
                         <span className="of-cuenta-ok" title={cuentas[g.ruc].asignada ? 'Ya asignada al cliente' : 'Se asignará al cliente al facturar'}>
                           {cuentas[g.ruc].cuenta_codigo ? `${cuentas[g.ruc].cuenta_codigo} · ` : ''}{cuentas[g.ruc].cuenta_nombre}
                         </span>
-                      ) : (
+                      ) : cuentas[g.ruc]?.siguiente_codigo ? (
                         <span className="of-cuenta-falta">
-                          ⚠ No tiene cuenta por cobrar propia
+                          ⚠ No tiene cuenta propia en este plan
                           <button type="button" className="of-cuenta-crear" disabled={creandoCta === g.ruc}
-                            onClick={() => crearCuenta(g)}>
-                            {creandoCta === g.ruc ? 'creando…' : `Crear "Cuentas por cobrar ${g.nombre}"`}
+                            onClick={() => crearCuenta(g)}
+                            title={`Se creará con el código ${cuentas[g.ruc].siguiente_codigo}`}>
+                            {creandoCta === g.ruc ? 'creando…' : `Crear ${cuentas[g.ruc].siguiente_codigo} · Cuentas por cobrar ${g.nombre}`}
                           </button>
                         </span>
+                      ) : (
+                        <span className="of-cuenta-falta">⚠ La empresa emisora no tiene plan de cuentas por cobrar en Odoo</span>
                       )}
                     </div>
                     <div className="of-destino">
@@ -333,7 +346,7 @@ export default function OdooFacturacion() {
                         value={destino[g.ruc] || 'cobrar'}
                         onChange={(e) => setDestino((p) => ({ ...p, [g.ruc]: e.target.value }))}>
                         <option value="cobrar">Cuentas por cobrar (pendiente)</option>
-                        {bancos.map((b) => <option key={b.id} value={String(b.id)}>Cobrado en banco: {b.name}</option>)}
+                        {(bancosPorEmpresa[grupoEmisor(g)] || []).map((b) => <option key={b.id} value={String(b.id)}>Cobrado en banco: {b.name}</option>)}
                       </select>
                     </div>
                   </div>
