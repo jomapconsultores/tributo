@@ -96,7 +96,7 @@ export default function OdooFacturacion() {
   // Se recarga si cambia el emisor de algún grupo.
   const cuentasKey = grupos.map((g) => `${g.ruc}:${emisorPorGrupo[g.ruc] || companyId}`).join(',')
   useEffect(() => {
-    if (!grupos.length || !companyId) return
+    if (!grupos.length) return
     // Bancos por cada empresa emisora distinta
     const empresas = [...new Set(grupos.map((g) => grupoEmisor(g)).filter(Boolean))]
     empresas.forEach((cid) => {
@@ -174,6 +174,15 @@ export default function OdooFacturacion() {
     setEnviando(true)
     setResultados(null)
     try {
+      // 1) Asegurar que cada cliente exista en Odoo ANTES de emitir (antes del SRI).
+      const faltantes = facturasSeleccionadas.filter((g) => !cuentas[g.ruc]?.partner_id)
+      if (faltantes.length) {
+        for (const g of faltantes) {
+          try { await odooAPI.crearCliente(g.ruc, g.nombre) } catch { /* el backend igual lo crea al emitir */ }
+        }
+        await recargarCuentas()
+      }
+      // 2) Emitir las facturas (se postean y el SRI autoriza).
       const r = await odooAPI.facturar({
         company_id: companyId ? Number(companyId) : null,   // emisor por defecto
         facturas: facturasSeleccionadas.map((g) => ({
@@ -391,7 +400,9 @@ export default function OdooFacturacion() {
                   </div>
 
                   {/* Cliente en Odoo: si no existe, ofrecer crearlo con los datos sugeridos */}
-                  {cuentas[g.ruc] && (cuentas[g.ruc].partner_id
+                  {!cuentas[g.ruc]
+                    ? <div className="of-cliente-chk">⏳ verificando cliente en Odoo…</div>
+                    : cuentas[g.ruc].partner_id
                     ? <div className="of-cliente-ok">👤 Cliente en Odoo ✓</div>
                     : <div className="of-cliente-falta">
                         ⚠ El cliente NO está creado en Odoo.
@@ -400,7 +411,7 @@ export default function OdooFacturacion() {
                           title={`Se creará: ${g.nombre} · RUC ${g.ruc}`}>
                           {creandoCli === g.ruc ? 'creando…' : `Crear cliente: ${g.nombre} · ${g.ruc}`}
                         </button>
-                      </div>)}
+                      </div>}
 
                   {/* Registro contable: cuenta por cobrar del cliente + destino (por cobrar / banco) */}
                   <div className="of-contable">
