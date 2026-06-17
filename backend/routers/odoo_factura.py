@@ -524,6 +524,42 @@ async def odoo_cuentas_cobrar(body: CuentasClientesIn, user_id: str = Depends(ge
         models, uid, db, key = _connect()
     except HTTPException as e:
         return {"data": {}, "error": e.detail}
+    # --- Optimización: en vez de ~6 consultas por cliente, se agrupan en pocas masivas ---
+    # 1) Candidatos de vat por RUC y UN solo search_read de todos los partners.
+    cand_por_ruc = {}
+    todos_vats = set()
+    for c in body.clientes:
+        dig = _solo_digitos(c.ruc)
+        cands = [c.ruc, dig]
+        if len(dig) == 13 and dig.endswith("001"):
+            cands.append(dig[:10])
+        if len(dig) == 10:
+            cands.append(dig + "001")
+        cands = [x for x in dict.fromkeys(cands) if x]
+        cand_por_ruc[c.ruc] = cands
+        todos_vats.update(cands)
+    por_vat = {}
+    if todos_vats:
+        for p in _x(models, db, uid, key, "res.partner", "search_read",
+                    [[["vat", "in", list(todos_vats)]]],
+                    {"fields": ["id", "vat", "property_account_receivable_id"]}):
+            por_vat.setdefault(p.get("vat"), p)
+
+    # 2) UN solo search_read de las facturas de ESTE MES de todos esos partners.
+    pids = [p["id"] for p in por_vat.values()]
+    ini_mes = datetime.now(_EC_TZ_ODOO).strftime("%Y-%m-01")
+    ult = {}  # (partner_id, company_id) -> última factura
+    if pids:
+        facs = _x(models, db, uid, key, "account.move", "search_read",
+                  [[["move_type", "=", "out_invoice"], ["state", "=", "posted"],
+                    ["partner_id", "in", pids], ["invoice_date", ">=", ini_mes]]],
+                  {"fields": ["partner_id", "company_id", "name", "invoice_date", "edi_state",
+                              "l10n_ec_authorization_number"], "order": "invoice_date desc, id desc"})
+        for f in facs:
+            kp = (f.get("partner_id") or [0])[0]
+            kc = (f.get("company_id") or [0])[0]
+            ult.setdefault((kp, kc), f)           # la 1ª (orden desc) = la más reciente
+
     cache = {}   # company_id -> cuentas por cobrar de esa compañía
     out = {}
     for c in body.clientes:
@@ -532,28 +568,15 @@ async def odoo_cuentas_cobrar(body: CuentasClientesIn, user_id: str = Depends(ge
             cache[cid] = _cuentas_cobrar_emp(models, db, uid, key, cid) if cid else []
         accts = cache[cid]
         cta = _match_cuenta_cobrar(c.nombre, accts)
-        partner_id = _buscar_partner_id(models, db, uid, key, c.ruc)
-        asignada = False
-        if partner_id and cta:
-            p = _x(models, db, uid, key, "res.partner", "read", [[partner_id]],
-                   {"fields": ["property_account_receivable_id"], "context": _ctx_emp(cid)})
-            asignada = bool(p) and (p[0].get("property_account_receivable_id") or [0])[0] == cta["id"]
-        # Última factura emitida a este cliente por esta empresa (para detectar si ya
-        # se emitió y su estado en el SRI).
+        partner = next((por_vat[v] for v in cand_por_ruc[c.ruc] if v in por_vat), None)
+        partner_id = partner["id"] if partner else None
+        asignada = bool(partner and cta and (partner.get("property_account_receivable_id") or [0])[0] == cta["id"])
+        uf = ult.get((partner_id, cid)) if partner_id else None
         ultima = None
-        if partner_id:
-            dom = [["move_type", "=", "out_invoice"], ["partner_id", "=", partner_id], ["state", "=", "posted"]]
-            if cid:
-                dom.append(["company_id", "=", cid])
-            inv = _x(models, db, uid, key, "account.move", "search", [dom],
-                     {"order": "invoice_date desc, id desc", "limit": 1, "context": _ctx_emp(cid)})
-            if inv:
-                m = _x(models, db, uid, key, "account.move", "read", [inv],
-                       {"fields": ["name", "invoice_date", "edi_state", "l10n_ec_authorization_number"],
-                        "context": _ctx_emp(cid)})[0]
-                ultima = {"numero": m.get("name"), "fecha": m.get("invoice_date"),
-                          "edi_state": m.get("edi_state"),
-                          "autorizada": bool(m.get("l10n_ec_authorization_number"))}
+        if uf:
+            ultima = {"numero": uf.get("name"), "fecha": uf.get("invoice_date"),
+                      "edi_state": uf.get("edi_state"),
+                      "autorizada": bool(uf.get("l10n_ec_authorization_number"))}
         out[c.ruc] = {
             "company_id": cid,
             "partner_id": partner_id,
