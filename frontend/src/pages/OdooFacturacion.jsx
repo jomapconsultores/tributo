@@ -85,7 +85,13 @@ export default function OdooFacturacion() {
   // Empresa emisora de cada grupo (la elegida individualmente, o la global)
   const grupoEmisor = (g) => Number(emisorPorGrupo[g.ruc] || companyId) || null
 
-  // Cuentas por cobrar (del plan de la empresa emisora de cada grupo) y bancos por empresa.
+  // Cuenta por cobrar de cada cliente, en el plan de SU empresa emisora
+  const recargarCuentas = () => {
+    if (!grupos.length) return
+    odooAPI.cuentasCobrar(grupos.map((g) => ({ ruc: g.ruc, nombre: g.nombre, company_id: grupoEmisor(g) })))
+      .then((r) => setCuentas(r.data?.data || {})).catch(() => {})
+  }
+
   // Se recarga si cambia el emisor de algún grupo.
   const cuentasKey = grupos.map((g) => `${g.ruc}:${emisorPorGrupo[g.ruc] || companyId}`).join(',')
   useEffect(() => {
@@ -95,18 +101,35 @@ export default function OdooFacturacion() {
     empresas.forEach((cid) => {
       odooAPI.cuentas(cid).then((r) => setBancosPorEmpresa((p) => ({ ...p, [cid]: r.data?.bancos || [] }))).catch(() => {})
     })
-    // Cuenta por cobrar de cada cliente, en el plan de SU empresa emisora
-    odooAPI.cuentasCobrar(grupos.map((g) => ({ ruc: g.ruc, nombre: g.nombre, company_id: grupoEmisor(g) })))
-      .then((r) => setCuentas(r.data?.data || {})).catch(() => {})
+    recargarCuentas()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cuentasKey])
+
+  // Código a crear por grupo: si varios clientes de la MISMA empresa no tienen cuenta,
+  // se les asigna un número distinto y consecutivo (no el mismo a todos).
+  const codigosSugeridos = useMemo(() => {
+    const cont = {}   // companyId -> cuántas creaciones pendientes ya se asignaron
+    const out = {}
+    for (const g of grupos) {
+      const info = cuentas[g.ruc]
+      if (!info || info.existe || !info.siguiente_codigo) continue
+      const cid = grupoEmisor(g)
+      const n = cont[cid] || 0
+      out[g.ruc] = String(Number(info.siguiente_codigo) + n)
+      cont[cid] = n + 1
+    }
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grupos, cuentas, emisorPorGrupo, companyId])
 
   const crearCuenta = async (g) => {
     setCreandoCta(g.ruc)
     try {
-      const info = cuentas[g.ruc] || {}
-      const r = await odooAPI.crearCuentaCobrar(g.ruc, g.nombre, grupoEmisor(g), info.siguiente_codigo || null)
-      setCuentas((prev) => ({ ...prev, [g.ruc]: { ...(prev[g.ruc] || {}), existe: true, cuenta_id: r.data.cuenta_id, cuenta_codigo: r.data.cuenta_codigo, cuenta_nombre: r.data.cuenta_nombre, asignada: true } }))
+      const codigo = codigosSugeridos[g.ruc]
+      const r = await odooAPI.crearCuentaCobrar(g.ruc, g.nombre, grupoEmisor(g), codigo || null)
+      // marcar como creada y RECARGAR, para que los demás clientes tomen el siguiente número
+      setCuentas((prev) => ({ ...prev, [g.ruc]: { ...(prev[g.ruc] || {}), existe: true, cuenta_id: r.data.cuenta_id, cuenta_codigo: r.data.cuenta_codigo, cuenta_nombre: r.data.cuenta_nombre, asignada: true, siguiente_codigo: null } }))
+      recargarCuentas()
     } catch (e) {
       alert('No se pudo crear la cuenta: ' + (e.response?.data?.detail || e.message))
     } finally { setCreandoCta('') }
@@ -327,13 +350,13 @@ export default function OdooFacturacion() {
                         <span className="of-cuenta-ok" title={cuentas[g.ruc].asignada ? 'Ya asignada al cliente' : 'Se asignará al cliente al facturar'}>
                           {cuentas[g.ruc].cuenta_codigo ? `${cuentas[g.ruc].cuenta_codigo} · ` : ''}{cuentas[g.ruc].cuenta_nombre}
                         </span>
-                      ) : cuentas[g.ruc]?.siguiente_codigo ? (
+                      ) : codigosSugeridos[g.ruc] ? (
                         <span className="of-cuenta-falta">
                           ⚠ No tiene cuenta propia en este plan
                           <button type="button" className="of-cuenta-crear" disabled={creandoCta === g.ruc}
                             onClick={() => crearCuenta(g)}
-                            title={`Se creará con el código ${cuentas[g.ruc].siguiente_codigo}`}>
-                            {creandoCta === g.ruc ? 'creando…' : `Crear ${cuentas[g.ruc].siguiente_codigo} · Cuentas por cobrar ${g.nombre}`}
+                            title={`Se creará con el código ${codigosSugeridos[g.ruc]}`}>
+                            {creandoCta === g.ruc ? 'creando…' : `Crear ${codigosSugeridos[g.ruc]} · Cuentas por cobrar ${g.nombre}`}
                           </button>
                         </span>
                       ) : (
