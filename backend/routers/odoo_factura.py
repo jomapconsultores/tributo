@@ -547,6 +547,15 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Error conectando a Odoo: {e}")
 
+    # Nombre de cada empresa emisora (para saber cuál es "Marco Antonio" y excluirla del aviso a Johanna).
+    emp_nombre = {}
+    try:
+        for c in _x(models, db, uid, key, "res.company", "read",
+                    [_x(models, db, uid, key, "res.company", "search", [[]])], {"fields": ["id", "name"]}):
+            emp_nombre[c["id"]] = c.get("name") or ""
+    except Exception:
+        pass
+
     resultados = []
     for fac in body.facturas:
         try:
@@ -631,6 +640,7 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
                 "estado": inv_info.get("state"),
                 "payment_state": inv_info.get("payment_state"),
                 "cobro_banco": cobro_banco,
+                "emisor_nombre": emp_nombre.get(company, ""),
             })
         except Exception as e:
             resultados.append({"ruc": fac.ruc, "nombre": fac.nombre,
@@ -638,12 +648,22 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
 
     exitosas = [r for r in resultados if r.get("ok")]
     if exitosas:
-        # Queda en Movimientos. El aviso de cobro a Johanna es SEMANAL (cron →
-        # /api/odoo/recordatorio-cobros), no por cada emisión.
+        # Cada emisión queda en Movimientos.
         for r in exitosas:
             registrar(actor_user_id=user_id, action="emit", module="facturacion",
                       entity="Factura emitida en Odoo", identificacion=r.get("ruc"),
                       contribuyente=r.get("nombre"),
                       metadata={"numero": r.get("numero"), "total": r.get("total")})
+        # Aviso a Johanna de las facturas generadas para que gestione el cobro, SOLO
+        # las que le corresponden (se excluye la empresa emisora 'Marco Antonio').
+        # No se auto-notifica si quien emite es la propia Johanna.
+        notificables = [r for r in exitosas
+                        if EXCLUIR_EMISOR not in (r.get("emisor_nombre") or "").lower()]
+        if notificables:
+            threading.Thread(
+                target=_notificar_johanna,
+                kwargs={"actor_user_id": user_id, "exitosas": notificables},
+                daemon=True,
+            ).start()
 
     return {"resultados": resultados}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { reportesAPI, odooAPI } from '../services/api'
+import useDraft from '../hooks/useDraft'
 import './OdooFacturacion.css'
 
 const IVA = 0.15
@@ -17,14 +18,15 @@ export default function OdooFacturacion() {
   const [resultados, setResultados] = useState(null)
   const [estadoOdoo, setEstadoOdoo] = useState(null)
   const [companias, setCompanias] = useState([])   // empresas EMISORAS (compañías Odoo)
-  const [companyId, setCompanyId] = useState('')    // emisor elegido
+  // Opciones del usuario: se autoguardan en el navegador (sobreviven recargas)
+  const [companyId, setCompanyId] = useDraft('draft:odoofac:companyId', '')   // emisor elegido
   const [productos, setProductos] = useState([])    // productos/servicios existentes en Odoo
-  const [prodText, setProdText] = useState({})      // { "ruc|concepto": nombre de producto tecleado }
-  const [emisorPorGrupo, setEmisorPorGrupo] = useState({})  // { ruc: companyId } — emisor individual
+  const [prodText, setProdText] = useDraft('draft:odoofac:prodText', {})       // { "ruc|concepto": nombre de producto tecleado }
+  const [emisorPorGrupo, setEmisorPorGrupo] = useDraft('draft:odoofac:emisor', {})  // { ruc: companyId } — emisor individual
   const [verProductos, setVerProductos] = useState(false)
   const [bancos, setBancos] = useState([])                  // diarios de banco/efectivo
   const [cuentas, setCuentas] = useState({})                // { ruc: {existe, cuenta_id, cuenta_nombre, asignada} }
-  const [destino, setDestino] = useState({})                // { ruc: 'cobrar' | journalId } — por cobrar o banco
+  const [destino, setDestino] = useDraft('draft:odoofac:destino', {})           // { ruc: 'cobrar' | journalId } — por cobrar o banco
   const [creandoCta, setCreandoCta] = useState('')
 
   useEffect(() => {
