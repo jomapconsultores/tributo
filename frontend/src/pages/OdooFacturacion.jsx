@@ -399,19 +399,32 @@ export default function OdooFacturacion() {
                     </select>
                   </div>
 
-                  {/* Cliente en Odoo: si no existe, ofrecer crearlo con los datos sugeridos */}
+                  {/* Estado en Odoo: qué ya está y qué falta (cliente · factura · SRI) */}
                   {!cuentas[g.ruc]
-                    ? <div className="of-cliente-chk">⏳ verificando cliente en Odoo…</div>
-                    : cuentas[g.ruc].partner_id
-                    ? <div className="of-cliente-ok">👤 Cliente en Odoo ✓</div>
-                    : <div className="of-cliente-falta">
-                        ⚠ El cliente NO está creado en Odoo.
-                        <button type="button" className="of-cuenta-crear" disabled={creandoCli === g.ruc}
-                          onClick={() => crearCliente(g)}
-                          title={`Se creará: ${g.nombre} · RUC ${g.ruc}`}>
-                          {creandoCli === g.ruc ? 'creando…' : `Crear cliente: ${g.nombre} · ${g.ruc}`}
-                        </button>
-                      </div>}
+                    ? <div className="of-cliente-chk">⏳ verificando estado en Odoo…</div>
+                    : (() => {
+                        const info = cuentas[g.ruc]
+                        const uf = info.ultima_factura
+                        const mesActual = (new Date()).toISOString().slice(0, 7)
+                        const emitidaEsteMes = uf && (uf.fecha || '').slice(0, 7) === mesActual
+                        return (
+                          <div className="of-estado">
+                            {info.partner_id
+                              ? <span className="of-est-ok">👤 Cliente en Odoo ✓</span>
+                              : <span className="of-est-falta">👤 Cliente NO existe
+                                  <button type="button" className="of-cuenta-crear" disabled={creandoCli === g.ruc}
+                                    onClick={() => crearCliente(g)} title={`Se creará: ${g.nombre} · RUC ${g.ruc}`}>
+                                    {creandoCli === g.ruc ? 'creando…' : `Crear: ${g.nombre} · ${g.ruc}`}
+                                  </button>
+                                </span>}
+                            {emitidaEsteMes
+                              ? <span className="of-est-warn" title="Ya hay una factura de este mes — evitá duplicar">🧾 Ya emitida este mes: {uf.numero}{uf.autorizada ? ' · SRI autorizada ✓' : ' · SRI pendiente'}</span>
+                              : uf
+                                ? <span className="of-est-info">🧾 Última: {uf.numero} ({uf.fecha}){uf.autorizada ? ' · SRI ✓' : ''} — falta emitir la de este mes</span>
+                                : <span className="of-est-pend">🧾 Sin factura emitida — falta emitir</span>}
+                          </div>
+                        )
+                      })()}
 
                   {/* Registro contable: cuenta por cobrar del cliente + destino (por cobrar / banco) */}
                   <div className="of-contable">

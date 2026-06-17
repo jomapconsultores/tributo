@@ -124,15 +124,32 @@ def _x(models, db, uid, key, model, method, args, kw=None):
 # Find-or-create de entidades Odoo
 # ---------------------------------------------------------------------------
 
+def _buscar_partner_id(models, db, uid, key, ruc):
+    """Busca el cliente por RUC tolerando el formato del vat en Odoo: RUC de 13
+    dígitos, cédula de 10 (sin el '001'), o cédula → RUC. None si no existe."""
+    dig = _solo_digitos(ruc)
+    cand = [ruc, dig]
+    if len(dig) == 13 and dig.endswith("001"):
+        cand.append(dig[:10])      # cédula sin el 001
+    if len(dig) == 10:
+        cand.append(dig + "001")   # cédula → RUC
+    for v in dict.fromkeys([c for c in cand if c]):
+        ids = _x(models, db, uid, key, "res.partner", "search", [[["vat", "=", v]]], {"limit": 1})
+        if ids:
+            return ids[0]
+    return None
+
+
 def _find_or_create_partner(models, db, uid, key, ruc: str, nombre: str) -> int:
-    ids = _x(models, db, uid, key, "res.partner", "search",
-             [[["vat", "=", ruc]]], {"limit": 1})
-    if ids:
-        return ids[0]
+    pid = _buscar_partner_id(models, db, uid, key, ruc)
+    if pid:
+        return pid
+    dig = _solo_digitos(ruc)
+    es_empresa = len(dig) == 13 and dig[2:3] in ("6", "9")
     return _x(models, db, uid, key, "res.partner", "create", [{
         "name": nombre,
         "vat": ruc,
-        "is_company": True,
+        "is_company": es_empresa,
         "customer_rank": 1,
     }])
 
@@ -451,15 +468,28 @@ async def odoo_cuentas_cobrar(body: CuentasClientesIn, user_id: str = Depends(ge
             cache[cid] = _cuentas_cobrar_emp(models, db, uid, key, cid) if cid else []
         accts = cache[cid]
         cta = _match_cuenta_cobrar(c.nombre, accts)
-        pids = _x(models, db, uid, key, "res.partner", "search", [[["vat", "=", c.ruc]]], {"limit": 1})
-        if not pids:
-            pids = _x(models, db, uid, key, "res.partner", "search", [[["vat", "=", _solo_digitos(c.ruc)]]], {"limit": 1})
-        partner_id = pids[0] if pids else None
+        partner_id = _buscar_partner_id(models, db, uid, key, c.ruc)
         asignada = False
         if partner_id and cta:
             p = _x(models, db, uid, key, "res.partner", "read", [[partner_id]],
                    {"fields": ["property_account_receivable_id"], "context": _ctx_emp(cid)})
             asignada = bool(p) and (p[0].get("property_account_receivable_id") or [0])[0] == cta["id"]
+        # Última factura emitida a este cliente por esta empresa (para detectar si ya
+        # se emitió y su estado en el SRI).
+        ultima = None
+        if partner_id:
+            dom = [["move_type", "=", "out_invoice"], ["partner_id", "=", partner_id], ["state", "=", "posted"]]
+            if cid:
+                dom.append(["company_id", "=", cid])
+            inv = _x(models, db, uid, key, "account.move", "search", [dom],
+                     {"order": "invoice_date desc, id desc", "limit": 1, "context": _ctx_emp(cid)})
+            if inv:
+                m = _x(models, db, uid, key, "account.move", "read", [inv],
+                       {"fields": ["name", "invoice_date", "edi_state", "l10n_ec_authorization_number"],
+                        "context": _ctx_emp(cid)})[0]
+                ultima = {"numero": m.get("name"), "fecha": m.get("invoice_date"),
+                          "edi_state": m.get("edi_state"),
+                          "autorizada": bool(m.get("l10n_ec_authorization_number"))}
         out[c.ruc] = {
             "company_id": cid,
             "partner_id": partner_id,
@@ -469,6 +499,7 @@ async def odoo_cuentas_cobrar(body: CuentasClientesIn, user_id: str = Depends(ge
             "cuenta_nombre": cta["name"] if cta else None,
             "asignada": asignada,
             "siguiente_codigo": None if cta else _siguiente_codigo_cobrar(accts),
+            "ultima_factura": ultima,
         }
     return {"data": out}
 
@@ -510,10 +541,9 @@ async def crear_cliente(body: CrearClienteIn, user_id: str = Depends(get_current
     try:
         models, uid, db, key = _connect()
         ruc = (body.ruc or "").strip()
-        ids = _x(models, db, uid, key, "res.partner", "search", [[["vat", "=", ruc]]], {"limit": 1}) or \
-            _x(models, db, uid, key, "res.partner", "search", [[["vat", "=", _solo_digitos(ruc)]]], {"limit": 1})
-        if ids:
-            return {"ok": True, "partner_id": ids[0], "ya_existia": True}
+        existe = _buscar_partner_id(models, db, uid, key, ruc)
+        if existe:
+            return {"ok": True, "partner_id": existe, "ya_existia": True}
         dig = _solo_digitos(ruc)
         es_empresa = len(dig) == 13 and dig[2:3] in ("6", "9")
         pid = _x(models, db, uid, key, "res.partner", "create", [{

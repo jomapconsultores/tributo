@@ -358,3 +358,11 @@
 .of-res-sri.ok { background: #d5f5e3; color: #1e8449; }
 .of-res-sri.pend { background: #fdebd0; color: #b9770e; }
 .of-cliente-chk { font-size: .78rem; color: #94a3b8; margin-top: 6px; }
+
+/* Panel de estado en Odoo (cliente · factura · SRI) */
+.of-estado { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; font-size: .8rem; }
+.of-est-ok { color: #1e8449; font-weight: 600; }
+.of-est-info { color: #51607a; }
+.of-est-pend { color: #b9770e; font-weight: 600; }
+.of-est-warn { color: #c0392b; font-weight: 700; }
+.of-est-falta { color: #b9770e; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
