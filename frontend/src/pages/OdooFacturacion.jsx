@@ -352,6 +352,19 @@ export default function OdooFacturacion() {
                   )}
                 </div>
               ))}
+              {/* Paso de envío al SRI (comunicación con Odoo) */}
+              {okCount > 0 && (
+                <div className="of-sri-paso">
+                  {verificandoSri
+                    ? '🔄 Verificando el envío al SRI…'
+                    : (() => {
+                        const ids = resultados.filter((x) => x.ok && x.odoo_id).map((x) => x.odoo_id)
+                        const aut = ids.filter((id) => sriEstado[id] && (sriEstado[id].autorizacion || sriEstado[id].edi_state === 'sent')).length
+                        const pend = ids.length - aut
+                        return `🧾 Envío al SRI — ${aut} autorizada(s)${pend ? ` · ${pend} pendiente(s)` : ''}`
+                      })()}
+                </div>
+              )}
             </div>
           )}
 

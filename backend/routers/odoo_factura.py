@@ -140,18 +140,79 @@ def _buscar_partner_id(models, db, uid, key, ruc):
     return None
 
 
+_EC_CACHE = {}  # ids de país/tipos de identificación de Ecuador (se cachean)
+
+
+def _ec_ids(models, db, uid, key):
+    """(country_id Ecuador, tipo RUC, tipo Cédula, tipo VAT genérico). Cacheado."""
+    if _EC_CACHE:
+        return _EC_CACHE.get("c"), _EC_CACHE.get("ruc"), _EC_CACHE.get("ced"), _EC_CACHE.get("vat")
+    c = ruc = ced = vat = None
+    try:
+        ecs = _x(models, db, uid, key, "res.country", "search", [[["code", "=", "EC"]]], {"limit": 1})
+        c = ecs[0] if ecs else None
+        tipos = _x(models, db, uid, key, "l10n_latam.identification.type", "search_read",
+                   [[]], {"fields": ["id", "name", "country_id"]})
+        for t in tipos:
+            n = (t.get("name") or "").lower()
+            tc = (t.get("country_id") or [0])[0]
+            if tc == c and ("ruc" in n):
+                ruc = t["id"]
+            elif tc == c and ("cedula" in n or "cédula" in n or "citizen" in n or "ciudadan" in n):
+                ced = t["id"]
+            elif not t.get("country_id") and n == "vat":
+                vat = t["id"]
+    except Exception as e:
+        print(f"[odoo] _ec_ids: {e}")
+    _EC_CACHE.update({"c": c, "ruc": ruc, "ced": ced, "vat": vat})
+    return c, ruc, ced, vat
+
+
+def _datos_partner_ec(ruc, nombre, country_id, t_ruc, t_ced):
+    """Datos pertinentes para crear el cliente en Odoo (Ecuador): país, tipo de
+    identificación (RUC 13 díg. / Cédula 10), persona o empresa."""
+    dig = _solo_digitos(ruc)
+    es_empresa = len(dig) == 13 and dig[2:3] in ("6", "9")
+    vals = {"name": (nombre or "").strip(), "vat": ruc, "is_company": es_empresa, "customer_rank": 1}
+    if country_id:
+        vals["country_id"] = country_id
+    tipo = t_ruc if len(dig) == 13 else (t_ced if len(dig) == 10 else None)
+    if tipo:
+        vals["l10n_latam_identification_type_id"] = tipo
+    return vals
+
+
+def _asegurar_partner_ec(models, db, uid, key, partner_id, ruc):
+    """Completa país y tipo de identificación si al cliente le faltan (para que la
+    factura sea válida en el SRI). No duplica: actualiza el existente."""
+    c, t_ruc, t_ced, t_vat = _ec_ids(models, db, uid, key)
+    try:
+        cur = _x(models, db, uid, key, "res.partner", "read", [[partner_id]],
+                 {"fields": ["country_id", "l10n_latam_identification_type_id"]})[0]
+    except Exception:
+        return
+    upd = {}
+    if not cur.get("country_id") and c:
+        upd["country_id"] = c
+    dig = _solo_digitos(ruc)
+    tipo = t_ruc if len(dig) == 13 else (t_ced if len(dig) == 10 else None)
+    actual_tipo = (cur.get("l10n_latam_identification_type_id") or [None])[0]
+    if tipo and (not actual_tipo or actual_tipo == t_vat):
+        upd["l10n_latam_identification_type_id"] = tipo
+    if upd:
+        try:
+            _x(models, db, uid, key, "res.partner", "write", [[partner_id], upd])
+        except Exception as e:
+            print(f"[odoo] no se pudo completar país/tipo del cliente {ruc}: {e}")
+
+
 def _find_or_create_partner(models, db, uid, key, ruc: str, nombre: str) -> int:
     pid = _buscar_partner_id(models, db, uid, key, ruc)
     if pid:
+        _asegurar_partner_ec(models, db, uid, key, pid, ruc)  # completa país/tipo si faltan
         return pid
-    dig = _solo_digitos(ruc)
-    es_empresa = len(dig) == 13 and dig[2:3] in ("6", "9")
-    return _x(models, db, uid, key, "res.partner", "create", [{
-        "name": nombre,
-        "vat": ruc,
-        "is_company": es_empresa,
-        "customer_rank": 1,
-    }])
+    c, t_ruc, t_ced, _ = _ec_ids(models, db, uid, key)
+    return _x(models, db, uid, key, "res.partner", "create", [_datos_partner_ec(ruc, nombre, c, t_ruc, t_ced)])
 
 
 def _find_or_create_product(models, db, uid, key, nombre: str) -> int:
@@ -543,15 +604,11 @@ async def crear_cliente(body: CrearClienteIn, user_id: str = Depends(get_current
         ruc = (body.ruc or "").strip()
         existe = _buscar_partner_id(models, db, uid, key, ruc)
         if existe:
+            _asegurar_partner_ec(models, db, uid, key, existe, ruc)  # completa país/tipo si faltan
             return {"ok": True, "partner_id": existe, "ya_existia": True}
-        dig = _solo_digitos(ruc)
-        es_empresa = len(dig) == 13 and dig[2:3] in ("6", "9")
-        pid = _x(models, db, uid, key, "res.partner", "create", [{
-            "name": (body.nombre or "").strip(),
-            "vat": ruc,
-            "is_company": es_empresa,
-            "customer_rank": 1,
-        }])
+        c, t_ruc, t_ced, _ = _ec_ids(models, db, uid, key)
+        pid = _x(models, db, uid, key, "res.partner", "create",
+                 [_datos_partner_ec(ruc, body.nombre, c, t_ruc, t_ced)])
         return {"ok": True, "partner_id": pid, "ya_existia": False}
     except HTTPException:
         raise
