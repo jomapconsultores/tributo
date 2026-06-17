@@ -342,3 +342,6 @@
 .of-cuenta-crear:hover { background: #1a56db; color: #fff; }
 .of-cuenta-crear:disabled { opacity: .6; cursor: default; }
 .of-destino select { padding: 5px 9px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: .82rem; max-width: 280px; }
+
+/* Aviso de impuesto IVA 15% (411,S) faltante */
+.of-impuesto-falta { width: 100%; font-size: .8rem; color: #b9770e; background: #fef9ec; border: 1px solid #f6e2b3; border-radius: 7px; padding: 6px 10px; }

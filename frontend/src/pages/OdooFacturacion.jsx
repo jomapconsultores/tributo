@@ -25,6 +25,7 @@ export default function OdooFacturacion() {
   const [emisorPorGrupo, setEmisorPorGrupo] = useDraft('draft:odoofac:emisor', {})  // { ruc: companyId } — emisor individual
   const [verProductos, setVerProductos] = useState(false)
   const [bancosPorEmpresa, setBancosPorEmpresa] = useState({})  // { companyId: [bancos] }
+  const [impuestoPorEmpresa, setImpuestoPorEmpresa] = useState({})  // { companyId: bool } — tiene IVA 15% (411,S)
   const [cuentas, setCuentas] = useState({})                // { ruc: {existe, cuenta_id, cuenta_nombre, asignada, siguiente_codigo} }
   const [destino, setDestino] = useDraft('draft:odoofac:destino', {})           // { ruc: 'cobrar' | journalId } — por cobrar o banco
   const [creandoCta, setCreandoCta] = useState('')
@@ -99,7 +100,10 @@ export default function OdooFacturacion() {
     // Bancos por cada empresa emisora distinta
     const empresas = [...new Set(grupos.map((g) => grupoEmisor(g)).filter(Boolean))]
     empresas.forEach((cid) => {
-      odooAPI.cuentas(cid).then((r) => setBancosPorEmpresa((p) => ({ ...p, [cid]: r.data?.bancos || [] }))).catch(() => {})
+      odooAPI.cuentas(cid).then((r) => {
+        setBancosPorEmpresa((p) => ({ ...p, [cid]: r.data?.bancos || [] }))
+        setImpuestoPorEmpresa((p) => ({ ...p, [cid]: r.data?.iva_15_s !== false }))
+      }).catch(() => {})
     })
     recargarCuentas()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -285,6 +289,8 @@ export default function OdooFacturacion() {
                           : null}
                       {typeof r.cobro_banco === 'string' && r.cobro_banco.startsWith('error') &&
                         <span className="of-res-pago err" title={r.cobro_banco}>⚠ no se registró el cobro</span>}
+                      {r.impuesto_ok === false &&
+                        <span className="of-res-pago err" title="La empresa no tiene IVA 15% (411,S)">⚠ sin IVA 15%</span>}
                     </>
                   ) : (
                     <>
@@ -363,6 +369,11 @@ export default function OdooFacturacion() {
                         <span className="of-cuenta-falta">⚠ La empresa emisora no tiene plan de cuentas por cobrar en Odoo</span>
                       )}
                     </div>
+                    {impuestoPorEmpresa[grupoEmisor(g)] === false && (
+                      <div className="of-impuesto-falta" title="Créalo en Odoo: Contabilidad → Impuestos">
+                        ⚠ Esta empresa no tiene el impuesto <strong>IVA 15% (411, S)</strong>. Créalo en Odoo: Contabilidad → Impuestos → nuevo «IVA 15%», tipo <em>Venta</em>, importe <em>15%</em>, etiqueta SRI <em>411</em> (S — servicios). Sin él, la factura saldría sin IVA.
+                      </div>
+                    )}
                     <div className="of-destino">
                       <label htmlFor={`dest-${g.ruc}`}>Destino:</label>
                       <select id={`dest-${g.ruc}`}

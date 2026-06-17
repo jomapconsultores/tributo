@@ -291,6 +291,18 @@ def _siguiente_codigo_cobrar(accts):
     return None
 
 
+def _iva_15_s_id(models, db, uid, key, company_id):
+    """ID del impuesto de venta 'IVA 15% (411, S)' (Odoo lo llama 'VAT 15% S') de
+    la compañía. Es el de servicios/honorarios. None si la empresa no lo tiene."""
+    ts = _x(models, db, uid, key, "account.tax", "search_read",
+            [[["type_tax_use", "=", "sale"], ["amount", "=", 15]]],
+            {"fields": ["id", "name"], "context": _ctx_emp(company_id)})
+    for t in ts:
+        if re.search(r"15\s*%?\s*s\b", t.get("name") or "", re.I):
+            return t["id"]
+    return None
+
+
 def _registrar_pago(models, db, uid, key, inv_id: int, journal_id: int):
     """Registra el cobro de una factura posteada en el diario de banco indicado
     (account.payment.register). La factura queda PAGADA y el dinero entra al banco."""
@@ -398,18 +410,19 @@ async def odoo_productos(user_id: str = Depends(get_current_user), q: Optional[s
 
 @router.get("/cuentas")
 async def odoo_cuentas(company_id: Optional[int] = None, user_id: str = Depends(get_current_user)):
-    """Diarios de banco/efectivo de la empresa emisora (para registrar el cobro
-    directo en el banco). Son por compañía."""
+    """Diarios de banco/efectivo de la empresa emisora (para el cobro directo) y
+    si la empresa tiene el impuesto IVA 15% (411, S). Todo por compañía."""
     try:
         models, uid, db, key = _connect()
         bancos = _x(models, db, uid, key, "account.journal", "search_read",
                     [[["type", "in", ["bank", "cash"]]]],
                     {"fields": ["id", "name", "type"], "context": _ctx_emp(company_id)})
-        return {"bancos": bancos}
+        tax_id = _iva_15_s_id(models, db, uid, key, company_id) if company_id else None
+        return {"bancos": bancos, "iva_15_s": bool(tax_id)}
     except HTTPException:
         raise
     except Exception as e:
-        return {"bancos": [], "error": str(e)}
+        return {"bancos": [], "iva_15_s": True, "error": str(e)}
 
 
 @router.post("/cuentas-cobrar")
@@ -611,6 +624,10 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
                                    "ok": False, "error": "Sin líneas con valor > 0"})
                 continue
 
+            company = fac.company_id or body.company_id
+            # Impuesto IVA 15% (411, S) de la empresa emisora, para fijarlo en cada línea.
+            tax_id = _iva_15_s_id(models, db, uid, key, company)
+
             partner_id = _find_or_create_partner(models, db, uid, key, fac.ruc, fac.nombre)
 
             invoice_lines = []
@@ -624,6 +641,8 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
                     "name": ln.concepto,
                     "quantity": 1.0,
                 }
+                if tax_id:
+                    line_vals["tax_ids"] = [(6, 0, [tax_id])]  # IVA 15% (411, S)
                 desc = float(ln.descuento or 0)
                 if ln.precio_oficial and float(ln.precio_oficial) > 0:
                     # Respetar el PRECIO OFICIAL y mandar el DESCUENTO a Odoo.
@@ -634,8 +653,6 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
                     # Sin precio oficial: el neto va directo (base imponible si trae IVA).
                     line_vals["price_unit"] = round(ln.valor / (1 + IVA_RATE), 2) if fac.iva_incluido else ln.valor
                 invoice_lines.append((0, 0, line_vals))
-
-            company = fac.company_id or body.company_id
 
             # Registro contable: asignar la cuenta por cobrar del cliente (si se eligió)
             # para que la factura vaya a ESA cuenta, no a la genérica. La cuenta es del
@@ -685,6 +702,8 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
                 "estado": inv_info.get("state"),
                 "payment_state": inv_info.get("payment_state"),
                 "cobro_banco": cobro_banco,
+                "impuesto_ok": bool(tax_id),
+                "emisor_id": company,
                 "emisor_nombre": emp_nombre.get(company, ""),
             })
         except Exception as e:
