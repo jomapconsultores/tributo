@@ -331,3 +331,14 @@
   color: #64748b;
 }
 .of-desglose span:nth-child(even) { text-align: right; font-weight: 600; }
+
+/* Registro contable: cuenta por cobrar + destino (por cobrar / banco) */
+.of-contable { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; padding: 8px 12px; background: #f7faff; border: 1px solid #e2ecf7; border-radius: 8px; margin-top: 8px; }
+.of-cuenta, .of-destino { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.of-cuenta-lbl, .of-destino label { font-size: .82rem; font-weight: 700; color: #475569; }
+.of-cuenta-ok { font-size: .82rem; color: #1e8449; font-weight: 600; }
+.of-cuenta-falta { font-size: .82rem; color: #b9770e; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.of-cuenta-crear { border: 1px solid #1a56db; background: #fff; color: #1a56db; border-radius: 6px; padding: 2px 10px; font-size: .76rem; font-weight: 700; cursor: pointer; }
+.of-cuenta-crear:hover { background: #1a56db; color: #fff; }
+.of-cuenta-crear:disabled { opacity: .6; cursor: default; }
+.of-destino select { padding: 5px 9px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: .82rem; max-width: 280px; }

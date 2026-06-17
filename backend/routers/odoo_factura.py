@@ -236,6 +236,41 @@ def valores_honorarios_por_ruc(idents: set, cache_key=None) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Cuentas contables: cuenta por cobrar individual del cliente + bancos
+# ---------------------------------------------------------------------------
+
+def _tok_nombre(s: str) -> set:
+    import unicodedata
+    s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
+    return {t for t in re.findall(r"[a-z]+", s) if len(t) > 2}
+
+
+def _match_cuenta_cobrar(nombre_cliente: str, cuentas: list):
+    """Cuenta 'Cuentas por cobrar <NOMBRE>' cuyo nombre esté contenido en el del
+    cliente (mejor match = más tokens). None si ninguna coincide."""
+    cli = _tok_nombre(nombre_cliente)
+    if not cli:
+        return None
+    best, best_sc = None, 0
+    for a in cuentas:
+        an = re.sub(r"(?i)cuentas?\s+por\s+cobrar", "", a.get("name") or "")
+        toks = _tok_nombre(an)
+        if toks and toks <= cli and len(toks) > best_sc:
+            best, best_sc = a, len(toks)
+    return best
+
+
+def _registrar_pago(models, db, uid, key, inv_id: int, journal_id: int):
+    """Registra el cobro de una factura posteada en el diario de banco indicado
+    (account.payment.register). La factura queda PAGADA y el dinero entra al banco."""
+    ctx = {"active_model": "account.move", "active_ids": [inv_id]}
+    wiz = _x(models, db, uid, key, "account.payment.register", "create",
+             [{"journal_id": journal_id}], {"context": ctx})
+    _x(models, db, uid, key, "account.payment.register", "action_create_payments",
+       [[wiz]], {"context": ctx})
+
+
+# ---------------------------------------------------------------------------
 # Modelos Pydantic
 # ---------------------------------------------------------------------------
 
@@ -254,11 +289,27 @@ class FacturaIn(BaseModel):
     lineas: List[LineaIn]
     iva_incluido: bool = False
     company_id: Optional[int] = None   # empresa EMISORA de ESTA factura (override del global)
+    cuenta_cobrar_id: Optional[int] = None  # cuenta por cobrar a asignar al cliente (registro contable)
+    banco_journal_id: Optional[int] = None  # si se setea, se registra el cobro en ese banco (queda PAGADA)
 
 
 class FacturarBody(BaseModel):
     facturas: List[FacturaIn]
     company_id: Optional[int] = None   # empresa EMISORA por defecto (si la factura no trae una)
+
+
+class ClienteRef(BaseModel):
+    ruc: str
+    nombre: str
+
+
+class CuentasClientesIn(BaseModel):
+    clientes: List[ClienteRef]
+
+
+class CrearCuentaIn(BaseModel):
+    ruc: str
+    nombre: str
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +360,82 @@ async def odoo_productos(user_id: str = Depends(get_current_user), q: Optional[s
         raise
     except Exception as e:
         return {"data": [], "error": str(e)}
+
+
+@router.get("/cuentas")
+async def odoo_cuentas(user_id: str = Depends(get_current_user)):
+    """Diarios de banco/efectivo (para registrar el cobro directo en el banco)."""
+    try:
+        models, uid, db, key = _connect()
+        bancos = _x(models, db, uid, key, "account.journal", "search_read",
+                    [[["type", "in", ["bank", "cash"]]]], {"fields": ["id", "name", "type"]})
+        return {"bancos": bancos}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"bancos": [], "error": str(e)}
+
+
+@router.post("/cuentas-cobrar")
+async def odoo_cuentas_cobrar(body: CuentasClientesIn, user_id: str = Depends(get_current_user)):
+    """Por cada cliente, busca su cuenta por cobrar individual ('Cuentas por cobrar
+    <NOMBRE>') y si está asignada al cliente en Odoo. Devuelve {ruc: {...}}."""
+    try:
+        models, uid, db, key = _connect()
+    except HTTPException as e:
+        return {"data": {}, "error": e.detail}
+    cuentas = _x(models, db, uid, key, "account.account", "search_read",
+                 [[["account_type", "=", "asset_receivable"], ["name", "ilike", "cuentas por cobrar"]]],
+                 {"fields": ["id", "code", "name"]})
+    out = {}
+    for c in body.clientes:
+        cta = _match_cuenta_cobrar(c.nombre, cuentas)
+        pids = _x(models, db, uid, key, "res.partner", "search", [[["vat", "=", c.ruc]]], {"limit": 1})
+        if not pids:
+            pids = _x(models, db, uid, key, "res.partner", "search", [[["vat", "=", _solo_digitos(c.ruc)]]], {"limit": 1})
+        partner_id = pids[0] if pids else None
+        asignada = False
+        if partner_id and cta:
+            p = _x(models, db, uid, key, "res.partner", "read", [[partner_id]], {"fields": ["property_account_receivable_id"]})
+            asignada = bool(p) and (p[0].get("property_account_receivable_id") or [0])[0] == cta["id"]
+        out[c.ruc] = {
+            "partner_id": partner_id,
+            "existe": bool(cta),
+            "cuenta_id": cta["id"] if cta else None,
+            "cuenta_codigo": cta["code"] if cta else None,
+            "cuenta_nombre": cta["name"] if cta else None,
+            "asignada": asignada,
+        }
+    return {"data": out}
+
+
+@router.post("/crear-cuenta-cobrar")
+async def crear_cuenta_cobrar(body: CrearCuentaIn, user_id: str = Depends(get_current_user)):
+    """Crea la cuenta 'Cuentas por cobrar <NOMBRE>' (por cobrar) con el siguiente
+    código de la serie y la asigna al cliente. Requiere confirmación del usuario."""
+    try:
+        models, uid, db, key = _connect()
+        existentes = _x(models, db, uid, key, "account.account", "search_read",
+                        [[["code", "like", "1102050101%"], ["account_type", "=", "asset_receivable"]]],
+                        {"fields": ["code"], "order": "code desc", "limit": 1})
+        try:
+            base = int(existentes[0]["code"]) if existentes else 110205010125
+        except (ValueError, TypeError):
+            base = 110205010125
+        next_code = str(base + 1)
+        nombre = (body.nombre or "").strip().upper()
+        nombre_cta = f"Cuentas por cobrar {nombre}"
+        new_id = _x(models, db, uid, key, "account.account", "create",
+                    [{"code": next_code, "name": nombre_cta, "account_type": "asset_receivable"}])
+        pids = _x(models, db, uid, key, "res.partner", "search", [[["vat", "=", body.ruc]]], {"limit": 1}) or \
+            _x(models, db, uid, key, "res.partner", "search", [[["vat", "=", _solo_digitos(body.ruc)]]], {"limit": 1})
+        if pids:
+            _x(models, db, uid, key, "res.partner", "write", [[pids[0]], {"property_account_receivable_id": new_id}])
+        return {"ok": True, "cuenta_id": new_id, "cuenta_codigo": next_code, "cuenta_nombre": nombre_cta}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No se pudo crear la cuenta: {e}")
 
 
 @router.get("/cobros-pendientes")
@@ -457,6 +584,15 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
                     line_vals["price_unit"] = round(ln.valor / (1 + IVA_RATE), 2) if fac.iva_incluido else ln.valor
                 invoice_lines.append((0, 0, line_vals))
 
+            # Registro contable: asignar la cuenta por cobrar del cliente (si se eligió)
+            # para que la factura vaya a ESA cuenta, no a la genérica.
+            if fac.cuenta_cobrar_id:
+                try:
+                    _x(models, db, uid, key, "res.partner", "write",
+                       [[partner_id], {"property_account_receivable_id": fac.cuenta_cobrar_id}])
+                except Exception as e:
+                    print(f"[odoo] no se pudo asignar cuenta por cobrar {fac.ruc}: {e}")
+
             move_vals = {
                 "move_type": "out_invoice",
                 "partner_id": partner_id,
@@ -470,9 +606,19 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
             # Confirmar la factura
             _x(models, db, uid, key, "account.move", "action_post", [[inv_id]])
 
+            # Registro directo en banco: registrar el cobro (queda PAGADA).
+            cobro_banco = None
+            if fac.banco_journal_id:
+                try:
+                    _registrar_pago(models, db, uid, key, inv_id, fac.banco_journal_id)
+                    cobro_banco = "registrado"
+                except Exception as e:
+                    cobro_banco = f"error: {e}"
+                    print(f"[odoo] no se pudo registrar el cobro en banco {fac.ruc}: {e}")
+
             # Leer número y total resultante
             inv_data = _x(models, db, uid, key, "account.move", "read",
-                          [[inv_id]], {"fields": ["name", "amount_total", "state"]})
+                          [[inv_id]], {"fields": ["name", "amount_total", "state", "payment_state"]})
             inv_info = inv_data[0] if inv_data else {}
 
             resultados.append({
@@ -483,6 +629,8 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
                 "numero": inv_info.get("name"),
                 "total": inv_info.get("amount_total"),
                 "estado": inv_info.get("state"),
+                "payment_state": inv_info.get("payment_state"),
+                "cobro_banco": cobro_banco,
             })
         except Exception as e:
             resultados.append({"ruc": fac.ruc, "nombre": fac.nombre,

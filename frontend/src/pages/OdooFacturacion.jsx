@@ -22,6 +22,10 @@ export default function OdooFacturacion() {
   const [prodText, setProdText] = useState({})      // { "ruc|concepto": nombre de producto tecleado }
   const [emisorPorGrupo, setEmisorPorGrupo] = useState({})  // { ruc: companyId } — emisor individual
   const [verProductos, setVerProductos] = useState(false)
+  const [bancos, setBancos] = useState([])                  // diarios de banco/efectivo
+  const [cuentas, setCuentas] = useState({})                // { ruc: {existe, cuenta_id, cuenta_nombre, asignada} }
+  const [destino, setDestino] = useState({})                // { ruc: 'cobrar' | journalId } — por cobrar o banco
+  const [creandoCta, setCreandoCta] = useState('')
 
   useEffect(() => {
     // Cargamos cobros y estado Odoo por separado para que un fallo
@@ -76,6 +80,26 @@ export default function OdooFacturacion() {
     return Object.values(m).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
   }, [filas])
 
+  // Cuentas por cobrar individuales (Odoo) y diarios de banco, para el registro contable
+  const rucsKey = grupos.map((g) => g.ruc).join(',')
+  useEffect(() => {
+    if (!grupos.length) return
+    odooAPI.cuentas().then((r) => setBancos(r.data?.bancos || [])).catch(() => {})
+    odooAPI.cuentasCobrar(grupos.map((g) => ({ ruc: g.ruc, nombre: g.nombre })))
+      .then((r) => setCuentas(r.data?.data || {})).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rucsKey])
+
+  const crearCuenta = async (g) => {
+    setCreandoCta(g.ruc)
+    try {
+      const r = await odooAPI.crearCuentaCobrar(g.ruc, g.nombre)
+      setCuentas((prev) => ({ ...prev, [g.ruc]: { ...(prev[g.ruc] || {}), existe: true, cuenta_id: r.data.cuenta_id, cuenta_nombre: r.data.cuenta_nombre, asignada: true } }))
+    } catch (e) {
+      alert('No se pudo crear la cuenta: ' + (e.response?.data?.detail || e.message))
+    } finally { setCreandoCta('') }
+  }
+
   const toggleTodos = () => {
     if (seleccionados.size === grupos.length) {
       setSeleccionados(new Set())
@@ -105,6 +129,8 @@ export default function OdooFacturacion() {
           ruc: g.ruc,            // receptor = el contribuyente del honorario
           nombre: g.nombre,
           company_id: Number(emisorPorGrupo[g.ruc] || companyId) || null,  // emisor INDIVIDUAL de esta factura
+          cuenta_cobrar_id: cuentas[g.ruc]?.cuenta_id || null,             // cuenta por cobrar del cliente
+          banco_journal_id: (destino[g.ruc] && destino[g.ruc] !== 'cobrar') ? Number(destino[g.ruc]) : null,  // si va directo a banco
           lineas: g.lineas.map((l) => ({
             concepto: l.concepto,
             valor: l.valor,       // base neta; Odoo agrega el IVA 15%
@@ -217,6 +243,13 @@ export default function OdooFacturacion() {
                       <span className="of-res-nombre">{r.nombre}</span>
                       <span className="of-res-num">{r.numero}</span>
                       <span className="of-res-total">{fmtMoney(r.total)}</span>
+                      {r.cobro_banco === 'registrado'
+                        ? <span className="of-res-pago paid" title="Cobro registrado en el banco">💵 cobrada en banco</span>
+                        : (r.payment_state === 'not_paid' || r.payment_state === 'partial')
+                          ? <span className="of-res-pago pend" title="Queda en cuentas por cobrar">⏳ por cobrar</span>
+                          : null}
+                      {typeof r.cobro_banco === 'string' && r.cobro_banco.startsWith('error') &&
+                        <span className="of-res-pago err" title={r.cobro_banco}>⚠ no se registró el cobro</span>}
                     </>
                   ) : (
                     <>
@@ -272,6 +305,35 @@ export default function OdooFacturacion() {
                     >
                       {companias.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
                     </select>
+                  </div>
+
+                  {/* Registro contable: cuenta por cobrar del cliente + destino (por cobrar / banco) */}
+                  <div className="of-contable">
+                    <div className="of-cuenta">
+                      <span className="of-cuenta-lbl">📒 Registro contable:</span>
+                      {cuentas[g.ruc]?.existe ? (
+                        <span className="of-cuenta-ok" title={cuentas[g.ruc].asignada ? 'Ya asignada al cliente' : 'Se asignará al cliente al facturar'}>
+                          {cuentas[g.ruc].cuenta_codigo ? `${cuentas[g.ruc].cuenta_codigo} · ` : ''}{cuentas[g.ruc].cuenta_nombre}
+                        </span>
+                      ) : (
+                        <span className="of-cuenta-falta">
+                          ⚠ No tiene cuenta por cobrar propia
+                          <button type="button" className="of-cuenta-crear" disabled={creandoCta === g.ruc}
+                            onClick={() => crearCuenta(g)}>
+                            {creandoCta === g.ruc ? 'creando…' : `Crear "Cuentas por cobrar ${g.nombre}"`}
+                          </button>
+                        </span>
+                      )}
+                    </div>
+                    <div className="of-destino">
+                      <label htmlFor={`dest-${g.ruc}`}>Destino:</label>
+                      <select id={`dest-${g.ruc}`}
+                        value={destino[g.ruc] || 'cobrar'}
+                        onChange={(e) => setDestino((p) => ({ ...p, [g.ruc]: e.target.value }))}>
+                        <option value="cobrar">Cuentas por cobrar (pendiente)</option>
+                        {bancos.map((b) => <option key={b.id} value={String(b.id)}>Cobrado en banco: {b.name}</option>)}
+                      </select>
+                    </div>
                   </div>
 
                   <div className="of-lineas">
