@@ -358,6 +358,11 @@ class CrearCuentaIn(BaseModel):
     codigo: Optional[str] = None       # código a usar (si no, el siguiente de la serie)
 
 
+class CrearClienteIn(BaseModel):
+    ruc: str
+    nombre: str
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -491,6 +496,33 @@ async def crear_cuenta_cobrar(body: CrearCuentaIn, user_id: str = Depends(get_cu
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"No se pudo crear la cuenta: {e}")
+
+
+@router.post("/crear-cliente")
+async def crear_cliente(body: CrearClienteIn, user_id: str = Depends(get_current_user)):
+    """Crea el cliente (res.partner) en Odoo con los datos pertinentes (nombre, RUC,
+    tipo). Si ya existe (por RUC), lo devuelve. Sugerencia: persona/empresa según el
+    3er dígito del RUC (6/9 = sociedad/público)."""
+    try:
+        models, uid, db, key = _connect()
+        ruc = (body.ruc or "").strip()
+        ids = _x(models, db, uid, key, "res.partner", "search", [[["vat", "=", ruc]]], {"limit": 1}) or \
+            _x(models, db, uid, key, "res.partner", "search", [[["vat", "=", _solo_digitos(ruc)]]], {"limit": 1})
+        if ids:
+            return {"ok": True, "partner_id": ids[0], "ya_existia": True}
+        dig = _solo_digitos(ruc)
+        es_empresa = len(dig) == 13 and dig[2:3] in ("6", "9")
+        pid = _x(models, db, uid, key, "res.partner", "create", [{
+            "name": (body.nombre or "").strip(),
+            "vat": ruc,
+            "is_company": es_empresa,
+            "customer_rank": 1,
+        }])
+        return {"ok": True, "partner_id": pid, "ya_existia": False}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No se pudo crear el cliente: {e}")
 
 
 @router.get("/cobros-pendientes")

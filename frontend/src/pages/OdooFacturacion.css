@@ -345,3 +345,7 @@
 
 /* Aviso de impuesto IVA 15% (411,S) faltante */
 .of-impuesto-falta { width: 100%; font-size: .8rem; color: #b9770e; background: #fef9ec; border: 1px solid #f6e2b3; border-radius: 7px; padding: 6px 10px; }
+
+/* Estado del cliente (res.partner) en Odoo */
+.of-cliente-ok { font-size: .8rem; color: #1e8449; font-weight: 600; margin-top: 6px; }
+.of-cliente-falta { font-size: .8rem; color: #b9770e; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }

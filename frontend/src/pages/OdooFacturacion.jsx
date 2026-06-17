@@ -126,6 +126,18 @@ export default function OdooFacturacion() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grupos, cuentas, emisorPorGrupo, companyId])
 
+  const [creandoCli, setCreandoCli] = useState('')
+  const crearCliente = async (g) => {
+    setCreandoCli(g.ruc)
+    try {
+      const r = await odooAPI.crearCliente(g.ruc, g.nombre)
+      setCuentas((prev) => ({ ...prev, [g.ruc]: { ...(prev[g.ruc] || {}), partner_id: r.data.partner_id } }))
+      recargarCuentas()  // refresca también la cuenta por cobrar ahora que existe el cliente
+    } catch (e) {
+      alert('No se pudo crear el cliente: ' + (e.response?.data?.detail || e.message))
+    } finally { setCreandoCli('') }
+  }
+
   const crearCuenta = async (g) => {
     setCreandoCta(g.ruc)
     try {
@@ -347,6 +359,18 @@ export default function OdooFacturacion() {
                       {companias.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
                     </select>
                   </div>
+
+                  {/* Cliente en Odoo: si no existe, ofrecer crearlo con los datos sugeridos */}
+                  {cuentas[g.ruc] && (cuentas[g.ruc].partner_id
+                    ? <div className="of-cliente-ok">👤 Cliente en Odoo ✓</div>
+                    : <div className="of-cliente-falta">
+                        ⚠ El cliente NO está creado en Odoo.
+                        <button type="button" className="of-cuenta-crear" disabled={creandoCli === g.ruc}
+                          onClick={() => crearCliente(g)}
+                          title={`Se creará: ${g.nombre} · RUC ${g.ruc}`}>
+                          {creandoCli === g.ruc ? 'creando…' : `Crear cliente: ${g.nombre} · ${g.ruc}`}
+                        </button>
+                      </div>)}
 
                   {/* Registro contable: cuenta por cobrar del cliente + destino (por cobrar / banco) */}
                   <div className="of-contable">
