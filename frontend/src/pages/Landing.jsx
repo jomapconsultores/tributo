@@ -10,26 +10,36 @@ const MODULOS = [
   { icon: '🧾', titulo: 'Retenciones', desc: 'Carga de comprobantes de retención (XML), reporte consolidado por contribuyente y exportación a Excel.' },
   { icon: '📈', titulo: 'Ingresos + ICE', desc: 'Cálculo de ICE por botella y caja, Anexo PVP+ICE, ICE-XML con auditoría y análisis de diferencias, catálogo con códigos del SRI y rebajas/exenciones con verificación de proveedores.' },
   { icon: '📋', titulo: 'Declaraciones', desc: 'Cálculo y generación de la Declaración de IVA y de ICE con los formularios oficiales listos para presentar.' },
+  { icon: '📑', titulo: 'Reportes de honorarios', desc: 'Controla cuánto te debe cada cliente y por qué servicio, con arrastre mes a mes y desglose por período. Ordena tu cobranza.' },
+  { icon: '🧾', titulo: 'Facturación Odoo', desc: 'Emite y concilia facturas directamente en Odoo, con verificación bidireccional para no duplicar y aviso automático al equipo.' },
 ]
 
 // 3 paquetes (contribuyentes ilimitados)
 const PAQUETES = [
   {
-    nombre: 'Cálculo del ICE', icon: '📈', neto: 50, destacado: false,
-    incluye: ['Cálculo de ICE (botella y caja)', 'Anexo PVP+ICE', 'ICE-XML con auditoría', 'Catálogo con códigos del SRI', 'Rebajas y exenciones', 'Información útil (Códigos ICE)', 'Contribuyentes ilimitados'],
+    nombre: 'Esencial', icon: '💸', neto: 69, destacado: false,
+    incluye: ['Gastos y clasificador automático', 'Bajador de facturas del SRI', 'Retenciones (XML) y reportes', 'Declaración de IVA', 'Reportes de honorarios', 'Contribuyentes ilimitados'],
   },
   {
-    nombre: 'Gastos y Retenciones', icon: '💸', neto: 50, destacado: false,
-    incluye: ['Bajador de facturas del SRI', 'Clasificación automática de gastos', 'Retenciones (XML) y reportes', 'Datos guardados y exportes', 'Contribuyentes ilimitados'],
+    nombre: 'ICE Pro', icon: '📈', neto: 109, destacado: true,
+    incluye: ['Todo lo del plan Esencial', 'Cálculo de ICE (botella y caja)', 'Anexo PVP+ICE e ICE-XML con auditoría', 'Catálogo SRI y rebajas/exenciones', 'Declaración de ICE', 'Contribuyentes ilimitados'],
   },
   {
-    nombre: 'Sistema Completo', icon: '⭐', neto: 150, destacado: true,
-    incluye: ['TODOS los módulos', 'Gastos + Retenciones', 'Ingresos + ICE completo', 'Declaraciones IVA e ICE', 'Multiusuario y soporte prioritario', 'Contribuyentes ilimitados'],
+    nombre: 'Estudio Completo', icon: '⭐', neto: 179, destacado: false,
+    incluye: ['TODOS los módulos', 'Multiusuario y permisos por equipo', 'Acceso y credenciales por cliente', 'Soporte prioritario', 'Contribuyentes ilimitados'],
+  },
+]
+
+// Add-ons (se suman a cualquier plan)
+const ADDONS = [
+  {
+    icon: '🧾', nombre: 'Facturación Odoo', neto: 42, porUsuario: true, setupNeto: 99,
+    desc: 'Emite y concilia facturas en Odoo. Se cobra por usuario que emite, más una configuración inicial única.',
   },
 ]
 
 const STATS = [
-  { target: 4, suffix: '', label: 'Módulos integrados' },
+  { target: 6, suffix: '', label: 'Módulos integrados' },
   { target: 100, suffix: '%', label: 'Apegado a la normativa SRI' },
   { target: 0, text: '∞', label: 'Contribuyentes (RUC) por cuenta' },
   { target: 90, suffix: '%', label: 'Menos tiempo en cada declaración' },
@@ -86,6 +96,9 @@ export default function Landing() {
   const [enviando, setEnviando] = useState(false)
   const [enviado, setEnviado] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+  const [waitEmail, setWaitEmail] = useState('')
+  const [waitOk, setWaitOk] = useState(false)
+  const [waitEnviando, setWaitEnviando] = useState(false)
 
   // Sombra del nav al hacer scroll
   useEffect(() => {
@@ -105,6 +118,23 @@ export default function Landing() {
     els.forEach((e) => io.observe(e))
     return () => io.disconnect()
   }, [])
+
+  const anotarEnLista = async (e) => {
+    e.preventDefault()
+    if (!waitEmail.includes('@')) { alert('Ingresa un email válido.'); return }
+    setWaitEnviando(true)
+    try {
+      await contactoAPI.enviar({
+        nombre: 'Lista de espera',
+        email: waitEmail,
+        telefono: '',
+        mensaje: 'LISTA DE ESPERA — Devoluciones IVA Tercera Edad. Avisar cuando esté disponible.',
+      })
+      setWaitOk(true)
+      setWaitEmail('')
+    } catch (err) { alert('No se pudo registrar: ' + (err.response?.data?.detail || err.message)) }
+    finally { setWaitEnviando(false) }
+  }
 
   const enviar = async (e) => {
     e.preventDefault()
@@ -234,6 +264,59 @@ export default function Landing() {
             )
           })}
         </div>
+        {/* Add-ons (se suman a cualquier plan) */}
+        <div className="lp-addons reveal">
+          <h4>Complementos (se suman a cualquier plan)</h4>
+          <div className="lp-addons-grid">
+            {ADDONS.map((a) => {
+              const { total } = conIva(a.neto)
+              const setupTotal = a.setupNeto ? conIva(a.setupNeto).total : 0
+              return (
+                <div key={a.nombre} className="lp-addon">
+                  <div className="lp-addon-head">
+                    <span className="lp-card-icon sm">{a.icon}</span>
+                    <h5>{a.nombre}</h5>
+                  </div>
+                  <div className="lp-addon-precio">
+                    <span className="lp-precio-total">${money(total)}</span>
+                    <span className="lp-precio-mes">/mes {a.porUsuario ? 'por usuario' : ''}</span>
+                  </div>
+                  {a.setupNeto > 0 && (
+                    <div className="lp-precio-desg">+ ${money(setupTotal)} de configuración inicial (única)</div>
+                  )}
+                  <p className="lp-addon-desc">{a.desc}</p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Próximamente: Devoluciones IVA — captura de lista de espera */}
+        <div className="lp-proximo reveal">
+          <span className="lp-proximo-tag">Próximamente</span>
+          <div className="lp-proximo-body">
+            <span className="lp-card-icon sm">👵</span>
+            <div className="lp-proximo-txt">
+              <h5>Devoluciones IVA · Tercera Edad</h5>
+              <p>Automatiza la devolución de IVA para adultos mayores. Lo estamos afinando — déjanos tu correo y serás el primero en saber cuándo esté disponible.</p>
+            </div>
+          </div>
+          {waitOk ? (
+            <div className="lp-ok lp-proximo-ok">✅ ¡Listo! Te avisaremos apenas esté disponible.</div>
+          ) : (
+            <form className="lp-proximo-form" onSubmit={anotarEnLista}>
+              <input
+                placeholder="Tu correo electrónico"
+                value={waitEmail}
+                onChange={(e) => setWaitEmail(e.target.value)}
+              />
+              <button className="lp-btn lp-btn-primary" type="submit" disabled={waitEnviando}>
+                {waitEnviando ? 'Enviando…' : 'Avísame'}
+              </button>
+            </form>
+          )}
+        </div>
+
         <div className="lp-extras reveal">
           <h4>Pago mensual y descuentos por anticipo</h4>
           <p className="lp-extras-p">El cobro es <strong>mensual</strong>: cada pago habilita el sistema por <strong>30 días exactos</strong>. Paga por adelantado y ahorra:</p>

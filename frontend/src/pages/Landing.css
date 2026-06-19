@@ -15,6 +15,7 @@
 .reveal.in { opacity: 1; transform: translateY(0); }
 .reveal.d1 { transition-delay: .08s; } .reveal.d2 { transition-delay: .16s; }
 .reveal.d3 { transition-delay: .24s; } .reveal.d4 { transition-delay: .32s; }
+.reveal.d5 { transition-delay: .40s; }
 
 @media (prefers-reduced-motion: reduce) {
   .reveal { opacity: 1 !important; transform: none !important; }
@@ -206,6 +207,28 @@
 .lp-extras-p { color: #475569; font-size: .9rem; margin: 0 0 8px; }
 .lp-extras ul { margin: 0; padding-left: 20px; color: #475569; font-size: .9rem; line-height: 1.8; }
 .lp-extras strong { color: #1e3a8a; }
+
+/* ── Add-ons / complementos ── */
+.lp-addons { max-width: 1000px; margin: 40px auto 0; }
+.lp-addons > h4 { margin: 0 0 16px; text-align: center; color: #0f172a; }
+.lp-addons-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+.lp-addon { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 22px 24px; box-shadow: 0 4px 14px rgba(15,23,42,.05); }
+.lp-addon-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.lp-addon-head h5 { margin: 0; font-size: 1.1rem; color: #0f172a; }
+.lp-card-icon.sm { font-size: 1.5rem; }
+.lp-addon-precio { display: flex; align-items: baseline; gap: 6px; }
+.lp-addon-desc { color: #475569; font-size: .9rem; line-height: 1.6; margin: 12px 0 0; }
+
+/* ── Próximamente (lista de espera) ── */
+.lp-proximo { max-width: 1000px; margin: 22px auto 0; background: linear-gradient(135deg,#fdf4ff,#faf5ff); border: 1px dashed #d8b4fe; border-radius: 16px; padding: 22px 26px; }
+.lp-proximo-tag { display: inline-block; background: #a855f7; color: #fff; font-size: .72rem; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; padding: 4px 12px; border-radius: 999px; margin-bottom: 14px; }
+.lp-proximo-body { display: flex; align-items: flex-start; gap: 12px; }
+.lp-proximo-txt h5 { margin: 0 0 4px; font-size: 1.1rem; color: #0f172a; }
+.lp-proximo-txt p { margin: 0; color: #475569; font-size: .9rem; line-height: 1.6; }
+.lp-proximo-form { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.lp-proximo-form input { flex: 1; min-width: 200px; padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: .95rem; }
+.lp-proximo-form input:focus { outline: none; border-color: #a855f7; }
+.lp-proximo-ok { margin-top: 16px; }
 
 /* ── Contacto ── */
 .lp-contacto { max-width: 620px; }
