@@ -1,13 +1,18 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { authAPI } from '../services/api'
 import './Login.css'
 
 export default function Login({ onLogin }) {
+  const [searchParams] = useSearchParams()
+  // Si llega desde el Landing con ?registro=1 (botones "Contratar"), abre directo
+  // el formulario de registro para que el cliente nuevo no tenga que buscarlo.
+  const quiereRegistro = searchParams.get('registro') === '1' || searchParams.get('signup') === '1'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [isSignup, setIsSignup] = useState(false)
+  const [isSignup, setIsSignup] = useState(quiereRegistro)
   const [forgot, setForgot] = useState(false)
   const [info, setInfo] = useState('')
 

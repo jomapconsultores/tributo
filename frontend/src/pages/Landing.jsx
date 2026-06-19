@@ -178,7 +178,7 @@ export default function Landing() {
           <p>Clasifica gastos, controla retenciones, calcula el ICE y genera tus declaraciones —
             contribuyentes (RUC) <strong>ilimitados</strong>, en un solo lugar.</p>
           <div className="lp-hero-cta">
-            <button className="lp-btn lp-btn-primary lp-btn-lg" onClick={() => navigate('/login')}>Ingresar al sistema</button>
+            <button className="lp-btn lp-btn-primary lp-btn-lg" onClick={() => navigate('/login?registro=1')}>Empieza gratis 14 días</button>
             <a className="lp-btn lp-btn-ghost lp-btn-lg" href="#precios">Ver servicios y precios</a>
           </div>
           <p className="lp-hero-note">Especializado en <strong>ICE de bebidas alcohólicas</strong> — cálculo, anexos y auditoría que casi nadie automatiza.</p>
@@ -259,7 +259,7 @@ export default function Landing() {
                 <div className="lp-precio"><span className="lp-precio-total">${money(total)}</span><span className="lp-precio-mes">/mes</span></div>
                 <div className="lp-precio-desg">${money(p.neto)} + IVA ${money(iva)}</div>
                 <ul>{p.incluye.map((f) => <li key={f}>✓ {f}</li>)}</ul>
-                <button className="lp-btn lp-btn-primary lp-plan-btn" onClick={() => navigate('/login')}>Contratar</button>
+                <button className="lp-btn lp-btn-primary lp-plan-btn" onClick={() => navigate('/login?registro=1')}>Empieza gratis</button>
               </div>
             )
           })}

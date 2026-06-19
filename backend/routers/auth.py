@@ -92,6 +92,13 @@ async def signup(request: SignupRequest):
         supabase = get_supabase_client_anon()
         response = supabase.auth.sign_up({"email": request.email, "password": request.password})
         if response.user:
+            # Alta automática: prueba gratuita + aviso al administrador (correo y
+            # Movimientos 🔔). Defensivo: nunca rompe el registro si algo falla.
+            try:
+                from services.onboarding import provisionar_prueba_y_avisar
+                provisionar_prueba_y_avisar(user_id=str(response.user.id), email=response.user.email)
+            except Exception as e:
+                print(f"[signup] onboarding falló (no crítico): {e}")
             return AuthResponse(
                 access_token=response.session.access_token if response.session else "",
                 user_id=str(response.user.id),
