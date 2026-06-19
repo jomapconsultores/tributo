@@ -38,6 +38,10 @@ const ADDONS = [
   },
 ]
 
+// Servicio por hora (capacitación y acompañamiento). La reserva se confirma
+// previa autorización del socio o administrador.
+const SERVICIO_CAPACITACION = { neto: 50 }
+
 const STATS = [
   { target: 6, suffix: '', label: 'Módulos integrados' },
   { target: 100, suffix: '%', label: 'Apegado a la normativa SRI' },
@@ -51,6 +55,7 @@ const conIva = (neto) => ({ iva: neto * IVA, total: neto * (1 + IVA) })
 // WhatsApp directo (formato internacional: 0963511411 → 593963511411)
 const WHATSAPP_NUM = '593963511411'
 const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUM}?text=${encodeURIComponent('Hola, me interesa el Gestor SRI. Quisiera más información.')}`
+const WHATSAPP_CAPACITACION_URL = `https://wa.me/${WHATSAPP_NUM}?text=${encodeURIComponent('Hola, quiero reservar una hora de Capacitación y acompañamiento ($50 + IVA/hora). ¿Disponibilidad?')}`
 
 function WaIcon({ size = 22 }) {
   return (
@@ -288,6 +293,25 @@ export default function Landing() {
                 </div>
               )
             })}
+          </div>
+        </div>
+
+        {/* Servicio por hora: Capacitación y acompañamiento */}
+        <div className="lp-servicio reveal">
+          <div className="lp-servicio-info">
+            <span className="lp-card-icon sm">🎓</span>
+            <div>
+              <h5>Capacitación y acompañamiento</h5>
+              <p>Sesiones personalizadas para tu equipo o tus clientes: uso del sistema, declaraciones, ICE y dudas tributarias. Reserva sujeta a confirmación del socio o administrador.</p>
+            </div>
+          </div>
+          <div className="lp-servicio-precio">
+            <div className="lp-precio"><span className="lp-precio-total">${money(conIva(SERVICIO_CAPACITACION.neto).total)}</span><span className="lp-precio-mes">/hora</span></div>
+            <div className="lp-precio-desg">${money(SERVICIO_CAPACITACION.neto)} + IVA ${money(SERVICIO_CAPACITACION.neto * IVA)}</div>
+            <div className="lp-servicio-cta">
+              <a className="lp-btn lp-btn-primary" href={WHATSAPP_CAPACITACION_URL} target="_blank" rel="noopener noreferrer">Reservar por WhatsApp</a>
+              <a className="lp-btn lp-btn-ghost" href="#contacto">Solicitar</a>
+            </div>
           </div>
         </div>
 

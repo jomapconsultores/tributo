@@ -347,6 +347,15 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
           <span>REPORTES</span>
         </button>
 
+        {/* CAPACITACIONES: reservar capacitación; socio/admin autoriza */}
+        <button
+          className={`nav-item module-btn ${path === '/capacitaciones' ? 'active' : ''}`}
+          onClick={() => navigate('/capacitaciones')}
+        >
+          <span className="nav-ico">🎓</span>
+          <span>CAPACITACIONES</span>
+        </button>
+
         {/* FACTURACIÓN ODOO (desplegable): emitir y ver facturas procesadas */}
         <button
           className={`nav-item module-btn ${path.startsWith('/odoo-facturacion') ? 'active' : ''}`}

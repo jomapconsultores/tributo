@@ -277,6 +277,14 @@ export const reportesAPI = {
   exportPdf: (iva_incluido = false) => api.get('/api/reportes/export/pdf', { params: { iva_incluido }, responseType: 'blob' }),
 }
 
+// CAPACITACIONES: el cliente solicita una hora ($50+IVA); socio/admin autoriza
+export const capacitacionesAPI = {
+  crear: (data) => api.post('/api/capacitaciones/', data),
+  mias: () => api.get('/api/capacitaciones/mias'),
+  listar: (estado) => api.get('/api/capacitaciones/', { params: estado ? { estado } : undefined }),
+  actualizar: (id, data) => api.put(`/api/capacitaciones/${id}`, data),
+}
+
 // XML originales subidos (re-descarga en ZIP con nombre Tipo_RUC_nombre_mes_año)
 // modulo: 'gasto' | 'ingreso_ice' | 'ingreso_iva' | 'retencion'
 export const xmlOriginalesAPI = {

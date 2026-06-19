@@ -25,6 +25,7 @@ const Compradores              = lazy(() => import('./pages/Compradores'))
 const RebajasExenciones        = lazy(() => import('./pages/RebajasExenciones'))
 const Normativa                = lazy(() => import('./pages/Normativa'))
 const Reportes                 = lazy(() => import('./pages/Reportes'))
+const Capacitaciones           = lazy(() => import('./pages/Capacitaciones'))
 const Admin                    = lazy(() => import('./pages/Admin'))
 const AdminCredentials         = lazy(() => import('./pages/AdminCredentials'))
 const Movimientos              = lazy(() => import('./pages/Movimientos'))
@@ -134,6 +135,7 @@ function App() {
               <Route path="/rebajas-exenciones" element={<RequireModule modulo="ingresos_ice"><RebajasExenciones /></RequireModule>} />
               <Route path="/normativa" element={<Normativa />} />
               <Route path="/reportes" element={<Reportes />} />
+              <Route path="/capacitaciones" element={<Capacitaciones />} />
               <Route path="/admin" element={<RequireSuperAdmin><Admin /></RequireSuperAdmin>} />
               <Route path="/admin/credenciales" element={<RequireSuperAdmin><AdminCredentials /></RequireSuperAdmin>} />
               <Route path="/odoo-facturacion" element={<OdooFacturacion />} />
