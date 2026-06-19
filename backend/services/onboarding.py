@@ -19,9 +19,10 @@ from database import get_supabase_client
 from services.email_sender import enviar_correo
 from services import activity
 
-# Prueba gratuita: días y módulos incluidos (todos, para que prueben todo).
-TRIAL_DIAS = 14
-TRIAL_MODULOS = ["gastos", "retenciones", "ingresos_ice", "declaraciones"]
+# Prueba gratuita: días y módulos incluidos. Prueba corta y solo el módulo
+# básico (Gastos), para que conozcan el sistema antes de contratar un plan.
+TRIAL_DIAS = 5
+TRIAL_MODULOS = ["gastos"]
 
 # Destinatario del aviso. El SMTP_FROM también es jomapconsultores@gmail.com.
 ADMIN_EMAIL = (os.environ.get("ADMIN_EMAIL") or "jomapconsultores@gmail.com").strip()
@@ -59,7 +60,7 @@ def _avisar_admin(uid: str, email: str, fin: str):
         "Se registró un nuevo cliente en Gestor SRI.\n\n"
         f"Correo:  {email}\n"
         f"Fecha:   {date.today().isoformat()}\n"
-        f"Prueba gratuita activa hasta: {fin}  ({TRIAL_DIAS} días, todos los módulos)\n\n"
+        f"Prueba gratuita activa hasta: {fin}  ({TRIAL_DIAS} días, módulo Gastos)\n\n"
         "Cuando el cliente realice el pago, regístralo y asígnale su plan en el "
         "panel de Administración."
     )

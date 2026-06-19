@@ -183,7 +183,7 @@ export default function Landing() {
           <p>Clasifica gastos, controla retenciones, calcula el ICE y genera tus declaraciones —
             contribuyentes (RUC) <strong>ilimitados</strong>, en un solo lugar.</p>
           <div className="lp-hero-cta">
-            <button className="lp-btn lp-btn-primary lp-btn-lg" onClick={() => navigate('/login?registro=1')}>Empieza gratis 14 días</button>
+            <button className="lp-btn lp-btn-primary lp-btn-lg" onClick={() => navigate('/login?registro=1')}>Empieza gratis 5 días</button>
             <a className="lp-btn lp-btn-ghost lp-btn-lg" href="#precios">Ver servicios y precios</a>
           </div>
           <p className="lp-hero-note">Especializado en <strong>ICE de bebidas alcohólicas</strong> — cálculo, anexos y auditoría que casi nadie automatiza.</p>
