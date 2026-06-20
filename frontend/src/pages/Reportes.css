@@ -100,6 +100,19 @@
 .rp-sinodoo-badge { margin-left: 10px; padding: 1px 8px; background: #fdebd0; color: #b9770e; border-radius: 10px; font-size: .68rem; font-weight: 700; }
 .rp-odoo-tag { margin-left: 8px; padding: 1px 7px; background: #e8f0fe; color: #1a56db; border-radius: 9px; font-size: .64rem; font-weight: 700; letter-spacing: .3px; }
 
+/* Certificación / procesado en Odoo */
+.rp-cert-badge { margin-left: 10px; padding: 1px 8px; background: #d5f5e3; color: #1e8449; border-radius: 10px; font-size: .68rem; font-weight: 700; }
+.rp-proc-badge { margin-left: 10px; padding: 1px 8px; background: #fef3cd; color: #b9770e; border-radius: 10px; font-size: .68rem; font-weight: 700; }
+.rp-total-proc { display: block; font-size: .72rem; color: #eafff5; margin-top: 3px; opacity: .95; }
+
+/* Dos partes del reporte: pendientes / procesadas */
+.rp-seccion { margin-bottom: 26px; }
+.rp-seccion-tit { font-size: 1.02rem; margin: 0 0 2px; display: flex; align-items: center; gap: 8px; }
+.rp-seccion-pend { color: #b9770e; }
+.rp-seccion-proc { color: #1e8449; }
+.rp-seccion-cnt { background: #eef2f7; color: #475569; border-radius: 10px; padding: 0 9px; font-size: .72rem; font-weight: 700; }
+.rp-seccion-sub { margin: 0 0 8px; color: #6b7888; font-size: .8rem; }
+
 /* Precio sugerido desde Odoo (por concepto, mayor relación) */
 .rp-sugerido { margin-top: 3px; font-size: .72rem; color: #1a56db; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .rp-sug-con { color: #6b7888; font-style: italic; }

@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from routers.access import es_admin, es_super_admin, rol_de
 from database import get_supabase_client, fetch_all
-from tenancy import shared_client_ids
+from tenancy import visible_clients
 from services.activity import registrar, _email_de
 from services.email_sender import enviar_correo, email_configurado
 
@@ -37,18 +37,11 @@ _CRON_DEFAULT = os.getenv("CRON_SECRET", "jomap-cobros-semanal-2026")
 
 
 def _idents_autorizadas(sb, user_id: str) -> set:
-    """RUCs/cédulas de los contribuyentes que el usuario puede facturar:
-    los propios + los compartidos por el administrador."""
-    idents = set()
-    for c in fetch_all(lambda: sb.table("clients").select("identificacion").eq("user_id", user_id)):
-        if c.get("identificacion"):
-            idents.add(c["identificacion"])
-    sids = shared_client_ids(user_id)
-    if sids:
-        for c in fetch_all(lambda: sb.table("clients").select("identificacion").in_("id", sids)):
-            if c.get("identificacion"):
-                idents.add(c["identificacion"])
-    return idents
+    """RUCs/cédulas de los contribuyentes que el usuario puede facturar, según su
+    ROL (admin: todos; socio: los de los clientes y los suyos; cliente: propios +
+    compartidos)."""
+    return {c["identificacion"] for c in visible_clients(user_id, "identificacion")
+            if c.get("identificacion")}
 
 
 def _notificar_johanna(*, actor_user_id: str, exitosas: list):
@@ -236,6 +229,7 @@ def _find_or_create_product(models, db, uid, key, nombre: str) -> int:
 
 _HON_CACHE = {}      # cache_key -> (timestamp, {ruc_digitos: [líneas]})
 _HON_TTL = 120       # segundos
+_FACT_PER_CACHE = {} # (cache_key, mes, anio) -> (timestamp, {ruc_digitos: factura})
 
 
 def _solo_digitos(s: str) -> str:
@@ -313,6 +307,59 @@ def valores_honorarios_por_ruc(idents: set, cache_key=None) -> dict:
         out = {}
     if cache_key and out:
         _HON_CACHE[cache_key] = (time.time(), out)
+    return out
+
+
+def facturas_periodo_por_ruc(idents: set, mes: int, anio: int, cache_key=None) -> dict:
+    """{ruc(dígitos): factura} con la factura de venta más reciente EMITIDA
+    (state='posted') en Odoo dentro del mes/año indicado. Sirve para que Reportes
+    separe lo PROCESADO (ya facturado en Odoo) de lo pendiente, e indique si la
+    factura está CERTIFICADA por el SRI (tiene número de autorización). Cada
+    factura trae: numero, fecha, total, autorizada (bool), autorizacion.
+    Tolerante a fallos: si Odoo no responde devuelve {}."""
+    norm = {_solo_digitos(i) for i in idents if i}
+    if not norm:
+        return {}
+    ck = (cache_key, mes, anio) if cache_key else None
+    if ck:
+        c = _FACT_PER_CACHE.get(ck)
+        if c and (time.time() - c[0]) < _HON_TTL:
+            return c[1]
+    out = {}
+    try:
+        models, uid, db, key = _connect()
+        ini = f"{anio:04d}-{mes:02d}-01"
+        # Tope = primer día del mes siguiente (evita fechas inválidas tipo 06-31,
+        # que Odoo rechaza al parsear el dominio).
+        nxt = f"{anio + 1:04d}-01-01" if mes == 12 else f"{anio:04d}-{mes + 1:02d}-01"
+        dom = [["move_type", "=", "out_invoice"], ["state", "=", "posted"],
+               ["invoice_date", ">=", ini], ["invoice_date", "<", nxt]]
+        ids = _x(models, db, uid, key, "account.move", "search", [dom],
+                 {"order": "invoice_date desc, id desc", "limit": 2000})
+        rows = _x(models, db, uid, key, "account.move", "read", [ids],
+                  {"fields": ["name", "invoice_date", "partner_id", "amount_total",
+                              "l10n_ec_authorization_number"]}) if ids else []
+        pids = list({r["partner_id"][0] for r in rows if r.get("partner_id")})
+        vat = {}
+        if pids:
+            for p in _x(models, db, uid, key, "res.partner", "read", [pids], {"fields": ["id", "vat"]}):
+                vat[p["id"]] = _solo_digitos(p.get("vat") or "")
+        for r in rows:  # fecha desc → la primera de cada RUC es la más reciente
+            v = vat.get((r.get("partner_id") or [None])[0], "")
+            if not v or v not in norm or v in out:
+                continue
+            out[v] = {
+                "numero": r.get("name"),
+                "fecha": r.get("invoice_date"),
+                "total": r.get("amount_total"),
+                "autorizada": bool(r.get("l10n_ec_authorization_number")),
+                "autorizacion": r.get("l10n_ec_authorization_number") or None,
+            }
+    except Exception as e:
+        print(f"[odoo] facturas_periodo_por_ruc: {e}")
+        out = {}
+    if ck and out:
+        _FACT_PER_CACHE[ck] = (time.time(), out)
     return out
 
 

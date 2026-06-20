@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from typing import Optional, List
 from pydantic import BaseModel
 from auth import get_current_user
-from database import get_supabase_client, fetch_all
+from database import get_supabase_client, fetch_all, fetch_in
 from services.ice_parser import parse_ice_invoice
 from services.ice_calc import full_report
 from services.ice_export import generate_ice_excel, generate_ice_pdf
@@ -13,7 +13,7 @@ from services.codigos_ice import buscar_tokens_bd
 from services.compradores import extraer_compradores, upsert_compradores
 from services.xml_store import guardar_xml_original
 from services.activity import registrar
-from tenancy import assert_client_owner, shared_client_ids
+from tenancy import assert_client_owner, visible_client_ids
 
 router = APIRouter(prefix="/api/ice", tags=["ice"])
 
@@ -48,17 +48,18 @@ async def list_ice(user_id: str = Depends(get_current_user), client_id: Optional
             assert_client_owner(client_id, user_id)
             data = fetch_all(lambda: supabase.table("ice_sales").select(ICE_COLUMNS).eq("client_id", client_id).order("fecha", desc=True))
         else:
-            own = fetch_all(lambda: supabase.table("ice_sales").select(ICE_COLUMNS).eq("user_id", user_id).order("fecha", desc=True))
-            sids = shared_client_ids(user_id)
-            if sids:
-                sh = fetch_all(lambda: supabase.table("ice_sales").select(ICE_COLUMNS).in_("client_id", sids).order("fecha", desc=True))
+            vis = visible_client_ids(user_id)   # None = admin (ve todo)
+            if vis is None:
+                data = fetch_all(lambda: supabase.table("ice_sales").select(ICE_COLUMNS).order("fecha", desc=True))
+            else:
+                own = fetch_all(lambda: supabase.table("ice_sales").select(ICE_COLUMNS).eq("user_id", user_id).order("fecha", desc=True))
+                sh = fetch_in(lambda: supabase.table("ice_sales").select(ICE_COLUMNS), vis, "client_id")
                 seen, data = set(), []
                 for r in own + sh:
                     if r["id"] not in seen:
                         seen.add(r["id"])
                         data.append(r)
-            else:
-                data = own
+                data.sort(key=lambda x: x.get("fecha") or "", reverse=True)
         return {"data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

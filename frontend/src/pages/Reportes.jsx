@@ -12,7 +12,9 @@ const readRpDrafts = () => { try { return JSON.parse(localStorage.getItem(RP_DRA
 const writeRpDraft = (k, v) => { try { const d = readRpDrafts(); d[k] = v; localStorage.setItem(RP_DRAFT, JSON.stringify(d)) } catch { /* noop */ } }
 const clearRpDraft = (k) => { try { const d = readRpDrafts(); delete d[k]; localStorage.setItem(RP_DRAFT, JSON.stringify(d)) } catch { /* noop */ } }
 
-export default function Reportes() {
+export default function Reportes({ modo }) {
+  // modo: 'faltantes' (pendientes por facturar) | 'realizados' (ya facturados en
+  // Odoo) | undefined (ambas secciones). Define qué submenú se está viendo.
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [rows, setRows] = useState([])
@@ -166,6 +168,11 @@ export default function Reportes() {
         identificacion: r.identificacion,
         contribuyente: r.contribuyente,
         client_id: r.client_id,
+        procesado: !!r.procesado,           // ya facturado en Odoo este período
+        certificada: !!r.certificada,       // con autorización del SRI
+        factura_numero: r.factura_numero,
+        factura_fecha: r.factura_fecha,
+        autorizacion: r.autorizacion,
         rows: [],
       })
       m.get(r.identificacion).rows.push(r)
@@ -175,14 +182,12 @@ export default function Reportes() {
     return out
   }, [filtradas])
 
-  const total = useMemo(
-    () => filtradas.filter((r) => r.cobrar).reduce((s, r) => s + bruto(r), 0),
-    [filtradas]
-  )
-  const totalGeneral = useMemo(
-    () => rows.filter((r) => r.cobrar).reduce((s, r) => s + bruto(r), 0),
-    [rows]
-  )
+  // Dos partes: pendientes (sin factura emitida en Odoo) y procesadas (ya facturadas).
+  const pendientes = useMemo(() => grupos.filter((g) => !g.procesado), [grupos])
+  const procesados = useMemo(() => grupos.filter((g) => g.procesado), [grupos])
+  const totalPendiente = useMemo(() => pendientes.reduce((s, g) => s + g.subtotal, 0), [pendientes])
+  const totalProcesado = useMemo(() => procesados.reduce((s, g) => s + g.subtotal, 0), [procesados])
+
 
   const exportar = async (tipo) => {
     try {
@@ -194,15 +199,16 @@ export default function Reportes() {
 
   // Correo redactado (mailto) como respaldo si el envío automático no está
   const abrirCorreoRedactado = () => {
-    const conValor = grupos.filter((g) => g.subtotal > 0)
-    if (!conValor.length) { alert('No hay valores a cobrar para enviar.'); return }
+    // Solo lo PENDIENTE (lo procesado ya está facturado en Odoo).
+    const conValor = pendientes.filter((g) => g.subtotal > 0)
+    if (!conValor.length) { alert('No hay valores pendientes a cobrar para enviar.'); return }
     const detalle = conValor.map((g) => {
       const items = g.rows.filter((r) => r.cobrar && (parseFloat(r.valor) || 0) > 0)
         .map((r) => `   - ${r.concepto}: ${money(r.valor)}`).join('\n')
       return `${g.contribuyente} (${g.identificacion})\n${items}\n   Subtotal: ${money(g.subtotal)}`
     }).join('\n\n')
-    let cierre = `\n\nTOTAL A FACTURAR: ${money(totalGeneral)}`
-    if (ivaIncluido) { const d = desglosa(totalGeneral); cierre = `\n\nTOTAL (IVA incluido): ${money(totalGeneral)}\n   Base imponible: ${money(d.base)}\n   IVA 15%: ${money(d.iva)}` }
+    let cierre = `\n\nTOTAL A FACTURAR: ${money(totalPendiente)}`
+    if (ivaIncluido) { const d = desglosa(totalPendiente); cierre = `\n\nTOTAL (IVA incluido): ${money(totalPendiente)}\n   Base imponible: ${money(d.base)}\n   IVA 15%: ${money(d.iva)}` }
     const cuerpo = `Hola Johanna,\n\nDetalle de honorarios para registrar la factura en Odoo:\n\n${detalle}${cierre}\n\nGracias.`
     window.location.href = `mailto:johannanievecela@hotmail.com?subject=${encodeURIComponent('Honorarios para facturar en Odoo')}&body=${encodeURIComponent(cuerpo)}`
   }
@@ -223,27 +229,71 @@ export default function Reportes() {
     }
   }
 
+  // Tabla de una de las dos partes (pendientes / procesadas).
+  const renderTabla = (lista, totalLista, totalLabel) => (
+    <table className="rp-table">
+      <thead>
+        <tr>
+          <th>Concepto / Servicio</th>
+          <th className="c">¿Cobrar?</th>
+          <th className="r">Valor a cobrar</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {lista.map((g) => (
+          <Grupo key={g.identificacion} g={g} cerrado={colapsados.has(g.identificacion)}
+            onToggle={() => toggleGrupo(g.identificacion)}
+            rows={rows} setFila={setFila} setPrecio={setPrecio} guardando={guardando}
+            onAddRubro={() => agregarRubro(g.identificacion, g.contribuyente)}
+            onDelRubro={borrarRubro} money={money}
+            bruto={bruto} desglosa={desglosa}
+            historial={historial[g.identificacion] || []}
+            histAbierto={histAbierto.has(g.identificacion)}
+            onToggleHist={() => toggleHist(g.identificacion)} />
+        ))}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td className="r"><strong>{totalLabel}{search ? ' (filtrado)' : ''}</strong></td>
+          <td></td>
+          <td className="r"><strong>{money(totalLista)}</strong></td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  )
+
+  // Qué submenú se ve: Faltantes (por facturar), Realizados (ya facturados) o ambos.
+  const verFaltantes = modo !== 'realizados'
+  const verRealizados = modo !== 'faltantes'
+  const lista = modo === 'realizados' ? procesados : modo === 'faltantes' ? pendientes : grupos
+  const tituloModo = modo === 'realizados' ? 'Realizados (facturados en Odoo)'
+    : modo === 'faltantes' ? 'Faltantes (por facturar)' : 'Honorarios a cobrar'
+  const totalActivo = modo === 'realizados' ? totalProcesado : totalPendiente
+
   return (
     <div className="rp-page">
       <header className="rp-header">
         <div>
-          <h1>📑 Reportes — Honorarios a cobrar {periodo && <span className="rp-periodo">· {periodo.etiqueta}</span>}</h1>
-          <p className="rp-sub">Cada contribuyente (desplegable) con los servicios que se le hacen. Lo que tiene la declaración <strong>hecha este mes se pinta de verde</strong> (se debe facturar). Cada concepto muestra el <strong>precio sugerido de Odoo</strong> (💡) tomado de la línea facturada de mayor relación (base sin IVA), con su concepto y fecha; el botón <strong>"usar"</strong> lo aplica. Si Odoo no tiene factura del cliente, queda en blanco con la señal <strong>⚠ sin valor en Odoo</strong>. Lo que cargues a mano se respeta y se guarda.</p>
+          <h1>📑 Reportes — {tituloModo} {periodo && <span className="rp-periodo">· {periodo.etiqueta}</span>}</h1>
+          <p className="rp-sub">Cada contribuyente (desplegable) con los servicios que se le hacen. <strong>Faltantes</strong> = aún no facturados en Odoo este período; <strong>Realizados</strong> = ya facturados (✅), con la insignia de <strong>certificación SRI</strong> si tienen número de autorización. Cada concepto muestra el <strong>precio sugerido de Odoo</strong> (💡); el botón <strong>"usar"</strong> lo aplica. Lo que cargues a mano se respeta y se guarda.</p>
         </div>
         <div className="rp-total-box">
-          <span className="rp-total-lbl">Total a cobrar{search ? ' (filtrado)' : ''}{ivaIncluido ? ' (IVA incl.)' : ''}</span>
-          <span className="rp-total-val">{money(search ? total : totalGeneral)}</span>
-          {ivaIncluido && (() => { const d = desglosa(search ? total : totalGeneral); return (
+          <span className="rp-total-lbl">{modo === 'realizados' ? 'Ya facturado en Odoo' : 'Pendiente a cobrar'}{search ? ' (filtrado)' : ''}{ivaIncluido ? ' (IVA incl.)' : ''}</span>
+          <span className="rp-total-val">{money(totalActivo)}</span>
+          {ivaIncluido && (() => { const d = desglosa(totalActivo); return (
             <span className="rp-total-desglose">Base {money(d.base)} + IVA 15% {money(d.iva)}</span>
           ) })()}
+          {!modo && totalProcesado > 0 && <span className="rp-total-proc">Ya facturado en Odoo: {money(totalProcesado)}</span>}
         </div>
       </header>
 
       <div className="rp-toolbar">
         <input className="rp-search" placeholder="🔍 Buscar contribuyente o concepto…"
           value={search} onChange={(e) => setSearch(e.target.value)} />
-        <span className="rp-count">{grupos.length} contribuyente(s)</span>
-        <button className="rp-btn" onClick={() => setColapsados(new Set(grupos.map((g) => g.identificacion)))}>▸ Contraer todo</button>
+        <span className="rp-count">{lista.length} contribuyente(s)</span>
+        <button className="rp-btn" onClick={() => setColapsados(new Set(lista.map((g) => g.identificacion)))}>▸ Contraer todo</button>
         <button className="rp-btn" onClick={() => setColapsados(new Set())}>▾ Expandir todo</button>
         <button className="rp-btn" onClick={cargar}>↻ Actualizar</button>
         <span className="rp-iva-hint" title="El IVA se define por cada valor: +IVA suma el 15%, o IVA incluido si ya viene con IVA.">ⓘ El IVA se marca por cada valor (+IVA / incl.)</span>
@@ -257,47 +307,34 @@ export default function Reportes() {
       <div className="rp-table-wrap">
         {loading ? (
           <div className="rp-empty">Cargando…</div>
-        ) : grupos.length === 0 ? (
-          <div className="rp-empty">
-            {rows.length === 0
-              ? 'No hay contribuyentes cargados todavía. Crea clientes y aparecerán aquí con sus servicios.'
-              : 'Ninguna fila coincide con la búsqueda.'}
-          </div>
+        ) : rows.length === 0 ? (
+          <div className="rp-empty">No hay contribuyentes cargados todavía. Crea clientes y aparecerán aquí con sus servicios.</div>
         ) : (
-          <table className="rp-table">
-            <thead>
-              <tr>
-                <th>Concepto / Servicio</th>
-                <th className="c">¿Cobrar?</th>
-                <th className="r">Valor a cobrar</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {grupos.map((g) => {
-                const cerrado = colapsados.has(g.identificacion)
-                return (
-                  <Grupo key={g.identificacion} g={g} cerrado={cerrado}
-                    onToggle={() => toggleGrupo(g.identificacion)}
-                    rows={rows} setFila={setFila} setPrecio={setPrecio} guardando={guardando}
-                    onAddRubro={() => agregarRubro(g.identificacion, g.contribuyente)}
-                    onDelRubro={borrarRubro} money={money}
-                    bruto={bruto} desglosa={desglosa}
-                    historial={historial[g.identificacion] || []}
-                    histAbierto={histAbierto.has(g.identificacion)}
-                    onToggleHist={() => toggleHist(g.identificacion)} />
-                )
-              })}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td className="r"><strong>TOTAL a cobrar{search ? ' (filtrado)' : ''}</strong></td>
-                <td></td>
-                <td className="r"><strong>{money(search ? total : totalGeneral)}</strong></td>
-                <td></td>
-              </tr>
-            </tfoot>
-          </table>
+          <>
+            {verFaltantes && (
+              <div className="rp-seccion">
+                <h2 className="rp-seccion-tit rp-seccion-pend">
+                  🟠 Faltantes (por facturar) <span className="rp-seccion-cnt">{pendientes.length}</span>
+                </h2>
+                <p className="rp-seccion-sub">Aún no tienen factura emitida en Odoo este período.</p>
+                {pendientes.length === 0
+                  ? <div className="rp-empty">{search ? 'Ninguno coincide con la búsqueda.' : 'Nada faltante: todo lo visible ya fue facturado en Odoo. 🎉'}</div>
+                  : renderTabla(pendientes, totalPendiente, 'TOTAL faltante a cobrar')}
+              </div>
+            )}
+
+            {verRealizados && (
+              <div className="rp-seccion">
+                <h2 className="rp-seccion-tit rp-seccion-proc">
+                  ✅ Realizados (facturados en Odoo) <span className="rp-seccion-cnt">{procesados.length}</span>
+                </h2>
+                <p className="rp-seccion-sub">Ya facturados en Odoo este período. La insignia indica si están <strong>certificados por el SRI</strong> (con número de autorización).</p>
+                {procesados.length === 0
+                  ? <div className="rp-empty">{search ? 'Ninguno coincide con la búsqueda.' : 'Todavía no hay facturas emitidas en Odoo este período.'}</div>
+                  : renderTabla(procesados, totalProcesado, 'TOTAL ya facturado en Odoo')}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -314,7 +351,12 @@ function Grupo({ g, cerrado, onToggle, rows, setFila, setPrecio, guardando, onAd
           <strong>{g.contribuyente || '—'}</strong>
           <span className="rp-grupo-ruc">{g.identificacion}</span>
           {g.rows.some((r) => r.hecho) && <span className="rp-lista-badge" title="Tiene declaración/anexo realizado: lista para facturar">✓ Declaración lista</span>}
-          {g.rows.some((r) => r.sin_odoo) && <span className="rp-sinodoo-badge" title="No se encontró una factura de este cliente en Odoo: el valor quedó en blanco. Cárgalo a mano o emítele una factura en Odoo.">⚠ sin valor en Odoo</span>}
+          {!g.procesado && g.rows.some((r) => r.sin_odoo) && <span className="rp-sinodoo-badge" title="No se encontró una factura de este cliente en Odoo: el valor quedó en blanco. Cárgalo a mano o emítele una factura en Odoo.">⚠ sin valor en Odoo</span>}
+          {g.procesado && (
+            g.certificada
+              ? <span className="rp-cert-badge" title={`Factura ${g.factura_numero || ''} autorizada por el SRI${g.autorizacion ? ' · Aut. ' + g.autorizacion : ''}${g.factura_fecha ? ' · ' + g.factura_fecha : ''}`}>🧾 Certificada SRI{g.factura_numero ? ' · ' + g.factura_numero : ''}</span>
+              : <span className="rp-proc-badge" title={`Factura ${g.factura_numero || ''} emitida en Odoo; autorización del SRI pendiente${g.factura_fecha ? ' · ' + g.factura_fecha : ''}`}>🧾 Facturada (SRI pendiente){g.factura_numero ? ' · ' + g.factura_numero : ''}</span>
+          )}
         </td>
         <td className="c"></td>
         <td className="r">

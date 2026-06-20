@@ -93,7 +93,9 @@ async def by_client(client_id: str, user_id: str = Depends(get_current_user)):
         ident = _ident_de_cliente(supabase, client_id)
         if not ident:
             return {"data": [], "identificacion": None}
-        res = supabase.table("client_products").select(COLUMNS).eq("identificacion", ident).eq("user_id", user_id).order("nombre").execute()
+        # Autorizado por assert_client_owner: el catálogo del contribuyente se ve
+        # completo (lo cree quien lo cree), para que socio/admin trabajen igual.
+        res = supabase.table("client_products").select(COLUMNS).eq("identificacion", ident).order("nombre").execute()
         return {"data": res.data or [], "identificacion": ident}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -85,6 +85,16 @@ def _neto(oficial, descuento):
     return round(float(oficial or 0) * (1 - float(descuento or 0) / 100.0), 2)
 
 
+def _fetch_in_chunks(sb, table, select, col, ids, chunk=200):
+    """fetch_all con filtro IN troceado: evita URLs gigantes cuando el rol ve
+    muchos contribuyentes (p.ej. el administrador, que ve a todos)."""
+    out = []
+    for i in range(0, len(ids), chunk):
+        trozo = ids[i:i + chunk]
+        out.extend(fetch_all(lambda t=trozo: sb.table(table).select(select).in_(col, t)))
+    return out
+
+
 def _tokens(s: str) -> set:
     import unicodedata
     s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
@@ -124,18 +134,14 @@ def _filas_y_total(user_id):
     calendario y arrastra los valores del mes anterior cuando no hay del actual.
     Devuelve (filas, total_a_cobrar, historial) donde historial es
     {ruc: [{anio, mes, etiqueta, subtotal, items:[...]}]} de meses anteriores."""
-    from tenancy import shared_client_ids
+    from tenancy import visible_clients
     sb = get_supabase_client()
     cur_mes, cur_anio = _periodo_actual()
     cur_key = cur_anio * 100 + cur_mes
-    own_clients = fetch_all(lambda: sb.table("clients").select("id,identificacion,nombre,iva_incluido").eq("user_id", user_id))
-    sids = shared_client_ids(user_id)
-    if sids:
-        sh_clients = fetch_all(lambda: sb.table("clients").select("id,identificacion,nombre,iva_incluido").in_("id", sids))
-        seen_cids = {c["id"] for c in own_clients}
-        rows_clients = own_clients + [c for c in sh_clients if c["id"] not in seen_cids]
-    else:
-        rows_clients = own_clients
+    # Contribuyentes visibles SEGÚN EL ROL: admin ve todos; socio ve los de los
+    # clientes y los suyos; cliente ve los propios y compartidos. Así aparecen
+    # TODAS las personas creadas, sea del administrador, del socio o de los clientes.
+    rows_clients = visible_clients(user_id, "id,identificacion,nombre,iva_incluido")
     nombre_por_ruc = {}
     id_to_ruc = {}
     iva_por_ruc = {}
@@ -154,20 +160,20 @@ def _filas_y_total(user_id):
     def _q_servicios():
         if not all_ids:
             return []
-        return fetch_all(lambda: sb.table("client_services").select("client_id,service").in_(
-            "client_id", all_ids).eq("active", True))
+        rows = _fetch_in_chunks(sb, "client_services", "client_id,service,active", "client_id", all_ids)
+        return [r for r in rows if r.get("active")]
 
     # Declaraciones/anexos por CLIENTE visible (propio o compartido), no por quién
     # los hizo: el verde señala que el trabajo del contribuyente está hecho.
     def _q_anexos():
         if not all_ids:
             return []
-        return fetch_all(lambda: sb.table("anexos").select("client_id,created_at").in_("client_id", all_ids))
+        return _fetch_in_chunks(sb, "anexos", "client_id,created_at", "client_id", all_ids)
 
     def _q_decls():
         if not all_ids:
             return []
-        return fetch_all(lambda: sb.table("declaraciones").select("client_id,tipo,created_at").in_("client_id", all_ids))
+        return _fetch_in_chunks(sb, "declaraciones", "client_id,tipo,created_at", "client_id", all_ids)
 
     def _q_guardados():
         return fetch_all(lambda: sb.table("reportes_honorarios").select(
@@ -251,13 +257,11 @@ def _filas_y_total(user_id):
         if prod not in fixed_labels:
             custom_por_ruc.setdefault(ruc, set()).add(prod)
 
-    # Solo salen contribuyentes "con algo": servicio contratado, declaración/anexo
-    # hecho alguna vez, o un cobro guardado (cualquier período).
+    # Aparecen TODOS los contribuyentes visibles (creados por quien sea: admin,
+    # socio o cliente, según el rol). El servicio/declaración/anexo solo sirve
+    # para PRE-MARCAR (verde / "relevante"), no para ocultar a nadie.
     rucs_con_decl = {k[0] for k in decl_ever}
     rucs_con_guardado = {g["identificacion"] for g in guardados}
-    def _activo(ruc):
-        return (bool(serv_por_ruc.get(ruc)) or ruc in anexo_ever
-                or ruc in rucs_con_decl or ruc in rucs_con_guardado)
 
     # Precio SUGERIDO desde Odoo: el valor de la línea coherente con el honorario
     # (declaración/honorario/anexo), no firma/cursos. Se muestra SIEMPRE como
@@ -266,19 +270,25 @@ def _filas_y_total(user_id):
     # del cliente → queda en blanco con la señal.
     rucs_con_cur = {ruc for (ruc, _) in guardados_cur}
     odoo_por_ruc = {}
+    # Facturas YA EMITIDAS (procesadas) este período en Odoo, por RUC. Con esto
+    # Reportes separa lo PROCESADO de lo pendiente y certifica (autorización SRI).
+    fact_periodo = {}
     try:
-        from routers.odoo_factura import valores_honorarios_por_ruc
-        raw = valores_honorarios_por_ruc(set(nombre_por_ruc.keys()), cache_key=user_id)
+        from routers.odoo_factura import valores_honorarios_por_ruc, facturas_periodo_por_ruc
+        idents = set(nombre_por_ruc.keys())
+        raw = valores_honorarios_por_ruc(idents, cache_key=user_id)
         odoo_por_ruc = {re.sub(r"\D", "", k): v for k, v in raw.items()}
+        fact_periodo = facturas_periodo_por_ruc(idents, cur_mes, cur_anio, cache_key=user_id)
     except Exception as e:
         print(f"[reportes] Odoo no disponible para honorarios: {e}")
 
     filas = []
     total = 0.0
-    rucs_orden = [r for r in sorted(nombre_por_ruc, key=lambda r: (nombre_por_ruc[r] or "").upper()) if _activo(r)]
+    rucs_orden = sorted(nombre_por_ruc, key=lambda r: (nombre_por_ruc[r] or "").upper())
     for ruc in rucs_orden:
         es_vacio = ruc not in rucs_con_cur  # sin cobro cargado a mano este período
         odoo_lineas = odoo_por_ruc.get(re.sub(r"\D", "", ruc))  # lista de líneas o None
+        fact = fact_periodo.get(re.sub(r"\D", "", ruc))  # factura emitida este período o None
         # Concepto principal: el primer relevante (o el primero).
         primary_label = None
         for label, key in CONCEPTOS:
@@ -345,6 +355,13 @@ def _filas_y_total(user_id):
                 "bruto": bruto,
                 "origen": origen,            # 'odoo' | 'manual' | ''
                 "sin_odoo": bool(sin_odoo),    # señal a nivel cliente
+                # Procesado = ya facturado en Odoo este período. Certificada = con
+                # autorización del SRI. Señal a nivel cliente (toda la fila la comparte).
+                "procesado": bool(fact),
+                "certificada": bool(fact and fact.get("autorizada")),
+                "factura_numero": fact.get("numero") if fact else None,
+                "factura_fecha": fact.get("fecha") if fact else None,
+                "autorizacion": fact.get("autorizacion") if fact else None,
             }
             if sugerido:  # precio sugerido (oficial, descuento, neto) para decidir
                 fila["sugerido"] = round(float(sugerido.get("neto") or 0), 2)
@@ -383,11 +400,16 @@ def _filas_y_total(user_id):
 
 @router.put("/cliente-iva/{client_id}")
 async def set_cliente_iva(client_id: str, iva_incluido: bool, user_id: str = Depends(get_current_user)):
-    """Guarda si los valores de un contribuyente ya incluyen IVA."""
+    """Guarda si los valores de un contribuyente ya incluyen IVA. Es un dato de
+    identidad: aplica a TODOS los períodos del contribuyente (todo el módulo)."""
+    from tenancy import assert_client_owner
     sb = get_supabase_client()
-    res = sb.table("clients").update({"iva_incluido": iva_incluido}).eq("id", client_id).eq("user_id", user_id).execute()
-    if not res.data:
+    assert_client_owner(client_id, user_id)   # autorización por rol
+    cur = sb.table("clients").select("identificacion").eq("id", client_id).execute().data
+    if not cur:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    ident = cur[0]["identificacion"]
+    sb.table("clients").update({"iva_incluido": iva_incluido}).eq("identificacion", ident).execute()
     return {"ok": True}
 
 
@@ -457,6 +479,8 @@ async def enviar_correo_reporte(iva_incluido: bool = False, user_id: str = Depen
     # 'bruto' = valor con IVA incluido por ítem (base + 15%). El total ya es con IVA.
     por_ruc = {}
     for f in filas:
+        if f.get("procesado"):
+            continue  # ya facturado en Odoo este período: no reenviar a Johanna
         if f["cobrar"] and f.get("bruto", 0) > 0:
             g = por_ruc.setdefault(f["identificacion"], {"nombre": f["contribuyente"], "items": [], "sub": 0.0})
             etiqueta = " (IVA incl.)" if f.get("iva_incluido") else " (+IVA)"

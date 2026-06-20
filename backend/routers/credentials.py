@@ -7,7 +7,7 @@ en el endpoint /reveal y nunca se devuelven en /list.
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from database import get_supabase_client
+from database import get_supabase_client, fetch_all, fetch_in
 from routers.admin import require_admin
 from services.credentials_crypto import encrypt, decrypt, can_decrypt
 
@@ -72,20 +72,21 @@ async def listar(req: Request, admin_id: str = Depends(require_admin), q: Option
     by_id = {c["id"]: c for c in clients}
 
     # Servicios contratados COMPARTIDOS POR RUC: un servicio marcado en cualquier
-    # período del contribuyente vale para todos. Se reúnen todos los client_id
-    # que comparten identificación y se unen sus servicios activos.
-    rucs = {cl.get("identificacion") for cl in clients if cl.get("identificacion")}
-    todos = sb.table("clients").select("id, identificacion").in_("identificacion", list(rucs)).execute().data or [] if rucs else []
-    ids_por_ruc = {}
+    # período del contribuyente vale para TODO el contribuyente (todos sus
+    # períodos/módulos). Se calcula para TODOS los contribuyentes —no solo los que
+    # ya tienen credencial— para que un cliente nuevo (sin clave) también muestre
+    # y permita marcar sus servicios.
+    todos = fetch_all(lambda: sb.table("clients").select("id, identificacion"))
     ruc_por_id = {}
     for r in todos:
-        ids_por_ruc.setdefault(r["identificacion"], []).append(r["id"])
-        ruc_por_id[r["id"]] = r["identificacion"]
+        if r.get("identificacion"):
+            ruc_por_id[r["id"]] = r["identificacion"]
     todos_ids = list(ruc_por_id.keys()) or client_ids
-    services_rows = sb.table("client_services").select("client_id, service, active").in_(
-        "client_id", todos_ids).eq("active", True).execute().data or []
+    services_rows = fetch_in(lambda: sb.table("client_services").select("client_id, service, active"), todos_ids, "client_id")
     services_by_ruc = {}
     for s in services_rows:
+        if not s.get("active"):
+            continue
         ruc = ruc_por_id.get(s["client_id"])
         if ruc:
             services_by_ruc.setdefault(ruc, set()).add(s["service"])
@@ -117,7 +118,9 @@ async def listar(req: Request, admin_id: str = Depends(require_admin), q: Option
             "client_services": sorted(services_by_ruc.get(ruc, set())),
         })
     _log(credential_id=None, admin_user_id=admin_id, action="list", req=req, metadata={"count": len(out), "q": q})
-    return {"data": out}
+    # services_by_ruc para que el frontend pinte los servicios de TODOS los
+    # contribuyentes (incl. los que aún no tienen credencial).
+    return {"data": out, "services_by_ruc": {k: sorted(v) for k, v in services_by_ruc.items()}}
 
 
 @router.put("/services/{client_id}/{service}")
@@ -141,29 +144,38 @@ async def toggle_servicio(
         body = {}
     desired_active = body.get("active")
 
-    # Verificar cliente existe
-    cl = sb.table("clients").select("id").eq("id", client_id).execute().data
+    # Verificar cliente existe y obtener su identificación
+    cl = sb.table("clients").select("id, identificacion").eq("id", client_id).execute().data
     if not cl:
         raise HTTPException(status_code=404, detail="Cliente no existe")
+    ident = cl[0].get("identificacion")
 
-    existing = sb.table("client_services").select("id, active").eq(
-        "client_id", client_id).eq("service", service).execute().data
+    # El servicio afecta a TODO el contribuyente: se aplica a TODOS sus períodos
+    # (todos los client_id que comparten la identificación), no solo a uno.
+    hermanos = sb.table("clients").select("id").eq("identificacion", ident).execute().data if ident else None
+    ids = [h["id"] for h in (hermanos or [])] or [client_id]
 
-    if existing:
-        cur = existing[0]
-        new_active = bool(desired_active) if desired_active is not None else (not cur["active"])
-        sb.table("client_services").update({"active": new_active}).eq("id", cur["id"]).execute()
-        action = "service_toggle_on" if new_active else "service_toggle_off"
-    else:
-        new_active = True if desired_active is None else bool(desired_active)
-        sb.table("client_services").insert({
-            "client_id": client_id, "service": service,
-            "active": new_active, "created_by": admin_id,
-        }).execute()
-        action = "service_toggle_on" if new_active else "service_toggle_off"
+    existing = sb.table("client_services").select("id, client_id, active").in_(
+        "client_id", ids).eq("service", service).execute().data or []
+    # Estado actual agregado: activo si CUALQUIER período lo tiene activo.
+    cur_active = any(e.get("active") for e in existing)
+    new_active = bool(desired_active) if desired_active is not None else (not cur_active)
+
+    con_fila = {e["client_id"] for e in existing}
+    for cid in ids:
+        if cid in con_fila:
+            sb.table("client_services").update({"active": new_active}).eq(
+                "client_id", cid).eq("service", service).execute()
+        else:
+            sb.table("client_services").insert({
+                "client_id": cid, "service": service,
+                "active": new_active, "created_by": admin_id,
+            }).execute()
+    action = "service_toggle_on" if new_active else "service_toggle_off"
 
     _log(credential_id=None, admin_user_id=admin_id, action="update", req=req,
-         metadata={"sub_action": action, "client_id": client_id, "service": service, "active": new_active})
+         metadata={"sub_action": action, "identificacion": ident, "periodos": len(ids),
+                   "service": service, "active": new_active})
     return {"ok": True, "service": service, "active": new_active}
 
 

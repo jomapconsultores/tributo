@@ -4,11 +4,11 @@ from fastapi.responses import StreamingResponse
 from typing import Optional
 from pydantic import BaseModel
 from auth import get_current_user
-from database import get_supabase_client, fetch_all
+from database import get_supabase_client, fetch_all, fetch_in
 from services.declaracion import declaracion_iva, declaracion_ice
 from services.declaracion_oficial import llenar_oficial
 from services.credentials_crypto import decrypt
-from tenancy import assert_client_owner, shared_client_ids
+from tenancy import assert_client_owner, visible_client_ids
 from routers.access import es_admin, es_data_admin
 from services.activity import registrar
 
@@ -252,24 +252,22 @@ async def listar(client_id: Optional[str] = Query(None), tipo: Optional[str] = Q
                 q = q.eq("tipo", tipo.upper())
             data = q.order("created_at", desc=True).execute().data or []
         else:
-            q = supabase.table("declaraciones").select("*").eq("user_id", user_id)
-            if tipo:
-                q = q.eq("tipo", tipo.upper())
-            own = q.order("created_at", desc=True).execute().data or []
-            sids = shared_client_ids(user_id)
-            if sids:
-                sq = supabase.table("declaraciones").select("*").in_("client_id", sids)
-                if tipo:
-                    sq = sq.eq("tipo", tipo.upper())
-                sh = sq.order("created_at", desc=True).execute().data or []
+            def _base():
+                b = supabase.table("declaraciones").select("*")
+                return b.eq("tipo", tipo.upper()) if tipo else b
+            vis = visible_client_ids(user_id)   # None = admin (ve todo)
+            if vis is None:
+                data = fetch_all(lambda: _base().order("created_at", desc=True))
+            else:
+                oq = _base().eq("user_id", user_id)
+                own = oq.order("created_at", desc=True).execute().data or []
+                sh = fetch_in(_base, vis, "client_id")
                 seen, data = set(), []
                 for d in own + sh:
                     if d["id"] not in seen:
                         seen.add(d["id"])
                         data.append(d)
                 data.sort(key=lambda x: x.get("created_at") or "", reverse=True)
-            else:
-                data = own
         return {"data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -350,23 +348,23 @@ async def listar_aplazados(
                 q = q.eq("estado", estado)
             data = q.order("vence_anio", desc=False).order("vence_mes", desc=False).execute().data or []
         else:
-            q = supabase.table("pagos_aplazados").select("*").eq("user_id", user_id)
-            if estado:
-                q = q.eq("estado", estado)
-            own = q.order("vence_anio", desc=False).order("vence_mes", desc=False).execute().data or []
-            sids = shared_client_ids(user_id)
-            if sids:
-                sq = supabase.table("pagos_aplazados").select("*").in_("client_id", sids)
-                if estado:
-                    sq = sq.eq("estado", estado)
-                sh = sq.order("vence_anio", desc=False).order("vence_mes", desc=False).execute().data or []
+            def _base():
+                b = supabase.table("pagos_aplazados").select("*")
+                return b.eq("estado", estado) if estado else b
+            def _ord(qq):
+                return qq.order("vence_anio", desc=False).order("vence_mes", desc=False)
+            vis = visible_client_ids(user_id)   # None = admin (ve todo)
+            if vis is None:
+                data = fetch_all(lambda: _ord(_base()))
+            else:
+                own = _ord(_base().eq("user_id", user_id)).execute().data or []
+                sh = fetch_in(_base, vis, "client_id")
                 seen, data = set(), []
                 for d in own + sh:
                     if d["id"] not in seen:
                         seen.add(d["id"])
                         data.append(d)
-            else:
-                data = own
+                data.sort(key=lambda x: (x.get("vence_anio") or 0, x.get("vence_mes") or 0))
         return {"data": data}
     except HTTPException:
         raise

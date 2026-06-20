@@ -29,3 +29,19 @@ def fetch_all(query_factory, chunk: int = 1000):
             break
         inicio += chunk
     return filas
+
+
+def fetch_in(query_factory, ids, col: str = "client_id", chunk: int = 150):
+    """fetch_all con filtro IN troceado: evita URLs gigantes cuando hay muchos
+    ids (p.ej. un socio/administrador que ve a muchos contribuyentes).
+
+    `query_factory` devuelve la consulta BASE (select + filtros .eq), SIN el
+    `.in_` ni `.range` (los agrega esta función)."""
+    ids = list(ids or [])
+    if not ids:
+        return []
+    filas = []
+    for i in range(0, len(ids), chunk):
+        trozo = ids[i:i + chunk]
+        filas.extend(fetch_all(lambda t=trozo: query_factory().in_(col, t)))
+    return filas

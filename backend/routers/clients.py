@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client, fetch_all
 from services.sri_ruc import consultar_ruc
-from routers.access import es_admin, es_data_admin
+from tenancy import visible_clients, assert_client_owner
 from services.activity import registrar
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
@@ -41,19 +41,12 @@ async def list_clients(user_id: str = Depends(get_current_user)):
     """Lista los clientes con estadísticas (# facturas y monto total)."""
     try:
         supabase = get_supabase_client()
-        data_admin = es_data_admin(user_id)
-
-        if data_admin:
-            q = supabase.table("clients").select("*").order("nombre").order("periodo_anio", desc=True).order("periodo_mes", desc=True)
-            clients = q.execute().data or []
-        else:
-            propios = supabase.table("clients").select("*").eq("user_id", user_id).execute().data or []
-            sids = _shared_ids(supabase, user_id)
-            compartidos = supabase.table("clients").select("*").in_("id", sids).execute().data if sids else []
-
-            # Enriquecer clientes compartidos con info del propietario
-            compartidos_ids = {c["id"] for c in compartidos}
-            owner_uids = list({c["user_id"] for c in compartidos if c.get("user_id")})
+        # Visibles según rol (admin: todos; socio: clientes+propios; cliente: propios+compartidos).
+        clients = visible_clients(user_id, "*")
+        # Marcar/enriquecer los que llegaron por acceso compartido (client_access).
+        shared_set = set(_shared_ids(supabase, user_id))
+        if shared_set:
+            owner_uids = list({c["user_id"] for c in clients if c["id"] in shared_set and c.get("user_id")})
             owner_map = {}
             if owner_uids:
                 try:
@@ -61,15 +54,11 @@ async def list_clients(user_id: str = Depends(get_current_user)):
                     owner_map = {r["user_id"]: r["email"] for r in rows}
                 except Exception:
                     pass
-            for c in compartidos:
-                c["is_shared"] = True
-                c["owner_email"] = owner_map.get(c.get("user_id"), "")
-
-            seen, clients = set(), []
-            for c in sorted(propios + compartidos, key=lambda x: ((x.get("nombre") or ""), -(x.get("periodo_anio") or 0), -(x.get("periodo_mes") or 0))):
-                if c["id"] not in seen:
-                    seen.add(c["id"])
-                    clients.append(c)
+            for c in clients:
+                if c["id"] in shared_set:
+                    c["is_shared"] = True
+                    c["owner_email"] = owner_map.get(c.get("user_id"), "")
+        clients.sort(key=lambda x: ((x.get("nombre") or ""), -(x.get("periodo_anio") or 0), -(x.get("periodo_mes") or 0)))
 
         # Estadísticas por client_id (funciona independientemente del user_id)
         client_ids = [c["id"] for c in clients]
@@ -103,18 +92,7 @@ async def clients_by_service(service: str = Query(...), user_id: str = Depends(g
     """Identificaciones (RUCs) que tienen el servicio activo en client_services."""
     try:
         supabase = get_supabase_client()
-        data_admin = es_data_admin(user_id)
-        if data_admin:
-            clientes = supabase.table("clients").select("id,identificacion").execute().data or []
-        else:
-            propios = supabase.table("clients").select("id,identificacion").eq("user_id", user_id).execute().data or []
-            sids = _shared_ids(supabase, user_id)
-            compartidos = supabase.table("clients").select("id,identificacion").in_("id", sids).execute().data if sids else []
-            seen, clientes = set(), []
-            for c in propios + compartidos:
-                if c["id"] not in seen:
-                    seen.add(c["id"])
-                    clientes.append(c)
+        clientes = visible_clients(user_id, "id,identificacion")
         if not clientes:
             return {"identificaciones": []}
         ids = [c["id"] for c in clientes]
@@ -139,19 +117,7 @@ async def contribuyentes(user_id: str = Depends(get_current_user)):
     (año, mes) → conteo de datos por tipo (gastos/retenciones/ice/calculo)."""
     try:
         supabase = get_supabase_client()
-        data_admin = es_data_admin(user_id)
-        if data_admin:
-            q = supabase.table("clients").select("id,identificacion,nombre,tipo_identificacion,periodo_mes,periodo_anio")
-            clients = q.execute().data or []
-        else:
-            propios = supabase.table("clients").select("id,identificacion,nombre,tipo_identificacion,periodo_mes,periodo_anio").eq("user_id", user_id).execute().data or []
-            sids = _shared_ids(supabase, user_id)
-            compartidos = supabase.table("clients").select("id,identificacion,nombre,tipo_identificacion,periodo_mes,periodo_anio").in_("id", sids).execute().data if sids else []
-            seen, clients = set(), []
-            for c in propios + compartidos:
-                if c["id"] not in seen:
-                    seen.add(c["id"])
-                    clients.append(c)
+        clients = visible_clients(user_id, "id,identificacion,nombre,tipo_identificacion,periodo_mes,periodo_anio")
 
         client_ids = [c["id"] for c in clients]
 
@@ -317,28 +283,52 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# Datos de IDENTIDAD del contribuyente: al editarlos se propagan a TODOS sus
+# períodos (todo el módulo). Los de período (mes/año) solo al registro elegido.
+_CAMPOS_IDENTIDAD = {"identificacion", "nombre", "tipo_identificacion", "notas", "iva_incluido"}
+
+
 @router.put("/{client_id}")
 async def update_client(client_id: str, entry: ClientUpdate, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
+        # Autorización por ROL (no solo el dueño): la socia/admin pueden editar los
+        # contribuyentes visibles, no únicamente los que creó su propio usuario.
+        assert_client_owner(client_id, user_id)
         data = {k: v for k, v in entry.dict().items() if v is not None}
         if "identificacion" in data:
             data["identificacion"] = data["identificacion"].strip().replace("'", "")
         if "nombre" in data:
             data["nombre"] = data["nombre"].strip().upper()
         data["updated_at"] = "now()"
-        response = supabase.table("clients").update(data).eq("id", client_id).eq("user_id", user_id).execute()
+        # Identificación actual (para ubicar todos los períodos del contribuyente).
+        cur = supabase.table("clients").select("identificacion").eq("id", client_id).execute().data
+        ident_actual = cur[0]["identificacion"] if cur else None
+        # 1) El registro seleccionado recibe TODOS los cambios (incluido período).
+        response = supabase.table("clients").update(data).eq("id", client_id).execute()
+        # 2) Los campos de identidad se propagan al resto de períodos del MISMO
+        #    contribuyente, para que el cambio afecte a todo el módulo.
+        identidad = {k: v for k, v in data.items() if k in _CAMPOS_IDENTIDAD}
+        if ident_actual and identidad:
+            identidad["updated_at"] = "now()"
+            supabase.table("clients").update(identidad).eq(
+                "identificacion", ident_actual).neq("id", client_id).execute()
         return response.data[0] if response.data else None
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/{client_id}")
 async def delete_client(client_id: str, user_id: str = Depends(get_current_user)):
-    """Elimina un cliente y todas sus facturas (cascade)."""
+    """Elimina un cliente (este período) y todas sus facturas (cascade)."""
     try:
         supabase = get_supabase_client()
-        supabase.table("clients").delete().eq("id", client_id).eq("user_id", user_id).execute()
+        assert_client_owner(client_id, user_id)   # autorización por rol
+        supabase.table("clients").delete().eq("id", client_id).execute()
         return {"message": "Cliente eliminado"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

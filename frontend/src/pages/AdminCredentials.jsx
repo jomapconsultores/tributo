@@ -29,6 +29,9 @@ function dedupContribuyentes(clients) {
 export default function AdminCredentials() {
   const [creds, setCreds] = useState([])
   const [contribs, setContribs] = useState([])
+  // Servicios contratados por RUC (compartidos por todo el contribuyente). Maneja
+  // las casillas IVA/ICE/Renta/Dev. para TODAS las filas (con o sin credencial).
+  const [servicesByRuc, setServicesByRuc] = useState({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [reveal, setReveal] = useState(null) // { id, ruc, nombre, password, ttl }
@@ -60,6 +63,7 @@ export default function AdminCredentials() {
         clientsAPI.list(),
       ])
       setCreds(credsRes.data?.data || [])
+      setServicesByRuc(credsRes.data?.services_by_ruc || {})
       setContribs(dedupContribuyentes(contribsRes.data || []))
     } catch (e) {
       alert('Error cargando credenciales: ' + (e.response?.data?.detail || e.message))
@@ -77,14 +81,15 @@ export default function AdminCredentials() {
     for (const c of creds) { if (c.ruc && !credByRuc[c.ruc]) credByRuc[c.ruc] = c }
     return contribs.map((ct) => {
       const cred = credByRuc[ct.identificacion]
-      if (cred) return cred
+      const services = servicesByRuc[ct.identificacion] || []
+      if (cred) return { ...cred, client_services: services }
       return {
         id: `noc-${ct.id}`, client_id: ct.id, ruc: ct.identificacion,
-        nombre: ct.nombre, username: null, notes: null, client_services: [],
+        nombre: ct.nombre, username: null, notes: null, client_services: services,
         needs_reentry: false, updated_at: null, _sinClave: true,
       }
     })
-  }, [creds, contribs])
+  }, [creds, contribs, servicesByRuc])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -151,25 +156,21 @@ export default function AdminCredentials() {
     }
   }
 
-  const onToggleService = async (cred, serviceKey) => {
-    const isActive = cred.client_services?.includes(serviceKey)
-    // Optimistic update para que el toggle se sienta instantáneo
-    setCreds((prev) => prev.map((c) => {
-      if (c.id !== cred.id) return c
-      const set = new Set(c.client_services || [])
-      isActive ? set.delete(serviceKey) : set.add(serviceKey)
-      return { ...c, client_services: Array.from(set).sort() }
-    }))
+  const onToggleService = async (row, serviceKey) => {
+    const ruc = row.ruc
+    const isActive = (servicesByRuc[ruc] || []).includes(serviceKey)
+    // Optimista por RUC: aplica a TODAS las filas del contribuyente al instante.
+    const flip = (add) => setServicesByRuc((prev) => {
+      const set = new Set(prev[ruc] || [])
+      add ? set.add(serviceKey) : set.delete(serviceKey)
+      return { ...prev, [ruc]: Array.from(set).sort() }
+    })
+    flip(!isActive)
     try {
-      await credentialsAPI.toggleService(cred.client_id, serviceKey, !isActive)
+      // El backend lo aplica a todos los períodos del contribuyente (todo el módulo).
+      await credentialsAPI.toggleService(row.client_id, serviceKey, !isActive)
     } catch (e) {
-      // Rollback en error
-      setCreds((prev) => prev.map((c) => {
-        if (c.id !== cred.id) return c
-        const set = new Set(c.client_services || [])
-        isActive ? set.add(serviceKey) : set.delete(serviceKey)
-        return { ...c, client_services: Array.from(set).sort() }
-      }))
+      flip(isActive)  // rollback
       alert('Error al cambiar servicio: ' + (e.response?.data?.detail || e.message))
     }
   }

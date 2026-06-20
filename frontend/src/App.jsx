@@ -134,7 +134,9 @@ function App() {
               <Route path="/compradores" element={<RequireModule modulo="ingresos_ice"><Compradores /></RequireModule>} />
               <Route path="/rebajas-exenciones" element={<RequireModule modulo="ingresos_ice"><RebajasExenciones /></RequireModule>} />
               <Route path="/normativa" element={<Normativa />} />
-              <Route path="/reportes" element={<Reportes />} />
+              <Route path="/reportes" element={<Reportes modo="faltantes" />} />
+              <Route path="/reportes/faltantes" element={<Reportes modo="faltantes" />} />
+              <Route path="/reportes/realizados" element={<Reportes modo="realizados" />} />
               <Route path="/capacitaciones" element={<Capacitaciones />} />
               <Route path="/admin" element={<RequireSuperAdmin><Admin /></RequireSuperAdmin>} />
               <Route path="/admin/credenciales" element={<RequireSuperAdmin><AdminCredentials /></RequireSuperAdmin>} />

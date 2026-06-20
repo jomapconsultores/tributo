@@ -3,9 +3,9 @@ from fastapi.responses import StreamingResponse
 from typing import Optional, List
 from pydantic import BaseModel
 from auth import get_current_user
-from database import get_supabase_client
+from database import get_supabase_client, fetch_all, fetch_in
 from services.anexo_export import generar_anexo_excel, generar_anexo_pdf
-from tenancy import assert_client_owner, shared_client_ids
+from tenancy import assert_client_owner, visible_client_ids
 from services.activity import registrar
 
 router = APIRouter(prefix="/api/anexos", tags=["anexos"])
@@ -36,17 +36,19 @@ async def listar(client_id: Optional[str] = Query(None), user_id: str = Depends(
             assert_client_owner(client_id, user_id)
             data = supabase.table("anexos").select("id,client_id,tipo,datos,created_at").eq("client_id", client_id).order("created_at", desc=True).execute().data or []
         else:
-            own = supabase.table("anexos").select("id,client_id,tipo,datos,created_at").eq("user_id", user_id).order("created_at", desc=True).execute().data or []
-            sids = shared_client_ids(user_id)
-            if sids:
-                sh = supabase.table("anexos").select("id,client_id,tipo,datos,created_at").in_("client_id", sids).order("created_at", desc=True).execute().data or []
+            cols = "id,client_id,tipo,datos,created_at"
+            vis = visible_client_ids(user_id)   # None = admin (ve todo)
+            if vis is None:
+                data = fetch_all(lambda: supabase.table("anexos").select(cols).order("created_at", desc=True))
+            else:
+                own = supabase.table("anexos").select(cols).eq("user_id", user_id).order("created_at", desc=True).execute().data or []
+                sh = fetch_in(lambda: supabase.table("anexos").select(cols), vis, "client_id")
                 seen, data = set(), []
                 for r in own + sh:
                     if r["id"] not in seen:
                         seen.add(r["id"])
                         data.append(r)
-            else:
-                data = own
+                data.sort(key=lambda x: x.get("created_at") or "", reverse=True)
         return {"data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

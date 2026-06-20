@@ -10,7 +10,7 @@ from services.export_service import generate_excel, generate_pdf
 from services.xml_store import guardar_xml_original
 from services.periodo import periodo_cliente, es_de_otro_periodo, etiqueta_periodo
 from database import fetch_all
-from tenancy import assert_client_owner, shared_client_ids
+from tenancy import assert_client_owner, visible_client_ids
 from services.activity import registrar
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
@@ -90,9 +90,15 @@ async def list_invoices(
                 assert_client_owner(client_id, user_id)
             count_q = count_q.eq("client_id", client_id)
             data_q = data_q.eq("client_id", client_id)
-        else:
-            if not data_admin:
-                # Sin client_id: filtrar por usuario para no devolver toda la DB
+        elif not data_admin:
+            # Sin client_id: limitar a lo VISIBLE según el rol (no toda la DB).
+            # admin entra por data_admin (sin filtro); aquí van socio y cliente.
+            ids = list(visible_client_ids(user_id) or [])
+            if ids:
+                filt = f"user_id.eq.{user_id},client_id.in.({','.join(ids)})"
+                count_q = count_q.or_(filt)
+                data_q = data_q.or_(filt)
+            else:
                 count_q = count_q.eq("user_id", user_id)
                 data_q = data_q.eq("user_id", user_id)
 

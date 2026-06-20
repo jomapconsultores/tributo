@@ -3,11 +3,11 @@ from fastapi.responses import StreamingResponse
 from typing import Optional, List
 from pydantic import BaseModel
 from auth import get_current_user
-from database import get_supabase_client
+from database import get_supabase_client, fetch_all, fetch_in
 from services.ice_calc_report import full_report
 from services.ice_calc_export import generate_calc_excel, generate_calc_pdf
 from services.ice_calc_data import TARIFAS
-from tenancy import assert_client_owner, shared_client_ids
+from tenancy import assert_client_owner, visible_client_ids
 
 router = APIRouter(prefix="/api/ice-calc", tags=["ice-calc"])
 
@@ -66,17 +66,18 @@ async def list_calc(user_id: str = Depends(get_current_user), client_id: Optiona
             assert_client_owner(client_id, user_id)
             rows = supabase.table("ice_calc").select(COLUMNS).eq("client_id", client_id).order("created_at").execute().data or []
         else:
-            own = supabase.table("ice_calc").select(COLUMNS).eq("user_id", user_id).order("created_at").execute().data or []
-            sids = shared_client_ids(user_id)
-            if sids:
-                sh = supabase.table("ice_calc").select(COLUMNS).in_("client_id", sids).order("created_at").execute().data or []
+            vis = visible_client_ids(user_id)   # None = admin (ve todo)
+            if vis is None:
+                rows = fetch_all(lambda: supabase.table("ice_calc").select(COLUMNS).order("created_at"))
+            else:
+                own = supabase.table("ice_calc").select(COLUMNS).eq("user_id", user_id).order("created_at").execute().data or []
+                sh = fetch_in(lambda: supabase.table("ice_calc").select(COLUMNS), vis, "client_id")
                 seen, rows = set(), []
                 for r in own + sh:
                     if r["id"] not in seen:
                         seen.add(r["id"])
                         rows.append(r)
-            else:
-                rows = own
+                rows.sort(key=lambda x: x.get("created_at") or "")
         period = _period(supabase, client_id) if client_id else None
         return {"data": rows, "cliente": period}
     except Exception as e:

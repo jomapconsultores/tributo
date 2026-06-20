@@ -15,8 +15,8 @@ from services.xml_store import guardar_xml_original
 from services.periodo import periodo_cliente, es_de_otro_periodo, etiqueta_periodo
 from services.sri_service import extract_claves_from_txt, descargar_multiples_xmls
 from services.activity import registrar
-from database import fetch_all
-from tenancy import assert_client_owner, shared_client_ids
+from database import fetch_all, fetch_in
+from tenancy import assert_client_owner, visible_client_ids
 
 router = APIRouter(prefix="/api/sales-iva", tags=["sales_iva"])
 
@@ -63,17 +63,18 @@ async def list_sales(user_id: str = Depends(get_current_user), client_id: Option
             assert_client_owner(client_id, user_id)
             data = fetch_all(lambda: supabase.table("sales_iva").select(COLUMNS).eq("client_id", client_id).order("fecha", desc=True))
         else:
-            own = fetch_all(lambda: supabase.table("sales_iva").select(COLUMNS).eq("user_id", user_id).order("fecha", desc=True))
-            sids = shared_client_ids(user_id)
-            if sids:
-                sh = fetch_all(lambda: supabase.table("sales_iva").select(COLUMNS).in_("client_id", sids).order("fecha", desc=True))
+            vis = visible_client_ids(user_id)   # None = admin (ve todo)
+            if vis is None:
+                data = fetch_all(lambda: supabase.table("sales_iva").select(COLUMNS).order("fecha", desc=True))
+            else:
+                own = fetch_all(lambda: supabase.table("sales_iva").select(COLUMNS).eq("user_id", user_id).order("fecha", desc=True))
+                sh = fetch_in(lambda: supabase.table("sales_iva").select(COLUMNS), vis, "client_id")
                 seen, data = set(), []
                 for r in own + sh:
                     if r["id"] not in seen:
                         seen.add(r["id"])
                         data.append(r)
-            else:
-                data = own
+                data.sort(key=lambda x: x.get("fecha") or "", reverse=True)
         return {"data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -20,6 +20,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const [declaracionesOpen, setDeclaracionesOpen] = useState(false)
   const [devolucionesOpen, setDevolucionesOpen] = useState(false)
   const [odooOpen, setOdooOpen] = useState(false)
+  const [reportesOpen, setReportesOpen] = useState(false)
   const [clientSearch, setClientSearch] = useState('')
   const [movNuevos, setMovNuevos] = useState(0)
 
@@ -92,7 +93,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const isNormativa = path === '/normativa'
   const isRecursos = path === '/recursos-ice'
   const isCompradores = path === '/compradores'
-  const isReportes = path === '/reportes'
+  const isReportes = path.startsWith('/reportes')
   const isInIngresosIvaMenu = isIngresosIva
   const isInIngresosIceMenu = isIceXml || isCalculo || isAnexo || isCatalogo || isRebajas || isRecursos || isCompradores || isNormativa
   const isIngresos = isInIngresosIvaMenu || isInIngresosIceMenu
@@ -338,14 +339,26 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         )}
         </>)}
 
-        {/* REPORTES: honorarios a cobrar por contribuyente y producto */}
+        {/* REPORTES (desplegable): honorarios a cobrar, separados en Faltantes
+            (por facturar) y Realizados (ya facturados/certificados en Odoo) */}
         <button
           className={`nav-item module-btn ${isReportes ? 'active' : ''}`}
-          onClick={() => navigate('/reportes')}
+          onClick={() => setReportesOpen((o) => !o)}
         >
+          <span className={`caret ${reportesOpen ? 'open' : ''}`}>▸</span>
           <span className="nav-ico">📑</span>
           <span>REPORTES</span>
         </button>
+        {reportesOpen && (
+          <div className="submodule-list">
+            <button className={`nav-item submodule ${path === '/reportes' || path === '/reportes/faltantes' ? 'active' : ''}`} onClick={() => navigate('/reportes/faltantes')}>
+              <span className="nav-ico">🟠</span><span>Faltantes</span>
+            </button>
+            <button className={`nav-item submodule ${path === '/reportes/realizados' ? 'active' : ''}`} onClick={() => navigate('/reportes/realizados')}>
+              <span className="nav-ico">✅</span><span>Realizados</span>
+            </button>
+          </div>
+        )}
 
         {/* CAPACITACIONES: reservar capacitación; socio/admin autoriza */}
         <button

@@ -8,8 +8,8 @@ from services.retention_parser import parse_retention_xml
 from services.retention_export import generate_retention_excel
 from services.xml_store import guardar_xml_original
 from services.periodo import periodo_cliente, es_de_otro_periodo, etiqueta_periodo
-from database import fetch_all
-from tenancy import assert_client_owner, shared_client_ids
+from database import fetch_all, fetch_in
+from tenancy import assert_client_owner, visible_client_ids
 from services.activity import registrar
 
 router = APIRouter(prefix="/api/retentions", tags=["retentions"])
@@ -56,17 +56,18 @@ async def list_retentions(
             assert_client_owner(client_id, user_id)
             data = fetch_all(lambda: supabase.table("retentions").select(RETENTION_COLUMNS).eq("client_id", client_id).order("fecha", desc=True))
         else:
-            own = fetch_all(lambda: supabase.table("retentions").select(RETENTION_COLUMNS).eq("user_id", user_id).order("fecha", desc=True))
-            sids = shared_client_ids(user_id)
-            if sids:
-                sh = fetch_all(lambda: supabase.table("retentions").select(RETENTION_COLUMNS).in_("client_id", sids).order("fecha", desc=True))
+            vis = visible_client_ids(user_id)   # None = admin (ve todo)
+            if vis is None:
+                data = fetch_all(lambda: supabase.table("retentions").select(RETENTION_COLUMNS).order("fecha", desc=True))
+            else:
+                own = fetch_all(lambda: supabase.table("retentions").select(RETENTION_COLUMNS).eq("user_id", user_id).order("fecha", desc=True))
+                sh = fetch_in(lambda: supabase.table("retentions").select(RETENTION_COLUMNS), vis, "client_id")
                 seen, data = set(), []
                 for r in own + sh:
                     if r["id"] not in seen:
                         seen.add(r["id"])
                         data.append(r)
-            else:
-                data = own
+                data.sort(key=lambda x: x.get("fecha") or "", reverse=True)
         return {"data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
