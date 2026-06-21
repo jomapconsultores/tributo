@@ -80,6 +80,16 @@ export default function ClientNavigator({ idents_svc = null }) {
     navigate(tipo.route)
   }
 
+  // Selecciona el período más reciente del contribuyente y navega a la ruta dada
+  const abrirReciente = (periodos, route = '/') => {
+    if (!periodos?.length) return
+    const ordenados = [...periodos].sort((a, b) =>
+      b.anio !== a.anio ? b.anio - a.anio : b.mes - a.mes
+    )
+    selectClient(ordenados[0].client_id)
+    navigate(route)
+  }
+
   const aniosDe = (periodos) => {
     const map = {}
     periodos.forEach((p) => { (map[p.anio] = map[p.anio] || []).push(p) })
@@ -146,6 +156,15 @@ export default function ClientNavigator({ idents_svc = null }) {
                   <span className="cn-tot-vacio">sin datos</span>
                 )}
               </div>
+
+              {/* Botón de acción directa */}
+              <button
+                className="cn-trabajar-btn"
+                onClick={(e) => { e.stopPropagation(); abrirReciente(c.periodos) }}
+                title="Seleccionar este cliente y abrir Gastos"
+              >
+                Trabajar →
+              </button>
             </div>
 
             {/* Detalle por año/mes cuando está expandido */}
