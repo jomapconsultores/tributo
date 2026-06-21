@@ -378,6 +378,10 @@ def _filas_y_total(user_id):
             hecho = ((ruc, key) in decl_mes) or (key == "anexo" and ruc in anexo_mes)
             realizado = ((ruc, key) in decl_ever) or (key == "anexo" and ruc in anexo_ever)
             relevante = realizado or (key in serv_por_ruc.get(ruc, set()))
+            # Omitir filas de servicios que no están contratados ni han sido realizados.
+            # Solo se muestran los conceptos activos para cada contribuyente.
+            if not relevante:
+                continue
             sug = sug_por_label.get(label)  # línea de Odoo de mayor relación
             ofi = PRECIO_OFICIAL.get(key, 0.0)
             if es_vacio:

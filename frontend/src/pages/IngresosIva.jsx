@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { salesIvaAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
+import { salesIvaAPI, xmlOriginalesAPI, clientsAPI, downloadBlob } from '../services/api'
 
 const descargarXmlsOriginales = async (cliente, clientId, tipo, modulo) => {
   try {
@@ -19,10 +19,17 @@ import ClaveHeader from '../components/ClaveHeader'
 import './IngresosIva.css'
 
 import { fmtMoney as money, msgFueraPeriodo } from '../utils/format'
+import { periodoLargo } from '../utils/periodo'
 
 export default function IngresosIva() {
   const { openNewClient } = useOutletContext()
-  const { selectedClient, selectedClientId } = useClients()
+  const { clients, selectedClient, selectedClientId, selectClient } = useClients()
+  const [idents_svc, setIdentsSvc] = useState(null)
+  useEffect(() => {
+    clientsAPI.byService('declaracion_iva')
+      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
+      .catch(() => setIdentsSvc(new Set()))
+  }, [])
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState('')
@@ -175,13 +182,36 @@ export default function IngresosIva() {
   }, [filtered])
 
   if (!selectedClientId) {
+    const conServicio = idents_svc
+      ? clients.filter((c) => idents_svc.has(c.identificacion))
+      : clients
     return (
       <div className="ing-iva">
-        <ClientSwitcher onNewClient={openNewClient} />
         <div className="ing-iva-empty">
           <h2>📈 Ingresos IVA</h2>
-          <p>Seleccioná un contribuyente del menú para subir sus facturas de venta sin ICE.</p>
+          <p>
+            {idents_svc
+              ? `${conServicio.length} contribuyente(s) con servicio IVA activo.`
+              : 'Seleccioná un contribuyente para subir sus facturas de venta sin ICE.'}
+          </p>
+          <button className="btn-ghost" onClick={openNewClient}>＋ Nuevo cliente</button>
         </div>
+        {conServicio.length > 0 && (
+          <div className="dc-grid">
+            {conServicio.map((c) => (
+              <button key={c.id} className="dc-card" onClick={() => selectClient(c.id)}>
+                <div className="dc-card-id">{c.identificacion}</div>
+                <div className="dc-card-name">{c.nombre}</div>
+                <div className="dc-card-per">{periodoLargo(c)}</div>
+              </button>
+            ))}
+          </div>
+        )}
+        {idents_svc && conServicio.length === 0 && (
+          <div className="ing-iva-empty" style={{ marginTop: 8 }}>
+            Ningún cliente tiene activo el servicio "Declaración IVA". Actívalo en CREDENCIALES SRI.
+          </div>
+        )}
       </div>
     )
   }

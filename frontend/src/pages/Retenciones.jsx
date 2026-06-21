@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { retentionsAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
+import { retentionsAPI, xmlOriginalesAPI, clientsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import BulkBar from '../components/BulkBar'
@@ -25,6 +25,13 @@ import { fmtMoney as money, fmtPct as pct, msgFueraPeriodo } from '../utils/form
 export default function Retenciones() {
   const { openNewClient } = useOutletContext()
   const { clients, selectedClient, selectedClientId, selectClient } = useClients()
+
+  const [idents_svc, setIdentsSvc] = useState(null)
+  useEffect(() => {
+    clientsAPI.byService('declaracion_iva')
+      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
+      .catch(() => setIdentsSvc(new Set()))
+  }, [])
 
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -163,22 +170,34 @@ export default function Retenciones() {
 
   // ---------- Sin cliente seleccionado ----------
   if (!selectedClient) {
+    const conServicio = idents_svc
+      ? clients.filter((c) => idents_svc.has(c.identificacion))
+      : clients
     return (
       <div className="ret-page">
         <div className="ret-welcome">
           <h1>🧾 Retenciones</h1>
-          <p>Selecciona un cliente para cargar y ver sus comprobantes de retención.</p>
+          <p>
+            {idents_svc
+              ? `${conServicio.length} contribuyente(s) con servicio IVA activo.`
+              : 'Selecciona un cliente para cargar y ver sus comprobantes de retención.'}
+          </p>
           <button className="ret-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
         </div>
-        {clients.length > 0 && (
+        {conServicio.length > 0 && (
           <div className="ret-client-grid">
-            {clients.map((c) => (
+            {conServicio.map((c) => (
               <button key={c.id} className="ret-client-card" onClick={() => selectClient(c.id)}>
                 <div className="rc-periodo">{periodoLargo(c)}</div>
                 <div className="rc-name">{c.nombre}</div>
                 <div className="rc-id">{c.tipo_identificacion}: {c.identificacion}</div>
               </button>
             ))}
+          </div>
+        )}
+        {idents_svc && conServicio.length === 0 && (
+          <div className="ret-welcome" style={{ marginTop: 8 }}>
+            Ningún cliente tiene activo el servicio "Declaración IVA". Actívalo en CREDENCIALES SRI.
           </div>
         )}
       </div>
