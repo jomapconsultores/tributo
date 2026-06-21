@@ -19,7 +19,7 @@
 
 /* Cabecera de la fila */
 .cn-cont-head {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 11px 14px; min-height: 52px;
   transition: background 0.12s;
 }
