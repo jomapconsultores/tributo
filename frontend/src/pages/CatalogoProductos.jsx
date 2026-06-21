@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { productsAPI, clientsAPI } from '../services/api'
+import { productsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
@@ -28,15 +28,9 @@ const EMPTY = {
 
 export default function CatalogoProductos() {
   const { openNewClient } = useOutletContext()
-  const { clients, selectedClient, selectClient } = useClients()
+  const { clients, selectedClient, selectClient, identsForSvc } = useClients()
   const ident = selectedClient?.identificacion
-
-  const [idents_svc, setIdentsSvc] = useState(null)
-  useEffect(() => {
-    clientsAPI.byService('declaracion_ice')
-      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
-      .catch(() => setIdentsSvc(new Set()))
-  }, [])
+  const idents_svc = identsForSvc('declaracion_ice')
 
   const [rows, setRows] = useState([])
   const [form, setForm] = useDraft(ident ? `draft:productos:form:${ident}` : null, EMPTY)

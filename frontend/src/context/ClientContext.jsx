@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { clientsAPI } from '../services/api'
 import { withCache, bust } from '../services/cache'
 
@@ -14,6 +14,7 @@ export function ClientProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [focusIdent, setFocusIdent] = useState(null)
+  const [svcMap, setSvcMap] = useState(null) // null = cargando; {} = sin servicios
 
   // force=true invalida el caché y fuerza un re-fetch (tras mutaciones).
   // force=false (defecto) reutiliza la respuesta cacheada si está vigente.
@@ -33,9 +34,25 @@ export function ClientProvider({ children }) {
     }
   }, [])
 
+  useEffect(() => { refreshClients() }, [refreshClients])
+
   useEffect(() => {
-    refreshClients()
-  }, [refreshClients])
+    clientsAPI.servicesMap()
+      .then((r) => {
+        const m = {}
+        for (const [svc, idents] of Object.entries(r.data || {})) m[svc] = new Set(idents)
+        setSvcMap(m)
+      })
+      .catch(() => setSvcMap({}))
+  }, [])
+
+  const identsForSvc = useCallback((service) => {
+    if (svcMap === null) return null // todavía cargando
+    const svcs = service.split(',').map((s) => s.trim()).filter(Boolean)
+    const out = new Set()
+    for (const s of svcs) for (const id of (svcMap[s] || new Set())) out.add(id)
+    return out
+  }, [svcMap])
 
   const selectClient = useCallback((id) => {
     setSelectedClientId(id)
@@ -78,6 +95,7 @@ export function ClientProvider({ children }) {
         deleteClient,
         focusIdent,
         setFocusIdent,
+        identsForSvc,
       }}
     >
       {children}

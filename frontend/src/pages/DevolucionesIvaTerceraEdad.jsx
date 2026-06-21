@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { clientsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import ClientSwitcher from '../components/ClientSwitcher'
@@ -9,14 +8,8 @@ import './DevolucionesIva.css'
 
 export default function DevolucionesIvaTerceraEdad() {
   const { openNewClient } = useOutletContext()
-  const { clients, selectedClient, selectClient } = useClients()
-
-  const [idents_svc, setIdentsSvc] = useState(null)
-  useEffect(() => {
-    clientsAPI.byService('devolucion_iva')
-      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
-      .catch(() => setIdentsSvc(new Set()))
-  }, [])
+  const { clients, selectedClient, selectClient, identsForSvc } = useClients()
+  const idents_svc = identsForSvc('devolucion_iva')
 
   if (!selectedClient || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
     return <ClientPickerScreen icon="👵" title="Devolución IVA" subtitle="Devolución para adultos mayores y personas con discapacidad" idents_svc={idents_svc} onNewClient={openNewClient} svcLabel="Devolución IVA" />

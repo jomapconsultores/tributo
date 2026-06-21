@@ -225,6 +225,28 @@ async def client_summary(identificacion: str, user_id: str = Depends(get_current
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/services-map")
+async def services_map(user_id: str = Depends(get_current_user)):
+    """Mapa service → [identificaciones] para todos los servicios activos del usuario."""
+    try:
+        supabase = get_supabase_client()
+        clientes = visible_clients(user_id, "id,identificacion")
+        if not clientes:
+            return {}
+        id_to_ident = {c["id"]: c["identificacion"] for c in clientes}
+        client_ids = list(id_to_ident.keys())
+        svc_rows = supabase.table("client_services").select("client_id,service").in_("client_id", client_ids).eq("active", True).execute().data or []
+        result = {}
+        for row in svc_rows:
+            svc = row.get("service")
+            ident = id_to_ident.get(row["client_id"])
+            if svc and ident:
+                result.setdefault(svc, []).append(ident)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{client_id}")
 async def get_client(client_id: str, user_id: str = Depends(get_current_user)):
     try:

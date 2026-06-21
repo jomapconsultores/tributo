@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { invoicesAPI, xmlOriginalesAPI, clientsAPI, downloadBlob } from '../services/api'
+import { invoicesAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import InvoiceTabs from '../components/InvoiceTabs'
 import UploadPanel from '../components/UploadPanel'
@@ -14,19 +14,14 @@ import './Database.css'
 
 export default function Database() {
   const { openNewClient } = useOutletContext()
-  const { selectedClient, selectedClientId, refreshClients, deleteClient } = useClients()
+  const { selectedClient, selectedClientId, refreshClients, deleteClient, identsForSvc } = useClients()
+  const idents_all = identsForSvc('declaracion_iva,declaracion_ice,declaracion_renta,devolucion_iva')
 
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
   const [editClient, setEditClient] = useState(null)
-  const [idents_svc, setIdentsSvc] = useState(null)
-  useEffect(() => {
-    clientsAPI.byService('declaracion_iva,declaracion_ice,declaracion_renta,devolucion_iva')
-      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
-      .catch(() => setIdentsSvc(new Set()))
-  }, [])
 
   const loadInvoices = useCallback(async () => {
     if (!selectedClientId) {
@@ -138,8 +133,8 @@ export default function Database() {
     await deleteClient(selectedClientId)
   }
 
-  // ---------- Vista: ningún cliente seleccionado (navegador) ----------
-  if (!selectedClient) {
+  // ---------- Vista: ningún cliente seleccionado O sin servicios activos ----------
+  if (!selectedClient || (idents_all !== null && !idents_all.has(selectedClient?.identificacion))) {
     return (
       <div className="db-page">
         <div className="db-nav-head">
@@ -149,7 +144,7 @@ export default function Database() {
           </div>
           <button className="db-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
         </div>
-        <ClientNavigator idents_svc={idents_svc} />
+        <ClientNavigator idents_svc={idents_all} />
       </div>
     )
   }
@@ -171,7 +166,7 @@ export default function Database() {
         </div>
       </header>
 
-      <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_svc} />
+      <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_all} />
 
       {error && <div className="db-error">⚠ {error}</div>}
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { reportesAPI, odooAPI } from '../services/api'
+import { useClients } from '../context/ClientContext'
 import useDraft from '../hooks/useDraft'
 import './OdooFacturacion.css'
 
@@ -12,6 +13,8 @@ function fmtMoney(v) {
 
 export default function OdooFacturacion() {
   const navigate = useNavigate()
+  const { identsForSvc } = useClients()
+  const idents_svc = identsForSvc('declaracion_iva,declaracion_ice,declaracion_renta,devolucion_iva')
   const [filas, setFilas] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -68,6 +71,7 @@ export default function OdooFacturacion() {
   const grupos = useMemo(() => {
     const m = {}
     for (const f of filas) {
+      if (idents_svc && !idents_svc.has(f.identificacion)) continue
       if (!f.cobrar || !(f.valor > 0) || f.procesado) continue
       if (!m[f.identificacion]) {
         m[f.identificacion] = { ruc: f.identificacion, nombre: f.contribuyente, lineas: [], total: 0 }
@@ -83,7 +87,7 @@ export default function OdooFacturacion() {
       m[f.identificacion].total = +(m[f.identificacion].total + bruto).toFixed(2)
     }
     return Object.values(m).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
-  }, [filas])
+  }, [filas, idents_svc])
 
   // Empresa emisora de cada grupo (la elegida individualmente, o la global)
   const grupoEmisor = (g) => Number(emisorPorGrupo[g.ruc] || companyId) || null

@@ -10,7 +10,8 @@ const DIAS_DECL = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28]
 const fechaCorta = (f) => `${String(f.getDate()).padStart(2, '0')}/${String(f.getMonth() + 1).padStart(2, '0')}/${f.getFullYear()}`
 
 export default function SavedData() {
-  const { clients } = useClients()
+  const { clients, identsForSvc } = useClients()
+  const idents_svc = identsForSvc('declaracion_iva,declaracion_ice,declaracion_renta,devolucion_iva')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(null) // { identificacion, nombre }
   const [summary, setSummary] = useState(null)
@@ -31,10 +32,11 @@ export default function SavedData() {
     return m
   }, [clients])
 
-  // Contribuyentes únicos (un cliente puede tener varios períodos)
+  // Contribuyentes únicos (un cliente puede tener varios períodos), filtrados por servicio activo
   const contribuyentes = useMemo(() => {
     const map = {}
     for (const c of clients) {
+      if (idents_svc && !idents_svc.has(c.identificacion)) continue
       const k = c.identificacion
       const e = map[k] || (map[k] = {
         identificacion: c.identificacion,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { rebajasAPI, productsAPI, clientsAPI } from '../services/api'
+import { rebajasAPI, productsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
@@ -14,15 +14,9 @@ const UMBRAL = 70 // % mínimo de materia prima nacional calificada
 
 export default function RebajasExenciones() {
   const { openNewClient } = useOutletContext()
-  const { clients, selectedClient, selectClient } = useClients()
+  const { clients, selectedClient, selectClient, identsForSvc } = useClients()
   const ident = selectedClient?.identificacion
-
-  const [idents_svc, setIdentsSvc] = useState(null)
-  useEffect(() => {
-    clientsAPI.byService('declaracion_ice')
-      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
-      .catch(() => setIdentsSvc(new Set()))
-  }, [])
+  const idents_svc = identsForSvc('declaracion_ice')
 
   const [productos, setProductos] = useState([])
   const [producto, setProducto] = useState('')

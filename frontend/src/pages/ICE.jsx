@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
-import { iceAPI, xmlOriginalesAPI, clientsAPI, downloadBlob } from '../services/api'
+import { iceAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
 
 // Descarga el ZIP de XML originales subidos, nombrado Tipo_RUC_nombre_mes_año
 const descargarXmlsOriginales = async (cliente, clientId, tipo, modulo) => {
@@ -27,17 +27,11 @@ const n4 = (v) => (parseFloat(v) || 0).toFixed(4)
 
 export default function ICE() {
   const { openNewClient } = useOutletContext()
-  const { clients, selectedClient, selectedClientId, selectClient } = useClients()
+  const { clients, selectedClient, selectedClientId, selectClient, identsForSvc } = useClients()
+  const idents_svc = identsForSvc('declaracion_ice')
   const navigate = useNavigate()
   const [anexo, setAnexo] = useState(null) // { actImport, xml, advertencias, ventas } | 'open'
   const [difOpen, setDifOpen] = useState(null) // producto cuya explicación está abierta
-
-  const [idents_svc, setIdentsSvc] = useState(null)
-  useEffect(() => {
-    clientsAPI.byService('declaracion_ice')
-      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
-      .catch(() => setIdentsSvc(new Set()))
-  }, [])
 
   const [rows, setRows] = useState([])
   const [report, setReport] = useState(null)

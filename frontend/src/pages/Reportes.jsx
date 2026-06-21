@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { reportesAPI, downloadBlob } from '../services/api'
+import { useClients } from '../context/ClientContext'
 import './Reportes.css'
 
 import { fmtMoney as money } from '../utils/format'
@@ -16,6 +17,8 @@ export default function Reportes({ modo }) {
   // modo: 'faltantes' (pendientes por facturar) | 'realizados' (ya facturados en
   // Odoo) | undefined (ambas secciones). Define qué submenú se está viendo.
   const navigate = useNavigate()
+  const { identsForSvc } = useClients()
+  const idents_svc = identsForSvc('declaracion_iva,declaracion_ice,declaracion_renta,devolucion_iva')
   const [searchParams] = useSearchParams()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -154,11 +157,13 @@ export default function Reportes({ modo }) {
   })
 
   const filtradas = useMemo(() => {
+    let base = rows
+    if (idents_svc) base = base.filter((r) => idents_svc.has(r.identificacion))
     const q = search.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter((r) => [r.contribuyente, r.identificacion, r.concepto]
+    if (!q) return base
+    return base.filter((r) => [r.contribuyente, r.identificacion, r.concepto]
       .some((f) => String(f || '').toLowerCase().includes(q)))
-  }, [rows, search])
+  }, [rows, search, idents_svc])
 
   // Agrupado por contribuyente, con subtotal
   const grupos = useMemo(() => {

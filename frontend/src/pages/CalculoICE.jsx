@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { iceCalcAPI, productsAPI, clientsAPI, downloadBlob } from '../services/api'
+import { iceCalcAPI, productsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, MESES } from '../utils/periodo'
 import { calcRow, ivaRate, CATEGORIAS, CAT_LABEL } from '../utils/iceCalc'
@@ -21,14 +21,8 @@ const EMPTY = {
 
 export default function CalculoICE() {
   const { openNewClient } = useOutletContext()
-  const { clients, selectedClient, selectedClientId, selectClient } = useClients()
-
-  const [idents_svc, setIdentsSvc] = useState(null)
-  useEffect(() => {
-    clientsAPI.byService('declaracion_ice')
-      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
-      .catch(() => setIdentsSvc(new Set()))
-  }, [])
+  const { clients, selectedClient, selectedClientId, selectClient, identsForSvc } = useClients()
+  const idents_svc = identsForSvc('declaracion_ice')
 
   const [rows, setRows] = useState([])
   const [form, setForm] = useDraft(selectedClientId ? `draft:calcice:form:${selectedClientId}` : null, EMPTY)

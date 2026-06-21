@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, Fragment } from 'react'
 import useDraft from '../hooks/useDraft'
 import { useOutletContext } from 'react-router-dom'
-import { declaracionesAPI, clientsAPI, downloadBlob } from '../services/api'
+import { declaracionesAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, nombreMes } from '../utils/periodo'
 import ClientSwitcher from '../components/ClientSwitcher'
@@ -24,7 +24,8 @@ const SERVICIO_LBL = {
 
 export default function Declaraciones({ tipo }) {
   const { openNewClient } = useOutletContext()
-  const { clients, selectedClient, selectedClientId, selectClient } = useClients()
+  const { clients, selectedClient, selectedClientId, selectClient, identsForSvc } = useClients()
+  const idents_svc = identsForSvc(tipo === 'IVA' ? 'declaracion_iva' : 'declaracion_ice')
 
   // Auto-guardado local: los valores que escribes (overrides) se guardan al
   // instante en el navegador, por cliente+tipo. Si se cae el internet o recargas,
@@ -37,8 +38,6 @@ export default function Declaraciones({ tipo }) {
   const [aplazados, setAplazados] = useState([])
   const [loading, setLoading] = useState(false)
   const [clientSearch, setClientSearch] = useState('')
-  // RUCs que tienen el servicio activo (null = cargando, Set = listo)
-  const [idents_svc, setIdentsSvc] = useState(null)
   // Credenciales/servicios del contribuyente (punto 4)
   const [creds, setCreds] = useState(null)
   const [claveSRI, setClaveSRI] = useState('')
@@ -113,14 +112,6 @@ export default function Declaraciones({ tipo }) {
 
   useEffect(() => { load() }, [load])
 
-  // Cargar qué RUCs tienen el servicio IVA/ICE activo para filtrar la grilla
-  useEffect(() => {
-    setIdentsSvc(null)
-    const svc = tipo === 'IVA' ? 'declaracion_iva' : 'declaracion_ice'
-    clientsAPI.byService(svc)
-      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
-      .catch(() => setIdentsSvc(new Set()))
-  }, [tipo])
 
   // Servicios contratados + clave SRI en un solo viaje (reveal=true)
   useEffect(() => {

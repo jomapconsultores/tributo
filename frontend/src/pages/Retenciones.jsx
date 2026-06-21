@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { retentionsAPI, xmlOriginalesAPI, clientsAPI, downloadBlob } from '../services/api'
+import { retentionsAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import BulkBar from '../components/BulkBar'
@@ -25,14 +25,8 @@ import { fmtMoney as money, fmtPct as pct, msgFueraPeriodo } from '../utils/form
 
 export default function Retenciones() {
   const { openNewClient } = useOutletContext()
-  const { clients, selectedClient, selectedClientId, selectClient } = useClients()
-
-  const [idents_svc, setIdentsSvc] = useState(null)
-  useEffect(() => {
-    clientsAPI.byService('declaracion_iva,declaracion_ice')
-      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
-      .catch(() => setIdentsSvc(new Set()))
-  }, [])
+  const { clients, selectedClient, selectedClientId, selectClient, identsForSvc } = useClients()
+  const idents_svc = identsForSvc('declaracion_iva,declaracion_ice')
 
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)

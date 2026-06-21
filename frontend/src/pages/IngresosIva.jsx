@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { salesIvaAPI, xmlOriginalesAPI, clientsAPI, downloadBlob } from '../services/api'
+import { salesIvaAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
 
 const descargarXmlsOriginales = async (cliente, clientId, tipo, modulo) => {
   try {
@@ -24,13 +24,8 @@ import { periodoLargo } from '../utils/periodo'
 
 export default function IngresosIva() {
   const { openNewClient } = useOutletContext()
-  const { clients, selectedClient, selectedClientId, selectClient } = useClients()
-  const [idents_svc, setIdentsSvc] = useState(null)
-  useEffect(() => {
-    clientsAPI.byService('declaracion_iva')
-      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
-      .catch(() => setIdentsSvc(new Set()))
-  }, [])
+  const { clients, selectedClient, selectedClientId, selectClient, identsForSvc } = useClients()
+  const idents_svc = identsForSvc('declaracion_iva')
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState('')
