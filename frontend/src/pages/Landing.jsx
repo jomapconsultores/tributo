@@ -14,19 +14,19 @@ const MODULOS = [
   { icon: '🧾', titulo: 'Facturación Odoo', desc: 'Emite y concilia facturas directamente en Odoo, con verificación bidireccional para no duplicar y aviso automático al equipo.' },
 ]
 
-// 3 paquetes (contribuyentes ilimitados)
+// 3 paquetes
 const PAQUETES = [
   {
     nombre: 'Esencial', icon: '💸', neto: 69, destacado: false,
-    incluye: ['Gastos y clasificador automático', 'Bajador de facturas del SRI', 'Retenciones (XML) y reportes', 'Declaración de IVA', 'Reportes de honorarios', 'Contribuyentes ilimitados'],
+    incluye: ['Gastos y clasificador automático', 'Bajador de facturas del SRI', 'Retenciones (XML) y reportes', 'Declaración de IVA', 'Reportes de honorarios', 'Contribuyentes (RUC)'],
   },
   {
     nombre: 'ICE Pro', icon: '📈', neto: 109, destacado: true,
-    incluye: ['Todo lo del plan Esencial', 'Cálculo de ICE (botella y caja)', 'Anexo PVP+ICE e ICE-XML con auditoría', 'Catálogo SRI y rebajas/exenciones', 'Declaración de ICE', 'Contribuyentes ilimitados'],
+    incluye: ['Todo lo del plan Esencial', 'Cálculo de ICE (botella y caja)', 'Anexo PVP+ICE e ICE-XML con auditoría', 'Catálogo SRI y rebajas/exenciones', 'Declaración de ICE', 'Contribuyentes (RUC)'],
   },
   {
     nombre: 'Estudio Completo', icon: '⭐', neto: 179, destacado: false,
-    incluye: ['TODOS los módulos', 'Multiusuario y permisos por equipo', 'Acceso y credenciales por cliente', 'Soporte prioritario', 'Contribuyentes ilimitados'],
+    incluye: ['TODOS los módulos', 'Multiusuario y permisos por equipo', 'Acceso y credenciales por cliente', 'Soporte prioritario', 'Contribuyentes (RUC)'],
   },
 ]
 
@@ -179,9 +179,9 @@ export default function Landing() {
             <img src="/capsa-emblema.png" alt="CAPSA" />
           </div>
           <div className="lp-hero-legend"><span className="lp-dot" /> Soluciones tributarias inteligentes para el Ecuador · SRI 2026</div>
-          <h1>Tu gestión tributaria del <span className="lp-grad">SRI</span>, automatizada de punta a punta</h1>
+          <h1>Tu gestión tributaria, en un solo lugar</h1>
           <p>Clasifica gastos, controla retenciones, calcula el ICE y genera tus declaraciones —
-            contribuyentes (RUC) <strong>ilimitados</strong>, en un solo lugar.</p>
+            contribuyentes (RUC), en un solo lugar.</p>
           <div className="lp-hero-cta">
             <button className="lp-btn lp-btn-primary lp-btn-lg" onClick={() => navigate('/login?registro=1')}>Empieza gratis 5 días</button>
             <a className="lp-btn lp-btn-ghost lp-btn-lg" href="#precios">Ver servicios y precios</a>
@@ -252,7 +252,7 @@ export default function Landing() {
       <section id="precios" className="lp-section lp-precios">
         <div className="lp-eyebrow reveal">Precios transparentes</div>
         <h2 className="reveal d1">Planes</h2>
-        <p className="lp-section-sub reveal d2">Elige el paquete que necesitas. <strong>Contribuyentes ilimitados</strong>. Valores mensuales en USD, incluyen <strong>IVA {Math.round(IVA * 100)}%</strong>.</p>
+        <p className="lp-section-sub reveal d2">Elige el paquete que necesitas. Valores mensuales en USD, incluyen <strong>IVA {Math.round(IVA * 100)}%</strong>.</p>
         <div className="lp-planes lp-planes-3">
           {PAQUETES.map((p, i) => {
             const { iva, total } = conIva(p.neto)
@@ -348,7 +348,7 @@ export default function Landing() {
             <li><strong>3 meses</strong> — 5% de descuento</li>
             <li><strong>6 meses</strong> — 10% de descuento</li>
             <li><strong>12 meses</strong> — 25% de descuento</li>
-            <li><strong>Contribuyentes (RUC) ilimitados</strong> en todos los paquetes</li>
+            <li><strong>Contribuyentes (RUC)</strong> en todos los paquetes</li>
           </ul>
         </div>
       </section>
