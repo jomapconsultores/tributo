@@ -4,9 +4,19 @@ import { productsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
+import WorkflowGuide from '../components/WorkflowGuide'
 import { buildCodProdICE, armarCodigo, descomponerCodigo, sinCeros } from '../utils/codigoICE'
 import useDraft from '../hooks/useDraft'
 import './CatalogoProductos.css'
+
+const CAT_STEPS = [
+  { icon: '📚', label: 'Catálogo Productos', current: true },
+  { icon: '🧮', label: 'Cálculo ICE', path: '/calculo-ice' },
+  { icon: '⚖️', label: 'Rebajas y Exenciones', path: '/rebajas-exenciones' },
+  { icon: '🥃', label: 'ICE XML', path: '/ice' },
+  { icon: '📄', label: 'Declaraciones ICE', path: '/declaracion-ice' },
+  { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
+]
 
 // Partes constitutivas del código de producto ICE (orden SRI)
 const PARTES_DEF = [
@@ -167,6 +177,7 @@ export default function CatalogoProductos() {
 
   return (
     <div className="cp-page">
+      <WorkflowGuide steps={CAT_STEPS} />
       <header className="cp-header">
         <div>
           <h1>📚 Catálogo de productos</h1>

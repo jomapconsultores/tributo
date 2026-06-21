@@ -3,10 +3,19 @@ import { clientsAPI, anexosAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { nombreMes } from '../utils/periodo'
 import { infoDeclaracion } from '../utils/declaracionSRI'
+import WorkflowGuide from '../components/WorkflowGuide'
 import './SavedData.css'
 
 import { fmtMoney as money } from '../utils/format'
 const DIAS_DECL = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28]
+
+const SD_STEPS = [
+  { icon: '📊', label: 'Datos guardados', current: true },
+  { icon: '📥', label: 'Gastos (subir TXT/XML)', path: '/' },
+  { icon: '🗂', label: 'Clasificar comprobantes', path: '/clasificador' },
+  { icon: '📄', label: 'Declaraciones IVA / ICE', path: '/declaracion-iva' },
+  { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
+]
 const fechaCorta = (f) => `${String(f.getDate()).padStart(2, '0')}/${String(f.getMonth() + 1).padStart(2, '0')}/${f.getFullYear()}`
 
 export default function SavedData() {
@@ -113,6 +122,7 @@ export default function SavedData() {
 
   return (
     <div className="sd-page">
+      <WorkflowGuide steps={SD_STEPS} />
       <header className="sd-header">
         <h1>📊 Datos guardados</h1>
         <p className="sd-sub">Consulta consolidada de todo lo trabajado por contribuyente, desglosado por año, mes y producto.</p>

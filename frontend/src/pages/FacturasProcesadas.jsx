@@ -1,8 +1,15 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { odooAPI } from '../services/api'
+import WorkflowGuide from '../components/WorkflowGuide'
 
 const fmtMoney = (v) => `$${Number(v || 0).toFixed(2)}`
+
+const FP_STEPS = [
+  { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
+  { icon: '🧾', label: 'Facturar en Odoo', path: '/odoo-facturacion' },
+  { icon: '✅', label: 'Facturas procesadas', current: true },
+]
 
 export default function FacturasProcesadas() {
   const navigate = useNavigate()
@@ -37,6 +44,7 @@ export default function FacturasProcesadas() {
 
   return (
     <div className="fp-page" style={{ padding: '16px 20px' }}>
+      <WorkflowGuide steps={FP_STEPS} />
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ margin: '0 0 4px' }}>✅ Facturas procesadas</h1>

@@ -20,10 +20,19 @@ import BulkBar from '../components/BulkBar'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import ClaveHeader from '../components/ClaveHeader'
+import WorkflowGuide from '../components/WorkflowGuide'
 import './ICE.css'
 
 import { fmtMoney as money } from '../utils/format'
 const n4 = (v) => (parseFloat(v) || 0).toFixed(4)
+
+const ICE_STEPS = [
+  { icon: '📚', label: 'Catálogo Productos', path: '/catalogo-productos' },
+  { icon: '🧮', label: 'Cálculo ICE', path: '/calculo-ice' },
+  { icon: '🥃', label: 'ICE XML', current: true },
+  { icon: '📄', label: 'Declaraciones ICE', path: '/declaracion-ice' },
+  { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
+]
 
 export default function ICE() {
   const { openNewClient } = useOutletContext()
@@ -238,6 +247,7 @@ export default function ICE() {
 
   return (
     <div className="ice-page">
+      <WorkflowGuide steps={ICE_STEPS} />
       <header className="ice-header">
         <div>
           <h1>🥃 ICE - XML <span className="ice-periodo-tag">{periodoLargo(selectedClient)}</span></h1>

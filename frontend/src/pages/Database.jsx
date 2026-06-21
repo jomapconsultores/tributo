@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { invoicesAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
+import WorkflowGuide from '../components/WorkflowGuide'
 import InvoiceTabs from '../components/InvoiceTabs'
 import UploadPanel from '../components/UploadPanel'
 import NewClientModal from '../components/NewClientModal'
@@ -154,8 +155,17 @@ export default function Database() {
   const unclassified = invoices.filter(i => !i.clasificacion || i.clasificacion === 'SIN CLASIFICAR').length
   const yanbalCount = invoices.filter(i => i.es_yanbal).length
 
+  const DB_STEPS = [
+    { icon: '📥', label: 'Subir TXT/XML de gastos', current: true },
+    { icon: '🗂', label: 'Clasificar comprobantes', path: '/clasificador' },
+    { icon: '📄', label: 'Declaraciones IVA / ICE', path: '/declaracion-iva' },
+    { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
+    { icon: '🧾', label: 'Facturar en Odoo', path: '/odoo-facturacion' },
+  ]
+
   return (
     <div className="db-page">
+      <WorkflowGuide steps={DB_STEPS} />
       <header className="db-header">
         <div>
           <h1><span className="db-ruc">{selectedClient.identificacion}</span> {selectedClient.nombre} <span className="db-periodo-tag">{periodoLargo(selectedClient)}</span><ClaveHeader clientId={selectedClientId} /></h1>

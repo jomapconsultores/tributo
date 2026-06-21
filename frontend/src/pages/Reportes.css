@@ -113,6 +113,21 @@
 .rp-seccion-cnt { background: #eef2f7; color: #475569; border-radius: 10px; padding: 0 9px; font-size: .72rem; font-weight: 700; }
 .rp-seccion-sub { margin: 0 0 8px; color: #6b7888; font-size: .8rem; }
 
+/* Sub-secciones: "para cobrar" y "potenciales" dentro de Faltantes */
+.rp-subseccion { margin-bottom: 14px; }
+.rp-subsec-tit { font-size: .9rem; font-weight: 700; color: #0f6b4a; margin: 0 0 8px; display: flex; align-items: center; gap: 10px; }
+.rp-subsec-total { background: #d1fae5; color: #065f46; border-radius: 8px; padding: 2px 10px; font-size: .8rem; font-weight: 800; margin-left: auto; }
+
+.rp-potenciales-btn {
+  display: flex; align-items: center; gap: 8px;
+  background: #f8faff; border: 1px solid #c7d7f0; border-radius: 8px;
+  padding: 8px 14px; cursor: pointer; font-size: .84rem;
+  color: #1e40af; font-weight: 600; width: 100%; text-align: left;
+  margin-bottom: 0; transition: background 0.15s; font-family: inherit;
+}
+.rp-potenciales-btn:hover { background: #eff6ff; }
+.rp-potenciales-btn.open { border-radius: 8px 8px 0 0; margin-bottom: 0; }
+
 /* Precio sugerido desde Odoo (por concepto, mayor relación) */
 .rp-sugerido { margin-top: 3px; font-size: .72rem; color: #1a56db; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .rp-sug-con { color: #6b7888; font-style: italic; }

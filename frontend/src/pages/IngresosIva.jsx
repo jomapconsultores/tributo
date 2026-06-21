@@ -17,10 +17,19 @@ import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import ClaveHeader from '../components/ClaveHeader'
+import WorkflowGuide from '../components/WorkflowGuide'
 import './IngresosIva.css'
 
 import { fmtMoney as money, msgFueraPeriodo } from '../utils/format'
 import { periodoLargo } from '../utils/periodo'
+
+const ING_STEPS = [
+  { icon: '📥', label: 'Gastos (subir TXT/XML)', path: '/' },
+  { icon: '📈', label: 'Ingresos IVA', current: true },
+  { icon: '🗂', label: 'Clasificar comprobantes', path: '/clasificador' },
+  { icon: '📄', label: 'Declaraciones IVA', path: '/declaracion-iva' },
+  { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
+]
 
 export default function IngresosIva() {
   const { openNewClient } = useOutletContext()
@@ -183,6 +192,7 @@ export default function IngresosIva() {
 
   return (
     <div className="ing-iva">
+      <WorkflowGuide steps={ING_STEPS} />
       <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_svc} />
       <header className="ing-iva-head">
         <div>

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { reportesAPI, odooAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
+import WorkflowGuide from '../components/WorkflowGuide'
 import useDraft from '../hooks/useDraft'
 import './OdooFacturacion.css'
 
@@ -10,6 +11,12 @@ const IVA = 0.15
 function fmtMoney(v) {
   return `$${Number(v || 0).toFixed(2)}`
 }
+
+const OF_STEPS = [
+  { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
+  { icon: '🧾', label: 'Facturar en Odoo', current: true },
+  { icon: '✅', label: 'Facturas procesadas', path: '/odoo-facturacion/procesadas' },
+]
 
 export default function OdooFacturacion() {
   const navigate = useNavigate()
@@ -261,6 +268,7 @@ export default function OdooFacturacion() {
 
   return (
     <div className="of-wrap">
+      <WorkflowGuide steps={OF_STEPS} />
       <div className="of-header">
         <div>
           <h1 className="of-title">Facturación Odoo</h1>

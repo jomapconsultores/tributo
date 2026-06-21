@@ -4,8 +4,18 @@ import { rebajasAPI, productsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
+import WorkflowGuide from '../components/WorkflowGuide'
 import useDraft from '../hooks/useDraft'
 import './RebajasExenciones.css'
+
+const RE_STEPS = [
+  { icon: '📚', label: 'Catálogo Productos', path: '/catalogo-productos' },
+  { icon: '🧮', label: 'Cálculo ICE', path: '/calculo-ice' },
+  { icon: '⚖️', label: 'Rebajas y Exenciones', current: true },
+  { icon: '🥃', label: 'ICE XML', path: '/ice' },
+  { icon: '📄', label: 'Declaraciones ICE', path: '/declaracion-ice' },
+  { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
+]
 
 const EMPTY = { ingrediente: '', ruc_proveedor: '', proveedor_nombre: '', cantidad: '', unidad: 'ml', origen: 'NACIONAL', calificado: false }
 const esAgua = (nombre) => (nombre || '').trim().toUpperCase() === 'AGUA'
@@ -111,6 +121,7 @@ export default function RebajasExenciones() {
 
   return (
     <div className="re-page">
+      <WorkflowGuide steps={RE_STEPS} />
       <header className="re-header">
         <div>
           <h1>⚖️ Rebajas y exenciones</h1>

@@ -19,9 +19,17 @@ const descargarXmlsOriginales = async (cliente, clientId, tipo, modulo) => {
 import RetentionReport from '../components/RetentionReport'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
+import WorkflowGuide from '../components/WorkflowGuide'
 import './Retenciones.css'
 
 import { fmtMoney as money, fmtPct as pct, msgFueraPeriodo } from '../utils/format'
+
+const RET_STEPS = [
+  { icon: '📥', label: 'Gastos (subir TXT/XML)', path: '/' },
+  { icon: '🧾', label: 'Retenciones', current: true },
+  { icon: '📄', label: 'Declaraciones IVA / ICE', path: '/declaracion-iva' },
+  { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
+]
 
 export default function Retenciones() {
   const { openNewClient } = useOutletContext()
@@ -169,6 +177,7 @@ export default function Retenciones() {
 
   return (
     <div className="ret-page">
+      <WorkflowGuide steps={RET_STEPS} />
       <header className="ret-header">
         <div>
           <h1>🧾 Retenciones <span className="ret-periodo-tag">{periodoLargo(selectedClient)}</span></h1>

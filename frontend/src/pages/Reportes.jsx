@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { reportesAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
+import WorkflowGuide from '../components/WorkflowGuide'
 import './Reportes.css'
 
 import { fmtMoney as money } from '../utils/format'
@@ -193,6 +194,26 @@ export default function Reportes({ modo }) {
   const totalPendiente = useMemo(() => pendientes.reduce((s, g) => s + g.subtotal, 0), [pendientes])
   const totalProcesado = useMemo(() => procesados.reduce((s, g) => s + g.subtotal, 0), [procesados])
 
+  // Faltantes: "para cobrar" (subtotal > 0) primero; "potenciales" (sin monto) colapsados
+  const paraCobrar = useMemo(() => pendientes.filter((g) => g.subtotal > 0), [pendientes])
+  const potenciales = useMemo(() => pendientes.filter((g) => g.subtotal === 0), [pendientes])
+  const [potencialesOpen, setPotencialesOpen] = useState(false)
+
+  const STEPS_FALTANTES = [
+    { icon: '📥', label: 'Gastos (subir TXT/XML)', path: '/' },
+    { icon: '🗂', label: 'Clasificar comprobantes', path: '/clasificador' },
+    { icon: '📄', label: 'Declaraciones IVA / ICE', path: '/declaracion-iva' },
+    { icon: '📑', label: 'Revisar cobros pendientes', current: true },
+    { icon: '🧾', label: 'Emitir facturas en Odoo', path: '/odoo-facturacion' },
+  ]
+  const STEPS_REALIZADOS = [
+    { icon: '📑', label: 'Cobros pendientes', path: '/reportes/faltantes' },
+    { icon: '🧾', label: 'Emitir facturas en Odoo', path: '/odoo-facturacion' },
+    { icon: '✅', label: 'Realizados (aquí)', current: true },
+    { icon: '📋', label: 'Facturas procesadas', path: '/odoo-facturacion/procesadas' },
+  ]
+  const guideSteps = modo === 'realizados' ? STEPS_REALIZADOS : STEPS_FALTANTES
+
 
   const exportar = async (tipo) => {
     try {
@@ -279,6 +300,7 @@ export default function Reportes({ modo }) {
 
   return (
     <div className="rp-page">
+      <WorkflowGuide steps={guideSteps} />
       <header className="rp-header">
         <div>
           <h1>📑 Reportes — {tituloModo} {periodo && <span className="rp-periodo">· {periodo.etiqueta}</span>}</h1>
@@ -322,9 +344,41 @@ export default function Reportes({ modo }) {
                   🟠 Faltantes (por facturar) <span className="rp-seccion-cnt">{pendientes.length}</span>
                 </h2>
                 <p className="rp-seccion-sub">Aún no tienen factura emitida en Odoo este período.</p>
-                {pendientes.length === 0
-                  ? <div className="rp-empty">{search ? 'Ninguno coincide con la búsqueda.' : 'Nada faltante: todo lo visible ya fue facturado en Odoo. 🎉'}</div>
-                  : renderTabla(pendientes, totalPendiente, 'TOTAL faltante a cobrar')}
+
+                {pendientes.length === 0 ? (
+                  <div className="rp-empty">{search ? 'Ninguno coincide con la búsqueda.' : 'Nada faltante: todo lo visible ya fue facturado en Odoo. 🎉'}</div>
+                ) : (
+                  <>
+                    {/* Para cobrar este período */}
+                    {paraCobrar.length > 0 && (
+                      <div className="rp-subseccion">
+                        <h3 className="rp-subsec-tit">
+                          💰 Para cobrar — {paraCobrar.length} cliente(s)
+                          <span className="rp-subsec-total">{money(totalPendiente)}</span>
+                        </h3>
+                        {renderTabla(paraCobrar, totalPendiente, 'TOTAL a cobrar')}
+                      </div>
+                    )}
+
+                    {/* Potenciales: sin monto asignado todavía */}
+                    {potenciales.length > 0 && (
+                      <div className="rp-subseccion">
+                        <button
+                          className={`rp-potenciales-btn ${potencialesOpen ? 'open' : ''}`}
+                          onClick={() => setPotencialesOpen((v) => !v)}
+                        >
+                          <span>{potencialesOpen ? '▾' : '▸'}</span>
+                          🔵 Potenciales — {potenciales.length} cliente(s) sin monto asignado
+                        </button>
+                        {potencialesOpen && renderTabla(potenciales, 0, '')}
+                      </div>
+                    )}
+
+                    {paraCobrar.length === 0 && potenciales.length === 0 && (
+                      <div className="rp-empty">Ninguno coincide con la búsqueda.</div>
+                    )}
+                  </>
+                )}
               </div>
             )}
 

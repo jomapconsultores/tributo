@@ -4,7 +4,15 @@ import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
+import WorkflowGuide from '../components/WorkflowGuide'
 import './DevolucionesIva.css'
+
+const DV_STEPS = [
+  { icon: '📥', label: 'Gastos (subir TXT/XML)', path: '/' },
+  { icon: '📄', label: 'Declaraciones IVA', path: '/declaracion-iva' },
+  { icon: '👵', label: 'Devolución IVA', current: true },
+  { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
+]
 
 export default function DevolucionesIvaTerceraEdad() {
   const { openNewClient } = useOutletContext()
@@ -17,6 +25,7 @@ export default function DevolucionesIvaTerceraEdad() {
 
   return (
     <div className="dv-page">
+      <WorkflowGuide steps={DV_STEPS} />
       <header className="dv-header">
         <div>
           <h1>👵 Devolución IVA — Adultos mayores</h1>

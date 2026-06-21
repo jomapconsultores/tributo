@@ -6,6 +6,7 @@ import { useClients } from '../context/ClientContext'
 import { periodoLargo, nombreMes } from '../utils/periodo'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
+import WorkflowGuide from '../components/WorkflowGuide'
 import './Declaraciones.css'
 
 import { fmtMoney as money } from '../utils/format'
@@ -255,8 +256,23 @@ export default function Declaraciones({ tipo }) {
     ? [...new Set(filasDisplay.map((f) => f.seccion))]
     : []
 
+  const dcSteps = tipo === 'IVA'
+    ? [
+        { icon: '📥', label: 'Gastos (subir TXT/XML)', path: '/' },
+        { icon: '🗂', label: 'Clasificar comprobantes', path: '/clasificador' },
+        { icon: '📄', label: 'Declaraciones IVA', current: true },
+        { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
+      ]
+    : [
+        { icon: '📚', label: 'Catálogo Productos', path: '/catalogo-productos' },
+        { icon: '🧮', label: 'Cálculo ICE', path: '/calculo-ice' },
+        { icon: '📄', label: 'Declaraciones ICE', current: true },
+        { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
+      ]
+
   return (
     <div className="dc-page">
+      <WorkflowGuide steps={dcSteps} />
       <header className="dc-header">
         <div>
           <h1>{icon} Declaración {tipo}</h1>

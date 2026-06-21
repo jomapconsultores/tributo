@@ -6,12 +6,22 @@ import { periodoLargo, MESES } from '../utils/periodo'
 import { calcRow, ivaRate, CATEGORIAS, CAT_LABEL } from '../utils/iceCalc'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
+import WorkflowGuide from '../components/WorkflowGuide'
 import useDraft from '../hooks/useDraft'
 import './CalculoICE.css'
 
 import { fmtMoney as money } from '../utils/format'
 
 const ANIOS = ['2021', '2022', '2023', '2024', '2025', '2026']
+
+const CALC_STEPS = [
+  { icon: '📚', label: 'Catálogo Productos', path: '/catalogo-productos' },
+  { icon: '🧮', label: 'Cálculo ICE', current: true },
+  { icon: '⚖️', label: 'Rebajas y Exenciones', path: '/rebajas-exenciones' },
+  { icon: '🥃', label: 'ICE XML', path: '/ice' },
+  { icon: '📄', label: 'Declaraciones ICE', path: '/declaracion-ice' },
+  { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
+]
 
 const EMPTY = {
   producto: '', categoria: 'ALCOHOLICA', por_cajas: true,
@@ -142,6 +152,7 @@ export default function CalculoICE() {
 
   return (
     <div className="ci-page">
+      <WorkflowGuide steps={CALC_STEPS} />
       <header className="ci-header">
         <div>
           <h1>🧮 Cálculo ICE</h1>

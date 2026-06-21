@@ -1,7 +1,15 @@
 import { useState, useEffect, useMemo } from 'react'
 import { classificationAPI, downloadBlob } from '../services/api'
 import ClassifierTable from '../components/ClassifierTable'
+import WorkflowGuide from '../components/WorkflowGuide'
 import './Classifier.css'
+
+const CL_STEPS = [
+  { icon: '📥', label: 'Gastos (subir TXT/XML)', path: '/' },
+  { icon: '🗂', label: 'Clasificar comprobantes', current: true },
+  { icon: '📄', label: 'Declaraciones IVA / ICE', path: '/declaracion-iva' },
+  { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
+]
 
 export default function Classifier() {
   const [classifications, setClassifications] = useState([])
@@ -84,6 +92,7 @@ export default function Classifier() {
 
   return (
     <div className="classifier">
+      <WorkflowGuide steps={CL_STEPS} />
       <header className="classifier-header">
         <div>
           <h1>🏷️ Clasificador de Gastos {refreshing && <span className="classifier-refresh-indic">↻ actualizando…</span>}</h1>
