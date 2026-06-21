@@ -339,6 +339,15 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         )}
         </>)}
 
+        {/* CAPACITACIONES: reservar capacitación; socio/admin autoriza */}
+        <button
+          className={`nav-item module-btn ${path === '/capacitaciones' ? 'active' : ''}`}
+          onClick={() => navigate('/capacitaciones')}
+        >
+          <span className="nav-ico">🎓</span>
+          <span>CAPACITACIONES</span>
+        </button>
+
         {/* REPORTES (desplegable): honorarios a cobrar, separados en Faltantes
             (por facturar) y Realizados (ya facturados/certificados en Odoo) */}
         <button
@@ -359,15 +368,6 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
             </button>
           </div>
         )}
-
-        {/* CAPACITACIONES: reservar capacitación; socio/admin autoriza */}
-        <button
-          className={`nav-item module-btn ${path === '/capacitaciones' ? 'active' : ''}`}
-          onClick={() => navigate('/capacitaciones')}
-        >
-          <span className="nav-ico">🎓</span>
-          <span>CAPACITACIONES</span>
-        </button>
 
         {/* FACTURACIÓN ODOO (desplegable): emitir y ver facturas procesadas */}
         <button

@@ -23,6 +23,18 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
   const [sri, setSri] = useState(null)        // datos básicos del SRI
   const [consultando, setConsultando] = useState(false)
 
+  // El SRI devuelve nombres de personas naturales como: APELLIDO1 APELLIDO2 NOMBRE1 [NOMBRE2]
+  // Los reordenamos a: NOMBRE1 [NOMBRE2] APELLIDO1 APELLIDO2
+  const reordenarNombre = (nombre, tipo) => {
+    if (!nombre || !tipo) return nombre
+    const esPersonaNatural = /natural/i.test(tipo)
+    if (!esPersonaNatural) return nombre
+    const w = nombre.trim().split(/\s+/)
+    if (w.length === 4) return `${w[2]} ${w[3]} ${w[0]} ${w[1]}`
+    if (w.length === 3) return `${w[2]} ${w[0]} ${w[1]}`
+    return nombre
+  }
+
   const consultarSri = async () => {
     const ruc = (form.identificacion || '').trim()
     if (!ruc) { setError('Escribe primero el RUC/cédula'); return }
@@ -32,8 +44,9 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
       const d = r.data
       if (!d.ok) { setError(d.error || 'No se encontraron datos'); return }
       setSri(d)
-      // Precarga el nombre con la razón social del SRI
-      setForm((f) => ({ ...f, nombre: d.razon_social || f.nombre }))
+      // Precarga el nombre reordenando Nombres antes de Apellidos para personas naturales
+      const nombreOrdenado = reordenarNombre(d.razon_social, d.tipo)
+      setForm((f) => ({ ...f, nombre: nombreOrdenado || f.nombre }))
     } catch (e) {
       setError('No se pudo consultar el SRI: ' + (e.response?.data?.detail || e.message))
     } finally { setConsultando(false) }
@@ -58,6 +71,13 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
 
   if (!open) return null
 
+  // Detecta si el nombre parece estar en formato SRI (APELLIDO APELLIDO NOMBRE):
+  // todas las palabras en mayúsculas y al menos 3 palabras — posible orden invertido.
+  const pareceFirmaSRI = (nombre) => {
+    const w = (nombre || '').trim().split(/\s+/)
+    return w.length >= 3 && w.every((p) => p === p.toUpperCase() && /^[A-ZÁÉÍÓÚÑ]+$/.test(p))
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.identificacion.trim() || !form.nombre.trim()) {
@@ -67,6 +87,14 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
     if (!form.periodo_mes || !form.periodo_anio) {
       setError('El período (mes y año) es obligatorio')
       return
+    }
+    if (pareceFirmaSRI(form.nombre)) {
+      const ok = window.confirm(
+        `⚠ El nombre "${form.nombre}" parece estar en formato SRI (Apellidos primero).\n\n` +
+        `El formato correcto es: NOMBRE(S) APELLIDO(S)\n\n` +
+        `¿Deseas guardarlo igual? (Cancelar para corregirlo antes)`
+      )
+      if (!ok) return
     }
     setSaving(true)
     setError('')

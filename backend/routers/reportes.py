@@ -257,9 +257,10 @@ def _filas_y_total(user_id):
         if prod not in fixed_labels:
             custom_por_ruc.setdefault(ruc, set()).add(prod)
 
-    # Aparecen TODOS los contribuyentes visibles (creados por quien sea: admin,
-    # socio o cliente, según el rol). El servicio/declaración/anexo solo sirve
-    # para PRE-MARCAR (verde / "relevante"), no para ocultar a nadie.
+    # Solo aparecen contribuyentes con al menos un servicio marcado en credenciales
+    # (declaracion_iva, declaracion_ice, declaracion_renta, devolucion_iva).
+    # Si no tienen ningún servicio activo, no deben aparecer ni en Faltantes.
+    rucs_con_servicios = {ruc for ruc, svcs in serv_por_ruc.items() if svcs}
     rucs_con_decl = {k[0] for k in decl_ever}
     rucs_con_guardado = {g["identificacion"] for g in guardados}
 
@@ -284,7 +285,10 @@ def _filas_y_total(user_id):
 
     filas = []
     total = 0.0
-    rucs_orden = sorted(nombre_por_ruc, key=lambda r: (nombre_por_ruc[r] or "").upper())
+    rucs_orden = sorted(
+        [r for r in nombre_por_ruc if r in rucs_con_servicios],
+        key=lambda r: (nombre_por_ruc[r] or "").upper()
+    )
     for ruc in rucs_orden:
         es_vacio = ruc not in rucs_con_cur  # sin cobro cargado a mano este período
         odoo_lineas = odoo_por_ruc.get(re.sub(r"\D", "", ruc))  # lista de líneas o None

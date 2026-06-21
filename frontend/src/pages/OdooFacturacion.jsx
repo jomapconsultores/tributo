@@ -64,11 +64,11 @@ export default function OdooFacturacion() {
       .catch(() => setProductos([]))
   }, [])
 
-  // Agrupar filas por contribuyente — solo cobrar=true y valor>0
+  // Agrupar filas por contribuyente — solo cobrar=true, valor>0 y sin factura ya emitida
   const grupos = useMemo(() => {
     const m = {}
     for (const f of filas) {
-      if (!f.cobrar || !(f.valor > 0)) continue
+      if (!f.cobrar || !(f.valor > 0) || f.procesado) continue
       if (!m[f.identificacion]) {
         m[f.identificacion] = { ruc: f.identificacion, nombre: f.contribuyente, lineas: [], total: 0 }
       }
