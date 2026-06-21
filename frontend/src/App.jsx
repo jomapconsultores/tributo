@@ -1,4 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
+import { useRegisterSW } from 'virtual:pwa-register/react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AccessProvider, useAccess, homeFor } from './context/AccessContext'
 import { ClientProvider } from './context/ClientContext'
@@ -72,6 +73,30 @@ function RequireSuperAdmin({ children }) {
   return children
 }
 
+function UpdateBanner() {
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW()
+  if (!needRefresh) return null
+  return (
+    <div style={{
+      position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+      background: '#1a3d6b', color: '#fff', borderRadius: 10, padding: '12px 20px',
+      display: 'flex', alignItems: 'center', gap: 14, zIndex: 9999,
+      boxShadow: '0 4px 16px rgba(0,0,0,.25)', fontSize: '0.88rem', whiteSpace: 'nowrap',
+    }}>
+      <span>Nueva versión disponible</span>
+      <button
+        onClick={() => updateServiceWorker(true)}
+        style={{
+          background: '#fff', color: '#1a3d6b', border: 'none', borderRadius: 6,
+          padding: '5px 14px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem',
+        }}
+      >
+        Actualizar
+      </button>
+    </div>
+  )
+}
+
 function App() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -103,6 +128,7 @@ function App() {
 
   return (
     <Router>
+      <UpdateBanner />
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/login" element={user ? <Navigate to="/" /> : <Login onLogin={handleLogin} />} />
