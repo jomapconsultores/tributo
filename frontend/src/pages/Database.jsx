@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { invoicesAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
+import { invoicesAPI, xmlOriginalesAPI, clientsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import InvoiceTabs from '../components/InvoiceTabs'
 import UploadPanel from '../components/UploadPanel'
@@ -21,6 +21,12 @@ export default function Database() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
   const [editClient, setEditClient] = useState(null)
+  const [idents_svc, setIdentsSvc] = useState(null)
+  useEffect(() => {
+    clientsAPI.byService('declaracion_iva,declaracion_ice,declaracion_renta,devolucion_iva')
+      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
+      .catch(() => setIdentsSvc(new Set()))
+  }, [])
 
   const loadInvoices = useCallback(async () => {
     if (!selectedClientId) {
@@ -143,7 +149,7 @@ export default function Database() {
           </div>
           <button className="db-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
         </div>
-        <ClientNavigator />
+        <ClientNavigator idents_svc={idents_svc} />
       </div>
     )
   }

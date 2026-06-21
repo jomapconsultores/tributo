@@ -12,7 +12,7 @@ const TIPOS = [
   { key: 'calculo_ice', label: 'Cálc. ICE', icon: '🧮', route: '/calculo-ice' },
 ]
 
-export default function ClientNavigator() {
+export default function ClientNavigator({ idents_svc = null }) {
   const navigate = useNavigate()
   const { selectClient, focusIdent, setFocusIdent } = useClients()
   const [data, setData] = useState([])
@@ -66,12 +66,14 @@ export default function ClientNavigator() {
   }, [focusIdent, setFocusIdent])
 
   const filtrados = useMemo(() => {
-    if (!search.trim()) return data
+    let base = data
+    if (idents_svc) base = base.filter((c) => idents_svc.has(c.identificacion))
+    if (!search.trim()) return base
     const q = search.toLowerCase()
-    return data.filter((c) =>
+    return base.filter((c) =>
       [c.nombre, c.identificacion].some((f) => String(f || '').toLowerCase().includes(q))
     )
-  }, [data, search])
+  }, [data, search, idents_svc])
 
   const abrir = (tipo, clientId) => {
     selectClient(clientId)

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
-import { iceAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
+import { iceAPI, xmlOriginalesAPI, clientsAPI, downloadBlob } from '../services/api'
 
 // Descarga el ZIP de XML originales subidos, nombrado Tipo_RUC_nombre_mes_año
 const descargarXmlsOriginales = async (cliente, clientId, tipo, modulo) => {
@@ -30,6 +30,13 @@ export default function ICE() {
   const navigate = useNavigate()
   const [anexo, setAnexo] = useState(null) // { actImport, xml, advertencias, ventas } | 'open'
   const [difOpen, setDifOpen] = useState(null) // producto cuya explicación está abierta
+
+  const [idents_svc, setIdentsSvc] = useState(null)
+  useEffect(() => {
+    clientsAPI.byService('declaracion_ice')
+      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
+      .catch(() => setIdentsSvc(new Set()))
+  }, [])
 
   const [rows, setRows] = useState([])
   const [report, setReport] = useState(null)
@@ -235,9 +242,9 @@ export default function ICE() {
           <p>Selecciona un cliente para auditar el ICE de sus ventas de licor desde sus facturas XML.</p>
           <button className="ice-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
         </div>
-        {clients.length > 0 && (
+        {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).length > 0 && (
           <div className="ice-client-grid">
-            {clients.map((c) => (
+            {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).map((c) => (
               <button key={c.id} className="ice-client-card" onClick={() => selectClient(c.id)}>
                 <div className="icc-periodo">{periodoLargo(c)}</div>
                 <div className="icc-id">{c.identificacion}</div>

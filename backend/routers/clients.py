@@ -96,7 +96,8 @@ async def clients_by_service(service: str = Query(...), user_id: str = Depends(g
         if not clientes:
             return {"identificaciones": []}
         ids = [c["id"] for c in clientes]
-        svc = supabase.table("client_services").select("client_id").in_("client_id", ids).eq("service", service).eq("active", True).execute().data or []
+        services_list = [s.strip() for s in service.split(',') if s.strip()]
+        svc = supabase.table("client_services").select("client_id").in_("client_id", ids).in_("service", services_list).eq("active", True).execute().data or []
         activos = {r["client_id"] for r in svc}
         idents = list({c["identificacion"] for c in clientes if c["id"] in activos})
         return {"identificaciones": idents}

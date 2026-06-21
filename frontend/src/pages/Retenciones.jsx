@@ -28,7 +28,7 @@ export default function Retenciones() {
 
   const [idents_svc, setIdentsSvc] = useState(null)
   useEffect(() => {
-    clientsAPI.byService('declaracion_iva')
+    clientsAPI.byService('declaracion_iva,declaracion_ice')
       .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
       .catch(() => setIdentsSvc(new Set()))
   }, [])
