@@ -110,7 +110,7 @@ export default function RebajasExenciones() {
     return (parseFloat(i.cantidad) || 0) / resumen.total * 100
   }
 
-  if (!selectedClient || (idents_svc !== null && !idents_svc.has(selectedClient?.identificacion))) {
+  if (!selectedClient || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
     return (
       <div className="re-page">
         <div className="re-welcome">

@@ -142,7 +142,7 @@ export default function CalculoICE() {
   }, [calc])
 
   // ----- Sin cliente o sin servicio ICE -----
-  if (!selectedClient || (idents_svc !== null && !idents_svc.has(selectedClient?.identificacion))) {
+  if (!selectedClient || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
     return (
       <div className="ci-page">
         <div className="ci-welcome">

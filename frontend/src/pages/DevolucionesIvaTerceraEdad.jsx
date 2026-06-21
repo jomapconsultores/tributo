@@ -17,7 +17,7 @@ export default function DevolucionesIvaTerceraEdad() {
       .catch(() => setIdentsSvc(new Set()))
   }, [])
 
-  if (!selectedClient || (idents_svc !== null && !idents_svc.has(selectedClient?.identificacion))) {
+  if (!selectedClient || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
     return (
       <div className="dv-page">
         <div className="dv-welcome">

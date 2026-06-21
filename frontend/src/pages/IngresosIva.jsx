@@ -181,7 +181,7 @@ export default function IngresosIva() {
     return acc
   }, [filtered])
 
-  if (!selectedClientId || (idents_svc !== null && !idents_svc.has(selectedClient?.identificacion))) {
+  if (!selectedClientId || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
     const conServicio = idents_svc
       ? clients.filter((c) => idents_svc.has(c.identificacion))
       : clients
