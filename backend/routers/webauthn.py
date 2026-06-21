@@ -8,6 +8,7 @@ from auth import get_current_user
 from database import get_supabase_client
 from config import get_settings
 
+import base64 as _base64
 import webauthn
 from webauthn.helpers.structs import (
     AuthenticatorSelectionCriteria,
@@ -15,7 +16,15 @@ from webauthn.helpers.structs import (
     ResidentKeyRequirement,
     PublicKeyCredentialDescriptor,
 )
-from webauthn.helpers.bytes_helpers import base64url_to_bytes, bytes_to_base64url
+
+
+def base64url_to_bytes(s: str) -> bytes:
+    s += "=" * (4 - len(s) % 4)
+    return _base64.urlsafe_b64decode(s)
+
+
+def bytes_to_base64url(b: bytes) -> str:
+    return _base64.urlsafe_b64encode(b).rstrip(b"=").decode()
 
 router = APIRouter(prefix="/api/webauthn", tags=["webauthn"])
 settings = get_settings()
