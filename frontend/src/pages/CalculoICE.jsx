@@ -141,8 +141,8 @@ export default function CalculoICE() {
     return Object.values(ag).sort((x, y) => x.producto.localeCompare(y.producto))
   }, [calc])
 
-  // ----- Sin cliente -----
-  if (!selectedClient) {
+  // ----- Sin cliente o sin servicio ICE -----
+  if (!selectedClient || (idents_svc !== null && !idents_svc.has(selectedClient?.identificacion))) {
     return (
       <div className="ci-page">
         <div className="ci-welcome">

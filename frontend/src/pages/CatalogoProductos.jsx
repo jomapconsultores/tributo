@@ -166,7 +166,7 @@ export default function CatalogoProductos() {
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
 
-  if (!selectedClient) {
+  if (!selectedClient || (idents_svc !== null && !idents_svc.has(selectedClient?.identificacion))) {
     return (
       <div className="cp-page">
         <div className="cp-welcome">

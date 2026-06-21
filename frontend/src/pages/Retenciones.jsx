@@ -168,8 +168,8 @@ export default function Retenciones() {
     }
   }
 
-  // ---------- Sin cliente seleccionado ----------
-  if (!selectedClient) {
+  // ---------- Sin cliente seleccionado o sin servicio ----------
+  if (!selectedClient || (idents_svc !== null && !idents_svc.has(selectedClient?.identificacion))) {
     const conServicio = idents_svc
       ? clients.filter((c) => idents_svc.has(c.identificacion))
       : clients

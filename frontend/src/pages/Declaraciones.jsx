@@ -225,7 +225,7 @@ export default function Declaraciones({ tipo }) {
 
   const icon = tipo === 'ICE' ? '🥃' : '🧾'
 
-  if (!selectedClient) {
+  if (!selectedClient || (idents_svc !== null && !idents_svc.has(selectedClient?.identificacion))) {
     // Solo clientes con el servicio marcado; si aún cargando mostrar todos
     const conServicio = idents_svc
       ? clients.filter((c) => idents_svc.has(c.identificacion))

@@ -234,7 +234,7 @@ export default function ICE() {
     catch (e) { alert('Error al eliminar: ' + (e.response?.data?.detail || e.message)) }
   }
 
-  if (!selectedClient) {
+  if (!selectedClient || (idents_svc !== null && !idents_svc.has(selectedClient?.identificacion))) {
     return (
       <div className="ice-page">
         <div className="ice-welcome">
