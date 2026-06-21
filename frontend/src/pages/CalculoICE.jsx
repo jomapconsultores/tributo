@@ -175,7 +175,7 @@ export default function CalculoICE() {
         <span className="ci-iva">IVA {Math.round(iva * 100)}%</span>
       </header>
 
-      <ClientSwitcher onNewClient={openNewClient} />
+      <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_svc} />
 
       {/* Formulario de producto (con títulos) */}
       <div className="ci-form">

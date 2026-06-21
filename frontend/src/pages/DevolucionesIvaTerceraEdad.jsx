@@ -49,7 +49,7 @@ export default function DevolucionesIvaTerceraEdad() {
         </div>
       </header>
 
-      <ClientSwitcher onNewClient={openNewClient} />
+      <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_svc} />
 
       <div className="dv-stub-box">
         <h2>🚧 Módulo en construcción</h2>

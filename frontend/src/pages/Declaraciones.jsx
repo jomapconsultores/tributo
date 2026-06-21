@@ -329,7 +329,7 @@ export default function Declaraciones({ tipo }) {
         </div>
       </header>
 
-      <ClientSwitcher onNewClient={openNewClient} />
+      <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_svc} />
 
       {/* Servicios contratados + acceso al portal SRI (punto 4) */}
       {creds && ((creds.servicios && creds.servicios.length > 0) || creds.credencial) && (

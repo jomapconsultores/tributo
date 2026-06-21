@@ -197,7 +197,7 @@ export default function CatalogoProductos() {
         </div>
       </header>
 
-      <ClientSwitcher onNewClient={openNewClient} />
+      <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_svc} />
 
       <p className="cp-note">Los productos se guardan por contribuyente (RUC) y se comparten entre todos sus períodos. Estos códigos se usan al emitir el Anexo PVP+ICE.</p>
 

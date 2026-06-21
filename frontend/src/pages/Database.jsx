@@ -171,7 +171,7 @@ export default function Database() {
         </div>
       </header>
 
-      <ClientSwitcher onNewClient={openNewClient} />
+      <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_svc} />
 
       {error && <div className="db-error">⚠ {error}</div>}
 

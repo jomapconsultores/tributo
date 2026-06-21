@@ -218,7 +218,7 @@ export default function IngresosIva() {
 
   return (
     <div className="ing-iva">
-      <ClientSwitcher onNewClient={openNewClient} />
+      <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_svc} />
       <header className="ing-iva-head">
         <div>
           <h2>📈 Ingresos IVA — <span className="ing-iva-ruc">{selectedClient?.identificacion}</span> {selectedClient?.nombre}<ClaveHeader clientId={selectedClientId} /></h2>

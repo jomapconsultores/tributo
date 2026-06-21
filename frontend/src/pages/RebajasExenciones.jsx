@@ -141,7 +141,7 @@ export default function RebajasExenciones() {
         </div>
       </header>
 
-      <ClientSwitcher onNewClient={openNewClient} />
+      <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_svc} />
 
       <div className="re-prodsel">
         <label>Producto</label>

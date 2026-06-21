@@ -276,7 +276,7 @@ export default function ICE() {
         </div>
       </header>
 
-      <ClientSwitcher onNewClient={openNewClient} />
+      <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_svc} />
 
       {error && <div className="ice-error">⚠ {error}</div>}
 

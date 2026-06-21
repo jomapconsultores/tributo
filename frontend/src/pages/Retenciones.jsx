@@ -213,7 +213,7 @@ export default function Retenciones() {
         </div>
       </header>
 
-      <ClientSwitcher onNewClient={openNewClient} />
+      <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_svc} />
 
       {error && <div className="ret-error">⚠ {error}</div>}
 

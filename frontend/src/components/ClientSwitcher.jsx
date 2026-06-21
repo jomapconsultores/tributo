@@ -3,7 +3,7 @@ import { useClients } from '../context/ClientContext'
 import { periodoCorto } from '../utils/periodo'
 import './ClientSwitcher.css'
 
-export default function ClientSwitcher({ onNewClient }) {
+export default function ClientSwitcher({ onNewClient, idents_svc = null }) {
   const { clients, selectedClientId, selectClient } = useClients()
   const current = clients.find((c) => c.id === selectedClientId)
   const ident = current?.identificacion || ''
@@ -23,10 +23,11 @@ export default function ClientSwitcher({ onNewClient }) {
     const vistos = new Set()
     const out = []
     for (const c of clients) {
+      if (idents_svc && !idents_svc.has(c.identificacion)) continue
       if (!vistos.has(c.identificacion)) { vistos.add(c.identificacion); out.push(c) }
     }
     return out.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
-  }, [clients])
+  }, [clients, idents_svc])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
