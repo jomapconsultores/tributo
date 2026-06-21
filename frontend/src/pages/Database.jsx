@@ -16,8 +16,10 @@ import './Database.css'
 export default function Database() {
   const navigate = useNavigate()
   const { openNewClient } = useOutletContext()
-  const { selectedClient, selectedClientId, refreshClients, deleteClient, identsForSvc } = useClients()
-  const idents_all = identsForSvc('declaracion_iva,declaracion_ice,declaracion_renta,devolucion_iva')
+  const { selectedClient, selectedClientId, refreshClients, deleteClient } = useClients()
+  // Gastos es el módulo de entrada: se muestran TODOS los clientes visibles al usuario,
+  // sin filtrar por servicio (el filtro por servicio aplica solo en módulos de declaración).
+  const idents_all = null
 
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(false)
@@ -135,8 +137,8 @@ export default function Database() {
     await deleteClient(selectedClientId)
   }
 
-  // ---------- Vista: ningún cliente seleccionado O sin servicios activos ----------
-  if (!selectedClient || (idents_all !== null && !idents_all.has(selectedClient?.identificacion))) {
+  // ---------- Vista: ningún cliente seleccionado ----------
+  if (!selectedClient) {
     return (
       <div className="db-page">
         <div className="db-nav-head">
