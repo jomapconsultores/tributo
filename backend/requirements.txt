@@ -16,3 +16,4 @@ PyJWT==2.13.0
 cryptography==41.0.7
 aiofiles==23.2.1
 websockets>=12.0
+webauthn>=2.1.0

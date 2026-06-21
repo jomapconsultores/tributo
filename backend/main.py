@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from config import get_settings
-from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones
+from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router
 from routers.access import require_module
 import os
 from dotenv import load_dotenv
@@ -213,6 +213,7 @@ app.include_router(xml_originales.router)  # descarga de XML originales (gastos/
 app.include_router(reportes.router)  # REPORTES: honorarios a cobrar por contribuyente/producto
 app.include_router(odoo_factura.router)  # ODOO: facturación directa (solo admin)
 app.include_router(capacitaciones.router)  # CAPACITACIONES: reservas con autorización de socio/admin
+app.include_router(webauthn_router.router)  # WEBAUTHN: biometría (huella/rostro)
 
 @app.get("/")
 async def root():

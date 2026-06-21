@@ -118,3 +118,173 @@
 .link-btn:hover {
   color: #764ba2;
 }
+
+/* ── Biometría: botón de login biométrico (pantalla principal) ──────────── */
+.bio-login-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.bio-login-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: #f0f4ff;
+  border: 2px solid #003399;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.bio-login-btn:hover:not(:disabled) {
+  background: #e0e8ff;
+  box-shadow: 0 2px 8px rgba(0, 51, 153, 0.18);
+}
+
+.bio-login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.bio-login-icon {
+  font-size: 1.7rem;
+  flex-shrink: 0;
+}
+
+.bio-login-main {
+  display: block;
+  color: #003399;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.bio-login-email {
+  display: block;
+  color: #555;
+  font-size: 0.78rem;
+  margin-top: 2px;
+}
+
+.bio-change-btn {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: underline;
+  padding: 2px 0;
+}
+
+.bio-change-btn:hover {
+  color: #555;
+}
+
+.bio-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #aaa;
+  font-size: 0.8rem;
+  margin: 4px 0;
+}
+
+.bio-divider::before,
+.bio-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #ddd;
+}
+
+/* ── Biometría: pantallas de prompt / activación / confirmación ─────────── */
+.bio-icon-big {
+  font-size: 3rem;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.bio-title {
+  text-align: center;
+  color: #1a3d6b;
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.bio-desc {
+  text-align: center;
+  color: #555;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.bio-activate-btn {
+  width: 100%;
+  padding: 13px;
+  background: #003399;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-bottom: 10px;
+  transition: filter 0.2s;
+}
+
+.bio-activate-btn:hover {
+  filter: brightness(1.12);
+}
+
+.bio-skip-btn {
+  width: 100%;
+  padding: 10px;
+  background: none;
+  color: #888;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.bio-skip-btn:hover {
+  background: #f5f5f5;
+}
+
+.bio-center {
+  text-align: center;
+  padding: 50px 30px;
+}
+
+.bio-spinner {
+  font-size: 2.5rem;
+  animation: spin 1.5s linear infinite;
+  display: inline-block;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.bio-hint {
+  color: #888;
+  font-size: 0.82rem;
+  margin-top: 10px;
+}
+
+.bio-success {
+  color: #166534;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: 8px;
+}
