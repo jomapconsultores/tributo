@@ -18,6 +18,7 @@ import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import BulkBar from '../components/BulkBar'
 import ClientSwitcher from '../components/ClientSwitcher'
+import ClientPickerScreen from '../components/ClientPickerScreen'
 import ClaveHeader from '../components/ClaveHeader'
 import './ICE.css'
 
@@ -235,26 +236,7 @@ export default function ICE() {
   }
 
   if (!selectedClient || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
-    return (
-      <div className="ice-page">
-        <div className="ice-welcome">
-          <h1>🥃 ICE - XML</h1>
-          <p>Selecciona un cliente para auditar el ICE de sus ventas de licor desde sus facturas XML.</p>
-          <button className="ice-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
-        </div>
-        {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).length > 0 && (
-          <div className="ice-client-grid">
-            {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).map((c) => (
-              <button key={c.id} className="ice-client-card" onClick={() => selectClient(c.id)}>
-                <div className="icc-periodo">{periodoLargo(c)}</div>
-                <div className="icc-id">{c.identificacion}</div>
-                <div className="icc-name">{c.nombre}</div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    )
+    return <ClientPickerScreen icon="🥃" title="ICE — XML" subtitle="Auditoría ICE sobre facturas XML de ventas de licor" idents_svc={idents_svc} onNewClient={openNewClient} svcLabel="Declaración ICE" />
   }
 
   const g = report?.general

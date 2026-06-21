@@ -15,6 +15,7 @@ const descargarXmlsOriginales = async (cliente, clientId, tipo, modulo) => {
 }
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
+import ClientPickerScreen from '../components/ClientPickerScreen'
 import ClaveHeader from '../components/ClaveHeader'
 import './IngresosIva.css'
 
@@ -182,38 +183,7 @@ export default function IngresosIva() {
   }, [filtered])
 
   if (!selectedClientId || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
-    const conServicio = idents_svc
-      ? clients.filter((c) => idents_svc.has(c.identificacion))
-      : clients
-    return (
-      <div className="ing-iva">
-        <div className="ing-iva-empty">
-          <h2>📈 Ingresos IVA</h2>
-          <p>
-            {idents_svc
-              ? `${conServicio.length} contribuyente(s) con servicio IVA activo.`
-              : 'Seleccioná un contribuyente para subir sus facturas de venta sin ICE.'}
-          </p>
-          <button className="btn-ghost" onClick={openNewClient}>＋ Nuevo cliente</button>
-        </div>
-        {conServicio.length > 0 && (
-          <div className="dc-grid">
-            {conServicio.map((c) => (
-              <button key={c.id} className="dc-card" onClick={() => selectClient(c.id)}>
-                <div className="dc-card-id">{c.identificacion}</div>
-                <div className="dc-card-name">{c.nombre}</div>
-                <div className="dc-card-per">{periodoLargo(c)}</div>
-              </button>
-            ))}
-          </div>
-        )}
-        {idents_svc && conServicio.length === 0 && (
-          <div className="ing-iva-empty" style={{ marginTop: 8 }}>
-            Ningún cliente tiene activo el servicio "Declaración IVA". Actívalo en CREDENCIALES SRI.
-          </div>
-        )}
-      </div>
-    )
+    return <ClientPickerScreen icon="📈" title="Ingresos IVA" subtitle="Facturas de venta sin ICE — período activo del contribuyente" idents_svc={idents_svc} onNewClient={openNewClient} svcLabel="Declaración IVA" />
   }
 
   return (

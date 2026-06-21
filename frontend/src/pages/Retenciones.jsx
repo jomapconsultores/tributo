@@ -18,6 +18,7 @@ const descargarXmlsOriginales = async (cliente, clientId, tipo, modulo) => {
 }
 import RetentionReport from '../components/RetentionReport'
 import ClientSwitcher from '../components/ClientSwitcher'
+import ClientPickerScreen from '../components/ClientPickerScreen'
 import './Retenciones.css'
 
 import { fmtMoney as money, fmtPct as pct, msgFueraPeriodo } from '../utils/format'
@@ -168,40 +169,8 @@ export default function Retenciones() {
     }
   }
 
-  // ---------- Sin cliente seleccionado o sin servicio ----------
   if (!selectedClient || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
-    const conServicio = idents_svc
-      ? clients.filter((c) => idents_svc.has(c.identificacion))
-      : clients
-    return (
-      <div className="ret-page">
-        <div className="ret-welcome">
-          <h1>🧾 Retenciones</h1>
-          <p>
-            {idents_svc
-              ? `${conServicio.length} contribuyente(s) con servicio IVA activo.`
-              : 'Selecciona un cliente para cargar y ver sus comprobantes de retención.'}
-          </p>
-          <button className="ret-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
-        </div>
-        {conServicio.length > 0 && (
-          <div className="ret-client-grid">
-            {conServicio.map((c) => (
-              <button key={c.id} className="ret-client-card" onClick={() => selectClient(c.id)}>
-                <div className="rc-periodo">{periodoLargo(c)}</div>
-                <div className="rc-name">{c.nombre}</div>
-                <div className="rc-id">{c.tipo_identificacion}: {c.identificacion}</div>
-              </button>
-            ))}
-          </div>
-        )}
-        {idents_svc && conServicio.length === 0 && (
-          <div className="ret-welcome" style={{ marginTop: 8 }}>
-            Ningún cliente tiene activo el servicio "Declaración IVA". Actívalo en CREDENCIALES SRI.
-          </div>
-        )}
-      </div>
-    )
+    return <ClientPickerScreen icon="🧾" title="Retenciones" subtitle="Comprobantes de retención IVA e ICE" idents_svc={idents_svc} onNewClient={openNewClient} svcLabel="Declaración IVA / ICE" />
   }
 
   return (

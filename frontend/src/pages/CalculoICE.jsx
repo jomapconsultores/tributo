@@ -5,6 +5,7 @@ import { useClients } from '../context/ClientContext'
 import { periodoLargo, MESES } from '../utils/periodo'
 import { calcRow, ivaRate, CATEGORIAS, CAT_LABEL } from '../utils/iceCalc'
 import ClientSwitcher from '../components/ClientSwitcher'
+import ClientPickerScreen from '../components/ClientPickerScreen'
 import useDraft from '../hooks/useDraft'
 import './CalculoICE.css'
 
@@ -141,28 +142,8 @@ export default function CalculoICE() {
     return Object.values(ag).sort((x, y) => x.producto.localeCompare(y.producto))
   }, [calc])
 
-  // ----- Sin cliente o sin servicio ICE -----
   if (!selectedClient || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
-    return (
-      <div className="ci-page">
-        <div className="ci-welcome">
-          <h1>🧮 Cálculo ICE</h1>
-          <p>Selecciona un cliente para calcular y guardar su ICE (por mes y año).</p>
-          <button className="ci-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
-        </div>
-        {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).length > 0 && (
-          <div className="ci-client-grid">
-            {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).map((c) => (
-              <button key={c.id} className="ci-client-card" onClick={() => selectClient(c.id)}>
-                <div className="cc-id">{c.identificacion}</div>
-                <div className="cc-name">{c.nombre}</div>
-                <div className="cc-per">{periodoLargo(c)}</div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    )
+    return <ClientPickerScreen icon="🧮" title="Cálculo ICE" subtitle="Cálculo mensual del impuesto ICE por producto" idents_svc={idents_svc} onNewClient={openNewClient} svcLabel="Declaración ICE" />
   }
 
   return (

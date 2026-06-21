@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { productsAPI, clientsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
+import ClientPickerScreen from '../components/ClientPickerScreen'
 import { buildCodProdICE, armarCodigo, descomponerCodigo, sinCeros } from '../utils/codigoICE'
 import useDraft from '../hooks/useDraft'
 import './CatalogoProductos.css'
@@ -167,25 +168,7 @@ export default function CatalogoProductos() {
   }
 
   if (!selectedClient || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
-    return (
-      <div className="cp-page">
-        <div className="cp-welcome">
-          <h1>📚 Catálogo de productos</h1>
-          <p>Selecciona un contribuyente (RUC) para administrar sus productos y códigos SRI.</p>
-          <button className="cp-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
-        </div>
-        {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).length > 0 && (
-          <div className="cp-grid">
-            {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).map((c) => (
-              <button key={c.id} className="cp-card" onClick={() => selectClient(c.id)}>
-                <div className="cp-card-id">{c.identificacion}</div>
-                <div className="cp-card-name">{c.nombre}</div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    )
+    return <ClientPickerScreen icon="📚" title="Catálogo de Productos" subtitle="Productos y códigos SRI para la declaración ICE" idents_svc={idents_svc} onNewClient={openNewClient} svcLabel="Declaración ICE" />
   }
 
   return (

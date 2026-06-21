@@ -5,6 +5,7 @@ import { declaracionesAPI, clientsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, nombreMes } from '../utils/periodo'
 import ClientSwitcher from '../components/ClientSwitcher'
+import ClientPickerScreen from '../components/ClientPickerScreen'
 import './Declaraciones.css'
 
 import { fmtMoney as money } from '../utils/format'
@@ -226,56 +227,7 @@ export default function Declaraciones({ tipo }) {
   const icon = tipo === 'ICE' ? '🥃' : '🧾'
 
   if (!selectedClient || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
-    // Solo clientes con el servicio marcado; si aún cargando mostrar todos
-    const conServicio = idents_svc
-      ? clients.filter((c) => idents_svc.has(c.identificacion))
-      : clients
-    const q = clientSearch.trim().toLowerCase()
-    const clientesFiltrados = q
-      ? conServicio.filter((c) => [c.nombre, c.identificacion].some((f) => String(f || '').toLowerCase().includes(q)))
-      : conServicio
-
-    return (
-      <div className="dc-page">
-        <div className="dc-welcome">
-          <h1>{icon} Declaración {tipo}</h1>
-          <p>
-            {idents_svc
-              ? `${conServicio.length} contribuyente(s) habilitado(s) para Declaración ${tipo}.`
-              : `Selecciona un contribuyente para la Declaración ${tipo}.`}
-          </p>
-          <button className="dc-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
-        </div>
-        {clients.length > 0 && (
-          <>
-            <input
-              className="dc-client-search"
-              placeholder="🔍 Buscar por nombre o RUC…"
-              value={clientSearch}
-              onChange={(e) => setClientSearch(e.target.value)}
-              autoFocus
-            />
-            {clientesFiltrados.length === 0 ? (
-              <div className="dc-empty">
-                {conServicio.length === 0
-                  ? `Ningún cliente tiene activo el servicio "Declaración ${tipo}". Actívalo en CREDENCIALES SRI.`
-                  : `Sin resultados para "${clientSearch}"`}
-              </div>
-            ) : (
-              <div className="dc-grid">
-                {clientesFiltrados.map((c) => (
-                  <button key={c.id} className="dc-card" onClick={() => selectClient(c.id)}>
-                    <div className="dc-card-id">{c.identificacion}</div>
-                    <div className="dc-card-name">{c.nombre}</div>
-                    <div className="dc-card-per">{periodoLargo(c)}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    )
+    return <ClientPickerScreen icon={icon} title={`Declaración ${tipo}`} subtitle={`Formulario 10${tipo === 'IVA' ? '4' : '5'} — período activo del contribuyente`} idents_svc={idents_svc} onNewClient={openNewClient} svcLabel={`Declaración ${tipo}`} />
   }
 
   const resumen = decl?.resumen || {}

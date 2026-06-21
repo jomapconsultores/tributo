@@ -4,6 +4,7 @@ import { clientsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import ClientSwitcher from '../components/ClientSwitcher'
+import ClientPickerScreen from '../components/ClientPickerScreen'
 import './DevolucionesIva.css'
 
 export default function DevolucionesIvaTerceraEdad() {
@@ -18,26 +19,7 @@ export default function DevolucionesIvaTerceraEdad() {
   }, [])
 
   if (!selectedClient || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
-    return (
-      <div className="dv-page">
-        <div className="dv-welcome">
-          <h1>👵 Devolución IVA — Adultos mayores</h1>
-          <p>Seleccioná un contribuyente para empezar a procesar su devolución de IVA.</p>
-          <button className="dv-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
-        </div>
-        {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).length > 0 && (
-          <div className="dv-grid">
-            {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).map((c) => (
-              <button key={c.id} className="dv-card" onClick={() => selectClient(c.id)}>
-                <div className="dv-card-id">{c.identificacion}</div>
-                <div className="dv-card-name">{c.nombre}</div>
-                <div className="dv-card-per">{periodoLargo(c)}</div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    )
+    return <ClientPickerScreen icon="👵" title="Devolución IVA" subtitle="Devolución para adultos mayores y personas con discapacidad" idents_svc={idents_svc} onNewClient={openNewClient} svcLabel="Devolución IVA" />
   }
 
   return (

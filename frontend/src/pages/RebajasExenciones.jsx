@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { rebajasAPI, productsAPI, clientsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
+import ClientPickerScreen from '../components/ClientPickerScreen'
 import useDraft from '../hooks/useDraft'
 import './RebajasExenciones.css'
 
@@ -111,25 +112,7 @@ export default function RebajasExenciones() {
   }
 
   if (!selectedClient || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
-    return (
-      <div className="re-page">
-        <div className="re-welcome">
-          <h1>⚖️ Rebajas y exenciones</h1>
-          <p>Selecciona un contribuyente para calcular el porcentaje de materia prima nacional de sus productos.</p>
-          <button className="re-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
-        </div>
-        {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).length > 0 && (
-          <div className="re-grid">
-            {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).map((c) => (
-              <button key={c.id} className="re-card" onClick={() => selectClient(c.id)}>
-                <div className="re-card-id">{c.identificacion}</div>
-                <div className="re-card-name">{c.nombre}</div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    )
+    return <ClientPickerScreen icon="⚖️" title="Rebajas y Exenciones" subtitle="Porcentaje de materia prima nacional — Art. 82 LRTI" idents_svc={idents_svc} onNewClient={openNewClient} svcLabel="Declaración ICE" />
   }
 
   return (
