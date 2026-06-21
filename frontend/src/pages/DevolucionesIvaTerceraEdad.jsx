@@ -1,4 +1,6 @@
+import { useState, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
+import { clientsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import ClientSwitcher from '../components/ClientSwitcher'
@@ -8,6 +10,13 @@ export default function DevolucionesIvaTerceraEdad() {
   const { openNewClient } = useOutletContext()
   const { clients, selectedClient, selectClient } = useClients()
 
+  const [idents_svc, setIdentsSvc] = useState(null)
+  useEffect(() => {
+    clientsAPI.byService('devolucion_iva')
+      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
+      .catch(() => setIdentsSvc(new Set()))
+  }, [])
+
   if (!selectedClient) {
     return (
       <div className="dv-page">
@@ -16,9 +25,9 @@ export default function DevolucionesIvaTerceraEdad() {
           <p>Seleccioná un contribuyente para empezar a procesar su devolución de IVA.</p>
           <button className="dv-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
         </div>
-        {clients.length > 0 && (
+        {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).length > 0 && (
           <div className="dv-grid">
-            {clients.map((c) => (
+            {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).map((c) => (
               <button key={c.id} className="dv-card" onClick={() => selectClient(c.id)}>
                 <div className="dv-card-id">{c.identificacion}</div>
                 <div className="dv-card-name">{c.nombre}</div>

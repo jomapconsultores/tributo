@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { rebajasAPI, productsAPI } from '../services/api'
+import { rebajasAPI, productsAPI, clientsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import useDraft from '../hooks/useDraft'
@@ -15,6 +15,13 @@ export default function RebajasExenciones() {
   const { openNewClient } = useOutletContext()
   const { clients, selectedClient, selectClient } = useClients()
   const ident = selectedClient?.identificacion
+
+  const [idents_svc, setIdentsSvc] = useState(null)
+  useEffect(() => {
+    clientsAPI.byService('declaracion_ice')
+      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
+      .catch(() => setIdentsSvc(new Set()))
+  }, [])
 
   const [productos, setProductos] = useState([])
   const [producto, setProducto] = useState('')
@@ -111,9 +118,9 @@ export default function RebajasExenciones() {
           <p>Selecciona un contribuyente para calcular el porcentaje de materia prima nacional de sus productos.</p>
           <button className="re-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
         </div>
-        {clients.length > 0 && (
+        {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).length > 0 && (
           <div className="re-grid">
-            {clients.map((c) => (
+            {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).map((c) => (
               <button key={c.id} className="re-card" onClick={() => selectClient(c.id)}>
                 <div className="re-card-id">{c.identificacion}</div>
                 <div className="re-card-name">{c.nombre}</div>

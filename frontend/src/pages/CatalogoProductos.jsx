@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { productsAPI } from '../services/api'
+import { productsAPI, clientsAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import { buildCodProdICE, armarCodigo, descomponerCodigo, sinCeros } from '../utils/codigoICE'
@@ -29,6 +29,13 @@ export default function CatalogoProductos() {
   const { openNewClient } = useOutletContext()
   const { clients, selectedClient, selectClient } = useClients()
   const ident = selectedClient?.identificacion
+
+  const [idents_svc, setIdentsSvc] = useState(null)
+  useEffect(() => {
+    clientsAPI.byService('declaracion_ice')
+      .then((r) => setIdentsSvc(new Set(r.data?.identificaciones || [])))
+      .catch(() => setIdentsSvc(new Set()))
+  }, [])
 
   const [rows, setRows] = useState([])
   const [form, setForm] = useDraft(ident ? `draft:productos:form:${ident}` : null, EMPTY)
@@ -167,9 +174,9 @@ export default function CatalogoProductos() {
           <p>Selecciona un contribuyente (RUC) para administrar sus productos y códigos SRI.</p>
           <button className="cp-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
         </div>
-        {clients.length > 0 && (
+        {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).length > 0 && (
           <div className="cp-grid">
-            {clients.map((c) => (
+            {(idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : clients).map((c) => (
               <button key={c.id} className="cp-card" onClick={() => selectClient(c.id)}>
                 <div className="cp-card-id">{c.identificacion}</div>
                 <div className="cp-card-name">{c.nombre}</div>
