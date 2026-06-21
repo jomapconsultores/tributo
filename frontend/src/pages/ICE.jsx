@@ -254,6 +254,7 @@ export default function ICE() {
           <p className="ice-subhead"><strong className="sub-ruc">{selectedClient.identificacion}</strong> — {selectedClient.nombre}<ClaveHeader clientId={selectedClientId} /></p>
         </div>
         <div className="ice-year">
+          <button className="continuar-btn" onClick={() => navigate('/declaracion-ice')}>Continuar con {selectedClient.nombre} → Declaración ICE</button>
           <label>Año fiscal (tarifas)</label>
           <select value={anio} onChange={(e) => setAnio(e.target.value)}>
             {years.map((y) => <option key={y} value={y}>{y}</option>)}

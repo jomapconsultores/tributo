@@ -45,3 +45,21 @@ html, body, #root {
   height: 100%;
   width: 100%;
 }
+
+/* Botón "Continuar con cliente →" compartido entre módulos */
+.continuar-btn {
+  background: #003399;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 18px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  align-self: flex-start;
+  letter-spacing: .2px;
+  transition: filter .15s;
+}
+.continuar-btn:hover { filter: brightness(1.12); }

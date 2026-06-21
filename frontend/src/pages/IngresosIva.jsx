@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { useOutletContext, useNavigate } from 'react-router-dom'
 import { salesIvaAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
 
 const descargarXmlsOriginales = async (cliente, clientId, tipo, modulo) => {
@@ -33,6 +33,7 @@ const ING_STEPS = [
 
 export default function IngresosIva() {
   const { openNewClient } = useOutletContext()
+  const navigate = useNavigate()
   const { clients, selectedClient, selectedClientId, selectClient, identsForSvc } = useClients()
   const idents_svc = identsForSvc('declaracion_iva')
   const [rows, setRows] = useState([])
@@ -202,6 +203,7 @@ export default function IngresosIva() {
             formulario 104 (declaración IVA). Si una factura tiene ICE, subila en "ICE - XML".
           </p>
         </div>
+        <button className="continuar-btn" onClick={() => navigate('/declaracion-iva')}>Continuar con {selectedClient?.nombre} → Declaración IVA</button>
       </header>
 
       <div

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { useOutletContext, useNavigate } from 'react-router-dom'
 import { retentionsAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
@@ -32,6 +32,7 @@ const RET_STEPS = [
 ]
 
 export default function Retenciones() {
+  const navigate = useNavigate()
   const { openNewClient } = useOutletContext()
   const { clients, selectedClient, selectedClientId, selectClient, identsForSvc } = useClients()
   const idents_svc = identsForSvc('declaracion_iva,declaracion_ice')
@@ -183,6 +184,7 @@ export default function Retenciones() {
           <h1>🧾 Retenciones <span className="ret-periodo-tag">{periodoLargo(selectedClient)}</span></h1>
           <p className="ret-subhead"><strong className="sub-ruc">{selectedClient.identificacion}</strong> — {selectedClient.nombre}</p>
         </div>
+        <button className="continuar-btn" onClick={() => navigate('/declaracion-iva')}>Continuar con {selectedClient.nombre} → Declaraciones</button>
       </header>
 
       <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_svc} />

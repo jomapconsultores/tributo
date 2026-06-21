@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { useOutletContext, useNavigate } from 'react-router-dom'
 import { invoicesAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import WorkflowGuide from '../components/WorkflowGuide'
@@ -14,6 +14,7 @@ import { fmtMoney, msgFueraPeriodo } from '../utils/format'
 import './Database.css'
 
 export default function Database() {
+  const navigate = useNavigate()
   const { openNewClient } = useOutletContext()
   const { selectedClient, selectedClientId, refreshClients, deleteClient, identsForSvc } = useClients()
   const idents_all = identsForSvc('declaracion_iva,declaracion_ice,declaracion_renta,devolucion_iva')
@@ -171,6 +172,7 @@ export default function Database() {
           <h1><span className="db-ruc">{selectedClient.identificacion}</span> {selectedClient.nombre} <span className="db-periodo-tag">{periodoLargo(selectedClient)}</span><ClaveHeader clientId={selectedClientId} /></h1>
         </div>
         <div className="db-header-actions">
+          <button className="db-btn primary" onClick={() => navigate('/clasificador')}>Clasificar →</button>
           <button className="db-btn ghost" onClick={() => setEditClient(selectedClient)}>✏️ Editar</button>
           <button className="db-btn danger-ghost" onClick={handleDeleteClient}>🗑 Eliminar cliente</button>
         </div>
