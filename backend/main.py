@@ -37,7 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "*.onrender.com"])
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
 
 
 # --- Endurecimiento: cabeceras de seguridad ---
