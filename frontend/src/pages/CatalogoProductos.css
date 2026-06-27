@@ -3,7 +3,7 @@
    para que el informativo de tarifas no quede por debajo de él. */
 .cp-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; padding-right: 244px; }
 /* Panel de flujo de trabajo arriba a la derecha, en la columna reservada. */
-.cp-page .wg-panel { top: 44px; }
+.cp-page .wg-panel { top: 6px; }
 @media (max-width: 900px) { .cp-header { padding-right: 0; } }
 .cp-header h1 { margin: 0; font-size: 1.2rem; color: #1a3d6b; font-weight: 700; }
 .cp-sub { margin: 4px 0 0; color: #64748b; font-size: 0.9rem; }
