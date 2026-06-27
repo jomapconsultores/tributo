@@ -1,0 +1,33 @@
+.tib {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #0e7490, #0891b2);
+  color: #fff;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  box-shadow: 0 1px 4px rgba(8, 145, 178, 0.25);
+}
+.tib.tib-na {
+  background: #64748b;
+  box-shadow: none;
+}
+.tib-cod {
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.tib-year {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  font-weight: 600;
+}
+.tib-val {
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.15);
+  padding: 2px 8px;
+  border-radius: 6px;
+}

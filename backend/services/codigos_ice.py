@@ -166,7 +166,7 @@ def lookups():
     global _lookups_cache
     if _lookups_cache is not None:
         return _lookups_cache
-    out = {"presentacion": [], "capacidad": [], "unidad": [], "grado": [], "pais": []}
+    out = {"presentacion": [], "capacidad": [], "unidad": [], "grado": [], "pais": [], "clasificacion": []}
     sheets = {"Presentacion": "presentacion", "Capacidad": "capacidad", "Unidad": "unidad",
               "Grado_Alcoholico": "grado", "País": "pais"}
     try:
@@ -196,5 +196,23 @@ def lookups():
                         out[key].append({"codigo": cod, "descripcion": desc})
     except Exception as e:
         print(f"Error cargando lookups ICE: {e}")
+    # Clasificaciones: código + descripción por impuesto (desde las hojas de impuesto).
+    # Permite mostrar la clasificación legible del producto en el catálogo.
+    try:
+        vistos = set()
+        for m in _cargar_marcas():
+            cod = m.get("clasif_cod")
+            desc = (m.get("clasificacion") or "").strip()
+            if not cod or cod == "0" or not desc:
+                continue
+            key = (m.get("impuesto"), cod)
+            if key in vistos:
+                continue
+            vistos.add(key)
+            out["clasificacion"].append({
+                "codigo": cod, "descripcion": desc, "impuesto": m.get("impuesto", ""),
+            })
+    except Exception as e:
+        print(f"Error cargando clasificaciones ICE: {e}")
     _lookups_cache = out
     return out

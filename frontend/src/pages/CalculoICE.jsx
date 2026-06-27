@@ -3,10 +3,11 @@ import { useOutletContext } from 'react-router-dom'
 import { iceCalcAPI, productsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, MESES } from '../utils/periodo'
-import { calcRow, ivaRate, CATEGORIAS, CAT_LABEL } from '../utils/iceCalc'
+import { calcRow, ivaRate, CATEGORIAS, CAT_LABEL, CAT_IMPUESTO } from '../utils/iceCalc'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import WorkflowGuide from '../components/WorkflowGuide'
+import TarifaImpuestoBadge from '../components/TarifaImpuestoBadge'
 import useDraft from '../hooks/useDraft'
 import './CalculoICE.css'
 
@@ -158,7 +159,10 @@ export default function CalculoICE() {
           <h1>🧮 Cálculo ICE</h1>
           <p className="ci-sub"><strong className="sub-ruc">{selectedClient.identificacion}</strong> — {selectedClient.nombre} · {periodoLargo(selectedClient)}</p>
         </div>
-        <span className="ci-iva">IVA {Math.round(iva * 100)}%</span>
+        <div className="ci-head-badges">
+          <TarifaImpuestoBadge codImpuesto={CAT_IMPUESTO[form.categoria]} anio={form.anio} />
+          <span className="ci-iva">IVA {Math.round(iva * 100)}%</span>
+        </div>
       </header>
 
       <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_svc} />
@@ -183,9 +187,9 @@ export default function CalculoICE() {
         <label className="ci-field wide"><span>Producto (opcional)</span>
           <input className="ci-in" placeholder="Nombre del producto" value={form.producto}
             onChange={(e) => setForm({ ...form, producto: e.target.value.toUpperCase() })} /></label>
-        <label className="ci-field"><span>Categoría</span>
+        <label className="ci-field"><span>Categoría / Cód. impuesto</span>
           <select className="ci-in" value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })}>
-            {CATEGORIAS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+            {CATEGORIAS.map((c) => <option key={c.key} value={c.key}>{CAT_IMPUESTO[c.key]} · {c.label}</option>)}
           </select></label>
         <label className="ci-field"><span>¿Vende por cajas?</span>
           <span className="ci-check"><input type="checkbox" checked={form.por_cajas} onChange={(e) => setForm({ ...form, por_cajas: e.target.checked })} /> {form.por_cajas ? 'Sí' : 'No'}</span></label>

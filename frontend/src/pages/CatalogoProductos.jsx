@@ -5,6 +5,8 @@ import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import WorkflowGuide from '../components/WorkflowGuide'
+import TarifaImpuestoBadge from '../components/TarifaImpuestoBadge'
+import { IMPUESTO_LABEL } from '../utils/iceCalc'
 import { buildCodProdICE, armarCodigo, descomponerCodigo, sinCeros } from '../utils/codigoICE'
 import useDraft from '../hooks/useDraft'
 import './CatalogoProductos.css'
@@ -62,9 +64,19 @@ export default function CatalogoProductos() {
     capacidad: form.capacidad, unidad: form.unidad, pais: form.cod_pais, grado: form.grado, codImpuesto: form.cod_impuesto,
   })
 
-  // Listas auxiliares de la base (presentación, unidad, país, etc.)
-  const [lk, setLk] = useState({ presentacion: [], unidad: [], pais: [], capacidad: [], grado: [] })
+  // Listas auxiliares de la base (presentación, unidad, país, clasificación, etc.)
+  const [lk, setLk] = useState({ presentacion: [], unidad: [], pais: [], capacidad: [], grado: [], clasificacion: [] })
   useEffect(() => { productsAPI.lookups?.().then((r) => setLk(r.data || {})).catch(() => {}) }, [])
+
+  // Descripción legible de la clasificación según su código (filtrada por impuesto)
+  const clasifDesc = useCallback((cod, imp) => {
+    const lista = lk.clasificacion || []
+    const c = sinCeros(cod)
+    if (!c || c === '0') return ''
+    const found = lista.find((x) => sinCeros(x.codigo) === c && (!imp || String(x.impuesto) === String(imp)))
+      || lista.find((x) => sinCeros(x.codigo) === c)
+    return found?.descripcion || ''
+  }, [lk])
 
   // Búsqueda en el catálogo oficial SRI (autocompletado, desde 1 letra)
   const [busqueda, setBusqueda] = useState('')
@@ -181,8 +193,10 @@ export default function CatalogoProductos() {
       <header className="cp-header">
         <div>
           <h1>📚 Catálogo de productos</h1>
-          <p className="cp-sub"><strong>{selectedClient.identificacion}</strong> — {selectedClient.nombre}</p>
+          <p className="cp-sub"><strong>{selectedClient.identificacion}</strong> — {selectedClient.nombre}
+            {selectedClient.periodo_anio ? ` · ${selectedClient.periodo_anio}` : ''}</p>
         </div>
+        <TarifaImpuestoBadge codImpuesto={form.cod_impuesto} anio={selectedClient.periodo_anio || new Date().getFullYear()} />
       </header>
 
       <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_svc} />
@@ -213,9 +227,11 @@ export default function CatalogoProductos() {
         <label className="cp-f wide"><span>Producto *</span>
           <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value.toUpperCase() })} placeholder="Nombre del producto" /></label>
         <label className="cp-f s"><span>1. Cód. Impuesto</span>
-          <input value={form.cod_impuesto} onChange={(e) => setForm({ ...form, cod_impuesto: e.target.value })} /></label>
+          <input value={form.cod_impuesto} onChange={(e) => setForm({ ...form, cod_impuesto: e.target.value })} />
+          <small className="cp-parte-desc">{IMPUESTO_LABEL[String(form.cod_impuesto || '').trim()] || ''}</small></label>
         <label className="cp-f s"><span>2. Clasificación</span>
-          <input value={form.cod_clasificacion} onChange={(e) => setForm({ ...form, cod_clasificacion: e.target.value })} /></label>
+          <input list="lk-clasif" value={form.cod_clasificacion} onChange={(e) => setForm({ ...form, cod_clasificacion: e.target.value })} />
+          <small className="cp-parte-desc">{clasifDesc(form.cod_clasificacion, form.cod_impuesto) || (sinCeros(form.cod_clasificacion) !== '0' ? 'Clasificación no encontrada' : 'Elige una clasificación')}</small></label>
         <label className="cp-f s"><span>3. Marca</span>
           <input value={form.cod_prod_sri} onChange={(e) => setForm({ ...form, cod_prod_sri: e.target.value })} placeholder="código" /></label>
         <label className="cp-f"><span>4. Presentación</span>
@@ -237,6 +253,7 @@ export default function CatalogoProductos() {
         <datalist id="lk-und">{(lk.unidad || []).map((x) => <option key={x.codigo} value={x.codigo}>{x.descripcion}</option>)}</datalist>
         <datalist id="lk-pais">{(lk.pais || []).map((x) => <option key={x.codigo} value={x.codigo}>{x.descripcion}</option>)}</datalist>
         <datalist id="lk-grado">{(lk.grado || []).slice(0, 400).map((x) => <option key={x.codigo} value={x.codigo}>{x.descripcion}</option>)}</datalist>
+        <datalist id="lk-clasif">{(lk.clasificacion || []).filter((x) => !form.cod_impuesto || String(x.impuesto) === String(form.cod_impuesto)).slice(0, 400).map((x) => <option key={`${x.impuesto}-${x.codigo}`} value={x.codigo}>{x.descripcion}</option>)}</datalist>
         <button className="cp-btn primary" onClick={guardar}>{editId ? '💾 Guardar' : '＋ Agregar'}</button>
         {editId && <button className="cp-btn ghost" onClick={cancelar}>Cancelar</button>}
       </div>
@@ -255,13 +272,17 @@ export default function CatalogoProductos() {
           <div className="cp-scroll">
             <table className="cp-table">
               <thead><tr>
-                <th>Producto</th><th>Cód. SRI</th><th>Cód. completo ICE</th><th>Cód. PVP</th><th className="r">Cap.</th><th className="r">Grado</th>
+                <th>Producto</th><th>Clasificación</th><th>Cód. SRI</th><th>Cód. completo ICE</th><th>Cód. PVP</th><th className="r">Cap.</th><th className="r">Grado</th>
                 <th className="r">Pres.</th><th className="r">Und</th><th className="r">Bot/Caja</th><th></th>
               </tr></thead>
               <tbody>
                 {rows.map((p) => (
                   <tr key={p.id} className={`${editId === p.id ? 'cp-editing' : ''} ${partesId === p.id ? 'cp-partes-sel' : ''}`}>
                     <td>{p.nombre}</td>
+                    <td className="cp-clasif" title={`Código ${sinCeros(p.cod_clasificacion) || '—'}`}>
+                      {clasifDesc(p.cod_clasificacion, p.cod_impuesto)
+                        || (sinCeros(p.cod_clasificacion) !== '0' ? sinCeros(p.cod_clasificacion) : <span className="cp-falta">—</span>)}
+                    </td>
                     <td className="cp-cod cp-click" title="Clic para desglosar el código en sus 8 partes" onClick={() => abrirPartes(p)}>{p.cod_prod_sri || '—'}</td>
                     <td className="cp-cod cp-click" title="Clic para desglosar el código en sus 8 partes" onClick={() => abrirPartes(p)}>{p.cod_prod_ice || <span className="cp-falta">— clic para armarlo —</span>}</td>
                     <td className="cp-cod">{p.cod_prod_pvp || '—'}</td>

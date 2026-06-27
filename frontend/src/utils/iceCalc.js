@@ -15,6 +15,29 @@ export const CATEGORIAS = [
 ]
 export const CAT_LABEL = Object.fromEntries(CATEGORIAS.map((c) => [c.key, c.label]))
 
+// Código de impuesto SRI ↔ categoría de tarifa específica
+export const IMPUESTO_CAT = {
+  '3031': 'ALCOHOLICA',  // ICE Bebidas alcohólicas
+  '3041': 'INDUSTRIAL',  // ICE Cerveza industrial
+  '3043': 'ARTESANAL',   // ICE Cerveza artesanal
+}
+export const IMPUESTO_LABEL = {
+  '3031': 'ICE Bebidas alcohólicas',
+  '3041': 'ICE Cerveza industrial',
+  '3043': 'ICE Cerveza artesanal',
+}
+export const CAT_IMPUESTO = { ALCOHOLICA: '3031', INDUSTRIAL: '3041', ARTESANAL: '3043' }
+
+// Tarifa específica ($/litro de alcohol puro) según código de impuesto y año.
+// Devuelve null si el código no tiene tarifa específica definida.
+export function tarifaEspecifica(codImpuesto, anio) {
+  const cat = IMPUESTO_CAT[String(codImpuesto || '').trim()]
+  if (!cat) return null
+  const tar = TARIFAS[String(anio)] || TARIFAS['2026']
+  const v = tar[cat]
+  return v == null ? null : v
+}
+
 export function ivaRate(anio, mes) {
   const a = parseInt(anio, 10) || 2026
   const m = parseInt(mes, 10) || 1

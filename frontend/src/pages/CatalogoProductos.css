@@ -1,6 +1,8 @@
 .cp-page { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; min-height: 100vh; }
+.cp-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
 .cp-header h1 { margin: 0; font-size: 1.2rem; color: #1a3d6b; font-weight: 700; }
 .cp-sub { margin: 4px 0 0; color: #64748b; font-size: 0.9rem; }
+.cp-clasif { font-size: 0.82rem; color: #334155; max-width: 220px; }
 .cp-note { font-size: 0.82rem; color: #92400e; background: #fffbeb; border-radius: 8px; padding: 8px 11px; margin: 0; }
 
 .cp-welcome { background: #fff; border-radius: 12px; padding: 40px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
