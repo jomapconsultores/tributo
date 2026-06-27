@@ -26,9 +26,9 @@ TARIFAS = {
 RANGOS_IND_2021 = {"R1": 8.41, "R2": 10.48, "R3": 13.08}
 
 PORC_ADVALOREM = 0.75
-# Categorías que pagan ICE ad-valorem (75% sobre el excedente del umbral): bebidas
-# alcohólicas y cerveza industrial. La cerveza artesanal solo paga ICE específico.
-CAT_CON_ADVALOREM = {"ALCOHOLICA", "INDUSTRIAL"}
+# El ICE ad-valorem (75% sobre el excedente del umbral) aplica a todas las bebidas
+# alcohólicas —alcohólicas, cerveza artesanal e industrial— cuando el precio por
+# litro supera el umbral del año. Cada año tiene su tarifa específica y su umbral.
 CATEGORIAS = ["ALCOHOLICA", "ARTESANAL", "INDUSTRIAL"]
 CAT_LABEL = {
     "ALCOHOLICA": "Bebidas alcohólicas",
@@ -90,7 +90,7 @@ def calcular_fila(row, anio, mes):
 
     ice_esp = tarifa * litros_pb * total_bot
     ice_adv = 0.0
-    aplica_adv = cat in CAT_CON_ADVALOREM and precio_litro > umbral
+    aplica_adv = precio_litro > umbral
     if aplica_adv:
         ice_adv = (precio_litro - umbral) * PORC_ADVALOREM * (cap / 1000.0) * total_bot
     total_ice = ice_esp + ice_adv
