@@ -8,6 +8,9 @@
 .ci-sub { margin: 3px 0 0; color: #6b7888; font-size: 0.8rem; }
 .ci-iva { font-size: 0.74rem; font-weight: 700; color: #92400e; background: #fef3c7; padding: 4px 12px; border-radius: 20px; }
 .ci-head-badges { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+/* Bajar el flujo de trabajo (panel fijo) para que quede DEBAJO del informativo de
+   tarifa específica / ad-valorem y no se monte sobre él. Solo en esta página. */
+.ci-page .wg-panel { top: 128px; }
 
 .ci-welcome { background: #fff; border: 1px solid #e8edf3; border-radius: 12px; padding: 36px; text-align: center; box-shadow: 0 1px 3px rgba(16,40,80,.05); }
 .ci-welcome h1 { margin: 0 0 8px; font-size: 1.3rem; color: #1a3d6b; }
