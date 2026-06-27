@@ -68,6 +68,23 @@ export default function CatalogoProductos() {
   const [lk, setLk] = useState({ presentacion: [], unidad: [], pais: [], capacidad: [], grado: [], clasificacion: [] })
   useEffect(() => { productsAPI.lookups?.().then((r) => setLk(r.data || {})).catch(() => {}) }, [])
 
+  // Descripción oficial de la marca del formulario: busca el código en la matriz
+  // (Códigos ICE) por código de marca + impuesto y despliega su descripción.
+  const [formMarcaInfo, setFormMarcaInfo] = useState(null)
+  useEffect(() => {
+    const m = sinCeros(form.cod_prod_sri)
+    if (!m || m === '0') { setFormMarcaInfo(null); return }
+    const t = setTimeout(() => {
+      productsAPI.searchCodigos(m, sinCeros(form.cod_impuesto) || '3031')
+        .then((r) => {
+          const data = r.data?.data || []
+          setFormMarcaInfo(data.find((d) => sinCeros(d.marca) === m) || null)
+        })
+        .catch(() => setFormMarcaInfo(null))
+    }, 250)
+    return () => clearTimeout(t)
+  }, [form.cod_prod_sri, form.cod_impuesto])
+
   // Descripción legible de la clasificación según su código (filtrada por impuesto)
   const clasifDesc = useCallback((cod, imp) => {
     const lista = lk.clasificacion || []
@@ -233,7 +250,8 @@ export default function CatalogoProductos() {
           <input list="lk-clasif" value={form.cod_clasificacion} onChange={(e) => setForm({ ...form, cod_clasificacion: e.target.value })} />
           <small className="cp-parte-desc">{clasifDesc(form.cod_clasificacion, form.cod_impuesto) || (sinCeros(form.cod_clasificacion) !== '0' ? 'Clasificación no encontrada' : 'Elige una clasificación')}</small></label>
         <label className="cp-f s"><span>3. Marca</span>
-          <input value={form.cod_prod_sri} onChange={(e) => setForm({ ...form, cod_prod_sri: e.target.value })} placeholder="código" /></label>
+          <input value={form.cod_prod_sri} onChange={(e) => setForm({ ...form, cod_prod_sri: e.target.value })} placeholder="código" />
+          <small className="cp-parte-desc">{formMarcaInfo?.descripcion || (sinCeros(form.cod_prod_sri) !== '0' ? 'Marca no encontrada en Códigos ICE' : 'Ingresa o busca la marca arriba')}</small></label>
         <label className="cp-f"><span>4. Presentación</span>
           <input list="lk-pres" value={form.presentacion} onChange={(e) => setForm({ ...form, presentacion: e.target.value })} /></label>
         <label className="cp-f"><span>5. Capacidad (ml)</span>
