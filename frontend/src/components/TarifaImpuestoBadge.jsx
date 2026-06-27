@@ -10,7 +10,8 @@ export default function TarifaImpuestoBadge({ codImpuesto, anio, rangoInd }) {
   const cat = IMPUESTO_CAT[cod]
   const tarifa = tarifaEspecifica(cod, anio, rangoInd)
   const umbral = umbralAdValorem(anio)
-  const esBebida = cat === 'ALCOHOLICA'
+  // Ad-valorem aplica a bebidas alcohólicas y cerveza industrial (no artesanal)
+  const conAdv = cat === 'ALCOHOLICA' || cat === 'INDUSTRIAL'
   const rango2021 = esIndustrial2021(cod, anio)
   const rangoLbl = rango2021 ? (RANGOS_IND_2021.find((x) => x.key === (rangoInd || 'R1'))?.label || '') : ''
 
@@ -36,7 +37,7 @@ export default function TarifaImpuestoBadge({ codImpuesto, anio, rangoInd }) {
       <span className="tib-val">
         Específica ${tarifa.toFixed(2)}/L{rango2021 && rangoLbl ? ` · ${rangoLbl}` : ''}
       </span>
-      {esBebida && umbral != null ? (
+      {conAdv && umbral != null ? (
         <span className="tib-val tib-adv">Ad-valorem: umbral ${umbral.toFixed(2)}/L · 75%</span>
       ) : (
         <span className="tib-na2">sin ad-valorem</span>

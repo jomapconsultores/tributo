@@ -107,7 +107,9 @@ export function calcRow(r, anio, mes) {
 
   const iceEsp = tarifa * litrosPb * totalBot
   let iceAdv = 0
-  const aplicaAdv = cat === 'ALCOHOLICA' && precioLitro > umbral
+  // Ad-valorem (75% sobre el excedente del umbral): bebidas alcohólicas y cerveza
+  // industrial. La cerveza artesanal solo paga ICE específico.
+  const aplicaAdv = (cat === 'ALCOHOLICA' || cat === 'INDUSTRIAL') && precioLitro > umbral
   if (aplicaAdv) iceAdv = (precioLitro - umbral) * 0.75 * (cap / 1000) * totalBot
   const totalIce = iceEsp + iceAdv
   const subtotal = precioBot * totalBot
