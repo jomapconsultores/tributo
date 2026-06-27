@@ -3,14 +3,16 @@
    =========================================================== */
 .ci-page { padding: 20px 24px; display: flex; flex-direction: column; gap: 12px; min-height: 100vh; max-width: 1280px; color: #1f2a3a; }
 
-.ci-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; border-bottom: 2px solid #d97706; padding-bottom: 10px; }
+/* Reservar a la derecha el ancho del panel fijo "Flujo de trabajo" para que el
+   informativo de tarifas no quede por debajo de él. */
+.ci-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; border-bottom: 2px solid #d97706; padding-bottom: 10px; padding-right: 244px; }
+@media (max-width: 900px) { .ci-header { padding-right: 0; } }
 .ci-header h1 { margin: 0; font-size: 1.2rem; color: #1a3d6b; font-weight: 700; letter-spacing: .2px; }
 .ci-sub { margin: 3px 0 0; color: #6b7888; font-size: 0.8rem; }
 .ci-iva { font-size: 0.74rem; font-weight: 700; color: #92400e; background: #fef3c7; padding: 4px 12px; border-radius: 20px; }
 .ci-head-badges { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
-/* Bajar el flujo de trabajo (panel fijo) para que quede DEBAJO del informativo de
-   tarifa específica / ad-valorem y no se monte sobre él. Solo en esta página. */
-.ci-page .wg-panel { top: 52px; }
+/* Panel de flujo de trabajo arriba a la derecha, en la columna reservada del header. */
+.ci-page .wg-panel { top: 44px; }
 
 .ci-welcome { background: #fff; border: 1px solid #e8edf3; border-radius: 12px; padding: 36px; text-align: center; box-shadow: 0 1px 3px rgba(16,40,80,.05); }
 .ci-welcome h1 { margin: 0 0 8px; font-size: 1.3rem; color: #1a3d6b; }
