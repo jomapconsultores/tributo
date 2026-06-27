@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client
 from services.codigos_ice import buscar_bd, lookups as codigos_lookups, importar_a_bd, contar_bd
-from tenancy import assert_client_owner
+from tenancy import assert_client_owner, can_access_identificacion
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
@@ -79,8 +79,15 @@ async def codigos_ice_lookups(_: str = Depends(get_current_user)):
 async def list_products(identificacion: str = Query(...), user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        res = supabase.table("client_products").select(COLUMNS).eq("identificacion", identificacion).eq("user_id", user_id).order("nombre").execute()
+        # El catálogo se guarda por contribuyente (RUC) y se comparte entre todos
+        # sus usuarios autorizados: se muestra completo (lo cree quien lo cree),
+        # igual que /by-client, para que socio/admin trabajen sobre lo mismo.
+        if not can_access_identificacion(user_id, identificacion):
+            raise HTTPException(status_code=404, detail="Contribuyente no encontrado")
+        res = supabase.table("client_products").select(COLUMNS).eq("identificacion", identificacion).order("nombre").execute()
         return {"data": res.data or []}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -110,10 +117,14 @@ async def create_product(entry: ProductIn, user_id: str = Depends(get_current_us
         data["nombre"] = (data.get("nombre") or "").strip().upper()
         if not data["nombre"]:
             raise HTTPException(status_code=400, detail="El nombre es obligatorio")
+        if not can_access_identificacion(user_id, data["identificacion"]):
+            raise HTTPException(status_code=404, detail="Contribuyente no encontrado")
+        # El catálogo se comparte por RUC: si ya existe un producto con ese
+        # nombre (lo cree quien lo cree), se actualiza en lugar de duplicar.
         existing = supabase.table("client_products").select("id")\
-            .eq("identificacion", data["identificacion"]).eq("nombre", data["nombre"]).eq("user_id", user_id).execute()
+            .eq("identificacion", data["identificacion"]).eq("nombre", data["nombre"]).execute()
         if existing.data:
-            res = supabase.table("client_products").update(data).eq("id", existing.data[0]["id"]).eq("user_id", user_id).execute()
+            res = supabase.table("client_products").update(data).eq("id", existing.data[0]["id"]).execute()
         else:
             res = supabase.table("client_products").insert(data).execute()
         return res.data[0] if res.data else None
@@ -123,15 +134,27 @@ async def create_product(entry: ProductIn, user_id: str = Depends(get_current_us
         raise HTTPException(status_code=400, detail=str(e))
 
 
+def _assert_puede_editar_producto(supabase, prod_id, user_id):
+    """Autoriza por el RUC del producto (catálogo compartido), no por quién lo creó."""
+    p = supabase.table("client_products").select("identificacion").eq("id", prod_id).execute()
+    if not p.data:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    if not can_access_identificacion(user_id, p.data[0]["identificacion"]):
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+
+
 @router.put("/{prod_id}")
 async def update_product(prod_id: str, entry: ProductUpdate, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
+        _assert_puede_editar_producto(supabase, prod_id, user_id)
         data = {k: v for k, v in entry.dict().items() if v is not None}
         if "nombre" in data:
             data["nombre"] = data["nombre"].strip().upper()
-        res = supabase.table("client_products").update(data).eq("id", prod_id).eq("user_id", user_id).execute()
+        res = supabase.table("client_products").update(data).eq("id", prod_id).execute()
         return res.data[0] if res.data else None
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -140,7 +163,10 @@ async def update_product(prod_id: str, entry: ProductUpdate, user_id: str = Depe
 async def delete_product(prod_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("client_products").delete().eq("id", prod_id).eq("user_id", user_id).execute()
+        _assert_puede_editar_producto(supabase, prod_id, user_id)
+        supabase.table("client_products").delete().eq("id", prod_id).execute()
         return {"message": "Eliminado"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

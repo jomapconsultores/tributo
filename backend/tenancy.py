@@ -106,3 +106,15 @@ def visible_client_ids(user_id: str):
     if rol_de(user_id) == "admin":
         return None
     return {c["id"] for c in visible_clients(user_id, "id")}
+
+
+def can_access_identificacion(user_id: str, identificacion: str) -> bool:
+    """True si el usuario puede ver algún contribuyente con esa identificación.
+    Para datos guardados por RUC (catálogo de productos, etc.) que se comparten
+    entre todos los usuarios autorizados del contribuyente, sin importar quién
+    los creó. Mismas reglas de rol que visible_clients."""
+    from routers.access import rol_de
+    if rol_de(user_id) == "admin":
+        return True
+    return any(c.get("identificacion") == identificacion
+               for c in visible_clients(user_id, "identificacion"))
