@@ -69,7 +69,7 @@
 /* Botón mínimo para reabrir cuando está oculto: abajo a la derecha y transparente */
 .wg-reopen {
   position: fixed;
-  bottom: 14px;
+  bottom: 52px;
   right: 14px;
   z-index: 100;
   width: 30px;
