@@ -9,6 +9,7 @@ export default function RecursosICE() {
   const [info, setInfo] = useState(null)
   const [busy, setBusy] = useState('')
   const [total, setTotal] = useState(null)
+  const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef(null)
 
   const loadInfo = () => resourcesAPI.codigosInfo().then((r) => setInfo(r.data)).catch(() => setInfo({ exists: false }))
@@ -34,6 +35,16 @@ export default function RecursosICE() {
     } catch (e) {
       alert('No se pudo descargar: ' + (e.response?.data?.detail || e.message))
     }
+  }
+
+  const aceptarArchivo = (file) => {
+    if (!file) return
+    if (!/\.(xls|xlsx)$/i.test(file.name)) { alert('Solo se permite un archivo Excel (.xls o .xlsx).'); return }
+    reemplazar(file)
+  }
+  const onDrop = (e) => {
+    e.preventDefault(); setDragOver(false)
+    aceptarArchivo(e.dataTransfer.files?.[0])
   }
 
   const reemplazar = async (file) => {
@@ -81,10 +92,24 @@ export default function RecursosICE() {
             <strong> Actualizar en la base</strong> para sincronizar (borra los que ya no estén y agrega los nuevos).
           </p>
           <p className="rec-meta">En la base: <strong>{total === null ? '…' : total.toLocaleString()}</strong> códigos importados.</p>
+          <input ref={fileRef} type="file" accept=".xls,.xlsx" style={{ display: 'none' }}
+            onChange={(e) => { aceptarArchivo(e.target.files?.[0]); e.target.value = '' }} />
+          <div
+            className={`rec-drop${dragOver ? ' over' : ''}`}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+            onDragEnter={(e) => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={onDrop}
+            onClick={() => fileRef.current?.click()}
+            title="Arrastra el archivo de códigos ICE o haz clic para elegirlo"
+          >
+            <span className="rec-drop-ico">📥</span>
+            <span className="rec-drop-txt">
+              {dragOver ? 'Suelta el archivo para reemplazarlo' : 'Arrastra aquí el archivo .xls/.xlsx, o haz clic para elegirlo'}
+            </span>
+          </div>
           <div className="rec-actions">
             <button className="rec-btn primary" onClick={descargarCodigos} disabled={!info?.exists}>⬇ Descargar</button>
-            <input ref={fileRef} type="file" accept=".xls,.xlsx" style={{ display: 'none' }}
-              onChange={(e) => { if (e.target.files?.[0]) reemplazar(e.target.files[0]) }} />
             <button className="rec-btn replace" onClick={() => fileRef.current?.click()}>🔁 Reemplazar archivo</button>
             <button className="rec-btn primary" onClick={importar} disabled={!info?.exists}>🔄 Actualizar en la base</button>
           </div>
