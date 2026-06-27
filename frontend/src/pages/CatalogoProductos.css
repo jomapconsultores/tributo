@@ -2,7 +2,7 @@
 .cp-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
 /* Bajar el flujo de trabajo (panel fijo) para que quede DEBAJO del informativo de
    tarifa específica / ad-valorem y no se monte sobre él. Solo en esta página. */
-.cp-page .wg-panel { top: 128px; }
+.cp-page .wg-panel { top: 90px; }
 .cp-header h1 { margin: 0; font-size: 1.2rem; color: #1a3d6b; font-weight: 700; }
 .cp-sub { margin: 4px 0 0; color: #64748b; font-size: 0.9rem; }
 .cp-clasif { font-size: 0.82rem; color: #334155; max-width: 220px; }
