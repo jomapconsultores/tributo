@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { iceCalcAPI, productsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, MESES } from '../utils/periodo'
-import { calcRow, ivaRate, CATEGORIAS, CAT_LABEL, CAT_IMPUESTO } from '../utils/iceCalc'
+import { calcRow, ivaRate, CATEGORIAS, CAT_LABEL, CAT_IMPUESTO, RANGOS_IND_2021, aplicaRangoInd2021 } from '../utils/iceCalc'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import WorkflowGuide from '../components/WorkflowGuide'
@@ -27,7 +27,7 @@ const CALC_STEPS = [
 const EMPTY = {
   producto: '', categoria: 'ALCOHOLICA', por_cajas: true,
   cajas: 1, botellas_por_caja: 12, unidades: 0, grado: 15, capacidad: 750, precio: 0,
-  anio: 2026, mes: 1,
+  anio: 2026, mes: 1, rango_ind: 'R1',
 }
 
 export default function CalculoICE() {
@@ -74,7 +74,7 @@ export default function CalculoICE() {
     try {
       if (editId) await iceCalcAPI.update(editId, form)
       else await iceCalcAPI.create({ client_id: selectedClientId, ...form })
-      setForm((f) => ({ ...EMPTY, categoria: f.categoria, por_cajas: f.por_cajas, anio: f.anio, mes: f.mes }))
+      setForm((f) => ({ ...EMPTY, categoria: f.categoria, por_cajas: f.por_cajas, anio: f.anio, mes: f.mes, rango_ind: f.rango_ind }))
       setEditId(null)
       await load()
     } catch (e) {
@@ -87,11 +87,11 @@ export default function CalculoICE() {
       producto: r.producto || '', categoria: r.categoria || 'ALCOHOLICA', por_cajas: r.por_cajas !== false,
       cajas: r.cajas ?? 0, botellas_por_caja: r.botellas_por_caja ?? 12, unidades: r.unidades ?? 0,
       grado: r.grado ?? 15, capacidad: r.capacidad ?? 750, precio: r.precio ?? 0,
-      anio: r.anio || anio, mes: r.mes || mes,
+      anio: r.anio || anio, mes: r.mes || mes, rango_ind: r.rango_ind || 'R1',
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
-  const cancelarEdicion = () => { setEditId(null); setForm((f) => ({ ...EMPTY, anio: f.anio, mes: f.mes })) }
+  const cancelarEdicion = () => { setEditId(null); setForm((f) => ({ ...EMPTY, anio: f.anio, mes: f.mes, rango_ind: f.rango_ind })) }
 
   const elegirDelCatalogo = (nombre) => {
     const p = catalogo.find((c) => c.nombre === nombre)
@@ -160,7 +160,7 @@ export default function CalculoICE() {
           <p className="ci-sub"><strong className="sub-ruc">{selectedClient.identificacion}</strong> — {selectedClient.nombre} · {periodoLargo(selectedClient)}</p>
         </div>
         <div className="ci-head-badges">
-          <TarifaImpuestoBadge codImpuesto={CAT_IMPUESTO[form.categoria]} anio={form.anio} />
+          <TarifaImpuestoBadge codImpuesto={CAT_IMPUESTO[form.categoria]} anio={form.anio} rangoInd={form.rango_ind} />
           <span className="ci-iva">IVA {Math.round(iva * 100)}%</span>
         </div>
       </header>
@@ -191,6 +191,12 @@ export default function CalculoICE() {
           <select className="ci-in" value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })}>
             {CATEGORIAS.map((c) => <option key={c.key} value={c.key}>{CAT_IMPUESTO[c.key]} · {c.label}</option>)}
           </select></label>
+        {aplicaRangoInd2021(form.categoria, form.anio) && (
+          <label className="ci-field wide"><span>Rango de producción (cerveza industrial 2021)</span>
+            <select className="ci-in" value={form.rango_ind || 'R1'} onChange={(e) => setForm({ ...form, rango_ind: e.target.value })}>
+              {RANGOS_IND_2021.map((r) => <option key={r.key} value={r.key}>{r.label} — ${r.tarifa.toFixed(2)}/L</option>)}
+            </select></label>
+        )}
         <label className="ci-field"><span>¿Vende por cajas?</span>
           <span className="ci-check"><input type="checkbox" checked={form.por_cajas} onChange={(e) => setForm({ ...form, por_cajas: e.target.checked })} /> {form.por_cajas ? 'Sí' : 'No'}</span></label>
         {form.por_cajas ? (

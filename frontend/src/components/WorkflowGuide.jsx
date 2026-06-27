@@ -4,7 +4,8 @@ import './WorkflowGuide.css'
 
 export default function WorkflowGuide({ steps }) {
   const navigate = useNavigate()
-  const [open, setOpen] = useState(true)
+  // Arranca contraído; se expande al hacer clic en la cabecera.
+  const [open, setOpen] = useState(false)
 
   return (
     <div className="wg-panel">

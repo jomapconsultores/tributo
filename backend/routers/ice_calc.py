@@ -12,7 +12,7 @@ from tenancy import assert_client_owner, visible_client_ids
 router = APIRouter(prefix="/api/ice-calc", tags=["ice-calc"])
 
 COLUMNS = ("id,client_id,producto,categoria,por_cajas,cajas,botellas_por_caja,"
-           "unidades,grado,capacidad,precio,anio,mes,created_at")
+           "unidades,grado,capacidad,precio,anio,mes,rango_ind,created_at")
 
 
 class CalcRow(BaseModel):
@@ -28,6 +28,7 @@ class CalcRow(BaseModel):
     precio: Optional[float] = 0
     anio: Optional[int] = None
     mes: Optional[int] = None
+    rango_ind: Optional[str] = None
 
 
 class CalcUpdate(BaseModel):
@@ -40,6 +41,7 @@ class CalcUpdate(BaseModel):
     grado: Optional[float] = None
     capacidad: Optional[float] = None
     precio: Optional[float] = None
+    rango_ind: Optional[str] = None
 
 
 class BulkIds(BaseModel):

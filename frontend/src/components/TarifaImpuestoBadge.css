@@ -31,3 +31,12 @@
   padding: 2px 8px;
   border-radius: 6px;
 }
+.tib-adv {
+  background: rgba(255, 255, 255, 0.28);
+}
+.tib-na2 {
+  font-size: 0.72rem;
+  font-weight: 600;
+  opacity: 0.85;
+  font-style: italic;
+}

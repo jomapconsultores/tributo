@@ -28,14 +28,48 @@ export const IMPUESTO_LABEL = {
 }
 export const CAT_IMPUESTO = { ALCOHOLICA: '3031', INDUSTRIAL: '3041', ARTESANAL: '3043' }
 
+// 2021 — cerveza industrial: tarifa específica por escala de producción del
+// productor (Res. NAC-DGERCGC20-00000078). Desde 2022 hay tarifa única.
+export const RANGOS_IND_2021 = [
+  { key: 'R1', label: 'Pequeña escala (≤ 730.000 hl)', tarifa: 8.41 },
+  { key: 'R2', label: 'Mediana escala (≤ 1.400.000 hl)', tarifa: 10.48 },
+  { key: 'R3', label: 'Gran escala (> 1.400.000 hl)', tarifa: 13.08 },
+]
+export const RANGO_IND_2021_DEFAULT = 'R1'
+export function tarifaRangoInd2021(rangoKey) {
+  const r = RANGOS_IND_2021.find((x) => x.key === rangoKey)
+  return r ? r.tarifa : RANGOS_IND_2021[0].tarifa
+}
+// ¿Aplica el selector de rango? (solo cerveza industrial 2021)
+export function aplicaRangoInd2021(categoria, anio) {
+  return (categoria || '').toUpperCase() === 'INDUSTRIAL' && String(anio) === '2021'
+}
+
 // Tarifa específica ($/litro de alcohol puro) según código de impuesto y año.
+// Para cerveza industrial 2021 usa la tarifa del rango (rangoInd) si se indica.
 // Devuelve null si el código no tiene tarifa específica definida.
-export function tarifaEspecifica(codImpuesto, anio) {
+export function tarifaEspecifica(codImpuesto, anio, rangoInd) {
   const cat = IMPUESTO_CAT[String(codImpuesto || '').trim()]
   if (!cat) return null
+  if (cat === 'INDUSTRIAL' && String(anio) === '2021' && rangoInd) {
+    return tarifaRangoInd2021(rangoInd)
+  }
   const tar = TARIFAS[String(anio)] || TARIFAS['2026']
   const v = tar[cat]
   return v == null ? null : v
+}
+
+// Umbral ad-valorem ($/litro) del año. El ICE ad-valorem (75% sobre el excedente)
+// solo aplica a bebidas alcohólicas (cód. 3031); en cervezas no hay ad-valorem.
+export function umbralAdValorem(anio) {
+  const tar = TARIFAS[String(anio)] || TARIFAS['2026']
+  return tar.umbral == null ? null : tar.umbral
+}
+
+// En 2021 la cerveza industrial tuvo tarifas específicas por rango de volumen de
+// producción. El sistema usa el Rango 1 (8.41) como referencia.
+export function esIndustrial2021(codImpuesto, anio) {
+  return IMPUESTO_CAT[String(codImpuesto || '').trim()] === 'INDUSTRIAL' && String(anio) === '2021'
 }
 
 export function ivaRate(anio, mes) {
@@ -51,7 +85,10 @@ const f = (v) => parseFloat(v) || 0
 export function calcRow(r, anio, mes) {
   const tar = TARIFAS[String(anio)] || TARIFAS['2026']
   const cat = (r.categoria || 'ALCOHOLICA').toUpperCase()
-  const tarifa = tar[cat] || 0
+  // 2021 cerveza industrial: tarifa por escala de producción (rango); resto: tabla anual
+  const tarifa = (cat === 'INDUSTRIAL' && String(anio) === '2021' && r.rango_ind)
+    ? tarifaRangoInd2021(r.rango_ind)
+    : (tar[cat] || 0)
   const umbral = tar.umbral || 0
   const iva = ivaRate(anio, mes)
 

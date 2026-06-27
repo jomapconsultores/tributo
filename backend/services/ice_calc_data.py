@@ -20,6 +20,11 @@ TARIFAS = {
     "2026": {"ALCOHOLICA": 10.41, "ARTESANAL": 1.56, "INDUSTRIAL": 13.62, "umbral": 4.72},
 }
 
+# 2021 — cerveza industrial: tarifa específica por escala de producción del
+# productor (Res. NAC-DGERCGC20-00000078). Desde 2022 hay tarifa única (13.08…).
+#   R1 pequeña escala (≤730.000 hl) · R2 mediana (≤1.400.000 hl) · R3 gran (>1.4M hl)
+RANGOS_IND_2021 = {"R1": 8.41, "R2": 10.48, "R3": 13.08}
+
 PORC_ADVALOREM = 0.75
 CATEGORIAS = ["ALCOHOLICA", "ARTESANAL", "INDUSTRIAL"]
 CAT_LABEL = {
@@ -61,6 +66,9 @@ def calcular_fila(row, anio, mes):
     if cat not in CATEGORIAS:
         cat = "ALCOHOLICA"
     tarifa = tar.get(cat, 0.0)
+    # 2021 cerveza industrial: tarifa por escala de producción (rango elegido)
+    if cat == "INDUSTRIAL" and str(anio) == "2021" and row.get("rango_ind"):
+        tarifa = RANGOS_IND_2021.get(row.get("rango_ind"), tarifa)
     umbral = tar.get("umbral", 0.0)
     iva_tasa = iva_rate(anio, mes)
 
