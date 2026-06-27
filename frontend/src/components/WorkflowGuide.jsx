@@ -13,7 +13,9 @@ const readJSON = (k) => { try { return JSON.parse(sessionStorage.getItem(k)) } c
 export default function WorkflowGuide({ steps }) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(() => sessionStorage.getItem(OPEN_KEY) === '1')
-  const [hidden, setHidden] = useState(() => sessionStorage.getItem(HIDDEN_KEY) === '1')
+  // Arranca OCULTO por defecto cada sesión (solo el botón 📋). Se muestra si el
+  // usuario lo abre (guarda '0'); vuelve a ocultarse en una sesión nueva.
+  const [hidden, setHidden] = useState(() => sessionStorage.getItem(HIDDEN_KEY) !== '0')
   const [pos, setPos] = useState(() => {
     const p = readJSON(POS_KEY)
     return (p && typeof p.x === 'number' && typeof p.y === 'number') ? p : null
