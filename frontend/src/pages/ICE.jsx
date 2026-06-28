@@ -272,16 +272,28 @@ export default function ICE() {
     ].map((x) => ({ ...x, dif: x.factura - x.audit }))
   }, [okRows, report])
 
-  // Diagnóstico de diferencias por producto (factura vs cálculo)
+  // Diagnóstico de diferencias por producto (factura vs cálculo). Se compara con la MISMA
+  // llave: facturado por nombre de línea vs auditoría reagrupada por su producto ORIGINAL
+  // (así los packs se comparan contra su línea facturada y no contra sus componentes).
   const diferencias = useMemo(() => {
-    if (!report?.por_producto) return []
+    if (!report?.detalle) return []
     const fac = {}
     cuadroProducto.forEach((p) => { fac[p.producto] = p })
+    const aud = {}
+    report.detalle.forEach((d) => {
+      const k = sinCorp(d.producto_original || '')
+      const a = aud[k] || (aud[k] = { producto: k, botellas: 0, total_ice: 0, ice_especifico: 0, ice_advalorem: 0, aplica_adv: false })
+      a.botellas += parseFloat(d.botellas) || 0
+      a.total_ice += parseFloat(d.total_ice) || 0
+      a.ice_especifico += parseFloat(d.ice_especifico) || 0
+      a.ice_advalorem += parseFloat(d.ice_advalorem) || 0
+      a.aplica_adv = a.aplica_adv || d.aplica_adv
+    })
     const out = []
-    report.por_producto.forEach((a) => {
+    Object.values(aud).forEach((a) => {
       const f = fac[a.producto] || {}
       const facIce = parseFloat(f.valor_ice) || 0
-      const audIce = parseFloat(a.total_ice) || 0
+      const audIce = a.total_ice
       const dif = facIce - audIce
       if (Math.abs(dif) > 0.01) {
         out.push({
@@ -290,7 +302,7 @@ export default function ICE() {
         })
       }
     })
-    return out
+    return out.sort((x, y) => Math.abs(y.dif) - Math.abs(x.dif))
   }, [report, cuadroProducto])
 
   const filtered = useMemo(() => {
@@ -775,7 +787,7 @@ export default function ICE() {
       {diferencias.length > 0 && (
         <CuadroFiltrable title="🧠 Análisis de diferencias (factura vs cálculo)" data={diferencias}
           fields={['producto']} value={filtros.dif} onFilter={(v) => setFiltro('dif', v)}
-          hint={<p className="ice-verif-note">{diferencias.length} producto(s) con diferencia. Haz clic en una fila para ver la explicación.</p>}>
+          hint={<p className="ice-verif-note">{diferencias.length} producto(s) con diferencia (los TOTALES de abajo son SOLO de estos productos, no el total general). El total general del período es: <b>ICE facturado {money(okRows.reduce((s, r) => s + (parseFloat(r.valor_ice) || 0), 0))}</b> vs <b>calculado {money(g?.total_ice)}</b> (ver cuadro “Revisión de valores”). Haz clic en una fila para ver la explicación.</p>}>
           {(filt) => (
             <table className="ice-rep-table ice-dif-table">
               <thead><tr>
@@ -820,7 +832,7 @@ export default function ICE() {
                 })}
               </tbody>
               <tfoot><tr className="ice-rep-total">
-                <td>TOTAL · {filt.length} producto(s)</td>
+                <td>Subtotal · solo {filt.length} producto(s) con diferencia</td>
                 <td className="r">{money(filt.reduce((s, d) => s + (parseFloat(d.facIce) || 0), 0))}</td>
                 <td className="r">{money(filt.reduce((s, d) => s + (parseFloat(d.audIce) || 0), 0))}</td>
                 <td className="r">{money(filt.reduce((s, d) => s + (parseFloat(d.dif) || 0), 0))}</td>
