@@ -141,8 +141,9 @@ export default function RebajasExenciones() {
       if (d.cumple) { estado = 'ok'; texto = `✔ Cumple · ${nombre} · ${d.categoria}${d.vigencia ? ' · ' + d.vigencia : ''}` }
       else if (d.calificado === true) { estado = 'no'; texto = `✗ No cumple · ${nombre} · ${d.categoria} (no es MIPYME)` }
       else if (d.calificado === false) { estado = 'no'; texto = `✗ No cumple · ${nombre} · no categorizado${d.tipo ? ' · ' + d.tipo : ''}` }
+      if (d.actividad_economica) texto += ` · Actividad SRI: ${d.actividad_economica}`
       setVerif({ estado, texto })
-      try { await rebajasAPI.upsertProveedor({ identificacion: ident, ruc, nombre: d.razon_social || '', calificado: d.cumple === true, categoria: d.categoria || '', vigencia: d.vigencia || '' }); loadProv() } catch { /* */ }
+      try { await rebajasAPI.upsertProveedor({ identificacion: ident, ruc, nombre: d.razon_social || '', calificado: d.cumple === true, categoria: d.categoria || '', actividad: d.actividad_economica || '', vigencia: d.vigencia || '' }); loadProv() } catch { /* */ }
     } catch (e) {
       setVerif({ estado: 'wait', texto: 'Error al verificar: ' + (e.response?.data?.detail || e.message) })
     }
@@ -191,7 +192,7 @@ export default function RebajasExenciones() {
       const r = await rebajasAPI.verificarRuc(ruc); const d = r.data
       const patch = { calificado: d.cumple === true, proveedor_nombre: d.razon_social || row.proveedor_nombre || '' }
       await rebajasAPI.update(row.id, { ruc_proveedor: ruc, ...patch })
-      await rebajasAPI.upsertProveedor({ identificacion: ident, ruc, nombre: d.razon_social || '', calificado: d.cumple === true, categoria: d.categoria || '', vigencia: d.vigencia || '' })
+      await rebajasAPI.upsertProveedor({ identificacion: ident, ruc, nombre: d.razon_social || '', calificado: d.cumple === true, categoria: d.categoria || '', actividad: d.actividad_economica || '', vigencia: d.vigencia || '' })
       setFila(row.id, patch); loadProv()
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
     finally { setBusy('') }
@@ -243,7 +244,7 @@ export default function RebajasExenciones() {
   }
 
   // ── Panel de proveedores calificados ──
-  const [provForm, setProvForm] = useState({ ruc: '', nombre: '', calificado: false, vigente_hasta: '' })
+  const [provForm, setProvForm] = useState({ ruc: '', nombre: '', calificado: false, vigente_hasta: '', actividad: '' })
   const [provDragOver, setProvDragOver] = useState(false)
   const provFileRef = useRef(null)
   const [provOpen, setProvOpen] = useState(false)
@@ -253,7 +254,7 @@ export default function RebajasExenciones() {
   const provGuardarAuto = (nf) => {
     const ruc = (nf.ruc || '').trim()
     if (!ruc) return
-    rebajasAPI.upsertProveedor({ identificacion: ident, ruc, nombre: nf.nombre, calificado: nf.calificado, vigente_hasta: nf.vigente_hasta || null })
+    rebajasAPI.upsertProveedor({ identificacion: ident, ruc, nombre: nf.nombre, calificado: nf.calificado, actividad: nf.actividad || '', vigente_hasta: nf.vigente_hasta || null })
       .then(() => loadProv()).catch(() => {})
   }
   const provField = (patch, guardar = false) => setProvForm((f) => {
@@ -266,8 +267,9 @@ export default function RebajasExenciones() {
     setBusy('Verificando…')
     try {
       const r = await rebajasAPI.verificarRuc(ruc); const d = r.data
-      const nf = { ...provForm, ruc, nombre: d.razon_social || provForm.nombre, calificado: d.cumple === true }
+      const nf = { ...provForm, ruc, nombre: d.razon_social || provForm.nombre, calificado: d.cumple === true, actividad: d.actividad_economica || provForm.actividad }
       setProvForm(nf); provGuardarAuto(nf) // se cataloga al instante
+      if (d.actividad_economica) setVerif({ estado: d.cumple ? 'ok' : 'no', texto: `${d.cumple ? '✔ Cumple' : '✗ No cumple'} · ${d.razon_social || ruc}${d.categoria ? ' · ' + d.categoria : ''} · Actividad SRI: ${d.actividad_economica}` })
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy('') }
   }
   // Subir documentos: EXTRAE los datos del documento (RUC, nombre, calificación,
@@ -456,14 +458,15 @@ export default function RebajasExenciones() {
 
           <div className="re-table-wrap" style={{ marginTop: 10 }}>
             <table className="re-table">
-              <thead><tr><th>RUC</th><th>Nombre / Empresa</th><th>Calificación</th><th>Vigencia (inicio – fin)</th><th>Documentos</th><th></th></tr></thead>
+              <thead><tr><th>RUC</th><th>Nombre / Empresa</th><th>Actividad (SRI)</th><th>Calificación</th><th>Vigencia (inicio – fin)</th><th>Documentos</th><th></th></tr></thead>
               <tbody>
                 {proveedores.length === 0 ? (
-                  <tr><td colSpan={6} className="re-empty">Sin proveedores guardados aún.</td></tr>
+                  <tr><td colSpan={7} className="re-empty">Sin proveedores guardados aún.</td></tr>
                 ) : proveedores.map((p) => (
                   <tr key={p.id}>
                     <td>{p.ruc}</td>
                     <td>{p.nombre || '—'}</td>
+                    <td className="re-cat" title={p.actividad || ''}>{p.actividad || '—'}</td>
                     <td>
                       <span className={`re-badge ${p.calificado ? 'ok' : 'no'}`}>{p.calificado ? 'Calificado' : 'No'}</span>
                       {p.categoria && <div className="re-cat">{p.categoria}</div>}

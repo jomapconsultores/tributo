@@ -276,7 +276,7 @@ async def parse_file(
 
 # ── Catálogo reutilizable de proveedores (RUC → nombre + calificado) ──
 
-PROV_COLS = "id,identificacion,ruc,nombre,calificado,categoria,vigencia,vigencia_inicio,vigente_hasta,documentos,verificado_at"
+PROV_COLS = "id,identificacion,ruc,nombre,calificado,categoria,actividad,vigencia,vigencia_inicio,vigente_hasta,documentos,verificado_at"
 PROV_BUCKET = "proveedores"
 
 
@@ -325,6 +325,7 @@ class ProveedorIn(BaseModel):
     nombre: Optional[str] = ""
     calificado: Optional[bool] = False
     categoria: Optional[str] = ""
+    actividad: Optional[str] = ""
     vigencia: Optional[str] = ""
     vigencia_inicio: Optional[str] = None
     vigente_hasta: Optional[str] = None
@@ -341,7 +342,7 @@ async def list_proveedores(identificacion: str = Query(...), user_id: str = Depe
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _upsert_proveedor(supabase, user_id, ident, ruc, nombre, calificado, categoria="", vigencia="", vigente_hasta=None, vigencia_inicio=None):
+def _upsert_proveedor(supabase, user_id, ident, ruc, nombre, calificado, categoria="", vigencia="", vigente_hasta=None, vigencia_inicio=None, actividad=None):
     data = {
         "user_id": user_id, "identificacion": ident, "ruc": (ruc or "").strip(),
         "nombre": (nombre or "").strip().upper(), "calificado": bool(calificado),
@@ -352,6 +353,8 @@ def _upsert_proveedor(supabase, user_id, ident, ruc, nombre, calificado, categor
         data["vigente_hasta"] = vigente_hasta
     if vigencia_inicio:
         data["vigencia_inicio"] = vigencia_inicio
+    if actividad:
+        data["actividad"] = actividad
     return supabase.table("rebajas_proveedores").upsert(
         data, on_conflict="user_id,identificacion,ruc").execute()
 
@@ -364,7 +367,7 @@ async def upsert_proveedor(entry: ProveedorIn, user_id: str = Depends(get_curren
             raise HTTPException(status_code=400, detail="El RUC es obligatorio")
         supabase = get_supabase_client()
         res = _upsert_proveedor(supabase, user_id, entry.identificacion, entry.ruc,
-                                entry.nombre, entry.calificado, entry.categoria, entry.vigencia, entry.vigente_hasta, entry.vigencia_inicio)
+                                entry.nombre, entry.calificado, entry.categoria, entry.vigencia, entry.vigente_hasta, entry.vigencia_inicio, entry.actividad)
         return res.data[0] if res.data else None
     except HTTPException:
         raise
@@ -432,7 +435,7 @@ async def subir_documento(
         path = f"{identificacion}/{ruc}/{stamp}_{safe}"
         supabase.storage.from_(PROV_BUCKET).upload(
             path, content, {"content-type": file.content_type or "application/octet-stream", "upsert": "true"})
-        cur = supabase.table("rebajas_proveedores").select("id,documentos,nombre,calificado,vigente_hasta,vigencia_inicio")\
+        cur = supabase.table("rebajas_proveedores").select("id,documentos,nombre,calificado,vigente_hasta,vigencia_inicio,actividad")\
             .eq("user_id", user_id).eq("identificacion", identificacion).eq("ruc", ruc).execute().data
         prev = cur[0] if cur else {}
         docs = (prev.get("documentos") or []) if prev else []
@@ -442,6 +445,7 @@ async def subir_documento(
             "nombre": (nombre or ia.get("nombre") or verif.get("razon_social") or prev.get("nombre") or "").strip().upper(),
             "calificado": bool(calificado) or bool(ia.get("calificado")) or bool(verif.get("cumple")) or bool(prev.get("calificado")),
             "categoria": ia.get("categoria") or verif.get("categoria") or "",
+            "actividad": verif.get("actividad_economica") or prev.get("actividad") or "",
             "vigencia": verif.get("vigencia") or "",
             "documentos": docs,
             "verificado_at": datetime.now(timezone.utc).isoformat(),
@@ -497,7 +501,8 @@ async def verificar_todos(
             cumple = bool(d.get("cumple"))
             nombre = d.get("razon_social") or ""
             _upsert_proveedor(supabase, user_id, identificacion, ruc, nombre, cumple,
-                              d.get("categoria", ""), d.get("vigencia", ""))
+                              d.get("categoria", ""), d.get("vigencia", ""),
+                              d.get("vigencia_fin"), d.get("vigencia_inicio"), d.get("actividad_economica"))
             # Propaga a los componentes guardados con ese RUC
             upd = supabase.table("rebajas_ingredientes").update(
                 {"calificado": cumple, "proveedor_nombre": (nombre or "").upper()})\

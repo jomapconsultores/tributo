@@ -54,6 +54,8 @@ def consultar_sri(ruc):
                 "razon_social": d.get("razonSocial", "") or "",
                 "tipo": d.get("tipoContribuyente", "") or "",
                 "estado": d.get("estadoContribuyenteRuc", "") or "",
+                "actividad_economica": d.get("actividadEconomicaPrincipal", "") or "",
+                "regimen": d.get("regimen", "") or "",
             }
     except Exception:
         pass
@@ -67,7 +69,8 @@ def verificar_ruc(ruc):
 
     res = {"calificado": None, "cumple": False, "razon_social": "", "categoria": "",
            "vigencia": "", "vigencia_inicio": None, "vigencia_fin": None,
-           "tipo": "", "fuente": "", "mensaje": ""}
+           "tipo": "", "actividad_economica": "", "regimen": "", "estado": "",
+           "fuente": "", "mensaje": ""}
     try:
         s = requests.Session()
         s.headers.update(HDRS)
@@ -113,10 +116,13 @@ def verificar_ruc(ruc):
     except Exception as e:
         res["mensaje"] = "Ministerio no disponible: " + str(e)
 
-    # Respaldo SRI: nombre/tipo si no se obtuvo o no está categorizado
-    if not res["razon_social"]:
-        sri = consultar_sri(ruc)
-        if sri:
+    # SRI: siempre se consulta para traer la actividad económica (y nombre/tipo si faltan)
+    sri = consultar_sri(ruc)
+    if sri:
+        res["actividad_economica"] = sri.get("actividad_economica", "")
+        res["regimen"] = sri.get("regimen", "")
+        res["estado"] = sri.get("estado", "")
+        if not res["razon_social"]:
             res["razon_social"] = sri.get("razon_social", "")
             res["tipo"] = sri.get("tipo", "")
             if res["fuente"] == "":
