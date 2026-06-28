@@ -218,8 +218,9 @@ export default function ICE() {
     const facturaIce = okRows.reduce((s, r) => s + (parseFloat(r.valor_ice) || 0), 0)
     const facturaIva = okRows.reduce((s, r) => s + (parseFloat(r.valor_iva) || 0), 0)
     const facturaSub = okRows.reduce((s, r) => s + (parseFloat(r.precio_total_sin_impuesto) || 0), 0)
-    // Total real de facturas = suma del total de CADA factura una sola vez (no por línea)
-    const facturaTotal = cuadroFactura.reduce((s, f) => s + (f.total || 0), 0)
+    // Total de las líneas de licor (subtotal + ICE + IVA). NO importe_total, que es el total
+    // COMPLETO de la factura (incluye productos no-ICE) y no es comparable con la auditoría ICE.
+    const facturaTotal = okRows.reduce((s, r) => s + (parseFloat(r.base_iva) || 0) + (parseFloat(r.valor_iva) || 0), 0)
     const g = report?.general || {}
     return [
       { concepto: 'Subtotal (sin impuestos)', factura: facturaSub, audit: g.subtotal || 0 },
@@ -227,7 +228,7 @@ export default function ICE() {
       { concepto: 'IVA', factura: facturaIva, audit: g.iva || 0 },
       { concepto: 'Total (con impuestos)', factura: facturaTotal, audit: (g.base_iva || 0) + (g.iva || 0) },
     ].map((x) => ({ ...x, dif: x.factura - x.audit }))
-  }, [okRows, report, cuadroFactura])
+  }, [okRows, report])
 
   // Diagnóstico de diferencias por producto (factura vs cálculo)
   const diferencias = useMemo(() => {

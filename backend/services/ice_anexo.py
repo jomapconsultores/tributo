@@ -49,6 +49,18 @@ def _extraer_grado(nombre):
     return None
 
 
+def _extraer_volumen(nombre):
+    """Volumen (ml) desde la descripción ('750 ML', '375ML', '0.75 L', '80 CC')."""
+    s = (nombre or '').upper()
+    m = re.search(r'(\d+(?:[.,]\d+)?)\s*(ML|CC)\b', s)
+    if m:
+        return str(int(float(m.group(1).replace(',', '.'))))
+    m = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:LTS?|LITROS?|L)\b', s)
+    if m:
+        return str(int(float(m.group(1).replace(',', '.')) * 1000))
+    return None
+
+
 def _limpiar_nombre(nombre):
     """Quita empaque, medidas y números para quedarse con la marca:
     'CAJA WHISKY RED DIEZ 40V 750 ML (12U)' → 'WHISKY RED DIEZ'."""

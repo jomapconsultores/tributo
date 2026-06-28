@@ -7,6 +7,7 @@ from services.ice_data import (
     descomponer_pack, buscar_en_catalogo,
     calcular_ice_especifico, calcular_ice_advalorem, tax_params,
 )
+from services.ice_anexo import _extraer_grado, _extraer_volumen
 
 
 def _f(v, d=0.0):
@@ -80,43 +81,35 @@ def audit_detail(rows: List[Dict], anio: str, catalogo: List[Dict] = None) -> Li
     (por código o nombre); si no, de la factura (XML); en último caso, valores por defecto."""
     tax = tax_params(anio)
     esp, umb, iva_tasa = tax["esp"], tax["umb"], tax["iva"]
-    idx = _indexar_catalogo(catalogo)
     out = []
     n = 0
     for r in rows:
         if r.get("estado") == "DUPLICADO":
             continue
         cajas = _f(r.get("cantidad_cajas"))
+        nombre = r.get("nombre_producto", "")
         if r.get("es_pack"):
-            productos = descomponer_pack(r.get("nombre_producto", ""))
+            productos = descomponer_pack(nombre)
             num = len(productos)
             precio_bot = _f(r.get("precio_total_sin_impuesto")) / (num * cajas) if cajas > 0 else 0
+            # El grado REAL está en la descripción ('15V', '40V'…). El "grado" del catálogo
+            # es un código (no el % real), por eso NO se usa como porcentaje.
+            grado_pack = _f(_extraer_grado(nombre)) or 15.0
             for prod_nombre, prod_cap in productos:
-                p = _match_cat(prod_nombre, None, idx, vol_hint=prod_cap)
-                if p:
-                    grado = _f(p.get("grado"), 15)
-                    vol = _f(p.get("capacidad"), _f(prod_cap, 750))
-                else:
-                    cat = buscar_en_catalogo(prod_nombre)
-                    grado = _f(cat.get("grado", 15))
-                    vol = _f(prod_cap)
+                vol = _f(prod_cap) or _f(_extraer_volumen(nombre)) or 750.0
                 bottles = cajas  # G=1 (bot/caja) * H=cajas
                 out.append(_audit_row(n + 1, r, f"{prod_nombre} {round(vol)}ml", True,
-                                      grado, vol, bottles, precio_bot, esp, umb, iva_tasa))
+                                      grado_pack, vol, bottles, precio_bot, esp, umb, iva_tasa))
                 n += 1
         else:
-            p = _match_cat(r.get("nombre_producto", ""), r.get("codigo_producto", ""), idx, vol_hint=r.get("capacidad"))
-            if p:  # catálogo del cliente manda sobre el XML
-                grado = _f(p.get("grado"), _f(r.get("grado_alcoholico"), 15))
-                vol = _f(p.get("capacidad"), _f(r.get("capacidad"), 750))
-                bxc = _f(p.get("botellas_por_caja"), _f(r.get("botellas_por_caja"), 12))
-            else:
-                grado = _f(r.get("grado_alcoholico", 15))
-                vol = _f(r.get("capacidad", 750))
-                bxc = _f(r.get("botellas_por_caja", 12))
+            # Grado y volumen REALES desde la descripción de la factura ('40V', '750 ML').
+            # El grado del catálogo está codificado, por eso no se toma como porcentaje.
+            grado = _f(_extraer_grado(nombre)) or _f(r.get("grado_alcoholico")) or 15.0
+            vol = _f(_extraer_volumen(nombre)) or _f(r.get("capacidad")) or 750.0
+            bxc = _f(r.get("botellas_por_caja")) or 12.0
             bottles = _f(r.get("unidades_botellas")) or (cajas * bxc)
             precio_bot = _f(r.get("precio_por_botella"))
-            out.append(_audit_row(n + 1, r, r.get("nombre_producto", ""), False,
+            out.append(_audit_row(n + 1, r, nombre, False,
                                   grado, vol, bottles, precio_bot, esp, umb, iva_tasa))
             n += 1
     return out
