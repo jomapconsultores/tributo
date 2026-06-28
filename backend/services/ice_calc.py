@@ -109,10 +109,17 @@ def audit_detail(rows: List[Dict], anio: str, catalogo: List[Dict] = None) -> Li
             bxc = _f(r.get("botellas_por_caja")) or 12.0
             bottles = _f(r.get("unidades_botellas")) or (cajas * bxc)
             precio_bot = _f(r.get("precio_por_botella"))
-            out.append(_audit_row(n + 1, r, nombre, False,
+            out.append(_audit_row(n + 1, r, _sin_corp(nombre), False,
                                   grado, vol, bottles, precio_bot, esp, umb, iva_tasa))
             n += 1
     return out
+
+
+def _sin_corp(nombre):
+    """'CAJA LICOR ORO 15V 750 ML (12U) CORP' -> 'CAJA LICOR ORO 15V 750 ML (12U)'.
+    'CORP' es solo una variante del MISMO producto, no debe separarlo."""
+    s = re.sub(r"\s*\bCORP\b\.?", " ", str(nombre or ""), flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", s).strip()
 
 
 def _audit_row(idx, r, prod_individual, pack, grado, vol, bottles, precio_bot, esp, umb, iva_tasa):

@@ -26,6 +26,9 @@ import './ICE.css'
 import { fmtMoney as money } from '../utils/format'
 const n4 = (v) => (parseFloat(v) || 0).toFixed(4)
 
+// 'CORP' es una variante del MISMO producto; se quita para agrupar junto.
+const sinCorp = (s) => (s || '').toUpperCase().replace(/\s*\bCORP\b\.?/g, ' ').replace(/\s+/g, ' ').trim()
+
 // Coincidencia de texto para filtrar un cuadro por cualquiera de sus campos.
 const incluye = (q, ...vals) => {
   const s = (q || '').toLowerCase().trim()
@@ -186,7 +189,7 @@ export default function ICE() {
   const cuadroProducto = useMemo(() => {
     const ag = {}
     okRows.forEach((r) => {
-      const k = (r.nombre_producto || '(sin nombre)').toUpperCase()
+      const k = sinCorp(r.nombre_producto) || '(SIN NOMBRE)'
       const a = ag[k] || (ag[k] = { producto: k, cajas: 0, botellas: 0, base_ice: 0, valor_ice: 0, base_iva: 0, valor_iva: 0, total: 0 })
       a.cajas += parseFloat(r.cantidad_cajas) || 0
       a.botellas += parseInt(r.unidades_botellas) || 0
