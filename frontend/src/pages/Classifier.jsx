@@ -73,6 +73,10 @@ export default function Classifier() {
     }
   }
 
+  // Actualización local de una fila (sin recargar toda la tabla)
+  const onRowChange = (id, patch) => setClassifications((arr) => arr.map((c) => (c.id === id ? { ...c, ...patch } : c)))
+  const onRowDelete = (id) => setClassifications((arr) => arr.filter((c) => c.id !== id))
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     const r = fRuc.trim().toLowerCase()
@@ -232,6 +236,8 @@ export default function Classifier() {
         <ClassifierTable
           classifications={filtered}
           onClassificationsChange={loadClassifications}
+          onRowChange={onRowChange}
+          onRowDelete={onRowDelete}
           opcionesCategoria={opc.cat}
         />
       )}

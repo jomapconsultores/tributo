@@ -4,7 +4,7 @@ import './ClassifierTable.css'
 
 const PAGE_SIZE = 50
 
-export default function ClassifierTable({ classifications, onClassificationsChange, opcionesCategoria = null }) {
+export default function ClassifierTable({ classifications, onClassificationsChange, onRowChange = null, onRowDelete = null, opcionesCategoria = null }) {
   // Opciones existentes para desplegar al editar (clasificación ágil)
   const cats = (opcionesCategoria
     || [...new Set((classifications || []).map((c) => String(c.categoria || '').trim()).filter(Boolean))]).sort()
@@ -43,14 +43,17 @@ export default function ClassifierTable({ classifications, onClassificationsChan
     const ruc = field === 'ruc' ? value.trim() : item.ruc
     const nombre = field === 'nombre_proveedor' ? value : item.nombre_proveedor
     const categoria = field === 'categoria' ? value : item.categoria
+    cancel()
     try {
       const res = await classificationAPI.updateById(item.id, ruc, nombre, categoria)
-      cancel()
-      onClassificationsChange()
+      // Solo actualiza ESA fila en pantalla (no recarga toda la tabla → mucho más rápido)
+      if (onRowChange) onRowChange(item.id, { ruc, nombre_proveedor: nombre, categoria })
+      else onClassificationsChange()
       const n = res?.data?.reclasificadas
       if (n > 0) alert(`✔ ${n} factura(s) SIN CLASIFICAR de este RUC se actualizaron a "${categoria.toUpperCase()}"`)
     } catch (error) {
       alert('Error al guardar: ' + (error.response?.data?.detail || error.message))
+      onClassificationsChange() // si falló, recargar para volver al estado real
     }
   }
 
@@ -58,7 +61,8 @@ export default function ClassifierTable({ classifications, onClassificationsChan
     if (!window.confirm(`¿Eliminar el RUC ${item.ruc}?`)) return
     try {
       await classificationAPI.deleteById(item.id)
-      onClassificationsChange()
+      if (onRowDelete) onRowDelete(item.id)
+      else onClassificationsChange()
     } catch (error) {
       alert('Error al eliminar: ' + (error.response?.data?.detail || error.message))
     }

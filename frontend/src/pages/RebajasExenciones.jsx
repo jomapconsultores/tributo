@@ -260,11 +260,34 @@ export default function RebajasExenciones() {
   const [gfCat, setGfCat] = useState('')
   const [gfCalif, setGfCalif] = useState('todos')
   const gastosFileRef = useRef(null)
-  const loadGastos = async () => {
-    if (!ident) { setGastosRows([]); return }
-    try { const r = await classificationAPI.porContribuyente(ident); setGastosRows(r.data || []) } catch { setGastosRows([]) }
+  const [gastosEnr, setGastosEnr] = useState('')
+  const traerActGastos = async () => {
+    if (gastosEnr) return
+    try {
+      let restantes = 1
+      for (let i = 0; i < 400 && restantes > 0; i++) {
+        const r = await classificationAPI.enriquecerActividades()
+        restantes = r.data?.restantes ?? 0
+        setGastosEnr(`Trayendo actividad del SRI… faltan ${restantes}`)
+        if ((r.data?.procesados || 0) === 0) break
+      }
+      setGastosEnr(''); await loadGastos()
+    } catch { setGastosEnr('') }
   }
-  useEffect(() => { if (gastosOpen) loadGastos() }, [gastosOpen, ident])
+  const loadGastos = async (auto = false) => {
+    if (!ident) { setGastosRows([]); return }
+    try {
+      const r = await classificationAPI.porContribuyente(ident)
+      const rows = r.data || []
+      setGastosRows(rows)
+      // Despliega automáticamente las actividades del SRI que falten
+      if (auto && !gastosEnr && rows.some((x) => !String(x.actividad || '').trim())) traerActGastos()
+    } catch { setGastosRows([]) }
+  }
+  useEffect(() => { if (gastosOpen) loadGastos(true) }, [gastosOpen, ident])
+  // Actualización local de una fila (sin recargar toda la tabla → instantáneo)
+  const onGastoRowChange = (id, patch) => setGastosRows((arr) => arr.map((c) => (c.id === id ? { ...c, ...patch } : c)))
+  const onGastoRowDelete = (id) => setGastosRows((arr) => arr.filter((c) => c.id !== id))
   const importarGastos = async (file) => {
     if (!file) return
     try {
@@ -554,9 +577,11 @@ export default function RebajasExenciones() {
             <input ref={gastosFileRef} type="file" accept=".xlsx" style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.[0]) importarGastos(e.target.files[0]); e.target.value = '' }} />
             <button className="cl-clear" onClick={() => gastosFileRef.current?.click()}>📥 Importar Excel</button>
             <button className="cl-clear" onClick={exportarGastos}>📤 Exportar</button>
+            {gastosEnr && <span className="cl-count" style={{ color: '#2563eb' }}>⏳ {gastosEnr}</span>}
             <span className="cl-count">{gastosFiltrados.length} de {gastosRows.length}</span>
           </div>
-          <ClassifierTable classifications={gastosFiltrados} onClassificationsChange={loadGastos} opcionesCategoria={gOpc('categoria')} />
+          <ClassifierTable classifications={gastosFiltrados} onClassificationsChange={loadGastos}
+            onRowChange={onGastoRowChange} onRowDelete={onGastoRowDelete} opcionesCategoria={gOpc('categoria')} />
         </div>
       </details>
 
