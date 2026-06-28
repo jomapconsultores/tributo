@@ -72,6 +72,18 @@ def _cargar_credito_mes_anterior(supabase, client_id, mes, anio):
     return float(adq or 0), float(ret or 0)
 
 
+def _cargar_overrides(supabase, client_id, tipo, mes, anio):
+    """Overrides persistidos por período (crédito 605/606 y factor) que el usuario
+    escribió antes. Se recuperan automáticamente al recalcular."""
+    try:
+        r = supabase.table("declaracion_overrides").select("credito_adq,credito_ret,factor_prop")\
+            .eq("client_id", client_id).eq("tipo", (tipo or "IVA").upper())\
+            .eq("mes", mes).eq("anio", anio).limit(1).execute().data
+        return r[0] if r else {}
+    except Exception:
+        return {}
+
+
 def _litros_eq(cant, unidad, densidad):
     """Equivalencia en litros (igual que la pantalla de Rebajas)."""
     try:
@@ -183,6 +195,15 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
         # Crédito mes anterior: parte del historial y cada casillero (605/606) se
         # puede sobreescribir de forma INDEPENDIENTE si el usuario lo ingresa.
         cred_adq_prev, cred_ret_prev = _cargar_credito_mes_anterior(supabase, client_id, mes, anio)
+        # Overrides persistidos del período (manual): tienen prioridad sobre el arrastre.
+        ov_pers = _cargar_overrides(supabase, client_id, "IVA", mes, anio)
+        if ov_pers.get("credito_adq") is not None:
+            cred_adq_prev = float(ov_pers["credito_adq"])
+        if ov_pers.get("credito_ret") is not None:
+            cred_ret_prev = float(ov_pers["credito_ret"])
+        if factor_prop is None and ov_pers.get("factor_prop") is not None:
+            factor_prop = float(ov_pers["factor_prop"])
+        # Override en vivo (lo que el usuario está editando ahora) manda sobre todo.
         if override_credito_adq is not None:
             cred_adq_prev = float(override_credito_adq)
         if override_credito_ret is not None:
@@ -307,6 +328,39 @@ async def listar(client_id: Optional[str] = Query(None), tipo: Optional[str] = Q
         return {"data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class OverridesIn(BaseModel):
+    client_id: str
+    tipo: Optional[str] = "IVA"
+    credito_adq: Optional[float] = None
+    credito_ret: Optional[float] = None
+    factor_prop: Optional[float] = None
+
+
+@router.put("/overrides")
+async def guardar_overrides(entry: OverridesIn, user_id: str = Depends(get_current_user)):
+    """Guarda (persistente, por período) el crédito mes anterior (605/606) y el factor
+    que el usuario escribe, para recuperarlos al reabrir sin guardar toda la declaración."""
+    try:
+        supabase = get_supabase_client()
+        assert_client_owner(entry.client_id, user_id)
+        c = _cliente(supabase, entry.client_id)
+        mes = c.get("periodo_mes")
+        anio = c.get("periodo_anio")
+        data = {
+            "client_id": entry.client_id, "tipo": (entry.tipo or "IVA").upper(),
+            "mes": mes, "anio": anio,
+            "credito_adq": entry.credito_adq, "credito_ret": entry.credito_ret,
+            "factor_prop": entry.factor_prop, "updated_at": "now()",
+        }
+        supabase.table("declaracion_overrides").upsert(
+            data, on_conflict="client_id,tipo,mes,anio").execute()
+        return {"message": "ok", "mes": mes, "anio": anio}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 def _sumar_periodo(mes, anio, n_meses):

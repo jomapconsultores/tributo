@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import useDraft from '../hooks/useDraft'
 import { useOutletContext } from 'react-router-dom'
 import { declaracionesAPI, downloadBlob } from '../services/api'
@@ -80,8 +80,6 @@ export default function Declaraciones({ tipo }) {
   const isIVA = tipo === 'IVA'
   const maxDiferir = isIVA ? 3 : 1
 
-  const ovRef = useRef(null) // id de la declaración cuyos overrides ya se precargaron
-
   const load = useCallback(async () => {
     if (!selectedClientId) { setDecl(null); setSaved([]); setAplazados([]); return }
     setLoading(true)
@@ -104,21 +102,7 @@ export default function Declaraciones({ tipo }) {
         declaracionesAPI.listAplazados(selectedClientId).catch(() => ({ data: { data: [] } })),
       ])
       setDecl(c.data)
-      const lista = s.data?.data || []
-      setSaved(lista)
-      // Precargar overrides guardados (crédito 605/606 y factor) de la declaración
-      // de ESTE período, para que no se reinicien al reabrir. Solo una vez por id.
-      try {
-        const pm = selectedClient?.periodo_mes, pa = selectedClient?.periodo_anio
-        const guardada = lista.find((d) => d.mes === pm && d.anio === pa && (d.tipo || '').toUpperCase() === tipo)
-        const ov = guardada?.datos?.overrides
-        if (guardada && ov && ovRef.current !== guardada.id) {
-          ovRef.current = guardada.id
-          if (ov.credito_adq != null) setCredAdq(Number(ov.credito_adq))
-          if (ov.credito_ret != null) setCredRet(Number(ov.credito_ret))
-          if (ov.factor_prop != null) setFactorProp(Number(ov.factor_prop))
-        }
-      } catch { /* */ }
+      setSaved(s.data?.data || [])
       // Filtrar aplazados por tipo de declaración (IVA o ICE)
       const allAplazados = a.data?.data || []
       setAplazados(allAplazados.filter((x) => (x.tipo || '').toUpperCase() === tipo))
@@ -132,7 +116,7 @@ export default function Declaraciones({ tipo }) {
   // Al cambiar de contribuyente, tipo o PERÍODO, limpiar overrides de crédito/factor
   // (el factor se aplica en SU período). Se recargan los guardados de ese período.
   useEffect(() => {
-    setCredAdq(null); setCredRet(null); setFactorProp(null); ovRef.current = null
+    setCredAdq(null); setCredRet(null); setFactorProp(null)
   }, [selectedClientId, tipo, selectedClient?.periodo_mes, selectedClient?.periodo_anio])
 
 
@@ -155,10 +139,7 @@ export default function Declaraciones({ tipo }) {
 
   const guardar = async () => {
     try {
-      // Guardar también los overrides (crédito mes anterior 605/606 y factor) para
-      // que persistan y se recarguen al reabrir el período.
-      const datos = { ...decl, overrides: overridesActuales() }
-      await declaracionesAPI.save(selectedClientId, tipo, datos, diferirMeses)
+      await declaracionesAPI.save(selectedClientId, tipo, decl, diferirMeses)
       setDiferirMeses(0)
       await load()
       let msg = '✔ Declaración guardada. Queda LISTA para facturar (aparece marcada en Reportes).'
@@ -204,11 +185,19 @@ export default function Declaraciones({ tipo }) {
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
 
+  // Persiste por período el crédito mes anterior (605/606) y el factor, para
+  // recuperarlos al reabrir sin guardar toda la declaración.
+  const guardarOv = (patch) => {
+    if (!selectedClientId) return
+    declaracionesAPI.guardarOverrides(selectedClientId, tipo, {
+      credito_adq: credAdq, credito_ret: credRet, factor_prop: factorProp, ...patch,
+    }).catch(() => {})
+  }
   const aplicarOverride = (campo, valor) => {
     const num = parseFloat(valor)
     const v = isNaN(num) ? 0 : num
-    if (campo === 'adq') { setCredAdq(v); setEditAdq(false) }
-    else if (campo === 'ret') { setCredRet(v); setEditRet(false) }
+    if (campo === 'adq') { setCredAdq(v); setEditAdq(false); guardarOv({ credito_adq: v }) }
+    else if (campo === 'ret') { setCredRet(v); setEditRet(false); guardarOv({ credito_ret: v }) }
     else if (campo === 'reb') { setRebajaIce(v); setEditReb(false) }
     else if (campo === 'exe') { setExencionIce(v); setEditExe(false) }
     else if (campo === 'v15') { setVentas15(v); setEditV15(false) }
@@ -216,8 +205,8 @@ export default function Declaraciones({ tipo }) {
     else if (campo === 'v0') { setVentas0(v); setEditV0(false) }
   }
   const limpiarOverride = (campo) => {
-    if (campo === 'adq') setCredAdq(null)
-    else if (campo === 'ret') setCredRet(null)
+    if (campo === 'adq') { setCredAdq(null); guardarOv({ credito_adq: null }) }
+    else if (campo === 'ret') { setCredRet(null); guardarOv({ credito_ret: null }) }
     else if (campo === 'reb') setRebajaIce(null)
     else if (campo === 'exe') setExencionIce(null)
     else if (campo === 'v15') setVentas15(null)
@@ -465,14 +454,14 @@ export default function Declaraciones({ tipo }) {
                   <div className="dc-credit-edit">
                     <input type="number" step="0.0001" min="0" max="1" autoFocus
                       defaultValue={resumen.factor_proporcionalidad ?? 1}
-                      onBlur={(e) => { const v = parseFloat(e.target.value); setFactorProp(isNaN(v) ? 0 : Math.max(0, Math.min(1, v))); setEditFactor(false) }}
+                      onBlur={(e) => { const v = parseFloat(e.target.value); const f = isNaN(v) ? 0 : Math.max(0, Math.min(1, v)); setFactorProp(f); setEditFactor(false); guardarOv({ factor_prop: f }) }}
                       onKeyDown={(e) => e.key === 'Enter' && e.target.blur()} />
                   </div>
                 ) : (
                   <div className="dc-credit-value">
                     <strong>{((resumen.factor_proporcionalidad ?? 1) * 100).toFixed(2)}%</strong>
                     <button className="dc-btn-mini" onClick={() => setEditFactor(true)} title="Editar">✎</button>
-                    {factorProp != null && <button className="dc-btn-mini" onClick={() => setFactorProp(null)} title="Volver al automático">↺</button>}
+                    {factorProp != null && <button className="dc-btn-mini" onClick={() => { setFactorProp(null); guardarOv({ factor_prop: null }) }} title="Volver al automático">↺</button>}
                   </div>
                 )}
               </div>

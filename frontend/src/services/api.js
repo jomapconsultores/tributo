@@ -333,6 +333,8 @@ export const declaracionesAPI = {
   // diferir_pago_meses: 0/1/2/3 (IVA), 0/1 (ICE)
   save: (clientId, tipo, datos, diferir_pago_meses = 0) =>
     api.post('/api/declaraciones/', { client_id: clientId, tipo, datos, diferir_pago_meses }),
+  guardarOverrides: (clientId, tipo, vals) =>
+    api.put('/api/declaraciones/overrides', { client_id: clientId, tipo, ...vals }),
   delete: (id) => api.delete(`/api/declaraciones/${id}`),
   exportExcel: (clientId, tipo, ov = {}) => api.get('/api/declaraciones/export/excel', { params: { client_id: clientId, tipo, ...ov }, responseType: 'blob' }),
   exportOficial: (clientId, tipo, ov = {}) => api.get('/api/declaraciones/export/oficial', { params: { client_id: clientId, tipo, ...ov }, responseType: 'blob' }),
