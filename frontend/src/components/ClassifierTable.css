@@ -97,3 +97,7 @@
 button.calif-badge { border:none; cursor:pointer; font:inherit; }
 button.calif-badge.ok:hover { filter:brightness(.96); }
 .calif-vig { margin-top:4px; font-size:.74rem; color:#166534; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:2px 6px; display:inline-block; white-space:nowrap; }
+
+/* Actividad: clic para ver completa */
+.actividad-cell { cursor:pointer; }
+.actividad-cell.full { max-width:none; white-space:normal; overflow:visible; word-break:break-word; background:#f8fafc; }

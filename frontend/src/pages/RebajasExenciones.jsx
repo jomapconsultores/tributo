@@ -257,24 +257,30 @@ export default function RebajasExenciones() {
   const [compCalif, setCompCalif] = useState('todos')
   const [compEnr, setCompEnr] = useState('')
   const [compVig, setCompVig] = useState(null)
-  const loadComp = async () => {
-    try { const r = await compradoresAPI.listEnriquecido(ident); setCompRows(r.data?.data || []) } catch { setCompRows([]) }
+  const [compAct, setCompAct] = useState(null)
+  const loadComp = async (auto = false) => {
+    try {
+      const r = await compradoresAPI.listEnriquecido(ident)
+      const rows = r.data?.data || []
+      setCompRows(rows)
+      if (auto && !compEnr && rows.some((x) => !String(x.actividad || '').trim())) traerActComp(true)
+    } catch { setCompRows([]) }
   }
-  useEffect(() => { if (compOpen) loadComp() }, [compOpen, ident])
-  const traerActComp = async () => {
+  useEffect(() => { if (compOpen) loadComp(true) }, [compOpen, ident])
+  const traerActComp = async (silent = false) => {
     if (compEnr) return
     try {
       let restantes = 1, total = 0
-      for (let i = 0; i < 80 && restantes > 0; i++) {
+      for (let i = 0; i < 400 && restantes > 0; i++) {
         const r = await compradoresAPI.enriquecerActividades(ident)
         total += r.data?.actualizados || 0
         restantes = r.data?.restantes ?? 0
-        setCompEnr(`Trayendo actividad del SRI… ${total} listas, faltan ${restantes}`)
+        setCompEnr(`Trayendo actividad del SRI… faltan ${restantes}`)
         if ((r.data?.procesados || 0) === 0) break
       }
       setCompEnr(''); await loadComp()
-      alert(`✔ Actividad económica del SRI actualizada (${total} compradores).`)
-    } catch (e) { setCompEnr(''); alert('Error: ' + (e.response?.data?.detail || e.message)) }
+      if (!silent) alert(`✔ Actividad económica del SRI actualizada (${total} compradores).`)
+    } catch (e) { setCompEnr(''); if (!silent) alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
   const compFiltrados = compRows.filter((r) => {
     const q = compQ.trim().toLowerCase()
@@ -547,7 +553,7 @@ export default function RebajasExenciones() {
                   <tr key={r.id}>
                     <td>{r.ruc}</td>
                     <td>{r.nombre || '—'}</td>
-                    <td className="re-cat" title={r.actividad || ''}>{r.actividad || '—'}</td>
+                    <td className="re-cat" title="Clic para ver completa" style={compAct === r.id ? { whiteSpace: 'normal', maxWidth: 'none', cursor: 'pointer' } : { cursor: 'pointer' }} onClick={() => setCompAct(compAct === r.id ? null : r.id)}>{r.actividad || '—'}</td>
                     <td>{r.categoria || '—'}</td>
                     <td>
                       {r.calificado ? (

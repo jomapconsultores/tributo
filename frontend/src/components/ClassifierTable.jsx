@@ -6,6 +6,7 @@ export default function ClassifierTable({ classifications, onClassificationsChan
   const [edit, setEdit] = useState({ id: null, field: null })
   const [value, setValue] = useState('')
   const [vigOpen, setVigOpen] = useState(null) // id cuya vigencia se muestra
+  const [actOpen, setActOpen] = useState(null) // id cuya actividad se ve completa
 
   const startEdit = (id, field, current) => {
     setEdit({ id, field })
@@ -87,7 +88,11 @@ export default function ClassifierTable({ classifications, onClassificationsChan
               <tr key={item.id}>
                 <td className="ruc-cell">{cell(item, 'ruc', 'ruc-edit')}</td>
                 <td>{cell(item, 'nombre_proveedor')}</td>
-                <td className="actividad-cell" title={item.actividad || ''}>{item.actividad || '—'}</td>
+                <td className={`actividad-cell ${actOpen === item.id ? 'full' : ''}`}
+                    title="Clic para ver la actividad completa"
+                    onClick={() => setActOpen(actOpen === item.id ? null : item.id)}>
+                  {item.actividad || '—'}
+                </td>
                 <td>{cell(item, 'categoria')}</td>
                 <td>
                   {item.calificado ? (
