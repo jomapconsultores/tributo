@@ -69,6 +69,7 @@ export default function InvoiceTabs({ invoices, onInvoicesChange }) {
   const [pendCatalog, setPendCatalog] = useState([])
   const [pendInput, setPendInput] = useState({})
   const [pendBusy, setPendBusy] = useState('')
+  const [pendMsg, setPendMsg] = useState('') // confirmación no bloqueante
   const [actMap, setActMap] = useState({}) // RUC -> actividad económica (SRI)
 
   useEffect(() => {
@@ -88,23 +89,25 @@ export default function InvoiceTabs({ invoices, onInvoicesChange }) {
     return Array.from(set).sort()
   }, [pendCatalog])
 
-  const aplicarPendiente = async (ruc, nombre) => {
-    const cat = (pendInput[ruc] || '').trim().toUpperCase()
-    if (!cat) {
-      alert('Selecciona una categoría primero.')
-      return
-    }
+  useEffect(() => {
+    if (!pendMsg) return
+    const t = setTimeout(() => setPendMsg(''), 4000)
+    return () => clearTimeout(t)
+  }, [pendMsg])
+
+  // Asigna y graba automáticamente, SIN salir del menú de Pendientes.
+  const aplicarPendiente = async (ruc, nombre, catArg) => {
+    const cat = (catArg ?? pendInput[ruc] ?? '').trim().toUpperCase()
+    if (!cat || pendBusy) return
     setPendBusy(ruc)
     try {
       const res = await classificationAPI.create(ruc, nombre, cat)
       const n = res?.data?.reclasificadas ?? 0
       setPendInput((prev) => { const o = { ...prev }; delete o[ruc]; return o })
-      await onInvoicesChange()
-      if (n > 0) {
-        alert(`✔ ${n} factura(s) de ${nombre || ruc} se actualizaron a "${cat}"`)
-      }
+      setPendMsg(`✔ ${nombre || ruc} → ${cat}${n ? ` · ${n} factura(s)` : ''}`)
+      await onInvoicesChange() // recarga: la fila desaparece de Pendientes; el tab se mantiene
     } catch (e) {
-      alert('Error al asignar: ' + (e.response?.data?.detail || e.message))
+      setPendMsg('⚠ Error al asignar: ' + (e.response?.data?.detail || e.message))
     } finally {
       setPendBusy('')
     }
@@ -188,6 +191,8 @@ export default function InvoiceTabs({ invoices, onInvoicesChange }) {
             <div className="itabs-empty">🎉 No hay facturas sin clasificar.</div>
           ) : (
             <>
+              {pendMsg && <div className="pend-msg">{pendMsg}</div>}
+              <p className="pend-hint">Elige la categoría del listado y se graba automáticamente; puedes seguir asignando las demás sin salir de aquí.</p>
               <datalist id="pend-cat-list">
                 {pendOpciones.map((c) => <option key={c} value={c} />)}
               </datalist>
@@ -217,9 +222,12 @@ export default function InvoiceTabs({ invoices, onInvoicesChange }) {
                             placeholder="Categoría…"
                             value={val}
                             disabled={busy}
-                            onChange={(e) =>
-                              setPendInput((prev) => ({ ...prev, [p.ruc]: e.target.value.toUpperCase() }))
-                            }
+                            onChange={(e) => {
+                              const v = e.target.value.toUpperCase()
+                              setPendInput((prev) => ({ ...prev, [p.ruc]: v }))
+                              // Si eligió una categoría completa del listado, grabar al instante
+                              if (pendOpciones.includes(v)) aplicarPendiente(p.ruc, p.nombre, v)
+                            }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') aplicarPendiente(p.ruc, p.nombre)
                             }}
