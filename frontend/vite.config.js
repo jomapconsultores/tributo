@@ -37,6 +37,9 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         navigateFallback: '/index.html',
+        skipWaiting: true,          // el SW nuevo se activa de inmediato
+        clientsClaim: true,         // toma control de las pestañas abiertas
+        cleanupOutdatedCaches: true, // borra cachés viejos (evita servir bundles obsoletos)
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
