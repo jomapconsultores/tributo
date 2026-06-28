@@ -106,11 +106,13 @@ def _incluir_proveedores_calificados(supabase, user_id, is_admin):
             if not ruc or ruc in existentes:
                 continue
             try:
+                # Entran SIN CLASIFICAR (categoría de gasto vacía) para que el usuario
+                # los clasifique. Su tipo de calificación se muestra en la columna Calificación.
                 supabase.table("classification_map").insert({
                     "user_id": p.get("user_id") or user_id,
                     "ruc": ruc,
                     "nombre_proveedor": (p.get("nombre") or "").upper(),
-                    "categoria": (p.get("categoria") or "").upper(),
+                    "categoria": "",
                 }).execute()
                 existentes.add(ruc)
             except Exception:

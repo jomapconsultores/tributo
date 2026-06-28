@@ -254,7 +254,11 @@ export default function RebajasExenciones() {
   // Panel de gastos a clasificar (clasificador de gastos embebido)
   const [gastosOpen, setGastosOpen] = useState(false)
   const [gastosRows, setGastosRows] = useState([])
-  const [gastosQ, setGastosQ] = useState('')
+  const [gfRuc, setGfRuc] = useState('')
+  const [gfNombre, setGfNombre] = useState('')
+  const [gfAct, setGfAct] = useState('')
+  const [gfCat, setGfCat] = useState('')
+  const [gfCalif, setGfCalif] = useState('todos')
   const gastosFileRef = useRef(null)
   const loadGastos = async () => {
     try { const r = await classificationAPI.list(); setGastosRows(r.data || []) } catch { setGastosRows([]) }
@@ -273,12 +277,19 @@ export default function RebajasExenciones() {
     try { const r = await classificationAPI.exportExcel(); downloadBlob(r.data, 'clasificador.xlsx') }
     catch (e) { alert('Error al exportar: ' + (e.response?.data?.detail || e.message)) }
   }
-  const gastosFiltrados = (() => {
-    const q = gastosQ.trim().toLowerCase()
-    if (!q) return gastosRows
-    return gastosRows.filter((x) => [x.ruc, x.nombre_proveedor, x.categoria, x.actividad, x.calif_categoria]
-      .some((f) => String(f || '').toLowerCase().includes(q)))
-  })()
+  const gInc = (v, t) => String(v || '').toLowerCase().includes(t)
+  const gastosFiltrados = gastosRows.filter((x) => {
+    const r = gfRuc.trim().toLowerCase(), n = gfNombre.trim().toLowerCase()
+    const a = gfAct.trim().toLowerCase(), c = gfCat.trim().toLowerCase()
+    if (r && !gInc(x.ruc, r)) return false
+    if (n && !gInc(x.nombre_proveedor, n)) return false
+    if (a && !gInc(x.actividad, a)) return false
+    if (c && !gInc(x.categoria, c)) return false
+    if (gfCalif === 'si' && !x.calificado) return false
+    if (gfCalif === 'no' && x.calificado) return false
+    return true
+  })
+  const gOpc = (k) => [...new Set(gastosRows.map((x) => String(x[k] || '').trim()).filter((v) => v && v !== '—'))].sort()
 
   // Guarda el proveedor en la base AL INSTANTE (sin botón). Usa el valor más reciente.
   const provGuardarAuto = (nf) => {
@@ -524,12 +535,24 @@ export default function RebajasExenciones() {
       <details className="re-normas" open={gastosOpen} onToggle={(e) => setGastosOpen(e.target.open)}>
         <summary>🏷️ Gastos (clasificados y calificados)</summary>
         <div className="re-normas-body">
-          <p className="re-hint">Importa los datos de los <strong>gastos</strong> (RUC → categoría) y clasifícalos aquí. Incluye su <strong>actividad económica (SRI)</strong> y su <strong>calificación</strong> (tipo, del catálogo de proveedores). Haz clic en cualquier celda para editar.</p>
+          <p className="re-hint">Importa los datos de los <strong>gastos</strong> (RUC → categoría) y clasifícalos aquí. Los <strong>proveedores calificados</strong> entran <strong>SIN CLASIFICAR</strong> para que los categorices. Incluye <strong>actividad económica (SRI)</strong> y <strong>calificación</strong> (tipo). Doble clic en una celda para editar; clic para copiar.</p>
           <div className="cl-filters">
-            <input placeholder="🔍 Buscar RUC, proveedor, categoría o actividad…" value={gastosQ} onChange={(e) => setGastosQ(e.target.value)} />
+            <input list="g-ruc" placeholder="Filtrar RUC…" value={gfRuc} onChange={(e) => setGfRuc(e.target.value)} />
+            <input list="g-nom" placeholder="Filtrar proveedor…" value={gfNombre} onChange={(e) => setGfNombre(e.target.value)} />
+            <input list="g-act" placeholder="Filtrar actividad…" value={gfAct} onChange={(e) => setGfAct(e.target.value)} />
+            <input list="g-cat" placeholder="Filtrar categoría…" value={gfCat} onChange={(e) => setGfCat(e.target.value)} />
+            <select value={gfCalif} onChange={(e) => setGfCalif(e.target.value)}>
+              <option value="todos">Calificación: todas</option>
+              <option value="si">Solo calificados</option>
+              <option value="no">No calificados</option>
+            </select>
+            <datalist id="g-ruc">{gOpc('ruc').map((v) => <option key={v} value={v} />)}</datalist>
+            <datalist id="g-nom">{gOpc('nombre_proveedor').map((v) => <option key={v} value={v} />)}</datalist>
+            <datalist id="g-act">{gOpc('actividad').map((v) => <option key={v} value={v} />)}</datalist>
+            <datalist id="g-cat">{gOpc('categoria').map((v) => <option key={v} value={v} />)}</datalist>
             <input ref={gastosFileRef} type="file" accept=".xlsx" style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.[0]) importarGastos(e.target.files[0]); e.target.value = '' }} />
             <button className="cl-clear" onClick={() => gastosFileRef.current?.click()}>📥 Importar Excel</button>
-            <button className="cl-clear" onClick={exportarGastos}>📤 Exportar Excel</button>
+            <button className="cl-clear" onClick={exportarGastos}>📤 Exportar</button>
             <span className="cl-count">{gastosFiltrados.length} de {gastosRows.length}</span>
           </div>
           <ClassifierTable classifications={gastosFiltrados} onClassificationsChange={loadGastos} />

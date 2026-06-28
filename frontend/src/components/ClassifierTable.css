@@ -106,3 +106,6 @@ button.calif-badge.ok:hover { filter:brightness(.96); }
 .editable { cursor:pointer; }
 .editable.copied { background:#dcfce7; border-radius:4px; }
 .copied-tag { margin-left:6px; font-size:.72rem; color:#166534; font-weight:600; }
+
+/* Categoría sin clasificar (proveedores calificados recién incluidos) */
+.editable.sin-clasif { color:#b45309; font-style:italic; background:#fff7ed; border-radius:4px; padding:0 4px; }

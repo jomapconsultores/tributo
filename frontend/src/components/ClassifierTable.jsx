@@ -51,7 +51,7 @@ export default function ClassifierTable({ classifications, onClassificationsChan
     }
   }
 
-  const cell = (item, field, extraClass = '') => {
+  const cell = (item, field, extraClass = '', placeholder = '-') => {
     const isEditing = edit.id === item.id && edit.field === field
     if (isEditing) {
       return (
@@ -69,14 +69,15 @@ export default function ClassifierTable({ classifications, onClassificationsChan
       )
     }
     const clave = `${item.id}:${field}`
+    const vacio = !String(item[field] || '').trim()
     return (
       <span
-        className={`editable ${extraClass} ${copied === clave ? 'copied' : ''}`}
-        title="Clic: copiar · Doble clic: editar"
-        onClick={() => copiar(item[field], clave)}
+        className={`editable ${extraClass} ${copied === clave ? 'copied' : ''} ${vacio && placeholder !== '-' ? 'sin-clasif' : ''}`}
+        title={vacio ? 'Doble clic para clasificar' : 'Clic: copiar · Doble clic: editar'}
+        onClick={() => (vacio ? startEdit(item.id, field, '') : copiar(item[field], clave))}
         onDoubleClick={() => startEdit(item.id, field, item[field])}
       >
-        {item[field] || '-'}{copied === clave && <span className="copied-tag">✓ copiado</span>}
+        {item[field] || placeholder}{copied === clave && <span className="copied-tag">✓ copiado</span>}
       </span>
     )
   }
@@ -109,7 +110,7 @@ export default function ClassifierTable({ classifications, onClassificationsChan
                     onClick={() => setActOpen(actOpen === item.id ? null : item.id)}>
                   {item.actividad || '—'}
                 </td>
-                <td>{cell(item, 'categoria')}</td>
+                <td>{cell(item, 'categoria', '', 'SIN CLASIFICAR')}</td>
                 <td>
                   {item.calificado ? (
                     <button
