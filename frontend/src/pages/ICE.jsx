@@ -578,7 +578,7 @@ export default function ICE() {
       {auditBotella.length > 0 && (
         <CuadroFiltrable title={`🍾 Reporte general — auditoría por producto (por botella) (${anio})`} data={auditBotella}
           fields={['producto']} value={filtros.botella} onFilter={(v) => setFiltro('botella', v)}
-          hint={<p className="ice-verif-note">Valores UNITARIOS por botella. El grado alcohólico (%) y la capacidad (ml) determinan el ICE específico; el ad-valorem depende del precio por litro.</p>}>
+          hint={<p className="ice-verif-note">Las columnas son valores UNITARIOS por botella (grado y ml definen el ICE específico; el ad-valorem depende del precio por litro). El pie suma los MONTOS TOTALES (botellas e ICE total) de lo filtrado.</p>}>
           {(filt) => (
             <table className="ice-rep-table">
               <thead><tr>
@@ -601,9 +601,12 @@ export default function ICE() {
                 ))}
               </tbody>
               <tfoot><tr className="ice-rep-total">
-                <td>TOTAL · {filt.length} producto(s)</td>
+                <td>TOTALES (montos) · {filt.length} producto(s)</td>
                 <td className="r">{filt.reduce((s, a) => s + (parseFloat(a.botellas) || 0), 0).toFixed(0)}</td>
-                <td className="r" colSpan={6}>(valores por botella, no sumables)</td>
+                <td className="r" colSpan={3}>montos totales →</td>
+                <td className="r">{money(filt.reduce((s, a) => s + (parseFloat(a.ice_esp) || 0), 0))}</td>
+                <td className="r">{money(filt.reduce((s, a) => s + (parseFloat(a.ice_adv) || 0), 0))}</td>
+                <td className="r strong">{money(filt.reduce((s, a) => s + (parseFloat(a.total) || 0), 0))}</td>
                 <td></td>
               </tr></tfoot>
             </table>
