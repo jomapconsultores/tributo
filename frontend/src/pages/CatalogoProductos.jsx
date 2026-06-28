@@ -290,12 +290,13 @@ export default function CatalogoProductos() {
           <div className="cp-scroll">
             <table className="cp-table">
               <thead><tr>
-                <th>Producto</th><th>Clasificación</th><th>Cód. SRI</th><th>Cód. completo ICE</th><th>Cód. PVP</th><th className="r">Cap.</th><th className="r">Grado</th>
+                <th className="r">#</th><th>Producto</th><th>Clasificación</th><th>Cód. SRI</th><th>Cód. completo ICE</th><th>Cód. PVP</th><th className="r">Cap.</th><th className="r">Grado</th>
                 <th className="r">Pres.</th><th className="r">Und</th><th className="r">Bot/Caja</th><th></th>
               </tr></thead>
               <tbody>
-                {rows.map((p) => (
+                {rows.map((p, i) => (
                   <tr key={p.id} className={`${editId === p.id ? 'cp-editing' : ''} ${partesId === p.id ? 'cp-partes-sel' : ''}`}>
+                    <td className="r cp-rownum">{i + 1}</td>
                     <td>{p.nombre}</td>
                     <td className="cp-clasif" title={`Código ${sinCeros(p.cod_clasificacion) || '—'}`}>
                       {clasifDesc(p.cod_clasificacion, p.cod_impuesto)
