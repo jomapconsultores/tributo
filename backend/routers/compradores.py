@@ -87,12 +87,12 @@ async def enriquecer_actividades(identificacion: Optional[str] = Query(None), us
         supabase = get_supabase_client()
         rows = _compradores_visibles(supabase, user_id, identificacion)
         faltan = [r for r in rows if (r.get("ruc") or "").strip() and not (r.get("actividad") or "").strip()]
-        lote = faltan[:40]
+        lote = faltan[:8]
         actualizados = 0
         for r in lote:
             ruc = (r.get("ruc") or "").strip()
             try:
-                sri = consultar_sri(ruc) or {}
+                sri = consultar_sri(ruc, timeout=6) or {}
             except Exception:
                 sri = {}
             ae = (sri.get("actividad_economica") or "").strip() or "—"

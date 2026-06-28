@@ -43,10 +43,10 @@ def cumple_ley(categoria):
     return True
 
 
-def consultar_sri(ruc):
+def consultar_sri(ruc, timeout=12):
     """Razón social y tipo de contribuyente desde la API pública del SRI."""
     try:
-        r = requests.get(SRI_API + ruc, timeout=20, headers=HDRS)
+        r = requests.get(SRI_API + ruc, timeout=timeout, headers=HDRS)
         data = r.json()
         if isinstance(data, list) and data:
             d = data[0]

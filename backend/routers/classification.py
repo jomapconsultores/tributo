@@ -72,12 +72,60 @@ def _prov_map(supabase, user_id, is_admin):
     return m
 
 
+def _fill_actividad(supabase, ruc, user_id=None):
+    """Trae la actividad económica del SRI y la guarda en el clasificador (auto)."""
+    from services.min_produccion import consultar_sri
+    ruc = (ruc or "").strip()
+    if not ruc:
+        return
+    try:
+        sri = consultar_sri(ruc, timeout=8) or {}
+        ae = (sri.get("actividad_economica") or "").strip()
+        if ae:
+            q = supabase.table("classification_map").update({"actividad": ae}).eq("ruc", ruc)
+            if user_id:
+                q = q.eq("user_id", user_id)
+            q.execute()
+    except Exception:
+        pass
+
+
+def _incluir_proveedores_calificados(supabase, user_id, is_admin):
+    """Asegura que los proveedores calificados (Rebajas/Exenciones) también aparezcan
+    en el clasificador de gastos: crea su fila en classification_map si falta."""
+    try:
+        cols = "ruc,nombre,categoria,user_id"
+        if is_admin:
+            prov = fetch_all(lambda: supabase.table("rebajas_proveedores").select(cols).eq("calificado", True))
+            existentes = {(r.get("ruc") or "").strip() for r in fetch_all(lambda: supabase.table("classification_map").select("ruc"))}
+        else:
+            prov = supabase.table("rebajas_proveedores").select(cols).eq("user_id", user_id).eq("calificado", True).execute().data or []
+            existentes = {(r.get("ruc") or "").strip() for r in (supabase.table("classification_map").select("ruc").eq("user_id", user_id).execute().data or [])}
+        for p in prov:
+            ruc = (p.get("ruc") or "").strip()
+            if not ruc or ruc in existentes:
+                continue
+            try:
+                supabase.table("classification_map").insert({
+                    "user_id": p.get("user_id") or user_id,
+                    "ruc": ruc,
+                    "nombre_proveedor": (p.get("nombre") or "").upper(),
+                    "categoria": (p.get("categoria") or "").upper(),
+                }).execute()
+                existentes.add(ruc)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 @router.get("/")
 async def list_classifications(user_id: str = Depends(get_current_user)):
     try:
         from routers.access import rol_de
         supabase = get_supabase_client()
         is_admin = rol_de(user_id) == "admin"
+        _incluir_proveedores_calificados(supabase, user_id, is_admin)
         if is_admin:
             # El admin ve TODO el clasificador del equipo (cualquier usuario),
             # deduplicado por RUC (una clasificación por RUC).
@@ -122,12 +170,12 @@ async def enriquecer_actividades(user_id: str = Depends(get_current_user)):
             q = q.eq("user_id", user_id)
         filas = q.execute().data or []
         faltan = [r for r in filas if (r.get("ruc") or "").strip() and not (r.get("actividad") or "").strip()]
-        lote = faltan[:40]
+        lote = faltan[:8]
         actualizados = 0
         for r in lote:
             ruc = (r.get("ruc") or "").strip()
             try:
-                sri = consultar_sri(ruc) or {}
+                sri = consultar_sri(ruc, timeout=6) or {}
             except Exception:
                 sri = {}
             ae = (sri.get("actividad_economica") or "").strip() or "—"
@@ -164,6 +212,7 @@ async def create_classification(
                 "categoria": entry.categoria.upper()
             }).execute()
         reclasificadas = _propagate_classification(supabase, ruc, entry.categoria, user_id)
+        _fill_actividad(supabase, ruc, user_id)  # actividad SRI automática
         result = response.data[0] if response.data else {}
         return {**result, "reclasificadas": reclasificadas}
     except Exception as e:
@@ -197,6 +246,7 @@ async def update_classification_by_id(
             upd = upd.eq("user_id", user_id)
         response = upd.execute()
         reclasificadas = _propagate_classification(supabase, new_ruc, entry.categoria, owner)
+        _fill_actividad(supabase, new_ruc, owner)  # actividad SRI automática
         result = response.data[0] if response.data else {}
         return {**result, "reclasificadas": reclasificadas}
     except HTTPException:

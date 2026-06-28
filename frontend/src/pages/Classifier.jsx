@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { classificationAPI, downloadBlob } from '../services/api'
 import ClassifierTable from '../components/ClassifierTable'
 import WorkflowGuide from '../components/WorkflowGuide'
@@ -26,26 +26,36 @@ export default function Classifier() {
   const [fCat, setFCat] = useState('')
   const [fCalif, setFCalif] = useState('todos') // todos | si | no
   const [enriq, setEnriq] = useState('') // texto de progreso del SRI
+  const autoRef = useRef(false)
 
   useEffect(() => { loadClassifications(true) }, [])
 
-  const traerActividades = async () => {
+  // Auto: al cargar, si faltan actividades del SRI, las trae y graba (una vez)
+  useEffect(() => {
+    if (autoRef.current || enriq || !classifications.length) return
+    if (classifications.some((c) => !String(c.actividad || '').trim())) {
+      autoRef.current = true
+      traerActividades(true)
+    }
+  }, [classifications]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const traerActividades = async (silent = false) => {
     if (enriq) return
     try {
       let restantes = 1, total = 0
-      for (let i = 0; i < 80 && restantes > 0; i++) {
+      for (let i = 0; i < 400 && restantes > 0; i++) {
         const r = await classificationAPI.enriquecerActividades()
         total += r.data?.actualizados || 0
         restantes = r.data?.restantes ?? 0
-        setEnriq(`Trayendo actividad económica del SRI… ${total} listas, faltan ${restantes}`)
+        setEnriq(`Trayendo actividad económica del SRI… faltan ${restantes}`)
         if ((r.data?.procesados || 0) === 0) break
       }
       setEnriq('')
       await loadClassifications()
-      alert(`✔ Actividad económica del SRI actualizada (${total} proveedores).`)
+      if (!silent) alert(`✔ Actividad económica del SRI actualizada (${total} proveedores).`)
     } catch (e) {
       setEnriq('')
-      alert('Error trayendo actividades: ' + (e.response?.data?.detail || e.message))
+      if (!silent) alert('Error trayendo actividades: ' + (e.response?.data?.detail || e.message))
     }
   }
 
@@ -81,6 +91,12 @@ export default function Classifier() {
       return true
     })
   }, [classifications, search, fRuc, fNombre, fActividad, fCat, fCalif])
+
+  // Listas de sugerencias por columna (datalist) para "buscar viendo la lista"
+  const opc = useMemo(() => {
+    const u = (k) => [...new Set(classifications.map((c) => String(c[k] || '').trim()).filter((v) => v && v !== '—'))].sort()
+    return { ruc: u('ruc'), nombre: u('nombre_proveedor'), act: u('actividad'), cat: u('categoria') }
+  }, [classifications])
 
   const handleAddEntry = async (e) => {
     e.preventDefault()
@@ -191,10 +207,14 @@ export default function Classifier() {
 
       {/* Filtros por columna */}
       <div className="cl-filters">
-        <input placeholder="Filtrar RUC…" value={fRuc} onChange={(e) => setFRuc(e.target.value)} />
-        <input placeholder="Filtrar proveedor…" value={fNombre} onChange={(e) => setFNombre(e.target.value)} />
-        <input placeholder="Filtrar actividad…" value={fActividad} onChange={(e) => setFActividad(e.target.value)} />
-        <input placeholder="Filtrar categoría…" value={fCat} onChange={(e) => setFCat(e.target.value)} />
+        <input list="opc-ruc" placeholder="Filtrar RUC…" value={fRuc} onChange={(e) => setFRuc(e.target.value)} />
+        <input list="opc-nombre" placeholder="Filtrar proveedor…" value={fNombre} onChange={(e) => setFNombre(e.target.value)} />
+        <input list="opc-act" placeholder="Filtrar actividad…" value={fActividad} onChange={(e) => setFActividad(e.target.value)} />
+        <input list="opc-cat" placeholder="Filtrar categoría…" value={fCat} onChange={(e) => setFCat(e.target.value)} />
+        <datalist id="opc-ruc">{opc.ruc.map((v) => <option key={v} value={v} />)}</datalist>
+        <datalist id="opc-nombre">{opc.nombre.map((v) => <option key={v} value={v} />)}</datalist>
+        <datalist id="opc-act">{opc.act.map((v) => <option key={v} value={v} />)}</datalist>
+        <datalist id="opc-cat">{opc.cat.map((v) => <option key={v} value={v} />)}</datalist>
         <select value={fCalif} onChange={(e) => setFCalif(e.target.value)}>
           <option value="todos">Calificación: todas</option>
           <option value="si">Solo calificados</option>
