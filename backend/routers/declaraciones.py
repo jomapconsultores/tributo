@@ -72,15 +72,49 @@ def _cargar_credito_mes_anterior(supabase, client_id, mes, anio):
     return float(adq or 0), float(ret or 0)
 
 
+def _litros_eq(cant, unidad, densidad):
+    """Equivalencia en litros (igual que la pantalla de Rebajas)."""
+    try:
+        c = float(cant or 0)
+    except (TypeError, ValueError):
+        c = 0.0
+    try:
+        d = float(densidad or 1) or 1
+    except (TypeError, ValueError):
+        d = 1
+    u = (unidad or "ml").strip().lower()
+    if u in ("ml", "cc", "cm3"):
+        return c / 1000
+    if u in ("l", "lt", "lts", "litro", "litros"):
+        return c
+    if u in ("g", "gr", "gramo", "gramos"):
+        return (c / d) / 1000
+    if u in ("kg", "kilo", "kilos", "kilogramo", "kilogramos"):
+        return c / d
+    return c / 1000
+
+
 def _rebajas_por_producto(supabase, identificacion, owner_uid):
     """% de materia prima nacional calificada por producto, desde el módulo
-    Rebajas y exenciones (misma regla que su pantalla: el agua no cuenta,
-    solo suman los proveedores calificados, cumple si el % es ≥ 70).
-    Usa owner_uid (user_id del dueño del cliente) para leer los datos correctos."""
+    Rebajas y exenciones (misma regla que su pantalla: el agua no cuenta, se
+    convierte a litros, solo suman los proveedores calificados Y VIGENTES, cumple
+    si el % es ≥ 70). Usa owner_uid (user_id del dueño del cliente)."""
     if not identificacion:
         return {}
+    from datetime import date
+    hoy = date.today().isoformat()
+    # Catálogo de proveedores: RUC → vigente_hasta (para descartar vencidos)
+    vencido = {}
+    try:
+        provs = fetch_all(lambda: supabase.table("rebajas_proveedores").select(
+            "ruc,vigente_hasta").eq("identificacion", identificacion).eq("user_id", owner_uid))
+        for pv in provs:
+            vh = pv.get("vigente_hasta")
+            vencido[(pv.get("ruc") or "").strip()] = bool(vh) and str(vh) < hoy
+    except Exception:
+        vencido = {}
     ingredientes = fetch_all(lambda: supabase.table("rebajas_ingredientes").select(
-        "producto,ingrediente,cantidad,calificado").eq(
+        "producto,ingrediente,cantidad,unidad,densidad,ruc_proveedor,calificado").eq(
         "identificacion", identificacion).eq("user_id", owner_uid))
     por_prod = {}
     for r in ingredientes:
@@ -90,10 +124,12 @@ def _rebajas_por_producto(supabase, identificacion, owner_uid):
         if not p:
             continue
         d = por_prod.setdefault(p, {"total": 0.0, "calif": 0.0})
-        cant = float(r.get("cantidad") or 0)
-        d["total"] += cant
-        if r.get("calificado"):
-            d["calif"] += cant
+        litros = _litros_eq(r.get("cantidad"), r.get("unidad"), r.get("densidad"))
+        d["total"] += litros
+        # Calificado efectivo: marcado calificado Y su proveedor no está vencido
+        ruc = (r.get("ruc_proveedor") or "").strip()
+        if r.get("calificado") and not vencido.get(ruc, False):
+            d["calif"] += litros
     out = {}
     for p, d in por_prod.items():
         pct = (d["calif"] / d["total"] * 100) if d["total"] else 0.0
