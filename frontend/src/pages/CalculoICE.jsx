@@ -19,7 +19,7 @@ const CALC_STEPS = [
   { icon: '📚', label: 'Catálogo Productos', path: '/catalogo-productos' },
   { icon: '🧮', label: 'Cálculo previo ICE', current: true },
   { icon: '⚖️', label: 'Rebajas y Exenciones', path: '/rebajas-exenciones' },
-  { icon: '🥃', label: 'ICE XML', path: '/ice' },
+  { icon: '🥃', label: 'Ingresos ICE XML', path: '/ice' },
   { icon: '📄', label: 'Declaraciones ICE', path: '/declaracion-ice' },
   { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
 ]

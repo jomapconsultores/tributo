@@ -183,18 +183,18 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
               <span>Cálculo previo ICE</span>
             </button>
             <button
-              className={`nav-item submodule ${isIceXml ? 'active' : ''}`}
-              onClick={() => navigate('/ice')}
-            >
-              <span className="nav-ico">🥃</span>
-              <span>ICE - XML</span>
-            </button>
-            <button
               className={`nav-item submodule ${isAnexo ? 'active' : ''}`}
               onClick={() => navigate('/anexo-pvp-ice')}
             >
               <span className="nav-ico">📄</span>
               <span>Anexo PVP+ICE</span>
+            </button>
+            <button
+              className={`nav-item submodule ${isIceXml ? 'active' : ''}`}
+              onClick={() => navigate('/ice')}
+            >
+              <span className="nav-ico">🥃</span>
+              <span>Ingresos ICE - XML</span>
             </button>
             <button
               className={`nav-item submodule ${isCatalogo ? 'active' : ''}`}

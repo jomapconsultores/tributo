@@ -29,7 +29,7 @@ const n4 = (v) => (parseFloat(v) || 0).toFixed(4)
 const ICE_STEPS = [
   { icon: '📚', label: 'Catálogo Productos', path: '/catalogo-productos' },
   { icon: '🧮', label: 'Cálculo previo ICE', path: '/calculo-ice' },
-  { icon: '🥃', label: 'ICE XML', current: true },
+  { icon: '🥃', label: 'Ingresos ICE XML', current: true },
   { icon: '📄', label: 'Declaraciones ICE', path: '/declaracion-ice' },
   { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
 ]
@@ -250,7 +250,7 @@ export default function ICE() {
       <WorkflowGuide steps={ICE_STEPS} />
       <header className="ice-header">
         <div>
-          <h1>🥃 ICE - XML <span className="ice-periodo-tag">{periodoLargo(selectedClient)}</span></h1>
+          <h1>🥃 Ingresos ICE - XML <span className="ice-periodo-tag">{periodoLargo(selectedClient)}</span></h1>
           <p className="ice-subhead"><strong className="sub-ruc">{selectedClient.identificacion}</strong> — {selectedClient.nombre}<ClaveHeader clientId={selectedClientId} /></p>
         </div>
         <div className="ice-year">
