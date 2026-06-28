@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Fragment } from 'react'
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import useDraft from '../hooks/useDraft'
 import { useOutletContext } from 'react-router-dom'
 import { declaracionesAPI, downloadBlob } from '../services/api'
@@ -80,6 +80,8 @@ export default function Declaraciones({ tipo }) {
   const isIVA = tipo === 'IVA'
   const maxDiferir = isIVA ? 3 : 1
 
+  const ovRef = useRef(null) // id de la declaración cuyos overrides ya se precargaron
+
   const load = useCallback(async () => {
     if (!selectedClientId) { setDecl(null); setSaved([]); setAplazados([]); return }
     setLoading(true)
@@ -102,7 +104,21 @@ export default function Declaraciones({ tipo }) {
         declaracionesAPI.listAplazados(selectedClientId).catch(() => ({ data: { data: [] } })),
       ])
       setDecl(c.data)
-      setSaved(s.data?.data || [])
+      const lista = s.data?.data || []
+      setSaved(lista)
+      // Precargar overrides guardados (crédito 605/606 y factor) de la declaración
+      // de ESTE período, para que no se reinicien al reabrir. Solo una vez por id.
+      try {
+        const pm = selectedClient?.periodo_mes, pa = selectedClient?.periodo_anio
+        const guardada = lista.find((d) => d.mes === pm && d.anio === pa && (d.tipo || '').toUpperCase() === tipo)
+        const ov = guardada?.datos?.overrides
+        if (guardada && ov && ovRef.current !== guardada.id) {
+          ovRef.current = guardada.id
+          if (ov.credito_adq != null) setCredAdq(Number(ov.credito_adq))
+          if (ov.credito_ret != null) setCredRet(Number(ov.credito_ret))
+          if (ov.factor_prop != null) setFactorProp(Number(ov.factor_prop))
+        }
+      } catch { /* */ }
       // Filtrar aplazados por tipo de declaración (IVA o ICE)
       const allAplazados = a.data?.data || []
       setAplazados(allAplazados.filter((x) => (x.tipo || '').toUpperCase() === tipo))
@@ -112,6 +128,12 @@ export default function Declaraciones({ tipo }) {
   }, [selectedClientId, tipo, credAdq, credRet, rebajaIce, exencionIce, marcaReb, marcaExe, ventas15, ventas5, ventas0, factorProp, diferirMeses, isIVA])
 
   useEffect(() => { load() }, [load])
+
+  // Al cambiar de contribuyente o tipo, limpiar overrides de crédito/factor para no
+  // arrastrarlos de un cliente a otro; se recargarán los guardados de ese período.
+  useEffect(() => {
+    setCredAdq(null); setCredRet(null); setFactorProp(null); ovRef.current = null
+  }, [selectedClientId, tipo])
 
 
   // Servicios contratados + clave SRI en un solo viaje (reveal=true)
@@ -133,7 +155,10 @@ export default function Declaraciones({ tipo }) {
 
   const guardar = async () => {
     try {
-      await declaracionesAPI.save(selectedClientId, tipo, decl, diferirMeses)
+      // Guardar también los overrides (crédito mes anterior 605/606 y factor) para
+      // que persistan y se recarguen al reabrir el período.
+      const datos = { ...decl, overrides: overridesActuales() }
+      await declaracionesAPI.save(selectedClientId, tipo, datos, diferirMeses)
       setDiferirMeses(0)
       await load()
       let msg = '✔ Declaración guardada. Queda LISTA para facturar (aparece marcada en Reportes).'
