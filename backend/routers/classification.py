@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from typing import Optional
 from auth import get_current_user
-from database import get_supabase_client, fetch_all
+from database import get_supabase_client, fetch_all, fetch_in
 import pandas as pd
 import io
 from reportlab.lib.pagesizes import letter
@@ -152,6 +153,76 @@ async def list_classifications(user_id: str = Depends(get_current_user)):
             r["calif_fin"] = p.get("vigente_hasta") or ""
             # Actividad económica (SRI): la guardada en el clasificador o, si falta, la del proveedor
             r["actividad"] = (r.get("actividad") or "").strip() or (p.get("actividad") or "")
+        return rows
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/por-contribuyente")
+async def por_contribuyente(identificacion: str = Query(...), user_id: str = Depends(get_current_user)):
+    """SOLO los gastos del propio contribuyente: los proveedores (RUC) que aparecen
+    en SUS facturas de gastos, con su clasificación (categoría), calificación (tipo +
+    vigencia) y actividad económica. Los que faltan aparecen SIN CLASIFICAR."""
+    try:
+        from routers.access import rol_de
+        from tenancy import can_access_identificacion, visible_clients
+        supabase = get_supabase_client()
+        if not can_access_identificacion(user_id, identificacion):
+            return []
+        is_admin = rol_de(user_id) == "admin"
+        # client_ids de TODOS los períodos visibles de ese contribuyente
+        if is_admin:
+            cls = supabase.table("clients").select("id").eq("identificacion", identificacion).execute().data or []
+        else:
+            cls = [c for c in visible_clients(user_id, "id,identificacion") if c.get("identificacion") == identificacion]
+        client_ids = [c["id"] for c in cls]
+        if not client_ids:
+            return []
+        # Proveedores (RUC + nombre) de las facturas de gastos del contribuyente
+        inv = fetch_in(lambda: supabase.table("invoices").select("ruc_proveedor,nombre_proveedor"), client_ids, "client_id")
+        prov = {}
+        for r in inv:
+            ruc = (r.get("ruc_proveedor") or "").strip()
+            if ruc and ruc not in prov:
+                prov[ruc] = (r.get("nombre_proveedor") or "").strip()
+        if not prov:
+            return []
+        # Clasificación existente por RUC (admin: de todo el equipo; otros: propias), dedup
+        if is_admin:
+            todas = fetch_all(lambda: supabase.table("classification_map").select("*"))
+        else:
+            todas = supabase.table("classification_map").select("*").eq("user_id", user_id).execute().data or []
+        porruc = {}
+        for x in todas:
+            k = (x.get("ruc") or "").strip()
+            if not k:
+                continue
+            if k not in porruc or (not (porruc[k].get("categoria") or "").strip() and (x.get("categoria") or "").strip()):
+                porruc[k] = x
+        rows = []
+        for ruc, nombre in prov.items():
+            if ruc in porruc:
+                rows.append(porruc[ruc])
+            else:
+                try:
+                    ins = supabase.table("classification_map").insert({
+                        "user_id": user_id, "ruc": ruc,
+                        "nombre_proveedor": (nombre or "").upper(), "categoria": "",
+                    }).execute()
+                    if ins.data:
+                        rows.append(ins.data[0])
+                except Exception:
+                    pass
+        pmap = _prov_map(supabase, user_id, is_admin)
+        for r in rows:
+            k = (r.get("ruc") or "").strip()
+            p = pmap.get(k) or {}
+            r["calificado"] = bool(p.get("calificado"))
+            r["calif_categoria"] = p.get("categoria") or ""
+            r["calif_inicio"] = p.get("vigencia_inicio") or ""
+            r["calif_fin"] = p.get("vigente_hasta") or ""
+            r["actividad"] = (r.get("actividad") or "").strip() or (p.get("actividad") or "")
+        rows.sort(key=lambda r: (r.get("nombre_proveedor") or ""))
         return rows
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -366,6 +366,7 @@ export const classificationAPI = {
   delete: (ruc) => api.delete(`/api/classification/${ruc}`),
   deleteById: (id) => api.delete(`/api/classification/by-id/${id}`),
   enriquecerActividades: () => api.post('/api/classification/enriquecer-actividades'),
+  porContribuyente: (identificacion) => api.get('/api/classification/por-contribuyente', { params: { identificacion } }),
   import: (file) => {
     const formData = new FormData()
     formData.append('file', file)

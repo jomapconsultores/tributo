@@ -109,3 +109,24 @@ button.calif-badge.ok:hover { filter:brightness(.96); }
 
 /* Categoría sin clasificar (proveedores calificados recién incluidos) */
 .editable.sin-clasif { color:#b45309; font-style:italic; background:#fff7ed; border-radius:4px; padding:0 4px; }
+
+/* ===== Presentación mejorada del clasificador ===== */
+.classifier-table { width:100%; border-collapse:separate; border-spacing:0; font-size:.86rem; background:#fff;
+  border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(15,23,42,.06); }
+.classifier-table thead th { position:sticky; top:0; z-index:1; background:#0f172a; color:#e2e8f0;
+  text-align:left; font-weight:600; font-size:.72rem; letter-spacing:.04em; text-transform:uppercase;
+  padding:10px 12px; white-space:nowrap; }
+.classifier-table tbody td { padding:8px 12px; border-bottom:1px solid #eef2f7; vertical-align:top; }
+.classifier-table tbody tr:nth-child(even) { background:#f8fafc; }
+.classifier-table tbody tr:hover { background:#eef6ff; }
+.classifier-table tbody tr:last-child td { border-bottom:none; }
+.classifier-table .ruc-cell { font-variant-numeric:tabular-nums; font-weight:600; color:#0f172a; }
+.classifier-table .editable { display:inline-block; border-radius:5px; padding:1px 5px; transition:background .12s; }
+.classifier-table .editable:hover { background:#e0edff; box-shadow:inset 0 -2px 0 #93c5fd; }
+.classifier-table .inline-edit { width:100%; min-width:120px; padding:5px 8px; border:1.5px solid #3b82f6;
+  border-radius:6px; font-size:.86rem; outline:none; box-shadow:0 0 0 3px rgba(59,130,246,.15); }
+.classifier-table .delete-btn { background:transparent; border:none; cursor:pointer; opacity:.45; font-size:.95rem;
+  transition:opacity .12s, transform .12s; }
+.classifier-table .delete-btn:hover { opacity:1; transform:scale(1.15); }
+.classifier-table .actividad-cell { color:#475569; font-size:.8rem; line-height:1.25; }
+.calif-badge { display:inline-flex; align-items:center; gap:4px; }

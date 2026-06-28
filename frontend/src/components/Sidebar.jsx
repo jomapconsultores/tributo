@@ -28,11 +28,13 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   // la página de Movimientos avisa que ya fueron vistos.
   useEffect(() => {
     if (!isSuperAdmin) return
-    actividadAPI.resumen().then((r) => setMovNuevos(r.data?.nuevos || 0)).catch(() => {})
+    const load = () => actividadAPI.resumen().then((r) => setMovNuevos(r.data?.nuevos || 0)).catch(() => {})
+    load()
+    const id = setInterval(load, 60 * 1000) // antes: en cada navegación (lento)
     const onVista = () => setMovNuevos(0)
     window.addEventListener('actividad-vista', onVista)
-    return () => window.removeEventListener('actividad-vista', onVista)
-  }, [isSuperAdmin, location.pathname])
+    return () => { clearInterval(id); window.removeEventListener('actividad-vista', onVista) }
+  }, [isSuperAdmin])
 
   // Contribuyentes únicos (por identificación) para el listado por nombre
   const contribuyentes = []

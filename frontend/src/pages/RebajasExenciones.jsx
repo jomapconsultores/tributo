@@ -261,9 +261,10 @@ export default function RebajasExenciones() {
   const [gfCalif, setGfCalif] = useState('todos')
   const gastosFileRef = useRef(null)
   const loadGastos = async () => {
-    try { const r = await classificationAPI.list(); setGastosRows(r.data || []) } catch { setGastosRows([]) }
+    if (!ident) { setGastosRows([]); return }
+    try { const r = await classificationAPI.porContribuyente(ident); setGastosRows(r.data || []) } catch { setGastosRows([]) }
   }
-  useEffect(() => { if (gastosOpen) loadGastos() }, [gastosOpen])
+  useEffect(() => { if (gastosOpen) loadGastos() }, [gastosOpen, ident])
   const importarGastos = async (file) => {
     if (!file) return
     try {
@@ -535,7 +536,7 @@ export default function RebajasExenciones() {
       <details className="re-normas" open={gastosOpen} onToggle={(e) => setGastosOpen(e.target.open)}>
         <summary>🏷️ Gastos (clasificados y calificados)</summary>
         <div className="re-normas-body">
-          <p className="re-hint">Importa los datos de los <strong>gastos</strong> (RUC → categoría) y clasifícalos aquí. Los <strong>proveedores calificados</strong> entran <strong>SIN CLASIFICAR</strong> para que los categorices. Incluye <strong>actividad económica (SRI)</strong> y <strong>calificación</strong> (tipo). Doble clic en una celda para editar; clic para copiar.</p>
+          <p className="re-hint"><strong>Solo los gastos de este contribuyente</strong>: los proveedores que aparecen en sus facturas, con su <strong>categoría</strong>, <strong>calificación</strong> (tipo + vigencia) y <strong>actividad económica (SRI)</strong>. Los que faltan salen <strong>SIN CLASIFICAR</strong>. Doble clic en una celda para clasificar; clic para copiar.</p>
           <div className="cl-filters">
             <input list="g-ruc" placeholder="Filtrar RUC…" value={gfRuc} onChange={(e) => setGfRuc(e.target.value)} />
             <input list="g-nom" placeholder="Filtrar proveedor…" value={gfNombre} onChange={(e) => setGfNombre(e.target.value)} />
