@@ -522,7 +522,7 @@ export default function RebajasExenciones() {
 
       {/* Gastos a clasificar (clasificador de gastos) */}
       <details className="re-normas" open={gastosOpen} onToggle={(e) => setGastosOpen(e.target.open)}>
-        <summary>🏷️ Gastos a clasificar (importar y clasificar)</summary>
+        <summary>🏷️ Gastos (clasificados y calificados)</summary>
         <div className="re-normas-body">
           <p className="re-hint">Importa los datos de los <strong>gastos</strong> (RUC → categoría) y clasifícalos aquí. Incluye su <strong>actividad económica (SRI)</strong> y su <strong>calificación</strong> (tipo, del catálogo de proveedores). Haz clic en cualquier celda para editar.</p>
           <div className="cl-filters">
