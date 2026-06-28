@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { rebajasAPI, productsAPI } from '../services/api'
+import { rebajasAPI, productsAPI, compradoresAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
@@ -250,6 +250,40 @@ export default function RebajasExenciones() {
   const [provOpen, setProvOpen] = useState(false)
   const okDoc = (f) => /\.(xlsx|xls|csv|pdf)$/i.test(f.name) || /^image\//.test(f.type)
 
+  // Panel de compradores enriquecidos (clasificados y calificados)
+  const [compOpen, setCompOpen] = useState(false)
+  const [compRows, setCompRows] = useState([])
+  const [compQ, setCompQ] = useState('')
+  const [compCalif, setCompCalif] = useState('todos')
+  const [compEnr, setCompEnr] = useState('')
+  const [compVig, setCompVig] = useState(null)
+  const loadComp = async () => {
+    try { const r = await compradoresAPI.listEnriquecido(ident); setCompRows(r.data?.data || []) } catch { setCompRows([]) }
+  }
+  useEffect(() => { if (compOpen) loadComp() }, [compOpen, ident])
+  const traerActComp = async () => {
+    if (compEnr) return
+    try {
+      let restantes = 1, total = 0
+      for (let i = 0; i < 80 && restantes > 0; i++) {
+        const r = await compradoresAPI.enriquecerActividades(ident)
+        total += r.data?.actualizados || 0
+        restantes = r.data?.restantes ?? 0
+        setCompEnr(`Trayendo actividad del SRI… ${total} listas, faltan ${restantes}`)
+        if ((r.data?.procesados || 0) === 0) break
+      }
+      setCompEnr(''); await loadComp()
+      alert(`✔ Actividad económica del SRI actualizada (${total} compradores).`)
+    } catch (e) { setCompEnr(''); alert('Error: ' + (e.response?.data?.detail || e.message)) }
+  }
+  const compFiltrados = compRows.filter((r) => {
+    const q = compQ.trim().toLowerCase()
+    if (compCalif === 'si' && !r.calificado) return false
+    if (compCalif === 'no' && r.calificado) return false
+    if (q && ![r.ruc, r.nombre, r.categoria, r.actividad, r.calif_categoria].some((f) => String(f || '').toLowerCase().includes(q))) return false
+    return true
+  })
+
   // Guarda el proveedor en la base AL INSTANTE (sin botón). Usa el valor más reciente.
   const provGuardarAuto = (nf) => {
     const ruc = (nf.ruc || '').trim()
@@ -478,6 +512,51 @@ export default function RebajasExenciones() {
                       <button key={k} className="re-doclink" onClick={() => verDoc(d.path)} title={d.nombre}>📎 {d.nombre?.slice(0, 18) || 'doc'}</button>
                     ))}</td>
                     <td><button className="re-del" onClick={() => borrarProv(p.id)}>✕</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      {/* Compradores clasificados y calificados */}
+      <details className="re-normas" open={compOpen} onToggle={(e) => setCompOpen(e.target.open)}>
+        <summary>👥 Compradores (clasificados y calificados)</summary>
+        <div className="re-normas-body">
+          <p className="re-hint">Compradores del contribuyente con su <strong>categoría</strong> (del clasificador de gastos), su <strong>calificación</strong> (catálogo de proveedores: tipo y vigencia) y su <strong>actividad económica</strong> del SRI.</p>
+          <div className="cl-filters">
+            <input placeholder="🔍 Buscar RUC, nombre, categoría o actividad…" value={compQ} onChange={(e) => setCompQ(e.target.value)} />
+            <select value={compCalif} onChange={(e) => setCompCalif(e.target.value)}>
+              <option value="todos">Calificación: todas</option>
+              <option value="si">Solo calificados</option>
+              <option value="no">No calificados</option>
+            </select>
+            <button className="cl-clear" onClick={traerActComp} disabled={!!compEnr} title="Trae la actividad económica del SRI por RUC">
+              {compEnr ? '⏳ ' + compEnr : '🏛️ Traer actividad (SRI)'}
+            </button>
+            <span className="cl-count">{compFiltrados.length} de {compRows.length}</span>
+          </div>
+          <div className="re-prov-table">
+            <table>
+              <thead><tr><th>RUC</th><th>Nombre / Comprador</th><th>Actividad (SRI)</th><th>Categoría (gasto)</th><th>Calificación</th></tr></thead>
+              <tbody>
+                {compFiltrados.length === 0 ? (
+                  <tr><td colSpan={5} className="re-empty">{compRows.length === 0 ? 'Sin compradores para este contribuyente.' : 'Ninguno coincide con el filtro.'}</td></tr>
+                ) : compFiltrados.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.ruc}</td>
+                    <td>{r.nombre || '—'}</td>
+                    <td className="re-cat" title={r.actividad || ''}>{r.actividad || '—'}</td>
+                    <td>{r.categoria || '—'}</td>
+                    <td>
+                      {r.calificado ? (
+                        <button type="button" className="re-badge ok" style={{ cursor: 'pointer', border: 'none' }} title="Clic para ver la vigencia" onClick={() => setCompVig(compVig === r.id ? null : r.id)}>✔ {r.calif_categoria || 'Calificado'}</button>
+                      ) : (<span className="re-badge no">— No</span>)}
+                      {r.calificado && compVig === r.id && (
+                        <div className="re-cat" style={{ marginTop: 4 }}>Vigencia: {r.calif_inicio || '—'} → {r.calif_fin || '—'}</div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

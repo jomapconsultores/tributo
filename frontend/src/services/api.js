@@ -239,6 +239,8 @@ export const anexosAPI = {
 // Clientes importados (compradores de las facturas), aparte de los contribuyentes
 export const compradoresAPI = {
   list: (identificacion) => api.get('/api/compradores/', { params: identificacion ? { identificacion } : undefined }),
+  listEnriquecido: (identificacion) => api.get('/api/compradores/enriquecido', { params: identificacion ? { identificacion } : undefined }),
+  enriquecerActividades: (identificacion) => api.post('/api/compradores/enriquecer-actividades', null, { params: identificacion ? { identificacion } : undefined }),
   sync: () => api.post('/api/compradores/sync'),
   delete: (id) => api.delete(`/api/compradores/${id}`),
 }
