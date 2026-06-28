@@ -126,7 +126,9 @@ async def create_product(entry: ProductIn, user_id: str = Depends(get_current_us
             .eq("identificacion", data["identificacion"]).eq("nombre", data["nombre"])\
             .eq("presentacion", data.get("presentacion"))\
             .eq("capacidad", data.get("capacidad"))\
-            .eq("grado", data.get("grado")).execute()
+            .eq("grado", data.get("grado"))\
+            .eq("unidad", data.get("unidad"))\
+            .eq("cod_pais", data.get("cod_pais")).execute()
         if existing.data:
             res = supabase.table("client_products").update(data).eq("id", existing.data[0]["id"]).execute()
         else:
