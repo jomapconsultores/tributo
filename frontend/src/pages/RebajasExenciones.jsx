@@ -244,42 +244,47 @@ export default function RebajasExenciones() {
 
   // ── Panel de proveedores calificados ──
   const [provForm, setProvForm] = useState({ ruc: '', nombre: '', calificado: false, vigente_hasta: '' })
-  const [provFiles, setProvFiles] = useState([])
   const [provDragOver, setProvDragOver] = useState(false)
   const provFileRef = useRef(null)
   const [provOpen, setProvOpen] = useState(false)
   const okDoc = (f) => /\.(xlsx|xls|csv|pdf)$/i.test(f.name) || /^image\//.test(f.type)
-  const aceptarDocProv = (fileList) => {
-    const arr = Array.from(fileList || []).filter(Boolean)
-    if (!arr.length) return
-    const validos = arr.filter(okDoc)
-    if (validos.length < arr.length) alert('Se ignoraron archivos no válidos (solo Excel/PDF/imagen).')
-    if (validos.length) setProvFiles((prev) => [...prev, ...validos])
+
+  // Guarda el proveedor en la base AL INSTANTE (sin botón). Usa el valor más reciente.
+  const provGuardarAuto = (nf) => {
+    const ruc = (nf.ruc || '').trim()
+    if (!ruc) return
+    rebajasAPI.upsertProveedor({ identificacion: ident, ruc, nombre: nf.nombre, calificado: nf.calificado, vigente_hasta: nf.vigente_hasta || null })
+      .then(() => loadProv()).catch(() => {})
   }
+  const provField = (patch, guardar = false) => setProvForm((f) => {
+    const nf = { ...f, ...patch }
+    if (guardar) provGuardarAuto(nf)
+    return nf
+  })
   const verProvRuc = async () => {
     const ruc = (provForm.ruc || '').trim(); if (!ruc) { alert('Ingresa el RUC.'); return }
     setBusy('Verificando…')
     try {
       const r = await rebajasAPI.verificarRuc(ruc); const d = r.data
-      setProvForm((f) => ({ ...f, nombre: d.razon_social || f.nombre, calificado: d.cumple === true }))
+      const nf = { ...provForm, ruc, nombre: d.razon_social || provForm.nombre, calificado: d.cumple === true }
+      setProvForm(nf); provGuardarAuto(nf) // se cataloga al instante
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy('') }
   }
-  const guardarProv = async () => {
-    const ruc = (provForm.ruc || '').trim(); if (!ruc) { alert('El RUC es obligatorio.'); return }
-    setBusy('Guardando proveedor…')
+  // Subir documentos: se suben e indexan en la base INMEDIATAMENTE
+  const subirDocs = async (fileList) => {
+    const ruc = (provForm.ruc || '').trim()
+    if (!ruc) { alert('Ingresa el RUC del proveedor antes de subir documentos.'); return }
+    const arr = Array.from(fileList || []).filter(okDoc)
+    if (!arr.length) { alert('Solo Excel (.xlsx/.xls/.csv), PDF o imágenes.'); return }
+    setBusy('Subiendo documentos…')
     try {
-      if (provFiles.length) {
-        for (let k = 0; k < provFiles.length; k++) {
-          setBusy(`Subiendo documento ${k + 1} de ${provFiles.length}…`)
-          await rebajasAPI.subirDocProveedor({ identificacion: ident, ruc, nombre: provForm.nombre, calificado: provForm.calificado, vigente_hasta: provForm.vigente_hasta || null, file: provFiles[k] })
-        }
-      } else {
-        await rebajasAPI.upsertProveedor({ identificacion: ident, ruc, nombre: provForm.nombre, calificado: provForm.calificado, vigente_hasta: provForm.vigente_hasta || null })
+      for (let k = 0; k < arr.length; k++) {
+        setBusy(`Subiendo documento ${k + 1} de ${arr.length}…`)
+        await rebajasAPI.subirDocProveedor({ identificacion: ident, ruc, nombre: provForm.nombre, calificado: provForm.calificado, vigente_hasta: provForm.vigente_hasta || null, file: arr[k] })
       }
-      setProvForm({ ruc: '', nombre: '', calificado: false, vigente_hasta: '' }); setProvFiles([])
-      if (provFileRef.current) provFileRef.current.value = ''
-      loadProv()
-    } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy('') }
+      await loadProv()
+    } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
+    finally { setBusy(''); if (provFileRef.current) provFileRef.current.value = '' }
   }
   const verDoc = async (path) => {
     try { const r = await rebajasAPI.docUrl(path); if (r.data?.url) window.open(r.data.url, '_blank'); else alert('No se pudo abrir el documento.') }
@@ -424,36 +429,29 @@ export default function RebajasExenciones() {
         <summary>🗂️ Proveedores calificados (documentos y vigencia)</summary>
         <div className="re-normas-body">
           <p>Base reutilizable de personas/empresas calificadas. Adjunta el documento (Excel/foto/PDF) que respalda la calificación e indica hasta cuándo es válido.</p>
+          <p className="re-hint">Los cambios se <strong>guardan solos</strong> en la base. Escribe el RUC; los documentos se suben al soltarlos.</p>
           <div className="re-prov-form">
             <label className="re-f"><span>RUC</span>
-              <input value={provForm.ruc} onChange={(e) => setProvForm({ ...provForm, ruc: e.target.value })} placeholder="RUC" /></label>
+              <input value={provForm.ruc}
+                onChange={(e) => { const v = e.target.value; const p = proveedores.find((x) => (x.ruc || '') === v.trim()); provField(p ? { ruc: v, nombre: p.nombre || '', calificado: !!p.calificado, vigente_hasta: p.vigente_hasta || '' } : { ruc: v }) }}
+                onBlur={() => provField({}, true)} placeholder="RUC" /></label>
             <button type="button" className="re-verif" onClick={verProvRuc}>🔎 Verificar</button>
             <label className="re-f wide"><span>Nombre / Empresa</span>
-              <input value={provForm.nombre} onChange={(e) => setProvForm({ ...provForm, nombre: e.target.value.toUpperCase() })} /></label>
+              <input value={provForm.nombre} onChange={(e) => provField({ nombre: e.target.value.toUpperCase() })} onBlur={() => provField({}, true)} /></label>
             <label className="re-f"><span>¿Calificado?</span>
-              <span className="re-check"><input type="checkbox" checked={provForm.calificado} onChange={(e) => setProvForm({ ...provForm, calificado: e.target.checked })} /> {provForm.calificado ? 'Sí' : 'No'}</span></label>
+              <span className="re-check"><input type="checkbox" checked={provForm.calificado} onChange={(e) => provField({ calificado: e.target.checked }, true)} /> {provForm.calificado ? 'Sí' : 'No'}</span></label>
             <label className="re-f"><span>Válido hasta</span>
-              <input type="date" value={provForm.vigente_hasta} onChange={(e) => setProvForm({ ...provForm, vigente_hasta: e.target.value })} /></label>
-            <div className="re-f wide"><span>Documentos (Excel/foto/PDF — varios)</span>
-              <input ref={provFileRef} type="file" multiple accept=".xlsx,.xls,.csv,.pdf,image/*" style={{ display: 'none' }} onChange={(e) => aceptarDocProv(e.target.files)} />
+              <input type="date" value={provForm.vigente_hasta} onChange={(e) => provField({ vigente_hasta: e.target.value }, true)} /></label>
+            <div className="re-f wide"><span>Documentos (Excel/foto/PDF — varios, se suben al instante)</span>
+              <input ref={provFileRef} type="file" multiple accept=".xlsx,.xls,.csv,.pdf,image/*" style={{ display: 'none' }} onChange={(e) => subirDocs(e.target.files)} />
               <div className={`re-drop sm${provDragOver ? ' over' : ''}`}
                 onDragOver={(e) => { e.preventDefault(); setProvDragOver(true) }}
                 onDragLeave={() => setProvDragOver(false)}
-                onDrop={(e) => { e.preventDefault(); setProvDragOver(false); aceptarDocProv(e.dataTransfer.files) }}
+                onDrop={(e) => { e.preventDefault(); setProvDragOver(false); subirDocs(e.dataTransfer.files) }}
                 onClick={() => provFileRef.current?.click()}>
-                {provFiles.length ? `📎 ${provFiles.length} archivo(s) — clic para añadir más` : '📥 Arrastra uno o varios documentos aquí o haz clic'}
+                📥 Arrastra uno o varios documentos aquí (se guardan al instante) o haz clic
               </div>
-              {provFiles.length > 0 && (
-                <div className="re-files">
-                  {provFiles.map((f, k) => (
-                    <span key={k} className="re-file-chip">{f.name}
-                      <button type="button" onClick={() => setProvFiles((p) => p.filter((_, j) => j !== k))} title="Quitar">✕</button>
-                    </span>
-                  ))}
-                </div>
-              )}
             </div>
-            <button className="re-btn primary" onClick={guardarProv}>💾 Guardar proveedor</button>
           </div>
 
           <div className="re-table-wrap" style={{ marginTop: 10 }}>
