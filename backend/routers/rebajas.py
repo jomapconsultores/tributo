@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client
 from services.min_produccion import verificar_ruc
+from services.doc_ia import leer_documento_ia
 
 router = APIRouter(prefix="/api/rebajas", tags=["rebajas"])
 
@@ -408,14 +409,20 @@ async def subir_documento(
         _prov_bucket(supabase)
         content = await file.read()
         auto = not (ruc or "").strip()
+        # 1) Lectura con IA (lee fotos, escaneos, PDF y Excel)
+        ia = {}
         if auto:
-            ruc = _extraer_ruc(content, file.filename)
+            low = (file.filename or "").lower()
+            texto = None if (low.endswith(".pdf") or low.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif"))) else _texto_de_archivo(content, file.filename)
+            ia = leer_documento_ia(content, file.filename, file.content_type, texto) or {}
+            ruc = ia.get("ruc") or _extraer_ruc(content, file.filename)
             if not ruc:
-                raise HTTPException(status_code=400, detail="No se pudo leer el RUC del documento. Si es una foto/imagen no hay lectura automática (OCR); sube un PDF o Excel, o escribe el RUC manualmente.")
+                raise HTTPException(status_code=400, detail="No se pudo leer el RUC del documento. Verifica que el documento muestre el RUC, o escríbelo manualmente. (Para lectura de fotos/escaneos se requiere ANTHROPIC_API_KEY configurada.)")
         ruc = ruc.strip()
-        # Enriquecer con el Ministerio (calificación + vigencia inicio/fin)
+        # 2) Respaldo Ministerio si la IA no obtuvo categoría/vigencia
         verif = {}
-        if auto or not nombre:
+        falta = not (ia.get("categoria") and (ia.get("vigencia_fin") or ia.get("vigencia_inicio")))
+        if (auto and falta) or (not auto and not nombre):
             try:
                 verif = verificar_ruc(ruc)
             except Exception:
@@ -432,15 +439,15 @@ async def subir_documento(
         docs.append({"nombre": file.filename, "path": path, "subido": datetime.now(timezone.utc).isoformat()})
         data = {
             "user_id": user_id, "identificacion": identificacion, "ruc": ruc,
-            "nombre": (nombre or verif.get("razon_social") or prev.get("nombre") or "").strip().upper(),
-            "calificado": bool(calificado) or bool(verif.get("cumple")) or bool(prev.get("calificado")),
-            "categoria": verif.get("categoria") or "",
+            "nombre": (nombre or ia.get("nombre") or verif.get("razon_social") or prev.get("nombre") or "").strip().upper(),
+            "calificado": bool(calificado) or bool(ia.get("calificado")) or bool(verif.get("cumple")) or bool(prev.get("calificado")),
+            "categoria": ia.get("categoria") or verif.get("categoria") or "",
             "vigencia": verif.get("vigencia") or "",
             "documentos": docs,
             "verificado_at": datetime.now(timezone.utc).isoformat(),
         }
-        vi = verif.get("vigencia_inicio")
-        vf = vigente_hasta or verif.get("vigencia_fin")
+        vi = ia.get("vigencia_inicio") or verif.get("vigencia_inicio")
+        vf = vigente_hasta or ia.get("vigencia_fin") or verif.get("vigencia_fin")
         if vi:
             data["vigencia_inicio"] = vi
         if vf:

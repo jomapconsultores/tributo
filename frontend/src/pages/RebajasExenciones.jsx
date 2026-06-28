@@ -429,7 +429,7 @@ export default function RebajasExenciones() {
         <summary>🗂️ Proveedores calificados (documentos y vigencia)</summary>
         <div className="re-normas-body">
           <p>Base reutilizable de personas/empresas calificadas. Adjunta el documento (Excel/foto/PDF) que respalda la calificación e indica hasta cuándo es válido.</p>
-          <p className="re-hint"><strong>Arrastra el documento</strong> (PDF o Excel) y se <strong>extraen solos</strong> el RUC, el nombre, la <strong>calificación</strong> y la <strong>vigencia (inicio–fin)</strong> desde el Ministerio. No necesitas escribir nada. Los campos de abajo son opcionales (corrección manual). <em>Las fotos no se leen automáticamente.</em></p>
+          <p className="re-hint"><strong>Dos procesos:</strong> (1) <strong>Verificar calificación</strong> por RUC en el Ministerio (formulario), y (2) <strong>Cargar documentos</strong> — arrastra un <strong>PDF, foto o Excel</strong> y la <strong>IA lee</strong> el RUC, el nombre, la <strong>calificación</strong> y la <strong>vigencia (inicio–fin)</strong>, y los guarda solos. No necesitas escribir nada; los campos son opcionales (corrección manual).</p>
           <div className="re-prov-form">
             <label className="re-f"><span>RUC</span>
               <input value={provForm.ruc}
@@ -442,7 +442,7 @@ export default function RebajasExenciones() {
               <span className="re-check"><input type="checkbox" checked={provForm.calificado} onChange={(e) => provField({ calificado: e.target.checked }, true)} /> {provForm.calificado ? 'Sí' : 'No'}</span></label>
             <label className="re-f"><span>Válido hasta</span>
               <input type="date" value={provForm.vigente_hasta} onChange={(e) => provField({ vigente_hasta: e.target.value }, true)} /></label>
-            <div className="re-f wide"><span>Documentos (PDF/Excel — se extraen los datos)</span>
+            <div className="re-f wide"><span>Documentos (PDF, foto o Excel — la IA extrae los datos)</span>
               <input ref={provFileRef} type="file" multiple accept=".xlsx,.xls,.csv,.pdf,image/*" style={{ display: 'none' }} onChange={(e) => subirDocs(e.target.files)} />
               <div className={`re-drop sm${provDragOver ? ' over' : ''}`}
                 onDragOver={(e) => { e.preventDefault(); setProvDragOver(true) }}
