@@ -417,7 +417,7 @@ async def subir_documento(
             ia = leer_documento_ia(content, file.filename, file.content_type, texto) or {}
             ruc = ia.get("ruc") or _extraer_ruc(content, file.filename)
             if not ruc:
-                raise HTTPException(status_code=400, detail="No se pudo leer el RUC del documento. Verifica que el documento muestre el RUC, o escríbelo manualmente. (Para lectura de fotos/escaneos se requiere ANTHROPIC_API_KEY configurada.)")
+                raise HTTPException(status_code=400, detail="No se pudo leer el RUC del documento. Verifica que el documento muestre el RUC, o escríbelo manualmente. (Para lectura de fotos/escaneos se requiere MISTRAL_API_KEY configurada.)")
         ruc = ruc.strip()
         # 2) Respaldo Ministerio si la IA no obtuvo categoría/vigencia
         verif = {}
