@@ -29,10 +29,22 @@ const n4 = (v) => (parseFloat(v) || 0).toFixed(4)
 // 'CORP' es una variante del MISMO producto; se quita para agrupar junto.
 const sinCorp = (s) => (s || '').toUpperCase().replace(/\s*\bCORP\b\.?/g, ' ').replace(/\s+/g, ' ').trim()
 
-// Coincidencia de texto para filtrar un cuadro por cualquiera de sus campos.
-const incluye = (q, ...vals) => {
-  const s = (q || '').toLowerCase().trim()
-  return !s || vals.some((v) => String(v ?? '').toLowerCase().includes(s))
+// Texto buscable de una fila: TODAS sus columnas. Los números se incluyen crudos, con coma
+// decimal y formateados como moneda; los booleanos como 'sí/no'. Así se filtra por fecha,
+// RUC, cliente, líneas, botellas, ICE, IVA, total o cualquier valor de cada cuadro.
+const textoFila = (d) => Object.values(d || {}).map((v) => {
+  if (v == null || typeof v === 'object') return ''
+  if (typeof v === 'boolean') return v ? 'si sí' : 'no'
+  if (typeof v === 'number') { const s = String(v); return `${s} ${s.replace('.', ',')} ${money(v)}` }
+  return String(v)
+}).join('  ').toLowerCase()
+
+// Coincide si la fila contiene TODOS los términos escritos (separados por espacio).
+const filaCoincide = (d, q) => {
+  const terms = (q || '').toLowerCase().trim().split(/\s+/).filter(Boolean)
+  if (!terms.length) return true
+  const hay = textoFila(d)
+  return terms.every((t) => hay.includes(t))
 }
 
 // Verifica el cuadre de botellas de una línea: unidades vs (cajas × bot/caja).
@@ -45,16 +57,16 @@ const chequearBotellas = (r) => {
   return { u, cajas, bxc, esperado, dif, verificable: bxc > 0 && cajas > 0, ok: !(bxc > 0 && cajas > 0) || Math.abs(dif) < 1 }
 }
 
-// Cuadro con filtro propio: filtra `data` por `fields` y entrega el subconjunto
-// a `children` (que arma la tabla con sus sumatorias sobre lo filtrado).
-function CuadroFiltrable({ title, hint, data, fields, value, onFilter, children }) {
-  const q = value || ''
-  const filt = q.trim() ? data.filter((d) => incluye(q, ...fields.map((f) => d[f]))) : data
+// Cuadro con filtro propio: filtra `data` por CUALQUIER columna y entrega el subconjunto a
+// `children` (que arma la tabla con sus sumatorias sobre lo filtrado).
+function CuadroFiltrable({ title, hint, data, value, onFilter, children }) {
+  const q = (value || '').trim()
+  const filt = q ? data.filter((d) => filaCoincide(d, q)) : data
   return (
     <div className="ice-report">
       <h2 className="ice-report-title">
         <span className="ice-rep-h">{title}</span>
-        <input className="ice-cuadro-fil" placeholder="🔍 filtrar este cuadro…" value={q} onChange={(e) => onFilter(e.target.value)} />
+        <input className="ice-cuadro-fil" placeholder="🔍 filtrar por cualquier dato (cliente, botellas, ICE, total…)" value={value || ''} onChange={(e) => onFilter(e.target.value)} />
         <span className="ice-cuadro-count">{filt.length}/{data.length}</span>
       </h2>
       {hint}
@@ -306,10 +318,19 @@ export default function ICE() {
   }, [report, cuadroProducto])
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return rows
-    const q = search.toLowerCase()
-    return rows.filter((r) => [r.fecha, r.razon_social_cliente, r.nombre_producto, r.codigo_producto]
-      .some((f) => String(f || '').toLowerCase().includes(q)))
+    const q = search.toLowerCase().trim()
+    if (!q) return rows
+    const terms = q.split(/\s+/).filter(Boolean)
+    return rows.filter((r) => {
+      const tot = (parseFloat(r.base_iva) || 0) + (parseFloat(r.valor_iva) || 0)
+      const hay = [
+        r.fecha, r.razon_social_cliente, r.id_cliente, r.nombre_producto, r.codigo_producto,
+        r.es_pack ? 'sí pack' : 'no', r.cantidad_cajas, r.unidades_botellas, r.botellas_por_caja,
+        money(r.precio_por_caja), money(r.precio_por_botella), money(r.base_ice), money(r.valor_ice),
+        money(tot), r.valor_ice, r.base_ice, tot,
+      ].map((v) => String(v ?? '')).join('  ').toLowerCase()
+      return terms.every((t) => hay.includes(t))
+    })
   }, [rows, search])
 
   // selección múltiple
@@ -391,7 +412,7 @@ export default function ICE() {
         <button className="ice-btn small" onClick={() => navigate('/calculo-ice')}>🧮 Ir a Cálculo previo ICE</button>
         <button className="ice-btn small" onClick={abrirCodigos}>📊 Abrir Códigos ICE</button>
         <button className="ice-btn small danger" onClick={handleClear}>🗑 Limpiar</button>
-        <input className="ice-search" placeholder="🔍 Cliente, producto, código…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input className="ice-search" placeholder="🔍 Desglose: fecha, cliente, RUC, producto, botellas, ICE, total…" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
 
       {busy && <div className="ice-busy">⏳ {busy}</div>}
