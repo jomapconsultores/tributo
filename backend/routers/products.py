@@ -119,10 +119,14 @@ async def create_product(entry: ProductIn, user_id: str = Depends(get_current_us
             raise HTTPException(status_code=400, detail="El nombre es obligatorio")
         if not can_access_identificacion(user_id, data["identificacion"]):
             raise HTTPException(status_code=404, detail="Contribuyente no encontrado")
-        # El catálogo se comparte por RUC: si ya existe un producto con ese
-        # nombre (lo cree quien lo cree), se actualiza en lugar de duplicar.
+        # El catálogo se comparte por RUC. Solo se considera duplicado el MISMO
+        # producto con la MISMA presentación, capacidad y grado; así se permiten
+        # variantes (misma marca, distinta presentación/capacidad/grado).
         existing = supabase.table("client_products").select("id")\
-            .eq("identificacion", data["identificacion"]).eq("nombre", data["nombre"]).execute()
+            .eq("identificacion", data["identificacion"]).eq("nombre", data["nombre"])\
+            .eq("presentacion", data.get("presentacion"))\
+            .eq("capacidad", data.get("capacidad"))\
+            .eq("grado", data.get("grado")).execute()
         if existing.data:
             res = supabase.table("client_products").update(data).eq("id", existing.data[0]["id"]).execute()
         else:
