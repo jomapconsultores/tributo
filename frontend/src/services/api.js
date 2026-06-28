@@ -248,7 +248,17 @@ export const rebajasAPI = {
   list: (identificacion, producto) => api.get('/api/rebajas/', { params: { identificacion, producto } }),
   verificarRuc: (ruc) => api.get('/api/rebajas/verificar-ruc', { params: { ruc } }),
   create: (entry) => api.post('/api/rebajas/', entry),
+  bulk: (entry) => api.post('/api/rebajas/bulk', entry),
+  parseFile: (identificacion, producto, file) => {
+    const fd = new FormData()
+    fd.append('file', file); fd.append('identificacion', identificacion); fd.append('producto', producto)
+    return api.post('/api/rebajas/parse-file', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
   delete: (id) => api.delete(`/api/rebajas/${id}`),
+  // Catálogo reutilizable de proveedores (RUC → nombre + calificado)
+  listProveedores: (identificacion) => api.get('/api/rebajas/proveedores', { params: { identificacion } }),
+  upsertProveedor: (entry) => api.put('/api/rebajas/proveedores', entry),
+  verificarTodos: (identificacion, producto) => api.post('/api/rebajas/proveedores/verificar-todos', null, { params: { identificacion, producto } }),
   // Condiciones normativas del producto (cerveza / nueva marca / cupo anual SRI)
   getCondiciones: (identificacion, producto) => api.get('/api/rebajas/producto', { params: { identificacion, producto } }),
   setCondiciones: (entry) => api.put('/api/rebajas/producto', entry),
