@@ -235,7 +235,7 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
                           iva_diferido_actual))
 
     # Factor de proporcionalidad y crédito por adquisiciones
-    filas.append(fila("RESULTADO", "563", f"Factor de proporcionalidad — ventas 15% / (15% + 0%) ({factor:.2%})", round(factor, 4)))
+    filas.append(fila("RESULTADO", "563", f"Factor de proporcionalidad — (ventas 15% + 5%) / (15% + 5% + 0%) ({factor:.2%})", round(factor, 4)))
     filas.append(fila("RESULTADO", "564", "Crédito tributario aplicable en este período (IVA compras × factor)",
                       credito_adq_aplicable, c_n_base_15 + c_n_base_5))
     if iva_no_acreditable > 0:

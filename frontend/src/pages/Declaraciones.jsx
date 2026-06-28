@@ -456,7 +456,7 @@ export default function Declaraciones({ tipo }) {
           <div className="dc-card-box dc-credit-box">
             <h2 className="dc-h2">⚖️ Factor proporcionalidad</h2>
             <p className="dc-credit-help dc-help-sm">
-              {factorProp != null ? 'Override manual activo.' : 'Automático: ventas 15% ÷ (15%+0%). Si solo hay 15%, factor = 100%.'}
+              {factorProp != null ? 'Override manual activo.' : 'Automático: (ventas 15%+5%) ÷ (15%+5%+0%). Sin ventas 0%, factor = 100%.'}
             </p>
             <div className="dc-credit-grid">
               <div className="dc-credit-field">
