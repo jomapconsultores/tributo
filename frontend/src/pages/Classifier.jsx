@@ -25,6 +25,7 @@ export default function Classifier() {
   const [fActividad, setFActividad] = useState('')
   const [fCat, setFCat] = useState('')
   const [fCalif, setFCalif] = useState('todos') // todos | si | no
+  const [fSinClasif, setFSinClasif] = useState(false) // chip: solo sin clasificar
   const [enriq, setEnriq] = useState('') // texto de progreso del SRI
   const autoRef = useRef(false)
 
@@ -83,24 +84,31 @@ export default function Classifier() {
     const n = fNombre.trim().toLowerCase()
     const a = fActividad.trim().toLowerCase()
     const c = fCat.trim().toLowerCase()
+    const catSinClasif = c === 'sin clasificar' || c === 'sin clasificación'
     const inc = (v, t) => String(v || '').toLowerCase().includes(t)
     return classifications.filter((x) => {
+      const sinCat = !String(x.categoria || '').trim()
+      if (fSinClasif && !sinCat) return false
       if (q && ![x.ruc, x.nombre_proveedor, x.categoria, x.actividad, x.calif_categoria].some((f) => inc(f, q))) return false
       if (r && !inc(x.ruc, r)) return false
       if (n && !inc(x.nombre_proveedor, n)) return false
       if (a && !inc(x.actividad, a)) return false
-      if (c && !inc(x.categoria, c)) return false
+      if (c) { if (catSinClasif) { if (!sinCat) return false } else if (!inc(x.categoria, c)) return false }
       if (fCalif === 'si' && !x.calificado) return false
       if (fCalif === 'no' && x.calificado) return false
       return true
     })
-  }, [classifications, search, fRuc, fNombre, fActividad, fCat, fCalif])
+  }, [classifications, search, fRuc, fNombre, fActividad, fCat, fCalif, fSinClasif])
+
+  const nSinClasif = useMemo(() => classifications.filter((x) => !String(x.categoria || '').trim()).length, [classifications])
 
   // Listas de sugerencias por columna (datalist) para "buscar viendo la lista"
   const opc = useMemo(() => {
     const u = (k) => [...new Set(classifications.map((c) => String(c[k] || '').trim()).filter((v) => v && v !== '—'))].sort()
-    return { ruc: u('ruc'), nombre: u('nombre_proveedor'), act: u('actividad'), cat: u('categoria') }
-  }, [classifications])
+    const cat = u('categoria')
+    if (nSinClasif > 0) cat.unshift('SIN CLASIFICAR') // que aparezca como opción de filtro
+    return { ruc: u('ruc'), nombre: u('nombre_proveedor'), act: u('actividad'), cat }
+  }, [classifications, nSinClasif])
 
   const handleAddEntry = async (e) => {
     e.preventDefault()
@@ -224,8 +232,10 @@ export default function Classifier() {
           <option value="si">Solo calificados</option>
           <option value="no">No calificados</option>
         </select>
-        {(fRuc || fNombre || fActividad || fCat || fCalif !== 'todos') && (
-          <button className="cl-clear" onClick={() => { setFRuc(''); setFNombre(''); setFActividad(''); setFCat(''); setFCalif('todos') }}>✕ Limpiar</button>
+        <button type="button" className={`cl-chip ${fSinClasif ? 'on' : ''}`} onClick={() => setFSinClasif((v) => !v)}
+          title="Mostrar solo los que faltan clasificar">🏷️ Sin clasificar{nSinClasif ? ` (${nSinClasif})` : ''}</button>
+        {(fRuc || fNombre || fActividad || fCat || fCalif !== 'todos' || fSinClasif) && (
+          <button className="cl-clear" onClick={() => { setFRuc(''); setFNombre(''); setFActividad(''); setFCat(''); setFCalif('todos'); setFSinClasif(false) }}>✕ Limpiar</button>
         )}
         <span className="cl-count">{filtered.length} de {classifications.length}</span>
       </div>

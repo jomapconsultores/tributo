@@ -259,6 +259,7 @@ export default function RebajasExenciones() {
   const [gfAct, setGfAct] = useState('')
   const [gfCat, setGfCat] = useState('')
   const [gfCalif, setGfCalif] = useState('todos')
+  const [gfSinClasif, setGfSinClasif] = useState(false)
   const gastosFileRef = useRef(null)
   const [gastosEnr, setGastosEnr] = useState('')
   const traerActGastos = async () => {
@@ -302,18 +303,26 @@ export default function RebajasExenciones() {
     catch (e) { alert('Error al exportar: ' + (e.response?.data?.detail || e.message)) }
   }
   const gInc = (v, t) => String(v || '').toLowerCase().includes(t)
+  const gNSinClasif = gastosRows.filter((x) => !String(x.categoria || '').trim()).length
   const gastosFiltrados = gastosRows.filter((x) => {
     const r = gfRuc.trim().toLowerCase(), n = gfNombre.trim().toLowerCase()
     const a = gfAct.trim().toLowerCase(), c = gfCat.trim().toLowerCase()
+    const sinCat = !String(x.categoria || '').trim()
+    const catSinClasif = c === 'sin clasificar' || c === 'sin clasificación'
+    if (gfSinClasif && !sinCat) return false
     if (r && !gInc(x.ruc, r)) return false
     if (n && !gInc(x.nombre_proveedor, n)) return false
     if (a && !gInc(x.actividad, a)) return false
-    if (c && !gInc(x.categoria, c)) return false
+    if (c) { if (catSinClasif) { if (!sinCat) return false } else if (!gInc(x.categoria, c)) return false }
     if (gfCalif === 'si' && !x.calificado) return false
     if (gfCalif === 'no' && x.calificado) return false
     return true
   })
-  const gOpc = (k) => [...new Set(gastosRows.map((x) => String(x[k] || '').trim()).filter((v) => v && v !== '—'))].sort()
+  const gOpc = (k) => {
+    const arr = [...new Set(gastosRows.map((x) => String(x[k] || '').trim()).filter((v) => v && v !== '—'))].sort()
+    if (k === 'categoria' && gNSinClasif > 0) arr.unshift('SIN CLASIFICAR')
+    return arr
+  }
 
   // Guarda el proveedor en la base AL INSTANTE (sin botón). Usa el valor más reciente.
   const provGuardarAuto = (nf) => {
@@ -570,6 +579,8 @@ export default function RebajasExenciones() {
               <option value="si">Solo calificados</option>
               <option value="no">No calificados</option>
             </select>
+            <button type="button" className={`cl-chip ${gfSinClasif ? 'on' : ''}`} onClick={() => setGfSinClasif((v) => !v)}
+              title="Mostrar solo los que faltan clasificar">🏷️ Sin clasificar{gNSinClasif ? ` (${gNSinClasif})` : ''}</button>
             <datalist id="g-ruc">{gOpc('ruc').map((v) => <option key={v} value={v} />)}</datalist>
             <datalist id="g-nom">{gOpc('nombre_proveedor').map((v) => <option key={v} value={v} />)}</datalist>
             <datalist id="g-act">{gOpc('actividad').map((v) => <option key={v} value={v} />)}</datalist>

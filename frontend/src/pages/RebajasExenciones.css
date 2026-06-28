@@ -120,3 +120,8 @@
 .cl-filters .cl-clear { padding:6px 10px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; cursor:pointer; font-size:.82rem; }
 .cl-filters .cl-clear:disabled { opacity:.6; cursor:default; }
 .cl-filters .cl-count { margin-left:auto; color:#64748b; font-size:.82rem; }
+
+/* Chip de filtro rápido "Sin clasificar" */
+.cl-chip { padding:6px 12px; border:1px solid #fcd34d; border-radius:999px; background:#fffbeb; color:#92400e; cursor:pointer; font-size:.82rem; font-weight:600; white-space:nowrap; transition:all .12s; }
+.cl-chip:hover { background:#fef3c7; }
+.cl-chip.on { background:#b45309; border-color:#b45309; color:#fff; box-shadow:0 1px 4px rgba(180,83,9,.3); }
