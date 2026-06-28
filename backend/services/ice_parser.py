@@ -3,6 +3,7 @@ from typing import List, Dict
 from services.ice_data import (
     buscar_en_catalogo, es_pack, get_botellas_por_caja,
 )
+from services.ice_anexo import _extraer_grado, _extraer_volumen
 
 
 def _find_node(parent, tag):
@@ -99,6 +100,11 @@ def parse_ice_invoice(xml_content: str) -> List[Dict]:
             unidades = int(cant * bot_por_caja)
             pack = es_pack(desc)
             cat = buscar_en_catalogo(desc)
+            # El volumen (ml) y el grado REALES están en la descripción ('375 ML', '40V');
+            # el catálogo hardcodeado los traía fijos (aguardiente 750/15, etc.) y distorsionaba
+            # el ICE ad-valorem (depende del precio por LITRO, o sea del volumen).
+            vol_nombre = _extraer_volumen(desc)
+            grado_nombre = _extraer_grado(desc)
 
             precio_por_caja = p_total / cant if cant > 0 else p_unit
             precio_por_botella = precio_por_caja / bot_por_caja if bot_por_caja > 0 else precio_por_caja
@@ -114,9 +120,9 @@ def parse_ice_invoice(xml_content: str) -> List[Dict]:
                 "nombre_producto": (desc or '')[:120],
                 "cod_marca": cat['codMarca'],
                 "presentacion": cat['presentacion'],
-                "capacidad": cat['capacidad'],
+                "capacidad": vol_nombre or cat['capacidad'],
                 "unidad": cat['unidad'],
-                "grado_alcoholico": cat['grado'],
+                "grado_alcoholico": grado_nombre or cat['grado'],
                 "cod_impuesto": cat['codImpuesto'],
                 "tipo_producto": cat['tipo'],
                 "es_pack": pack,
