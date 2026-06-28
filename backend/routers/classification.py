@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from auth import get_current_user
 from database import get_supabase_client, fetch_all, fetch_in
 import pandas as pd
@@ -154,6 +154,52 @@ async def list_classifications(user_id: str = Depends(get_current_user)):
             # Actividad económica (SRI): la guardada en el clasificador o, si falta, la del proveedor
             r["actividad"] = (r.get("actividad") or "").strip() or (p.get("actividad") or "")
         return rows
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class RucsIn(BaseModel):
+    rucs: List[str] = []
+
+
+@router.post("/actividades-rucs")
+async def actividades_rucs(body: RucsIn, user_id: str = Depends(get_current_user)):
+    """Devuelve {ruc: actividad económica (SRI)} para una lista de RUC. Primero del
+    clasificador (rápido); los que falten, del SRI (y los guarda si la fila existe)."""
+    try:
+        from services.min_produccion import consultar_sri
+        supabase = get_supabase_client()
+        rucs = list({(r or "").strip() for r in (body.rucs or []) if r and r.strip()})[:80]
+        if not rucs:
+            return {}
+        res = {}
+        try:
+            rows = supabase.table("classification_map").select("ruc,actividad,id").in_("ruc", rucs).execute().data or []
+        except Exception:
+            rows = []
+        id_por_ruc = {}
+        for x in rows:
+            k = (x.get("ruc") or "").strip()
+            a = (x.get("actividad") or "").strip()
+            if k and k not in id_por_ruc:
+                id_por_ruc[k] = x.get("id")
+            if k and a and a != "—" and k not in res:
+                res[k] = a
+        faltan = [r for r in rucs if r not in res][:20]  # cap para no demorar
+        for ruc in faltan:
+            try:
+                sri = consultar_sri(ruc, timeout=6) or {}
+            except Exception:
+                sri = {}
+            ae = (sri.get("actividad_economica") or "").strip()
+            if ae:
+                res[ruc] = ae
+                if id_por_ruc.get(ruc):
+                    try:
+                        supabase.table("classification_map").update({"actividad": ae}).eq("id", id_por_ruc[ruc]).execute()
+                    except Exception:
+                        pass
+        return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

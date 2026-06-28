@@ -141,3 +141,6 @@
   border-color: #cbd5e1;
   cursor: not-allowed;
 }
+
+/* Actividad económica (SRI) en Pendientes */
+.pend-table .pend-act { max-width:340px; font-size:.8rem; color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

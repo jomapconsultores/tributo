@@ -69,6 +69,7 @@ export default function InvoiceTabs({ invoices, onInvoicesChange }) {
   const [pendCatalog, setPendCatalog] = useState([])
   const [pendInput, setPendInput] = useState({})
   const [pendBusy, setPendBusy] = useState('')
+  const [actMap, setActMap] = useState({}) // RUC -> actividad económica (SRI)
 
   useEffect(() => {
     classificationAPI.list()
@@ -141,6 +142,15 @@ export default function InvoiceTabs({ invoices, onInvoicesChange }) {
     return Object.values(map).sort((a, b) => a.nombre.localeCompare(b.nombre))
   }, [rowsOk])
 
+  // Trae la actividad económica (SRI) de los RUC pendientes, para discriminar mejor
+  useEffect(() => {
+    const rucs = pendientes.map((p) => p.ruc).filter(Boolean)
+    if (rucs.length === 0) return
+    classificationAPI.actividadesRucs(rucs)
+      .then((res) => setActMap((m) => ({ ...m, ...(res.data || {}) })))
+      .catch(() => {})
+  }, [pendientes])
+
   return (
     <div className="itabs">
       <div className="itabs-bar">
@@ -186,6 +196,7 @@ export default function InvoiceTabs({ invoices, onInvoicesChange }) {
                   <tr style={{ background: '#d97706' }}>
                     <th>RUC</th>
                     <th>Nombre</th>
+                    <th>Actividad económica (SRI)</th>
                     <th>Asignar Categoría</th>
                     <th></th>
                   </tr>
@@ -198,6 +209,7 @@ export default function InvoiceTabs({ invoices, onInvoicesChange }) {
                       <tr key={`${p.ruc}|${p.nombre}`}>
                         <td>{p.ruc || '-'}</td>
                         <td>{p.nombre || '-'}</td>
+                        <td className="pend-act" title={actMap[p.ruc] || ''}>{actMap[p.ruc] || '—'}</td>
                         <td>
                           <input
                             className="pend-cat-input"
