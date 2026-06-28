@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { classificationAPI } from '../services/api'
 import './ClassifierTable.css'
 
@@ -7,6 +7,16 @@ export default function ClassifierTable({ classifications, onClassificationsChan
   const [value, setValue] = useState('')
   const [vigOpen, setVigOpen] = useState(null) // id cuya vigencia se muestra
   const [actOpen, setActOpen] = useState(null) // id cuya actividad se ve completa
+  const [copied, setCopied] = useState(null)   // clave recién copiada (feedback)
+  const escRef = useRef(false)                  // se presionó Esc (no guardar al blur)
+
+  const copiar = (texto, clave) => {
+    const t = String(texto ?? '').trim()
+    if (!t || t === '-') return
+    try { navigator.clipboard?.writeText(t) } catch { /* */ }
+    setCopied(clave)
+    setTimeout(() => setCopied((k) => (k === clave ? null : k)), 1000)
+  }
 
   const startEdit = (id, field, current) => {
     setEdit({ id, field })
@@ -49,18 +59,24 @@ export default function ClassifierTable({ classifications, onClassificationsChan
           autoFocus
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          onBlur={() => handleSave(item)}
+          onBlur={() => { if (escRef.current) { escRef.current = false; cancel(); return } handleSave(item) }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') handleSave(item)
-            if (e.key === 'Escape') cancel()
+            if (e.key === 'Escape') { escRef.current = true; cancel() }  // vuelve al estado normal
           }}
           className="inline-edit"
         />
       )
     }
+    const clave = `${item.id}:${field}`
     return (
-      <span className={`editable ${extraClass}`} onClick={() => startEdit(item.id, field, item[field])}>
-        {item[field] || '-'}
+      <span
+        className={`editable ${extraClass} ${copied === clave ? 'copied' : ''}`}
+        title="Clic: copiar · Doble clic: editar"
+        onClick={() => copiar(item[field], clave)}
+        onDoubleClick={() => startEdit(item.id, field, item[field])}
+      >
+        {item[field] || '-'}{copied === clave && <span className="copied-tag">✓ copiado</span>}
       </span>
     )
   }

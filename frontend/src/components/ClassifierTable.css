@@ -101,3 +101,8 @@ button.calif-badge.ok:hover { filter:brightness(.96); }
 /* Actividad: clic para ver completa */
 .actividad-cell { cursor:pointer; }
 .actividad-cell.full { max-width:none; white-space:normal; overflow:visible; word-break:break-word; background:#f8fafc; }
+
+/* Copiar al clic / feedback */
+.editable { cursor:pointer; }
+.editable.copied { background:#dcfce7; border-radius:4px; }
+.copied-tag { margin-left:6px; font-size:.72rem; color:#166534; font-weight:600; }
