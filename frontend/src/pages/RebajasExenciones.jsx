@@ -270,17 +270,17 @@ export default function RebajasExenciones() {
       setProvForm(nf); provGuardarAuto(nf) // se cataloga al instante
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy('') }
   }
-  // Subir documentos: se suben e indexan en la base INMEDIATAMENTE
+  // Subir documentos: EXTRAE los datos del documento (RUC, nombre, calificación,
+  // vigencia) y los guarda en la base al instante. No requiere ningún dato previo.
   const subirDocs = async (fileList) => {
-    const ruc = (provForm.ruc || '').trim()
-    if (!ruc) { alert('Ingresa el RUC del proveedor antes de subir documentos.'); return }
     const arr = Array.from(fileList || []).filter(okDoc)
     if (!arr.length) { alert('Solo Excel (.xlsx/.xls/.csv), PDF o imágenes.'); return }
-    setBusy('Subiendo documentos…')
+    const ruc = (provForm.ruc || '').trim() // opcional: si lo escribiste se usa; si no, se extrae del documento
+    setBusy('Subiendo y extrayendo datos…')
     try {
       for (let k = 0; k < arr.length; k++) {
-        setBusy(`Subiendo documento ${k + 1} de ${arr.length}…`)
-        await rebajasAPI.subirDocProveedor({ identificacion: ident, ruc, nombre: provForm.nombre, calificado: provForm.calificado, vigente_hasta: provForm.vigente_hasta || null, file: arr[k] })
+        setBusy(`Procesando documento ${k + 1} de ${arr.length}…`)
+        await rebajasAPI.subirDocProveedor({ identificacion: ident, ruc: ruc || undefined, nombre: provForm.nombre, calificado: provForm.calificado, vigente_hasta: provForm.vigente_hasta || null, file: arr[k] })
       }
       await loadProv()
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
@@ -429,7 +429,7 @@ export default function RebajasExenciones() {
         <summary>🗂️ Proveedores calificados (documentos y vigencia)</summary>
         <div className="re-normas-body">
           <p>Base reutilizable de personas/empresas calificadas. Adjunta el documento (Excel/foto/PDF) que respalda la calificación e indica hasta cuándo es válido.</p>
-          <p className="re-hint">Los cambios se <strong>guardan solos</strong> en la base. Escribe el RUC; los documentos se suben al soltarlos.</p>
+          <p className="re-hint"><strong>Arrastra el documento</strong> (PDF o Excel) y se <strong>extraen solos</strong> el RUC, el nombre, la <strong>calificación</strong> y la <strong>vigencia (inicio–fin)</strong> desde el Ministerio. No necesitas escribir nada. Los campos de abajo son opcionales (corrección manual). <em>Las fotos no se leen automáticamente.</em></p>
           <div className="re-prov-form">
             <label className="re-f"><span>RUC</span>
               <input value={provForm.ruc}
@@ -442,21 +442,21 @@ export default function RebajasExenciones() {
               <span className="re-check"><input type="checkbox" checked={provForm.calificado} onChange={(e) => provField({ calificado: e.target.checked }, true)} /> {provForm.calificado ? 'Sí' : 'No'}</span></label>
             <label className="re-f"><span>Válido hasta</span>
               <input type="date" value={provForm.vigente_hasta} onChange={(e) => provField({ vigente_hasta: e.target.value }, true)} /></label>
-            <div className="re-f wide"><span>Documentos (Excel/foto/PDF — varios, se suben al instante)</span>
+            <div className="re-f wide"><span>Documentos (PDF/Excel — se extraen los datos)</span>
               <input ref={provFileRef} type="file" multiple accept=".xlsx,.xls,.csv,.pdf,image/*" style={{ display: 'none' }} onChange={(e) => subirDocs(e.target.files)} />
               <div className={`re-drop sm${provDragOver ? ' over' : ''}`}
                 onDragOver={(e) => { e.preventDefault(); setProvDragOver(true) }}
                 onDragLeave={() => setProvDragOver(false)}
                 onDrop={(e) => { e.preventDefault(); setProvDragOver(false); subirDocs(e.dataTransfer.files) }}
                 onClick={() => provFileRef.current?.click()}>
-                📥 Arrastra uno o varios documentos aquí (se guardan al instante) o haz clic
+                📥 Arrastra el/los documento(s) aquí — se leen y guardan solos (o haz clic)
               </div>
             </div>
           </div>
 
           <div className="re-table-wrap" style={{ marginTop: 10 }}>
             <table className="re-table">
-              <thead><tr><th>RUC</th><th>Nombre / Empresa</th><th>Calificado</th><th>Vigencia</th><th>Documentos</th><th></th></tr></thead>
+              <thead><tr><th>RUC</th><th>Nombre / Empresa</th><th>Calificación</th><th>Vigencia (inicio – fin)</th><th>Documentos</th><th></th></tr></thead>
               <tbody>
                 {proveedores.length === 0 ? (
                   <tr><td colSpan={6} className="re-empty">Sin proveedores guardados aún.</td></tr>
@@ -464,9 +464,12 @@ export default function RebajasExenciones() {
                   <tr key={p.id}>
                     <td>{p.ruc}</td>
                     <td>{p.nombre || '—'}</td>
-                    <td><span className={`re-badge ${p.calificado ? 'ok' : 'no'}`}>{p.calificado ? 'Sí' : 'No'}</span></td>
-                    <td>{p.vigente_hasta
-                      ? <span className={`re-badge ${estaVencido(p.vigente_hasta) ? 'no' : 'ok'}`}>{estaVencido(p.vigente_hasta) ? 'Vencido' : 'Vigente'} · {p.vigente_hasta}</span>
+                    <td>
+                      <span className={`re-badge ${p.calificado ? 'ok' : 'no'}`}>{p.calificado ? 'Calificado' : 'No'}</span>
+                      {p.categoria && <div className="re-cat">{p.categoria}</div>}
+                    </td>
+                    <td>{(p.vigencia_inicio || p.vigente_hasta)
+                      ? <span className={`re-badge ${estaVencido(p.vigente_hasta) ? 'no' : 'ok'}`}>{estaVencido(p.vigente_hasta) ? 'Vencido' : 'Vigente'}{(p.vigencia_inicio || p.vigente_hasta) ? ` · ${p.vigencia_inicio || '—'} → ${p.vigente_hasta || '—'}` : ''}</span>
                       : '—'}</td>
                     <td>{(p.documentos || []).length === 0 ? '—' : (p.documentos || []).map((d, k) => (
                       <button key={k} className="re-doclink" onClick={() => verDoc(d.path)} title={d.nombre}>📎 {d.nombre?.slice(0, 18) || 'doc'}</button>

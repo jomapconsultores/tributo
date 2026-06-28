@@ -263,8 +263,9 @@ export const rebajasAPI = {
   verificarTodos: (identificacion, producto) => api.post('/api/rebajas/proveedores/verificar-todos', null, { params: { identificacion, producto } }),
   subirDocProveedor: ({ identificacion, ruc, nombre, calificado, vigente_hasta, file }) => {
     const fd = new FormData()
-    fd.append('file', file); fd.append('identificacion', identificacion); fd.append('ruc', ruc)
-    if (nombre != null) fd.append('nombre', nombre)
+    fd.append('file', file); fd.append('identificacion', identificacion)
+    if (ruc && String(ruc).trim()) fd.append('ruc', String(ruc).trim())
+    if (nombre) fd.append('nombre', nombre)
     if (calificado != null) fd.append('calificado', calificado)
     if (vigente_hasta) fd.append('vigente_hasta', vigente_hasta)
     return api.post('/api/rebajas/proveedores/documento', fd, { headers: { 'Content-Type': 'multipart/form-data' } })

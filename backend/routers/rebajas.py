@@ -275,8 +275,47 @@ async def parse_file(
 
 # ── Catálogo reutilizable de proveedores (RUC → nombre + calificado) ──
 
-PROV_COLS = "id,identificacion,ruc,nombre,calificado,categoria,vigencia,vigente_hasta,documentos,verificado_at"
+PROV_COLS = "id,identificacion,ruc,nombre,calificado,categoria,vigencia,vigencia_inicio,vigente_hasta,documentos,verificado_at"
 PROV_BUCKET = "proveedores"
+
+
+def _texto_de_archivo(content, filename):
+    """Extrae texto plano de un PDF/Excel/CSV para buscar datos (RUC). Las fotos
+    no se leen (no hay OCR)."""
+    name = (filename or "").lower()
+    try:
+        if name.endswith(".pdf"):
+            import PyPDF2
+            rd = PyPDF2.PdfReader(io.BytesIO(content))
+            return "\n".join((p.extract_text() or "") for p in rd.pages)
+        if name.endswith(".csv") or name.endswith(".txt"):
+            return content.decode("utf-8-sig", errors="replace")
+        if name.endswith(".xlsx") or name.endswith(".xls"):
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True, read_only=True)
+            out = []
+            for sh in wb.worksheets:
+                for row in sh.iter_rows(values_only=True):
+                    out.append(" ".join("" if c is None else str(c) for c in row))
+            return "\n".join(out)
+    except Exception as e:
+        print(f"_texto_de_archivo: {e}")
+    return ""
+
+
+def _extraer_ruc(content, filename):
+    """Busca un RUC (13 dígitos terminado en 001) en el texto del documento."""
+    txt = _texto_de_archivo(content, filename)
+    if not txt:
+        return None
+    m = re.findall(r"\b(\d{13})\b", txt)
+    if not m:
+        return None
+    # Preferir los que terminan en 001 (RUC de sociedad/persona con establecimiento)
+    for r in m:
+        if r.endswith("001"):
+            return r
+    return m[0]
 
 
 class ProveedorIn(BaseModel):
@@ -286,6 +325,7 @@ class ProveedorIn(BaseModel):
     calificado: Optional[bool] = False
     categoria: Optional[str] = ""
     vigencia: Optional[str] = ""
+    vigencia_inicio: Optional[str] = None
     vigente_hasta: Optional[str] = None
 
 
@@ -300,7 +340,7 @@ async def list_proveedores(identificacion: str = Query(...), user_id: str = Depe
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _upsert_proveedor(supabase, user_id, ident, ruc, nombre, calificado, categoria="", vigencia="", vigente_hasta=None):
+def _upsert_proveedor(supabase, user_id, ident, ruc, nombre, calificado, categoria="", vigencia="", vigente_hasta=None, vigencia_inicio=None):
     data = {
         "user_id": user_id, "identificacion": ident, "ruc": (ruc or "").strip(),
         "nombre": (nombre or "").strip().upper(), "calificado": bool(calificado),
@@ -309,6 +349,8 @@ def _upsert_proveedor(supabase, user_id, ident, ruc, nombre, calificado, categor
     }
     if vigente_hasta:
         data["vigente_hasta"] = vigente_hasta
+    if vigencia_inicio:
+        data["vigencia_inicio"] = vigencia_inicio
     return supabase.table("rebajas_proveedores").upsert(
         data, on_conflict="user_id,identificacion,ruc").execute()
 
@@ -321,7 +363,7 @@ async def upsert_proveedor(entry: ProveedorIn, user_id: str = Depends(get_curren
             raise HTTPException(status_code=400, detail="El RUC es obligatorio")
         supabase = get_supabase_client()
         res = _upsert_proveedor(supabase, user_id, entry.identificacion, entry.ruc,
-                                entry.nombre, entry.calificado, entry.categoria, entry.vigencia, entry.vigente_hasta)
+                                entry.nombre, entry.calificado, entry.categoria, entry.vigencia, entry.vigente_hasta, entry.vigencia_inicio)
         return res.data[0] if res.data else None
     except HTTPException:
         raise
@@ -352,41 +394,57 @@ def _prov_bucket(supabase):
 async def subir_documento(
     file: UploadFile = File(...),
     identificacion: str = Form(...),
-    ruc: str = Form(...),
+    ruc: Optional[str] = Form(None),
     nombre: Optional[str] = Form(""),
     calificado: Optional[bool] = Form(False),
     vigente_hasta: Optional[str] = Form(None),
     user_id: str = Depends(get_current_user),
 ):
-    """Sube un documento (Excel/foto/PDF) que respalda la calificación del proveedor
-    y lo registra en el catálogo con su vigencia."""
+    """Sube un documento (PDF/Excel) y EXTRAE los datos del proveedor: si no se
+    envía el RUC, lo lee del documento, consulta el Ministerio y registra nombre,
+    calificación y vigencia (inicio–fin) automáticamente."""
     try:
-        ruc = (ruc or "").strip()
-        if not ruc:
-            raise HTTPException(status_code=400, detail="El RUC es obligatorio")
         supabase = get_supabase_client()
         _prov_bucket(supabase)
         content = await file.read()
+        auto = not (ruc or "").strip()
+        if auto:
+            ruc = _extraer_ruc(content, file.filename)
+            if not ruc:
+                raise HTTPException(status_code=400, detail="No se pudo leer el RUC del documento. Si es una foto/imagen no hay lectura automática (OCR); sube un PDF o Excel, o escribe el RUC manualmente.")
+        ruc = ruc.strip()
+        # Enriquecer con el Ministerio (calificación + vigencia inicio/fin)
+        verif = {}
+        if auto or not nombre:
+            try:
+                verif = verificar_ruc(ruc)
+            except Exception:
+                verif = {}
         safe = re.sub(r"[^A-Za-z0-9._-]", "_", file.filename or "documento")
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
         path = f"{identificacion}/{ruc}/{stamp}_{safe}"
         supabase.storage.from_(PROV_BUCKET).upload(
             path, content, {"content-type": file.content_type or "application/octet-stream", "upsert": "true"})
-        # Lee el proveedor actual para anexar el documento
-        cur = supabase.table("rebajas_proveedores").select("id,documentos,nombre,calificado,vigente_hasta")\
+        cur = supabase.table("rebajas_proveedores").select("id,documentos,nombre,calificado,vigente_hasta,vigencia_inicio")\
             .eq("user_id", user_id).eq("identificacion", identificacion).eq("ruc", ruc).execute().data
         prev = cur[0] if cur else {}
         docs = (prev.get("documentos") or []) if prev else []
         docs.append({"nombre": file.filename, "path": path, "subido": datetime.now(timezone.utc).isoformat()})
         data = {
             "user_id": user_id, "identificacion": identificacion, "ruc": ruc,
-            "nombre": (nombre or prev.get("nombre") or "").strip().upper(),
-            "calificado": bool(calificado) or bool(prev.get("calificado")),
+            "nombre": (nombre or verif.get("razon_social") or prev.get("nombre") or "").strip().upper(),
+            "calificado": bool(calificado) or bool(verif.get("cumple")) or bool(prev.get("calificado")),
+            "categoria": verif.get("categoria") or "",
+            "vigencia": verif.get("vigencia") or "",
             "documentos": docs,
             "verificado_at": datetime.now(timezone.utc).isoformat(),
         }
-        if vigente_hasta:
-            data["vigente_hasta"] = vigente_hasta
+        vi = verif.get("vigencia_inicio")
+        vf = vigente_hasta or verif.get("vigencia_fin")
+        if vi:
+            data["vigencia_inicio"] = vi
+        if vf:
+            data["vigente_hasta"] = vf
         res = supabase.table("rebajas_proveedores").upsert(data, on_conflict="user_id,identificacion,ruc").execute()
         return res.data[0] if res.data else None
     except HTTPException:

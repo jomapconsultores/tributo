@@ -24,6 +24,14 @@ def _viewstate(html):
     return m.group(1) if m else None
 
 
+def _fecha_iso(d):
+    """'01/01/2024' o '01-01-2024' -> '2024-01-01'."""
+    m = re.match(r"\s*(\d{1,2})[/-](\d{1,2})[/-](\d{4})", d or "")
+    if m:
+        return f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+    return None
+
+
 def cumple_ley(categoria):
     """True si la categoría del Ministerio habilita el beneficio (MIPYME/artesano/EPS).
     'NO MIPYME' (empresa grande) no cumple."""
@@ -58,7 +66,8 @@ def verificar_ruc(ruc):
         return {"calificado": None, "cumple": False, "mensaje": "Ingresa un RUC."}
 
     res = {"calificado": None, "cumple": False, "razon_social": "", "categoria": "",
-           "vigencia": "", "tipo": "", "fuente": "", "mensaje": ""}
+           "vigencia": "", "vigencia_inicio": None, "vigencia_fin": None,
+           "tipo": "", "fuente": "", "mensaje": ""}
     try:
         s = requests.Session()
         s.headers.update(HDRS)
@@ -94,6 +103,8 @@ def verificar_ruc(ruc):
                     "categoria": categoria,
                     "razon_social": rs.group(1).strip() if rs else "",
                     "vigencia": f"{fi.group(1)} a {ff.group(1)}" if fi and ff else "",
+                    "vigencia_inicio": _fecha_iso(fi.group(1)) if fi else None,
+                    "vigencia_fin": _fecha_iso(ff.group(1)) if ff else None,
                     "cumple": cumple_ley(categoria),
                     "fuente": "MINISTERIO",
                 })
