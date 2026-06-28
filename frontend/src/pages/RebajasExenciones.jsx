@@ -10,7 +10,7 @@ import './RebajasExenciones.css'
 
 const RE_STEPS = [
   { icon: '📚', label: 'Catálogo Productos', path: '/catalogo-productos' },
-  { icon: '🧮', label: 'Cálculo ICE', path: '/calculo-ice' },
+  { icon: '🧮', label: 'Cálculo previo ICE', path: '/calculo-ice' },
   { icon: '⚖️', label: 'Rebajas y Exenciones', current: true },
   { icon: '🥃', label: 'ICE XML', path: '/ice' },
   { icon: '📄', label: 'Declaraciones ICE', path: '/declaracion-ice' },

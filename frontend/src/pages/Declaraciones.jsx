@@ -265,7 +265,7 @@ export default function Declaraciones({ tipo }) {
       ]
     : [
         { icon: '📚', label: 'Catálogo Productos', path: '/catalogo-productos' },
-        { icon: '🧮', label: 'Cálculo ICE', path: '/calculo-ice' },
+        { icon: '🧮', label: 'Cálculo previo ICE', path: '/calculo-ice' },
         { icon: '📄', label: 'Declaraciones ICE', current: true },
         { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
       ]

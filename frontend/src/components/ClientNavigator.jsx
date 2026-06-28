@@ -151,7 +151,7 @@ export default function ClientNavigator({ idents_svc = null }) {
                 {gastos > 0 && <span className="cn-tot-chip gastos" title="Facturas de gastos">💸 {gastos}</span>}
                 {retenciones > 0 && <span className="cn-tot-chip ret" title="Retenciones">🧾 {retenciones}</span>}
                 {ice > 0 && <span className="cn-tot-chip ice" title="Ventas ICE">🥃 {ice}</span>}
-                {calculo_ice > 0 && <span className="cn-tot-chip calc" title="Cálculo ICE">🧮 {calculo_ice}</span>}
+                {calculo_ice > 0 && <span className="cn-tot-chip calc" title="Cálculo previo ICE">🧮 {calculo_ice}</span>}
                 {gastos === 0 && retenciones === 0 && ice === 0 && calculo_ice === 0 && (
                   <span className="cn-tot-vacio">sin datos</span>
                 )}

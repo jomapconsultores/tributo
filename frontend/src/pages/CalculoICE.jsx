@@ -17,7 +17,7 @@ const ANIOS = ['2021', '2022', '2023', '2024', '2025', '2026']
 
 const CALC_STEPS = [
   { icon: '📚', label: 'Catálogo Productos', path: '/catalogo-productos' },
-  { icon: '🧮', label: 'Cálculo ICE', current: true },
+  { icon: '🧮', label: 'Cálculo previo ICE', current: true },
   { icon: '⚖️', label: 'Rebajas y Exenciones', path: '/rebajas-exenciones' },
   { icon: '🥃', label: 'ICE XML', path: '/ice' },
   { icon: '📄', label: 'Declaraciones ICE', path: '/declaracion-ice' },
@@ -148,7 +148,7 @@ export default function CalculoICE() {
   }, [calc])
 
   if (!selectedClient || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
-    return <ClientPickerScreen icon="🧮" title="Cálculo ICE" subtitle="Cálculo mensual del impuesto ICE por producto" idents_svc={idents_svc} onNewClient={openNewClient} svcLabel="Declaración ICE" />
+    return <ClientPickerScreen icon="🧮" title="Cálculo previo ICE" subtitle="Cálculo mensual del impuesto ICE por producto" idents_svc={idents_svc} onNewClient={openNewClient} svcLabel="Declaración ICE" />
   }
 
   return (
@@ -156,7 +156,7 @@ export default function CalculoICE() {
       <WorkflowGuide steps={CALC_STEPS} />
       <header className="ci-header">
         <div>
-          <h1>🧮 Cálculo ICE</h1>
+          <h1>🧮 Cálculo previo ICE</h1>
           <p className="ci-sub"><strong className="sub-ruc">{selectedClient.identificacion}</strong> — {selectedClient.nombre} · {periodoLargo(selectedClient)}</p>
         </div>
         <div className="ci-head-badges">

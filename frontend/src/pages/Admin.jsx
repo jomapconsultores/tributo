@@ -12,7 +12,7 @@ const MODS = [
   { key: 'declaraciones', label: 'Declar.' },
 ]
 const PLANES = [
-  { key: 'ice', label: 'Cálculo ICE ($50)' },
+  { key: 'ice', label: 'Cálculo previo ICE ($50)' },
   { key: 'gastos_ret', label: 'Gastos y Retenciones ($50)' },
   { key: 'completo', label: 'Sistema Completo ($150)' },
 ]

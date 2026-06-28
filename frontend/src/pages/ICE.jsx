@@ -28,7 +28,7 @@ const n4 = (v) => (parseFloat(v) || 0).toFixed(4)
 
 const ICE_STEPS = [
   { icon: '📚', label: 'Catálogo Productos', path: '/catalogo-productos' },
-  { icon: '🧮', label: 'Cálculo ICE', path: '/calculo-ice' },
+  { icon: '🧮', label: 'Cálculo previo ICE', path: '/calculo-ice' },
   { icon: '🥃', label: 'ICE XML', current: true },
   { icon: '📄', label: 'Declaraciones ICE', path: '/declaracion-ice' },
   { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
@@ -291,7 +291,7 @@ export default function ICE() {
         <button className="ice-btn small" onClick={handleExportPdf}>⬇ PDF</button>
         <button className="ice-btn small" onClick={() => descargarXmlsOriginales(selectedClient, selectedClientId, 'IngresosICE', 'ingreso_ice')} title="Descargar los XML originales subidos">⬇ XML originales</button>
         <button className="ice-btn anexo" onClick={() => setAnexo('open')}>📄 Generar Anexo ICE</button>
-        <button className="ice-btn small" onClick={() => navigate('/calculo-ice')}>🧮 Ir a Cálculo ICE</button>
+        <button className="ice-btn small" onClick={() => navigate('/calculo-ice')}>🧮 Ir a Cálculo previo ICE</button>
         <button className="ice-btn small" onClick={abrirCodigos}>📊 Abrir Códigos ICE</button>
         <button className="ice-btn small danger" onClick={handleClear}>🗑 Limpiar</button>
         <input className="ice-search" placeholder="🔍 Cliente, producto, código…" value={search} onChange={(e) => setSearch(e.target.value)} />

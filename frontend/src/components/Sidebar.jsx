@@ -178,7 +178,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
               onClick={() => navigate('/calculo-ice')}
             >
               <span className="nav-ico">🧮</span>
-              <span>Cálculo ICE</span>
+              <span>Cálculo previo ICE</span>
             </button>
             <button
               className={`nav-item submodule ${isIceXml ? 'active' : ''}`}
@@ -451,7 +451,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
                   <button className={`sqn-chip ${isDeclIce ? 'active' : ''}`} onClick={() => navigate('/declaracion-ice')}>🥃 Decl. ICE</button>
                 )}
                 {has('ingresos_ice') && (
-                  <button className={`sqn-chip ${isCalculo ? 'active' : ''}`} onClick={() => navigate('/calculo-ice')}>🧮 Cálculo ICE</button>
+                  <button className={`sqn-chip ${isCalculo ? 'active' : ''}`} onClick={() => navigate('/calculo-ice')}>🧮 Cálculo previo ICE</button>
                 )}
               </div>
             </div>
