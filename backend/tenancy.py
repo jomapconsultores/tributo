@@ -53,49 +53,61 @@ def _admin_user_ids() -> set:
     return {r["user_id"] for r in rows}
 
 
+import time as _time
+
+_VC_TTL = 30  # seg: cache de clientes visibles por usuario (evita viajes repetidos)
+_vc_cache: dict = {}  # user_id -> (rows_full, ts)
+
+
+def invalidate_clients_cache(user_id: str = None):
+    """Limpia el cache de clientes visibles (al crear/editar/borrar un cliente)."""
+    if user_id is None:
+        _vc_cache.clear()
+    else:
+        _vc_cache.pop(user_id, None)
+
+
+def _compute_visible_clients_full(user_id: str) -> list:
+    """Filas COMPLETAS de `clients` visibles para `user_id` según su ROL."""
+    from routers.access import rol_de
+    supabase = get_supabase_client()
+    role = rol_de(user_id)
+    if role == "admin":
+        return fetch_all(lambda: supabase.table("clients").select("*"))
+    if role == "socio":
+        todos = fetch_all(lambda: supabase.table("clients").select("*"))
+        admin_uids = _admin_user_ids()
+        compartidos = set(shared_client_ids(user_id))
+        return [c for c in todos
+                if c.get("user_id") not in admin_uids or c["id"] in compartidos]
+    # cliente: propios + compartidos
+    propios = fetch_all(lambda: supabase.table("clients").select("*").eq("user_id", user_id))
+    sids = shared_client_ids(user_id)
+    if sids:
+        seen = {c["id"] for c in propios}
+        compartidos = fetch_all(lambda: supabase.table("clients").select("*").in_("id", sids))
+        propios = propios + [c for c in compartidos if c["id"] not in seen]
+    return propios
+
+
 def visible_clients(user_id: str, select: str = "*") -> list:
     """Filas de `clients` visibles para `user_id` según su ROL (en TODOS los
-    módulos). Reglas de negocio:
+    módulos), con cache corto por usuario para evitar viajes repetidos a la BD.
       - admin : ve TODOS los contribuyentes, sin importar quién los creó.
       - socio : ve los de los clientes y los suyos propios (todo MENOS lo creado
                 por un administrador), más los compartidos explícitamente.
       - cliente: solo los propios y los que un administrador le compartió.
     """
-    from routers.access import rol_de
-    supabase = get_supabase_client()
-    role = rol_de(user_id)
-
-    def _cols(*extra):
-        """Asegura las columnas pedidas + las necesarias, sin duplicar."""
-        if select == "*":
-            return "*"
-        cols = [c.strip() for c in select.split(",")]
-        for e in extra:
-            if e not in cols:
-                cols.append(e)
-        return ",".join(cols)
-
-    if role == "admin":
-        return fetch_all(lambda: supabase.table("clients").select(select))
-
-    if role == "socio":
-        # Necesita id + user_id para excluir lo creado por administradores.
-        cols = _cols("id", "user_id")
-        todos = fetch_all(lambda: supabase.table("clients").select(cols))
-        admin_uids = _admin_user_ids()
-        compartidos = set(shared_client_ids(user_id))
-        return [c for c in todos
-                if c.get("user_id") not in admin_uids or c["id"] in compartidos]
-
-    # cliente: propios + compartidos
-    cols = _cols("id")
-    propios = fetch_all(lambda: supabase.table("clients").select(cols).eq("user_id", user_id))
-    sids = shared_client_ids(user_id)
-    if sids:
-        seen = {c["id"] for c in propios}
-        compartidos = fetch_all(lambda: supabase.table("clients").select(cols).in_("id", sids))
-        propios = propios + [c for c in compartidos if c["id"] not in seen]
-    return propios
+    hit = _vc_cache.get(user_id)
+    if hit and (_time.monotonic() - hit[1]) < _VC_TTL:
+        rows = hit[0]
+    else:
+        rows = _compute_visible_clients_full(user_id)
+        _vc_cache[user_id] = (rows, _time.monotonic())
+    if select == "*":
+        return rows
+    cols = [c.strip() for c in select.split(",")]
+    return [{k: r.get(k) for k in cols} for r in rows]
 
 
 def visible_client_ids(user_id: str):

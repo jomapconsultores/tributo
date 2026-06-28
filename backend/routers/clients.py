@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client, fetch_all
 from services.sri_ruc import consultar_ruc
-from tenancy import visible_clients, assert_client_owner
+from tenancy import visible_clients, assert_client_owner, invalidate_clients_cache
 from services.activity import registrar
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
@@ -294,6 +294,7 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
             "notas": entry.notas,
         }).execute()
         nuevo = response.data[0] if response.data else None
+        invalidate_clients_cache()
         if nuevo:
             registrar(actor_user_id=user_id, action="create", module="clientes",
                       entity="Nuevo cliente", client_id=nuevo.get("id"),
@@ -336,6 +337,7 @@ async def update_client(client_id: str, entry: ClientUpdate, user_id: str = Depe
             identidad["updated_at"] = "now()"
             supabase.table("clients").update(identidad).eq(
                 "identificacion", ident_actual).neq("id", client_id).execute()
+        invalidate_clients_cache()
         return response.data[0] if response.data else None
     except HTTPException:
         raise
@@ -350,6 +352,7 @@ async def delete_client(client_id: str, user_id: str = Depends(get_current_user)
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)   # autorización por rol
         supabase.table("clients").delete().eq("id", client_id).execute()
+        invalidate_clients_cache()
         return {"message": "Cliente eliminado"}
     except HTTPException:
         raise
