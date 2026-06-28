@@ -328,6 +328,7 @@ export default function ICE() {
 
   const g = report?.general
   const p = report?.params
+  const cb = report?.cuadre_botellas
 
   return (
     <div className="ice-page">
@@ -490,6 +491,53 @@ export default function ICE() {
               </tfoot>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Cuadre de botellas: desglose vs contabilizado para ICE (descompone packs) */}
+      {cb && (
+        <div className="ice-report">
+          <h2 className="ice-report-title"><span className="ice-rep-h">🍾 Cuadre de botellas — vendidas vs contabilizadas para ICE</span></h2>
+          <div className={`ice-cuadre-bot ${cb.ok ? 'ok' : 'mal'}`}>
+            <div className="cb-card"><span className="cb-lbl">Botellas en el desglose</span><span className="cb-num">{(cb.desglose_total || 0).toLocaleString('es-EC')}</span></div>
+            <div className="cb-card"><span className="cb-lbl">Botellas contabilizadas para ICE</span><span className="cb-num">{(cb.audit_total || 0).toLocaleString('es-EC')}</span></div>
+            <div className="cb-card dif"><span className="cb-lbl">Diferencia</span><span className="cb-num">{cb.diferencia > 0 ? '+' : ''}{cb.diferencia}</span></div>
+          </div>
+          {cb.ok ? (
+            <p className="ice-bot-ok">✔ Coinciden exactamente: las <b>{(cb.audit_total || 0).toLocaleString('es-EC')}</b> botellas vendidas (incluidas las de packs) están contabilizadas para el ICE.</p>
+          ) : (
+            <p className="ice-bot-warn">⚠ DIFERENCIA de <b>{Math.abs(cb.diferencia)}</b> botella(s) entre el desglose y lo contabilizado para ICE. Alguna botella (probablemente dentro de un pack) podría no estar pagando ICE. Revisa los packs resaltados.</p>
+          )}
+          {cb.packs.length > 0 && (
+            <div className="ice-scroll">
+              <table className="ice-rep-table">
+                <thead><tr>
+                  <th>Pack</th><th className="r">Cajas</th><th className="r">Bot/pack</th>
+                  <th className="r">Unidades (XML)</th><th className="r">Botellas ICE (descompuesto)</th><th className="r">Dif</th>
+                </tr></thead>
+                <tbody>
+                  {cb.packs.map((pk, i) => (
+                    <tr key={i} className={Math.abs(pk.dif) > 0.5 ? 'ice-row-bot-mal' : ''}>
+                      <td className="ice-prod" title={pk.nombre}>{pk.nombre}</td>
+                      <td className="r">{pk.cajas}</td>
+                      <td className="r">{pk.botellas_pack}</td>
+                      <td className="r">{pk.unidades}</td>
+                      <td className="r">{pk.descompuesto}</td>
+                      <td className={`r strong ${Math.abs(pk.dif) > 0.5 ? 'ice-bot-mal' : ''}`}>{pk.dif > 0 ? '+' : ''}{pk.dif}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr className="ice-rep-total">
+                  <td>TOTALES PACKS · {cb.packs.length}</td>
+                  <td className="r">{cb.packs.reduce((s, pk) => s + (pk.cajas || 0), 0)}</td>
+                  <td className="r"></td>
+                  <td className="r">{cb.packs.reduce((s, pk) => s + (pk.unidades || 0), 0)}</td>
+                  <td className="r">{cb.packs.reduce((s, pk) => s + (pk.descompuesto || 0), 0)}</td>
+                  <td className="r">{cb.packs.reduce((s, pk) => s + (pk.dif || 0), 0)}</td>
+                </tr></tfoot>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

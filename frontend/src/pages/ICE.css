@@ -109,3 +109,13 @@
 .ice-bot-mal { background:#fee2e2 !important; color:#b91c1c !important; font-weight:800 !important; }
 .ice-row-bot-mal { background:#fff1f2 !important; }
 .ice-row-bot-mal:hover { background:#ffe4e6 !important; }
+
+/* Cuadre de botellas (desglose vs ICE) */
+.ice-cuadre-bot { display:flex; gap:14px; flex-wrap:wrap; margin:8px 0; }
+.ice-cuadre-bot .cb-card { flex:1 1 180px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px 16px; display:flex; flex-direction:column; gap:4px; }
+.ice-cuadre-bot .cb-lbl { font-size:.8rem; color:#64748b; font-weight:600; }
+.ice-cuadre-bot .cb-num { font-size:1.5rem; font-weight:800; color:#0f172a; }
+.ice-cuadre-bot.ok .cb-card.dif { background:#f0fdf4; border-color:#86efac; }
+.ice-cuadre-bot.ok .cb-card.dif .cb-num { color:#166534; }
+.ice-cuadre-bot.mal .cb-card.dif { background:#fef2f2; border-color:#fca5a5; }
+.ice-cuadre-bot.mal .cb-card.dif .cb-num { color:#b91c1c; }

@@ -171,9 +171,10 @@ def resumen_por_producto(rows: List[Dict], anio: str, catalogo: List[Dict] = Non
 
 def resumen_general(rows: List[Dict], anio: str, catalogo: List[Dict] = None) -> Dict:
     det = audit_detail(rows, anio, catalogo)
-    tot = {"subtotal": 0.0, "ice_especifico": 0.0, "ice_advalorem": 0.0,
+    tot = {"botellas": 0.0, "subtotal": 0.0, "ice_especifico": 0.0, "ice_advalorem": 0.0,
            "total_ice": 0.0, "base_iva": 0.0, "iva": 0.0, "pvp": 0.0, "lineas": 0}
     for d in det:
+        tot["botellas"] += d["botellas"]
         tot["subtotal"] += d["subtotal"]
         tot["ice_especifico"] += d["ice_especifico"]
         tot["ice_advalorem"] += d["ice_advalorem"]
@@ -188,6 +189,39 @@ def resumen_general(rows: List[Dict], anio: str, catalogo: List[Dict] = None) ->
     return tot
 
 
+def cuadre_botellas(rows: List[Dict], anio: str, catalogo: List[Dict] = None) -> Dict:
+    """Verifica que el total de botellas del DESGLOSE (unidades_botellas) sea exactamente
+    igual al total contabilizado para el ICE (auditoría, que descompone los packs). Una
+    diferencia indica botellas que NO están pagando ICE (típicamente dentro de un pack)."""
+    det = audit_detail(rows, anio, catalogo)
+    audit_total = sum(_f(d["botellas"]) for d in det)
+    desglose_total = 0.0
+    packs = []
+    for r in rows:
+        if r.get("estado") == "DUPLICADO":
+            continue
+        u = _f(r.get("unidades_botellas"))
+        desglose_total += u
+        if r.get("es_pack"):
+            cajas = _f(r.get("cantidad_cajas"))
+            prods = descomponer_pack(r.get("nombre_producto", ""))
+            desc = len(prods) * cajas  # 1 botella por componente × cajas
+            packs.append({
+                "nombre": r.get("nombre_producto", ""),
+                "cajas": round(cajas, 2), "unidades": round(u),
+                "componentes": len(prods), "botellas_pack": len(prods),
+                "descompuesto": round(desc), "dif": round(desc - u),
+            })
+    return {
+        "desglose_total": round(desglose_total),
+        "audit_total": round(audit_total),
+        "diferencia": round(audit_total - desglose_total),
+        "ok": abs(audit_total - desglose_total) < 0.5,
+        "packs": packs,
+        "packs_dif": [p for p in packs if abs(p["dif"]) > 0.5],
+    }
+
+
 def full_report(rows: List[Dict], anio: str, catalogo: List[Dict] = None) -> Dict:
     tax = tax_params(anio)
     return {
@@ -196,4 +230,5 @@ def full_report(rows: List[Dict], anio: str, catalogo: List[Dict] = None) -> Dic
         "por_producto": resumen_por_producto(rows, anio, catalogo),
         "general": resumen_general(rows, anio, catalogo),
         "detalle": audit_detail(rows, anio, catalogo),
+        "cuadre_botellas": cuadre_botellas(rows, anio, catalogo),
     }

@@ -58,17 +58,43 @@ def es_pack(descripcion: str) -> bool:
     return False
 
 
+import re as _re
+
+
+def _nombre_componente(parte: str) -> str:
+    """Nombre de un componente de pack, mapeado al catálogo cuando se reconoce."""
+    if 'VODKA SECO GLACIAL' in parte or 'VODKA SECO' in parte or 'VODKA' in parte:
+        return 'VODKA SECO GLACIAL'
+    if 'LICOR ORO' in parte:
+        return 'LICOR ORO'
+    if 'LICOR SECO BLANCO' in parte:
+        return 'LICOR SECO BLANCO'
+    if 'AGUARDIENTE' in parte:
+        return 'AGUARDIENTE DE CAÑA'
+    s = _re.sub(r'\([^)]*\)', ' ', parte)
+    s = _re.sub(r'\d+(?:[.,]\d+)?\s*(?:ML|CC|LTS?|L|V|°|G\.?L\.?|GRADOS?|U)\b', ' ', s)
+    s = _re.sub(r'\b\d+(?:[.,]\d+)?\b', ' ', s)
+    return _re.sub(r'\s+', ' ', s).strip() or 'LICOR'
+
+
 def descomponer_pack(descripcion: str):
+    """Descompone un pack en sus botellas individuales, RESPETANDO la cantidad (NU)
+    de cada componente (ej. 'PACK X (2U) + Y (1U)' = [X, X, Y]). Una entrada por botella,
+    así ninguna botella del pack queda sin contabilizar para el ICE."""
     desc = (descripcion or '').upper()
+    cuerpo = _re.sub(r'^\s*(?:DUO|TRIO|MULTI|MEGA)?\s*PACK\s*', '', desc)
     productos = []
-    if 'VODKA SECO GLACIAL' in desc or 'VODKA SECO' in desc:
-        productos.append(('VODKA SECO GLACIAL', '750'))
-    elif 'VODKA' in desc:
-        productos.append(('VODKA SECO GLACIAL', '750'))
-    if 'LICOR ORO' in desc:
-        productos.append(('LICOR ORO', '750'))
-    if 'AGUARDIENTE DE CAÑA' in desc or 'AGUARDIENTE' in desc:
-        productos.append(('AGUARDIENTE DE CAÑA', '375' if '375' in (descripcion or '') else '750'))
+    for parte in _re.split(r'\s*\+\s*', cuerpo):
+        parte = parte.strip()
+        if not parte:
+            continue
+        mq = _re.search(r'\((\d+)\s*U\)', parte)
+        qty = int(mq.group(1)) if mq else 1
+        mc = _re.search(r'(\d+(?:[.,]\d+)?)\s*ML', parte)
+        cap = str(int(float(mc.group(1).replace(',', '.')))) if mc else '750'
+        nombre = _nombre_componente(parte)
+        for _ in range(max(1, qty)):
+            productos.append((nombre, cap))
     if not productos:
         productos.append(('LICOR ORO', '750'))
     return productos
