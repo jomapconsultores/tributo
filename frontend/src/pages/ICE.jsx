@@ -155,7 +155,8 @@ export default function ICE() {
       a.valor_ice += parseFloat(r.valor_ice) || 0
       a.base_iva += parseFloat(r.base_iva) || 0
       a.valor_iva += parseFloat(r.valor_iva) || 0
-      a.total += parseFloat(r.importe_total) || 0
+      // Total con impuestos por línea = base IVA + IVA (NO importe_total, que es el total de la factura repetido)
+      a.total += (parseFloat(r.base_iva) || 0) + (parseFloat(r.valor_iva) || 0)
     })
     return Object.values(ag).sort((x, y) => x.producto.localeCompare(y.producto))
   }, [okRows])
@@ -168,7 +169,7 @@ export default function ICE() {
       a.base_ice += parseFloat(r.base_ice) || 0
       a.valor_ice += parseFloat(r.valor_ice) || 0
       a.valor_iva += parseFloat(r.valor_iva) || 0
-      a.total += parseFloat(r.importe_total) || 0
+      a.total += (parseFloat(r.base_iva) || 0) + (parseFloat(r.valor_iva) || 0)
     })
     return Object.values(ag).sort((x, y) => (x.nombre || '').localeCompare(y.nombre || ''))
   }, [okRows])
@@ -217,7 +218,8 @@ export default function ICE() {
     const facturaIce = okRows.reduce((s, r) => s + (parseFloat(r.valor_ice) || 0), 0)
     const facturaIva = okRows.reduce((s, r) => s + (parseFloat(r.valor_iva) || 0), 0)
     const facturaSub = okRows.reduce((s, r) => s + (parseFloat(r.precio_total_sin_impuesto) || 0), 0)
-    const facturaTotal = okRows.reduce((s, r) => s + (parseFloat(r.importe_total) || 0), 0)
+    // Total real de facturas = suma del total de CADA factura una sola vez (no por línea)
+    const facturaTotal = cuadroFactura.reduce((s, f) => s + (f.total || 0), 0)
     const g = report?.general || {}
     return [
       { concepto: 'Subtotal (sin impuestos)', factura: facturaSub, audit: g.subtotal || 0 },
@@ -225,7 +227,7 @@ export default function ICE() {
       { concepto: 'IVA', factura: facturaIva, audit: g.iva || 0 },
       { concepto: 'Total (con impuestos)', factura: facturaTotal, audit: (g.base_iva || 0) + (g.iva || 0) },
     ].map((x) => ({ ...x, dif: x.factura - x.audit }))
-  }, [okRows, report])
+  }, [okRows, report, cuadroFactura])
 
   // Diagnóstico de diferencias por producto (factura vs cálculo)
   const diferencias = useMemo(() => {
@@ -413,7 +415,7 @@ export default function ICE() {
                     <td className="r">{n4(r.precio_por_botella)}</td>
                     <td className="r">{money(r.base_ice)}</td>
                     <td className="r">{money(r.valor_ice)}</td>
-                    <td className="r total">{money(r.importe_total)}</td>
+                    <td className="r total">{money((parseFloat(r.base_iva) || 0) + (parseFloat(r.valor_iva) || 0))}</td>
                     <td><button className="ice-del" onClick={() => handleDelete(r.id)}>✕</button></td>
                   </tr>
                 ))}
@@ -426,7 +428,7 @@ export default function ICE() {
                   <td className="r"></td><td className="r"></td>
                   <td className="r">{money(filtered.reduce((s, r) => s + (parseFloat(r.base_ice) || 0), 0))}</td>
                   <td className="r">{money(filtered.reduce((s, r) => s + (parseFloat(r.valor_ice) || 0), 0))}</td>
-                  <td className="r">{money(filtered.reduce((s, r) => s + (parseFloat(r.importe_total) || 0), 0))}</td>
+                  <td className="r">{money(filtered.reduce((s, r) => s + (parseFloat(r.base_iva) || 0) + (parseFloat(r.valor_iva) || 0), 0))}</td>
                   <td></td>
                 </tr>
               </tfoot>
@@ -510,6 +512,43 @@ export default function ICE() {
         </div>
       )}
 
+      {/* Verificación del cálculo ICE (considera grado alcohólico y ml) */}
+      {report?.detalle?.length > 0 && (
+        <div className="ice-report">
+          <h2 className="ice-report-title">✅ Verificación del cálculo ICE por producto ({anio})</h2>
+          <p className="ice-verif-note">ICE Específico = Litros de alcohol puro × Tarifa · ICE Ad-Valorem = (Precio/Litro − Umbral {money(report.params?.umbral)}) × 75% × Litros, si Precio/Litro &gt; Umbral.</p>
+          <div className="ice-scroll">
+            <table className="ice-rep-table">
+              <thead><tr>
+                <th>Producto</th><th className="r">Botellas</th><th className="r">Vol. (cc)</th><th className="r">Grado %</th>
+                <th className="r">Litros Alcohol</th><th className="r">Tarifa</th><th className="r">ICE Esp.</th>
+                <th className="r">Precio/Litro</th><th>¿AdV?</th><th className="r">ICE AdV</th><th className="r">Total ICE</th>
+              </tr></thead>
+              <tbody>
+                {report.detalle.map((d, i) => {
+                  const litrosAlc = (parseFloat(d.botellas) || 0) * (parseFloat(d.volumen) || 0) / 1000 * (parseFloat(d.grado) || 0) / 100
+                  return (
+                    <tr key={i}>
+                      <td className="ice-prod" title={d.producto_individual}>{d.producto_individual}</td>
+                      <td className="r">{(parseFloat(d.botellas) || 0).toFixed(0)}</td>
+                      <td className="r">{(parseFloat(d.volumen) || 0).toFixed(0)}</td>
+                      <td className="r">{(parseFloat(d.grado) || 0).toFixed(1)}</td>
+                      <td className="r">{litrosAlc.toFixed(4)}</td>
+                      <td className="r">{report.params?.esp}</td>
+                      <td className="r strong">{money(d.ice_especifico)}</td>
+                      <td className="r">{(parseFloat(d.precio_litro) || 0).toFixed(4)}</td>
+                      <td>{d.aplica_adv ? 'SÍ' : 'NO'}</td>
+                      <td className="r">{money(d.ice_advalorem)}</td>
+                      <td className="r">{money(d.total_ice)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Cuadro por producto */}
       {cuadroProducto.length > 0 && (
         <div className="ice-report">
@@ -580,43 +619,6 @@ export default function ICE() {
                 <td className="r">{money(cuadroCliente.reduce((s, c) => s + (c.valor_iva || 0), 0))}</td>
                 <td className="r">{money(cuadroCliente.reduce((s, c) => s + (c.total || 0), 0))}</td>
               </tr></tfoot>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Cuadro de verificación: recálculo de ICE por línea */}
-      {report?.detalle?.length > 0 && (
-        <div className="ice-report">
-          <h2 className="ice-report-title">✅ Verificación del cálculo ICE por producto ({anio})</h2>
-          <p className="ice-verif-note">ICE Específico = Litros de alcohol puro × Tarifa · ICE Ad-Valorem = (Precio/Litro − Umbral {money(report.params?.umbral)}) × 75% × Litros, si Precio/Litro &gt; Umbral.</p>
-          <div className="ice-scroll">
-            <table className="ice-rep-table">
-              <thead><tr>
-                <th>Producto</th><th className="r">Botellas</th><th className="r">Vol. (cc)</th><th className="r">Grado %</th>
-                <th className="r">Litros Alcohol</th><th className="r">Tarifa</th><th className="r">ICE Esp.</th>
-                <th className="r">Precio/Litro</th><th>¿AdV?</th><th className="r">ICE AdV</th><th className="r">Total ICE</th>
-              </tr></thead>
-              <tbody>
-                {report.detalle.map((d, i) => {
-                  const litrosAlc = (parseFloat(d.botellas) || 0) * (parseFloat(d.volumen) || 0) / 1000 * (parseFloat(d.grado) || 0) / 100
-                  return (
-                    <tr key={i}>
-                      <td className="ice-prod" title={d.producto_individual}>{d.producto_individual}</td>
-                      <td className="r">{(parseFloat(d.botellas) || 0).toFixed(0)}</td>
-                      <td className="r">{(parseFloat(d.volumen) || 0).toFixed(0)}</td>
-                      <td className="r">{(parseFloat(d.grado) || 0).toFixed(1)}</td>
-                      <td className="r">{litrosAlc.toFixed(4)}</td>
-                      <td className="r">{report.params?.esp}</td>
-                      <td className="r strong">{money(d.ice_especifico)}</td>
-                      <td className="r">{(parseFloat(d.precio_litro) || 0).toFixed(4)}</td>
-                      <td>{d.aplica_adv ? 'SÍ' : 'NO'}</td>
-                      <td className="r">{money(d.ice_advalorem)}</td>
-                      <td className="r">{money(d.total_ice)}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
             </table>
           </div>
         </div>
