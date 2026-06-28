@@ -19,8 +19,35 @@ export default function Classifier() {
   const [refreshing, setRefreshing] = useState(false)
   const [search, setSearch] = useState('')
   const [newEntry, setNewEntry] = useState({ ruc: '', nombre_proveedor: '', categoria: '' })
+  // Filtros por columna
+  const [fRuc, setFRuc] = useState('')
+  const [fNombre, setFNombre] = useState('')
+  const [fActividad, setFActividad] = useState('')
+  const [fCat, setFCat] = useState('')
+  const [fCalif, setFCalif] = useState('todos') // todos | si | no
+  const [enriq, setEnriq] = useState('') // texto de progreso del SRI
 
   useEffect(() => { loadClassifications(true) }, [])
+
+  const traerActividades = async () => {
+    if (enriq) return
+    try {
+      let restantes = 1, total = 0
+      for (let i = 0; i < 80 && restantes > 0; i++) {
+        const r = await classificationAPI.enriquecerActividades()
+        total += r.data?.actualizados || 0
+        restantes = r.data?.restantes ?? 0
+        setEnriq(`Trayendo actividad económica del SRI… ${total} listas, faltan ${restantes}`)
+        if ((r.data?.procesados || 0) === 0) break
+      }
+      setEnriq('')
+      await loadClassifications()
+      alert(`✔ Actividad económica del SRI actualizada (${total} proveedores).`)
+    } catch (e) {
+      setEnriq('')
+      alert('Error trayendo actividades: ' + (e.response?.data?.detail || e.message))
+    }
+  }
 
   const loadClassifications = async (initial = false) => {
     if (initial) setLoading(true)
@@ -37,12 +64,23 @@ export default function Classifier() {
   }
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return classifications
-    const q = search.toLowerCase()
-    return classifications.filter((c) =>
-      [c.ruc, c.nombre_proveedor, c.categoria].some((f) => String(f || '').toLowerCase().includes(q))
-    )
-  }, [classifications, search])
+    const q = search.trim().toLowerCase()
+    const r = fRuc.trim().toLowerCase()
+    const n = fNombre.trim().toLowerCase()
+    const a = fActividad.trim().toLowerCase()
+    const c = fCat.trim().toLowerCase()
+    const inc = (v, t) => String(v || '').toLowerCase().includes(t)
+    return classifications.filter((x) => {
+      if (q && ![x.ruc, x.nombre_proveedor, x.categoria, x.actividad, x.calif_categoria].some((f) => inc(f, q))) return false
+      if (r && !inc(x.ruc, r)) return false
+      if (n && !inc(x.nombre_proveedor, n)) return false
+      if (a && !inc(x.actividad, a)) return false
+      if (c && !inc(x.categoria, c)) return false
+      if (fCalif === 'si' && !x.calificado) return false
+      if (fCalif === 'no' && x.calificado) return false
+      return true
+    })
+  }, [classifications, search, fRuc, fNombre, fActividad, fCat, fCalif])
 
   const handleAddEntry = async (e) => {
     e.preventDefault()
@@ -141,11 +179,31 @@ export default function Classifier() {
             onChange={(e) => { if (e.target.files?.[0]) handleImportExcel(e.target.files[0]) }}
             style={{ display: 'none' }}
           />
+          <button onClick={traerActividades} className="import-label" disabled={!!enriq} title="Trae la actividad económica principal del SRI por RUC">
+            {enriq ? '⏳ ' + enriq : '🏛️ Traer actividad económica (SRI)'}
+          </button>
         </div>
         <div className="toolbar-right">
           <button onClick={handleExportExcel} className="export-btn">📥 Exportar Excel</button>
           <button onClick={handleExportPdf} className="export-btn">📄 Exportar PDF</button>
         </div>
+      </div>
+
+      {/* Filtros por columna */}
+      <div className="cl-filters">
+        <input placeholder="Filtrar RUC…" value={fRuc} onChange={(e) => setFRuc(e.target.value)} />
+        <input placeholder="Filtrar proveedor…" value={fNombre} onChange={(e) => setFNombre(e.target.value)} />
+        <input placeholder="Filtrar actividad…" value={fActividad} onChange={(e) => setFActividad(e.target.value)} />
+        <input placeholder="Filtrar categoría…" value={fCat} onChange={(e) => setFCat(e.target.value)} />
+        <select value={fCalif} onChange={(e) => setFCalif(e.target.value)}>
+          <option value="todos">Calificación: todas</option>
+          <option value="si">Solo calificados</option>
+          <option value="no">No calificados</option>
+        </select>
+        {(fRuc || fNombre || fActividad || fCat || fCalif !== 'todos') && (
+          <button className="cl-clear" onClick={() => { setFRuc(''); setFNombre(''); setFActividad(''); setFCat(''); setFCalif('todos') }}>✕ Limpiar</button>
+        )}
+        <span className="cl-count">{filtered.length} de {classifications.length}</span>
       </div>
 
       {loading ? (

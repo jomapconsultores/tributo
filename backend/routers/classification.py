@@ -50,16 +50,26 @@ def _propagate_classification(supabase, ruc: str, categoria: str, user_id: str) 
             print(f"Error propagando clasificación {ruc}: {e}")
     return cambiadas
 
-def _rucs_calificados(supabase, user_id, is_admin):
-    """Set de RUC calificados (del catálogo de proveedores de Rebajas/Exenciones)."""
+def _prov_map(supabase, user_id, is_admin):
+    """Mapa RUC -> datos del catálogo de proveedores calificados (Rebajas/Exenciones):
+    calificado, categoría (tipo de calificación), vigencia (inicio–fin) y actividad SRI."""
+    cols = "ruc,calificado,categoria,vigencia_inicio,vigente_hasta,actividad"
     try:
         if is_admin:
-            prov = fetch_all(lambda: supabase.table("rebajas_proveedores").select("ruc,calificado"))
+            prov = fetch_all(lambda: supabase.table("rebajas_proveedores").select(cols))
         else:
-            prov = supabase.table("rebajas_proveedores").select("ruc,calificado").eq("user_id", user_id).execute().data or []
-        return {(p.get("ruc") or "").strip() for p in prov if p.get("calificado")}
+            prov = supabase.table("rebajas_proveedores").select(cols).eq("user_id", user_id).execute().data or []
     except Exception:
-        return set()
+        return {}
+    m = {}
+    for p in prov:
+        k = (p.get("ruc") or "").strip()
+        if not k:
+            continue
+        # Preferir un registro calificado si existe más de uno por RUC
+        if k not in m or (p.get("calificado") and not m[k].get("calificado")):
+            m[k] = p
+    return m
 
 
 @router.get("/")
@@ -82,10 +92,53 @@ async def list_classifications(user_id: str = Depends(get_current_user)):
             rows = sorted(vistos.values(), key=lambda r: (r.get("nombre_proveedor") or ""))
         else:
             rows = supabase.table("classification_map").select("*").eq("user_id", user_id).order("nombre_proveedor").execute().data or []
-        califs = _rucs_calificados(supabase, user_id, is_admin)
+        pmap = _prov_map(supabase, user_id, is_admin)
         for r in rows:
-            r["calificado"] = (r.get("ruc") or "").strip() in califs
+            k = (r.get("ruc") or "").strip()
+            p = pmap.get(k) or {}
+            r["calificado"] = bool(p.get("calificado"))
+            r["calif_categoria"] = p.get("categoria") or ""
+            r["calif_inicio"] = p.get("vigencia_inicio") or ""
+            r["calif_fin"] = p.get("vigente_hasta") or ""
+            # Actividad económica (SRI): la guardada en el clasificador o, si falta, la del proveedor
+            r["actividad"] = (r.get("actividad") or "").strip() or (p.get("actividad") or "")
         return rows
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/enriquecer-actividades")
+async def enriquecer_actividades(user_id: str = Depends(get_current_user)):
+    """Trae la actividad económica principal del SRI para los RUC del clasificador
+    que aún no la tienen. Procesa por lotes (rápido); el frontend llama en bucle
+    hasta que 'restantes' sea 0. Marca '—' cuando el SRI no devuelve actividad."""
+    try:
+        from routers.access import rol_de
+        from services.min_produccion import consultar_sri
+        supabase = get_supabase_client()
+        is_admin = rol_de(user_id) == "admin"
+        q = supabase.table("classification_map").select("id,ruc,actividad")
+        if not is_admin:
+            q = q.eq("user_id", user_id)
+        filas = q.execute().data or []
+        faltan = [r for r in filas if (r.get("ruc") or "").strip() and not (r.get("actividad") or "").strip()]
+        lote = faltan[:40]
+        actualizados = 0
+        for r in lote:
+            ruc = (r.get("ruc") or "").strip()
+            try:
+                sri = consultar_sri(ruc) or {}
+            except Exception:
+                sri = {}
+            ae = (sri.get("actividad_economica") or "").strip() or "—"
+            try:
+                supabase.table("classification_map").update({"actividad": ae}).eq("id", r["id"]).execute()
+                if ae != "—":
+                    actualizados += 1
+            except Exception:
+                pass
+        return {"actualizados": actualizados, "procesados": len(lote),
+                "restantes": max(0, len(faltan) - len(lote))}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

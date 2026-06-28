@@ -5,6 +5,7 @@ import './ClassifierTable.css'
 export default function ClassifierTable({ classifications, onClassificationsChange }) {
   const [edit, setEdit] = useState({ id: null, field: null })
   const [value, setValue] = useState('')
+  const [vigOpen, setVigOpen] = useState(null) // id cuya vigencia se muestra
 
   const startEdit = (id, field, current) => {
     setEdit({ id, field })
@@ -70,6 +71,7 @@ export default function ClassifierTable({ classifications, onClassificationsChan
           <tr>
             <th>RUC</th>
             <th>Nombre Proveedor</th>
+            <th>Actividad económica (SRI)</th>
             <th>Categoría</th>
             <th>Calificación</th>
             <th>Acciones</th>
@@ -78,18 +80,33 @@ export default function ClassifierTable({ classifications, onClassificationsChan
         <tbody>
           {classifications.length === 0 ? (
             <tr>
-              <td colSpan="5" className="empty">No hay clasificaciones. Agrega una nueva o importa desde Excel.</td>
+              <td colSpan="6" className="empty">No hay clasificaciones. Agrega una nueva o importa desde Excel.</td>
             </tr>
           ) : (
             classifications.map((item) => (
               <tr key={item.id}>
                 <td className="ruc-cell">{cell(item, 'ruc', 'ruc-edit')}</td>
                 <td>{cell(item, 'nombre_proveedor')}</td>
+                <td className="actividad-cell" title={item.actividad || ''}>{item.actividad || '—'}</td>
                 <td>{cell(item, 'categoria')}</td>
                 <td>
-                  <span className={`calif-badge ${item.calificado ? 'ok' : 'no'}`}>
-                    {item.calificado ? '✔ Calificado' : '— No'}
-                  </span>
+                  {item.calificado ? (
+                    <button
+                      type="button"
+                      className="calif-badge ok"
+                      title="Clic para ver la vigencia"
+                      onClick={() => setVigOpen(vigOpen === item.id ? null : item.id)}
+                    >
+                      ✔ {item.calif_categoria || 'Calificado'}
+                    </button>
+                  ) : (
+                    <span className="calif-badge no">— No</span>
+                  )}
+                  {item.calificado && vigOpen === item.id && (
+                    <div className="calif-vig">
+                      Vigencia: {item.calif_inicio || '—'} → {item.calif_fin || '—'}
+                    </div>
+                  )}
                 </td>
                 <td className="actions">
                   <button onClick={() => handleDelete(item)} className="delete-btn" title="Eliminar">🗑</button>

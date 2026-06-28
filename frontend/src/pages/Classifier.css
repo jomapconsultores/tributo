@@ -191,3 +191,9 @@
   border-radius: 8px;
   color: #666;
 }
+
+/* Filtros por columna del clasificador */
+.cl-filters { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:8px 0 12px; }
+.cl-filters input, .cl-filters select { padding:6px 10px; border:1px solid #cbd5e1; border-radius:8px; font-size:.85rem; min-width:150px; }
+.cl-filters .cl-clear { padding:6px 10px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; cursor:pointer; font-size:.82rem; }
+.cl-filters .cl-count { margin-left:auto; color:#64748b; font-size:.82rem; }
