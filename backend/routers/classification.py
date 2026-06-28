@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from auth import get_current_user
-from database import get_supabase_client
+from database import get_supabase_client, fetch_all
 import pandas as pd
 import io
 from reportlab.lib.pagesizes import letter
@@ -50,12 +50,42 @@ def _propagate_classification(supabase, ruc: str, categoria: str, user_id: str) 
             print(f"Error propagando clasificación {ruc}: {e}")
     return cambiadas
 
+def _rucs_calificados(supabase, user_id, is_admin):
+    """Set de RUC calificados (del catálogo de proveedores de Rebajas/Exenciones)."""
+    try:
+        if is_admin:
+            prov = fetch_all(lambda: supabase.table("rebajas_proveedores").select("ruc,calificado"))
+        else:
+            prov = supabase.table("rebajas_proveedores").select("ruc,calificado").eq("user_id", user_id).execute().data or []
+        return {(p.get("ruc") or "").strip() for p in prov if p.get("calificado")}
+    except Exception:
+        return set()
+
+
 @router.get("/")
 async def list_classifications(user_id: str = Depends(get_current_user)):
     try:
+        from routers.access import rol_de
         supabase = get_supabase_client()
-        response = supabase.table("classification_map").select("*").eq("user_id", user_id).order("nombre_proveedor").execute()
-        return response.data or []
+        is_admin = rol_de(user_id) == "admin"
+        if is_admin:
+            # El admin ve TODO el clasificador del equipo (cualquier usuario),
+            # deduplicado por RUC (una clasificación por RUC).
+            filas = fetch_all(lambda: supabase.table("classification_map").select("*").order("nombre_proveedor"))
+            vistos = {}
+            for r in filas:
+                k = (r.get("ruc") or "").strip()
+                if not k:
+                    continue
+                if k not in vistos or (not (vistos[k].get("categoria") or "").strip() and (r.get("categoria") or "").strip()):
+                    vistos[k] = r
+            rows = sorted(vistos.values(), key=lambda r: (r.get("nombre_proveedor") or ""))
+        else:
+            rows = supabase.table("classification_map").select("*").eq("user_id", user_id).order("nombre_proveedor").execute().data or []
+        califs = _rucs_calificados(supabase, user_id, is_admin)
+        for r in rows:
+            r["calificado"] = (r.get("ruc") or "").strip() in califs
+        return rows
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -92,19 +122,52 @@ async def update_classification_by_id(
     entry: ClassificationEntry,
     user_id: str = Depends(get_current_user)
 ):
-    """Actualiza un registro por id, permitiendo cambiar el RUC."""
+    """Actualiza un registro por id, permitiendo cambiar el RUC. El admin puede
+    editar registros de cualquier usuario (la reclasificación afecta al dueño)."""
     try:
+        from routers.access import rol_de
         supabase = get_supabase_client()
+        cur = supabase.table("classification_map").select("user_id").eq("id", entry_id).execute().data
+        if not cur:
+            raise HTTPException(status_code=404, detail="Registro no encontrado")
+        owner = cur[0]["user_id"]
+        if owner != user_id and rol_de(user_id) != "admin":
+            raise HTTPException(status_code=404, detail="Registro no encontrado")
         new_ruc = entry.ruc.strip().replace("'", "")
-        response = supabase.table("classification_map").update({
+        upd = supabase.table("classification_map").update({
             "ruc": new_ruc,
             "nombre_proveedor": entry.nombre_proveedor.upper(),
             "categoria": entry.categoria.upper(),
             "updated_at": "now()"
-        }).eq("id", entry_id).eq("user_id", user_id).execute()
-        reclasificadas = _propagate_classification(supabase, new_ruc, entry.categoria, user_id)
+        }).eq("id", entry_id)
+        if owner == user_id:
+            upd = upd.eq("user_id", user_id)
+        response = upd.execute()
+        reclasificadas = _propagate_classification(supabase, new_ruc, entry.categoria, owner)
         result = response.data[0] if response.data else {}
         return {**result, "reclasificadas": reclasificadas}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/by-id/{entry_id}")
+async def delete_classification_by_id(entry_id: str, user_id: str = Depends(get_current_user)):
+    """Elimina por id. El admin puede eliminar registros de cualquier usuario."""
+    try:
+        from routers.access import rol_de
+        supabase = get_supabase_client()
+        cur = supabase.table("classification_map").select("user_id").eq("id", entry_id).execute().data
+        if not cur:
+            return {"message": "Deleted"}
+        owner = cur[0]["user_id"]
+        if owner != user_id and rol_de(user_id) != "admin":
+            raise HTTPException(status_code=404, detail="Registro no encontrado")
+        supabase.table("classification_map").delete().eq("id", entry_id).execute()
+        return {"message": "Deleted"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

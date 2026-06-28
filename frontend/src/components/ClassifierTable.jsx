@@ -29,10 +29,10 @@ export default function ClassifierTable({ classifications, onClassificationsChan
     }
   }
 
-  const handleDelete = async (ruc) => {
-    if (!window.confirm(`¿Eliminar el RUC ${ruc}?`)) return
+  const handleDelete = async (item) => {
+    if (!window.confirm(`¿Eliminar el RUC ${item.ruc}?`)) return
     try {
-      await classificationAPI.delete(ruc)
+      await classificationAPI.deleteById(item.id)
       onClassificationsChange()
     } catch (error) {
       alert('Error al eliminar: ' + (error.response?.data?.detail || error.message))
@@ -71,13 +71,14 @@ export default function ClassifierTable({ classifications, onClassificationsChan
             <th>RUC</th>
             <th>Nombre Proveedor</th>
             <th>Categoría</th>
+            <th>Calificación</th>
             <th>Acciones</th>
           </tr>
         </thead>
         <tbody>
           {classifications.length === 0 ? (
             <tr>
-              <td colSpan="4" className="empty">No hay clasificaciones. Agrega una nueva o importa desde Excel.</td>
+              <td colSpan="5" className="empty">No hay clasificaciones. Agrega una nueva o importa desde Excel.</td>
             </tr>
           ) : (
             classifications.map((item) => (
@@ -85,8 +86,13 @@ export default function ClassifierTable({ classifications, onClassificationsChan
                 <td className="ruc-cell">{cell(item, 'ruc', 'ruc-edit')}</td>
                 <td>{cell(item, 'nombre_proveedor')}</td>
                 <td>{cell(item, 'categoria')}</td>
+                <td>
+                  <span className={`calif-badge ${item.calificado ? 'ok' : 'no'}`}>
+                    {item.calificado ? '✔ Calificado' : '— No'}
+                  </span>
+                </td>
                 <td className="actions">
-                  <button onClick={() => handleDelete(item.ruc)} className="delete-btn" title="Eliminar">🗑</button>
+                  <button onClick={() => handleDelete(item)} className="delete-btn" title="Eliminar">🗑</button>
                 </td>
               </tr>
             ))
