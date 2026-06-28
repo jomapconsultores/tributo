@@ -254,11 +254,22 @@ export const rebajasAPI = {
     fd.append('file', file); fd.append('identificacion', identificacion); fd.append('producto', producto)
     return api.post('/api/rebajas/parse-file', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
   },
+  update: (id, entry) => api.put(`/api/rebajas/${id}`, entry),
   delete: (id) => api.delete(`/api/rebajas/${id}`),
   // Catálogo reutilizable de proveedores (RUC → nombre + calificado)
   listProveedores: (identificacion) => api.get('/api/rebajas/proveedores', { params: { identificacion } }),
   upsertProveedor: (entry) => api.put('/api/rebajas/proveedores', entry),
+  deleteProveedor: (id) => api.delete(`/api/rebajas/proveedores/${id}`),
   verificarTodos: (identificacion, producto) => api.post('/api/rebajas/proveedores/verificar-todos', null, { params: { identificacion, producto } }),
+  subirDocProveedor: ({ identificacion, ruc, nombre, calificado, vigente_hasta, file }) => {
+    const fd = new FormData()
+    fd.append('file', file); fd.append('identificacion', identificacion); fd.append('ruc', ruc)
+    if (nombre != null) fd.append('nombre', nombre)
+    if (calificado != null) fd.append('calificado', calificado)
+    if (vigente_hasta) fd.append('vigente_hasta', vigente_hasta)
+    return api.post('/api/rebajas/proveedores/documento', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  docUrl: (path) => api.get('/api/rebajas/proveedores/documento-url', { params: { path } }),
   // Condiciones normativas del producto (cerveza / nueva marca / cupo anual SRI)
   getCondiciones: (identificacion, producto) => api.get('/api/rebajas/producto', { params: { identificacion, producto } }),
   setCondiciones: (entry) => api.put('/api/rebajas/producto', entry),

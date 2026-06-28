@@ -96,3 +96,14 @@
 
 .re-busy { font-size: 0.85rem; color: #1d4ed8; }
 .re-rownum { color: #94a3b8; font-weight: 600; font-size: 0.8rem; }
+
+/* RUC editable por fila */
+.re-ruc-cell { display: inline-flex; align-items: center; gap: 4px; }
+.re-ruc-inp { width: 130px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 6px; font-size: 0.82rem; }
+.re-ruc-v { border: 1px solid #cbd5e1; background: #f1f5f9; border-radius: 6px; cursor: pointer; padding: 3px 6px; }
+.re-ruc-v:hover { background: #e0e7ff; }
+
+/* Panel de proveedores calificados */
+.re-prov-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 8px; }
+.re-doclink { display: inline-block; margin: 2px 4px 2px 0; padding: 3px 8px; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 6px; cursor: pointer; font-size: 0.78rem; }
+.re-doclink:hover { background: #dbeafe; }

@@ -1,5 +1,6 @@
 import csv
 import io
+import re
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from typing import Optional, List
@@ -66,6 +67,32 @@ async def create_rebaja(entry: RebajaIn, user_id: str = Depends(get_current_user
         raise HTTPException(status_code=400, detail=str(e))
 
 
+class RebajaUpdate(BaseModel):
+    ingrediente: Optional[str] = None
+    ruc_proveedor: Optional[str] = None
+    proveedor_nombre: Optional[str] = None
+    cantidad: Optional[float] = None
+    unidad: Optional[str] = None
+    densidad: Optional[float] = None
+    calificado: Optional[bool] = None
+
+
+@router.put("/{rid}")
+async def update_rebaja(rid: str, entry: RebajaUpdate, user_id: str = Depends(get_current_user)):
+    """Edita un componente (p. ej. asignar/cambiar el RUC del proveedor por fila)."""
+    try:
+        supabase = get_supabase_client()
+        data = {k: v for k, v in entry.dict().items() if v is not None}
+        if "ingrediente" in data:
+            data["ingrediente"] = data["ingrediente"].strip().upper()
+        if "proveedor_nombre" in data:
+            data["proveedor_nombre"] = (data["proveedor_nombre"] or "").strip().upper()
+        res = supabase.table("rebajas_ingredientes").update(data).eq("id", rid).eq("user_id", user_id).execute()
+        return res.data[0] if res.data else None
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.delete("/{rid}")
 async def delete_rebaja(rid: str, user_id: str = Depends(get_current_user)):
     try:
@@ -102,6 +129,21 @@ def _f(v, d=0.0):
         return d
 
 
+def _split_cantidad(raw, unidad_col=None):
+    """Separa la cantidad de su tipo de medida: '700 ml' -> (700.0, 'ml').
+    Si la unidad viene en columna aparte, se respeta."""
+    u = (str(unidad_col or "")).strip()
+    s = str(raw or "").strip().replace(",", ".")
+    m = re.match(r"^\s*([0-9]*\.?[0-9]+)\s*([a-zA-Zµ]+)?\s*$", s)
+    if m:
+        num = _f(m.group(1))
+        if not u and m.group(2):
+            u = m.group(2)
+    else:
+        num = _f(s)
+    return num, (u or "ml")
+
+
 def _insertar_componentes(supabase, user_id, identificacion, producto, items):
     """Inserta una lista de componentes; autocompleta calificado/nombre desde el
     catálogo de proveedores si el RUC ya está guardado. Devuelve cuántos insertó."""
@@ -123,11 +165,12 @@ def _insertar_componentes(supabase, user_id, identificacion, producto, items):
         d = it if isinstance(it, dict) else it.dict()
         ruc = (d.get("ruc_proveedor") or "").strip()
         prov = cat.get(ruc)
+        qty, uni = _split_cantidad(d.get("cantidad"), d.get("unidad"))
         filas.append({
             "user_id": user_id, "identificacion": identificacion, "producto": producto,
             "ingrediente": ing, "ruc_proveedor": ruc,
             "proveedor_nombre": (d.get("proveedor_nombre") or (prov or {}).get("nombre") or "").strip().upper(),
-            "cantidad": _f(d.get("cantidad")), "unidad": (d.get("unidad") or "ml").strip(),
+            "cantidad": qty, "unidad": uni,
             "densidad": _f(d.get("densidad"), 1) or 1,
             "origen": (d.get("origen") or "NACIONAL").upper(),
             "calificado": bool(d.get("calificado")) or bool((prov or {}).get("calificado")),
@@ -191,7 +234,8 @@ def _filas_a_items(rows):
             "ruc_proveedor": str(g("ruc_proveedor") or "").strip(),
             "proveedor_nombre": str(g("proveedor_nombre") or "").strip(),
             "ingrediente": str(g("ingrediente") or "").strip(),
-            "cantidad": g("cantidad"), "unidad": str(g("unidad") or "ml").strip() or "ml",
+            # Unidad vacía si no hay columna: _split_cantidad la extrae de la cantidad ("50 g")
+            "cantidad": g("cantidad"), "unidad": str(g("unidad") or "").strip(),
             "densidad": g("densidad"),
         })
     return items
@@ -231,7 +275,8 @@ async def parse_file(
 
 # ── Catálogo reutilizable de proveedores (RUC → nombre + calificado) ──
 
-PROV_COLS = "id,identificacion,ruc,nombre,calificado,categoria,vigencia,verificado_at"
+PROV_COLS = "id,identificacion,ruc,nombre,calificado,categoria,vigencia,vigente_hasta,documentos,verificado_at"
+PROV_BUCKET = "proveedores"
 
 
 class ProveedorIn(BaseModel):
@@ -241,6 +286,7 @@ class ProveedorIn(BaseModel):
     calificado: Optional[bool] = False
     categoria: Optional[str] = ""
     vigencia: Optional[str] = ""
+    vigente_hasta: Optional[str] = None
 
 
 @router.get("/proveedores")
@@ -254,13 +300,15 @@ async def list_proveedores(identificacion: str = Query(...), user_id: str = Depe
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _upsert_proveedor(supabase, user_id, ident, ruc, nombre, calificado, categoria="", vigencia=""):
+def _upsert_proveedor(supabase, user_id, ident, ruc, nombre, calificado, categoria="", vigencia="", vigente_hasta=None):
     data = {
         "user_id": user_id, "identificacion": ident, "ruc": (ruc or "").strip(),
         "nombre": (nombre or "").strip().upper(), "calificado": bool(calificado),
         "categoria": categoria or "", "vigencia": vigencia or "",
         "verificado_at": datetime.now(timezone.utc).isoformat(),
     }
+    if vigente_hasta:
+        data["vigente_hasta"] = vigente_hasta
     return supabase.table("rebajas_proveedores").upsert(
         data, on_conflict="user_id,identificacion,ruc").execute()
 
@@ -273,10 +321,88 @@ async def upsert_proveedor(entry: ProveedorIn, user_id: str = Depends(get_curren
             raise HTTPException(status_code=400, detail="El RUC es obligatorio")
         supabase = get_supabase_client()
         res = _upsert_proveedor(supabase, user_id, entry.identificacion, entry.ruc,
-                                entry.nombre, entry.calificado, entry.categoria, entry.vigencia)
+                                entry.nombre, entry.calificado, entry.categoria, entry.vigencia, entry.vigente_hasta)
         return res.data[0] if res.data else None
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/proveedores/{pid}")
+async def delete_proveedor(pid: str, user_id: str = Depends(get_current_user)):
+    try:
+        supabase = get_supabase_client()
+        supabase.table("rebajas_proveedores").delete().eq("id", pid).eq("user_id", user_id).execute()
+        return {"message": "Eliminado"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def _prov_bucket(supabase):
+    try:
+        names = {getattr(b, "name", None) or (b.get("name") if isinstance(b, dict) else None) for b in supabase.storage.list_buckets()}
+        if PROV_BUCKET not in names:
+            supabase.storage.create_bucket(PROV_BUCKET, options={"public": False})
+    except Exception as e:
+        print(f"_prov_bucket: {e}")
+
+
+@router.post("/proveedores/documento")
+async def subir_documento(
+    file: UploadFile = File(...),
+    identificacion: str = Form(...),
+    ruc: str = Form(...),
+    nombre: Optional[str] = Form(""),
+    calificado: Optional[bool] = Form(False),
+    vigente_hasta: Optional[str] = Form(None),
+    user_id: str = Depends(get_current_user),
+):
+    """Sube un documento (Excel/foto/PDF) que respalda la calificación del proveedor
+    y lo registra en el catálogo con su vigencia."""
+    try:
+        ruc = (ruc or "").strip()
+        if not ruc:
+            raise HTTPException(status_code=400, detail="El RUC es obligatorio")
+        supabase = get_supabase_client()
+        _prov_bucket(supabase)
+        content = await file.read()
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", file.filename or "documento")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        path = f"{identificacion}/{ruc}/{stamp}_{safe}"
+        supabase.storage.from_(PROV_BUCKET).upload(
+            path, content, {"content-type": file.content_type or "application/octet-stream", "upsert": "true"})
+        # Lee el proveedor actual para anexar el documento
+        cur = supabase.table("rebajas_proveedores").select("id,documentos,nombre,calificado,vigente_hasta")\
+            .eq("user_id", user_id).eq("identificacion", identificacion).eq("ruc", ruc).execute().data
+        prev = cur[0] if cur else {}
+        docs = (prev.get("documentos") or []) if prev else []
+        docs.append({"nombre": file.filename, "path": path, "subido": datetime.now(timezone.utc).isoformat()})
+        data = {
+            "user_id": user_id, "identificacion": identificacion, "ruc": ruc,
+            "nombre": (nombre or prev.get("nombre") or "").strip().upper(),
+            "calificado": bool(calificado) or bool(prev.get("calificado")),
+            "documentos": docs,
+            "verificado_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if vigente_hasta:
+            data["vigente_hasta"] = vigente_hasta
+        res = supabase.table("rebajas_proveedores").upsert(data, on_conflict="user_id,identificacion,ruc").execute()
+        return res.data[0] if res.data else None
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No se pudo subir el documento: {e}")
+
+
+@router.get("/proveedores/documento-url")
+async def documento_url(path: str = Query(...), _: str = Depends(get_current_user)):
+    """Devuelve una URL firmada temporal para ver/descargar un documento."""
+    try:
+        supabase = get_supabase_client()
+        r = supabase.storage.from_(PROV_BUCKET).create_signed_url(path, 3600)
+        url = r.get("signedURL") or r.get("signedUrl") or r.get("signed_url") if isinstance(r, dict) else None
+        return {"url": url}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

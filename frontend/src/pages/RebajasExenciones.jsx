@@ -20,7 +20,7 @@ const RE_STEPS = [
 const EMPTY = { ingrediente: '', ruc_proveedor: '', proveedor_nombre: '', cantidad: '', unidad: 'ml', densidad: '1', origen: 'NACIONAL', calificado: false }
 const esAgua = (nombre) => (nombre || '').trim().toUpperCase() === 'AGUA'
 const MINPROD = 'https://servicios.produccion.gob.ec/rum/publico/consultaCategorizacion.jsf'
-const UMBRAL = 70 // % mínimo de materia prima nacional calificada
+const UMBRAL = 70
 
 // Equivalencia en litros. Densidad en g/ml (= kg/L); líquidos acuosos ≈ 1.
 const U = (u) => (u || '').trim().toLowerCase()
@@ -32,16 +32,21 @@ const aLitros = (cantidad, unidad, densidad) => {
   if (['l', 'lt', 'lts', 'litro', 'litros'].includes(u)) return c
   if (['g', 'gr', 'gramo', 'gramos'].includes(u)) return (c / d) / 1000
   if (['kg', 'kilo', 'kilos', 'kilogramo', 'kilogramos'].includes(u)) return c / d
-  return c / 1000 // unidad desconocida: se asume ml
+  return c / 1000
 }
 
-// Parser del pegado (Excel/CSV). Detecta encabezados; si no, asume orden:
-// RUC · Proveedor · Ingrediente · Cantidad · Unidad · Densidad
-const ALIAS = {
-  ruc: ['ruc', 'ruc proveedor'], prov: ['proveedor', 'empresa', 'nombre', 'razon social', 'razón social'],
-  ing: ['ingrediente', 'componente', 'producto', 'materia prima', 'insumo'],
-  cant: ['cantidad', 'cant', 'volumen', 'peso'], und: ['unidad', 'und', 'um'], dens: ['densidad', 'dens'],
+// Separa "700 ml" -> { cantidad:700, unidad:'ml' }. Respeta unidad en columna aparte.
+const splitCantidad = (raw, unidadCol) => {
+  let u = (unidadCol || '').trim()
+  const s = String(raw || '').trim().replace(',', '.')
+  const m = s.match(/^\s*([0-9]*\.?[0-9]+)\s*([a-zA-Zµ]+)?\s*$/)
+  let num = 0
+  if (m) { num = parseFloat(m[1]) || 0; if (!u && m[2]) u = m[2] }
+  else num = parseFloat(s) || 0
+  return { cantidad: num, unidad: u || 'ml' }
 }
+
+// Pegado: Ingrediente + Cantidad (la cantidad puede traer la unidad). Detecta encabezado.
 const parsePaste = (txt) => {
   const lines = (txt || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
   if (!lines.length) return []
@@ -49,17 +54,20 @@ const parsePaste = (txt) => {
   const split = (l) => l.split(delim).map((c) => c.trim())
   const head = split(lines[0]).map((h) => h.toLowerCase())
   const col = (al) => head.findIndex((h) => al.includes(h))
-  let m = { ruc: col(ALIAS.ruc), prov: col(ALIAS.prov), ing: col(ALIAS.ing), cant: col(ALIAS.cant), und: col(ALIAS.und), dens: col(ALIAS.dens) }
+  let m = { ing: col(['ingrediente', 'componente', 'producto', 'materia prima', 'insumo']), cant: col(['cantidad', 'cant', 'volumen', 'peso']), und: col(['unidad', 'und', 'um']), dens: col(['densidad', 'dens']) }
   const hasHeader = m.ing >= 0 || m.cant >= 0
   let data = lines
-  if (!hasHeader) m = { ruc: 0, prov: 1, ing: 2, cant: 3, und: 4, dens: 5 }
+  if (!hasHeader) m = { ing: 0, cant: 1, und: 2, dens: 3 }
   else data = lines.slice(1)
   const g = (c, i) => (i >= 0 && i < c.length ? c[i] : '')
-  return data.map(split).map((c) => ({
-    ruc_proveedor: g(c, m.ruc), proveedor_nombre: g(c, m.prov), ingrediente: g(c, m.ing),
-    cantidad: g(c, m.cant), unidad: g(c, m.und) || 'ml', densidad: g(c, m.dens) || '1',
-  })).filter((it) => (it.ingrediente || '').trim())
+  return data.map(split).map((c) => {
+    const sp = splitCantidad(g(c, m.cant), g(c, m.und))
+    return { ingrediente: g(c, m.ing), cantidad: sp.cantidad, unidad: sp.unidad, densidad: g(c, m.dens) || '1' }
+  }).filter((it) => (it.ingrediente || '').trim())
 }
+
+const hoyISO = () => new Date().toISOString().slice(0, 10)
+const estaVencido = (d) => !!d && String(d) < hoyISO()
 
 export default function RebajasExenciones() {
   const { openNewClient } = useOutletContext()
@@ -72,66 +80,20 @@ export default function RebajasExenciones() {
   const [ings, setIngs] = useState([])
   const [proveedores, setProveedores] = useState([])
   const [form, setForm] = useDraft(ident && producto ? `draft:rebajas:form:${ident}:${producto}` : null, EMPTY)
-  const [verif, setVerif] = useState(null) // { estado, texto }
+  const [verif, setVerif] = useState(null)
   const [cond, setCond] = useState({ es_cerveza: false, nueva_marca: false, cupo_anual_sri: false })
-  // Carga masiva
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteTxt, setPasteTxt] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [busy, setBusy] = useState('')
   const fileRef = useRef(null)
 
-  // Catálogo de proveedores del contribuyente (RUC → nombre/calificado)
   const loadProv = useCallback(() => {
     if (!ident) { setProveedores([]); return }
     rebajasAPI.listProveedores(ident).then((r) => setProveedores(r.data?.data || [])).catch(() => setProveedores([]))
   }, [ident])
   useEffect(() => { loadProv() }, [loadProv])
 
-  const onRucChange = (v) => {
-    setVerif(null)
-    const p = proveedores.find((x) => (x.ruc || '') === v.trim())
-    setForm((f) => ({ ...f, ruc_proveedor: v, ...(p ? { proveedor_nombre: p.nombre || f.proveedor_nombre, calificado: !!p.calificado } : {}) }))
-  }
-
-  const verificarRuc = async () => {
-    const ruc = (form.ruc_proveedor || '').trim()
-    if (!ruc) { alert('Ingresa el RUC del proveedor.'); return }
-    setVerif({ estado: 'wait', texto: 'Consultando Ministerio de Producción y SRI…' })
-    try {
-      const r = await rebajasAPI.verificarRuc(ruc)
-      const d = r.data
-      const nombre = d.razon_social || '—'
-      setForm((f) => ({ ...f, calificado: d.cumple === true, proveedor_nombre: d.razon_social || f.proveedor_nombre }))
-      let estado = 'wait', texto = `⚠ ${d.mensaje}${nombre !== '—' ? ' · ' + nombre : ''}`
-      if (d.cumple) { estado = 'ok'; texto = `✔ Cumple · ${nombre} · ${d.categoria}${d.vigencia ? ' · ' + d.vigencia : ''}` }
-      else if (d.calificado === true) { estado = 'no'; texto = `✗ No cumple · ${nombre} · categorizado como ${d.categoria} (no es MIPYME)` }
-      else if (d.calificado === false) { estado = 'no'; texto = `✗ No cumple · ${nombre} · no categorizado en el Ministerio${d.tipo ? ' · ' + d.tipo : ''}` }
-      setVerif({ estado, texto })
-      // Guarda el proveedor en el catálogo para reutilizarlo
-      try {
-        await rebajasAPI.upsertProveedor({ identificacion: ident, ruc, nombre: d.razon_social || '', calificado: d.cumple === true, categoria: d.categoria || '', vigencia: d.vigencia || '' })
-        loadProv()
-      } catch { /* no bloquea */ }
-    } catch (e) {
-      setVerif({ estado: 'wait', texto: 'Error al verificar: ' + (e.response?.data?.detail || e.message) })
-    }
-  }
-
-  // Verifica TODOS los RUC del producto en el Ministerio y propaga el resultado
-  const verificarTodos = async () => {
-    if (!producto) { alert('Elige un producto del catálogo.'); return }
-    setBusy('Verificando todos los RUC del producto en el Ministerio…')
-    try {
-      const r = await rebajasAPI.verificarTodos(ident, producto)
-      await loadIngs(); loadProv()
-      setVerif({ estado: 'ok', texto: `✔ ${r.data.verificados} RUC verificados y actualizados` })
-    } catch (e) {
-      alert('Error al verificar: ' + (e.response?.data?.detail || e.message))
-    } finally { setBusy('') }
-  }
-
-  // Productos del catálogo del cliente
   useEffect(() => {
     if (!ident) { setProductos([]); return }
     productsAPI.list(ident).then((r) => setProductos(r.data?.data || [])).catch(() => setProductos([]))
@@ -160,13 +122,49 @@ export default function RebajasExenciones() {
     catch (e) { alert('Error al guardar la condición: ' + (e.response?.data?.detail || e.message)) }
   }
 
+  const onRucChange = (v) => {
+    setVerif(null)
+    const p = proveedores.find((x) => (x.ruc || '') === v.trim())
+    setForm((f) => ({ ...f, ruc_proveedor: v, ...(p ? { proveedor_nombre: p.nombre || f.proveedor_nombre, calificado: !!p.calificado } : {}) }))
+  }
+
+  const verificarRuc = async () => {
+    const ruc = (form.ruc_proveedor || '').trim()
+    if (!ruc) { alert('Ingresa el RUC del proveedor.'); return }
+    setVerif({ estado: 'wait', texto: 'Consultando Ministerio de Producción y SRI…' })
+    try {
+      const r = await rebajasAPI.verificarRuc(ruc)
+      const d = r.data
+      const nombre = d.razon_social || '—'
+      setForm((f) => ({ ...f, calificado: d.cumple === true, proveedor_nombre: d.razon_social || f.proveedor_nombre }))
+      let estado = 'wait', texto = `⚠ ${d.mensaje}${nombre !== '—' ? ' · ' + nombre : ''}`
+      if (d.cumple) { estado = 'ok'; texto = `✔ Cumple · ${nombre} · ${d.categoria}${d.vigencia ? ' · ' + d.vigencia : ''}` }
+      else if (d.calificado === true) { estado = 'no'; texto = `✗ No cumple · ${nombre} · ${d.categoria} (no es MIPYME)` }
+      else if (d.calificado === false) { estado = 'no'; texto = `✗ No cumple · ${nombre} · no categorizado${d.tipo ? ' · ' + d.tipo : ''}` }
+      setVerif({ estado, texto })
+      try { await rebajasAPI.upsertProveedor({ identificacion: ident, ruc, nombre: d.razon_social || '', calificado: d.cumple === true, categoria: d.categoria || '', vigencia: d.vigencia || '' }); loadProv() } catch { /* */ }
+    } catch (e) {
+      setVerif({ estado: 'wait', texto: 'Error al verificar: ' + (e.response?.data?.detail || e.message) })
+    }
+  }
+
+  const verificarTodos = async () => {
+    if (!producto) { alert('Elige un producto del catálogo.'); return }
+    setBusy('Verificando todos los RUC del producto en el Ministerio…')
+    try {
+      const r = await rebajasAPI.verificarTodos(ident, producto)
+      await loadIngs(); loadProv()
+      setVerif({ estado: 'ok', texto: `✔ ${r.data.verificados} RUC verificados y actualizados` })
+    } catch (e) { alert('Error al verificar: ' + (e.response?.data?.detail || e.message)) }
+    finally { setBusy('') }
+  }
+
   const agregar = async () => {
     if (!producto) { alert('Elige un producto del catálogo.'); return }
     if (!form.ingrediente.trim()) { alert('Ingresa el ingrediente.'); return }
     try {
       await rebajasAPI.create({ identificacion: ident, producto, ...form, cantidad: parseFloat(form.cantidad) || 0, densidad: parseFloat(form.densidad) || 1 })
-      setForm(EMPTY)
-      await loadIngs()
+      setForm(EMPTY); await loadIngs()
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
   const borrar = async (id) => {
@@ -174,28 +172,51 @@ export default function RebajasExenciones() {
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
 
-  // Carga masiva: pegar de Excel
+  // ── Edición por fila (asignar RUC al componente cargado) ──
+  const setFila = (id, patch) => setIngs((arr) => arr.map((x) => (x.id === id ? { ...x, ...patch } : x)))
+  const onRucFila = (row, ruc) => {
+    const p = proveedores.find((x) => (x.ruc || '') === ruc.trim())
+    setFila(row.id, p ? { ruc_proveedor: ruc, proveedor_nombre: p.nombre || row.proveedor_nombre, calificado: !!p.calificado } : { ruc_proveedor: ruc })
+  }
+  const guardarFila = (id) => setIngs((arr) => {
+    const row = arr.find((x) => x.id === id)
+    if (row) rebajasAPI.update(id, { ruc_proveedor: row.ruc_proveedor || '', proveedor_nombre: row.proveedor_nombre || '', calificado: !!row.calificado }).catch(() => {})
+    return arr
+  })
+  const verificarFila = async (row) => {
+    const ruc = (row.ruc_proveedor || '').trim()
+    if (!ruc) { alert('Escribe el RUC en la fila primero.'); return }
+    setBusy(`Verificando ${ruc}…`)
+    try {
+      const r = await rebajasAPI.verificarRuc(ruc); const d = r.data
+      const patch = { calificado: d.cumple === true, proveedor_nombre: d.razon_social || row.proveedor_nombre || '' }
+      await rebajasAPI.update(row.id, { ruc_proveedor: ruc, ...patch })
+      await rebajasAPI.upsertProveedor({ identificacion: ident, ruc, nombre: d.razon_social || '', calificado: d.cumple === true, categoria: d.categoria || '', vigencia: d.vigencia || '' })
+      setFila(row.id, patch); loadProv()
+    } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
+    finally { setBusy('') }
+  }
+
+  // ── Carga masiva ──
   const cargarPegado = async () => {
     if (!producto) { alert('Elige un producto del catálogo.'); return }
     const items = parsePaste(pasteTxt)
-    if (!items.length) { alert('No se detectaron filas. Pega columnas: RUC, Proveedor, Ingrediente, Cantidad, Unidad, Densidad.'); return }
+    if (!items.length) { alert('No se detectaron filas. Pega 2 columnas: Ingrediente y Cantidad (la cantidad puede incluir la unidad, ej. "700 ml").'); return }
     setBusy(`Cargando ${items.length} componentes…`)
     try {
       const r = await rebajasAPI.bulk({ identificacion: ident, producto, items })
       setPasteTxt(''); setPasteOpen(false); await loadIngs()
-      alert(`✔ ${r.data.insertados} componentes cargados.`)
+      alert(`✔ ${r.data.insertados} componentes cargados. Ahora asigna el RUC de cada uno en la tabla.`)
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
     finally { setBusy('') }
   }
-  // Carga masiva: subir archivo .xlsx/.csv
   const cargarArchivo = async (file) => {
     if (!file) return
     if (!producto) { alert('Elige un producto del catálogo antes de subir el archivo.'); return }
     if (!/\.(xlsx|xls|csv|txt)$/i.test(file.name)) { alert('Sube un archivo Excel (.xlsx/.xls) o CSV.'); return }
     setBusy('Leyendo archivo…')
     try {
-      const r = await rebajasAPI.parseFile(ident, producto, file)
-      await loadIngs()
+      const r = await rebajasAPI.parseFile(ident, producto, file); await loadIngs()
       alert(`✔ ${r.data.insertados} componentes cargados desde el archivo.`)
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
     finally { setBusy(''); if (fileRef.current) fileRef.current.value = '' }
@@ -210,11 +231,42 @@ export default function RebajasExenciones() {
     const pct = total ? (calif / total) * 100 : 0
     return { total, calif, pct, cumple: pct >= UMBRAL }
   }, [ings])
-
-  // Incidencia (%) por fila en litros: agua = 0, no calificado = 0
   const incidencia = (i) => {
     if (esAgua(i.ingrediente) || !i.calificado || !resumen.total) return 0
     return litros(i) / resumen.total * 100
+  }
+
+  // ── Panel de proveedores calificados ──
+  const [provForm, setProvForm] = useState({ ruc: '', nombre: '', calificado: false, vigente_hasta: '' })
+  const [provFile, setProvFile] = useState(null)
+  const provFileRef = useRef(null)
+  const [provOpen, setProvOpen] = useState(false)
+  const verProvRuc = async () => {
+    const ruc = (provForm.ruc || '').trim(); if (!ruc) { alert('Ingresa el RUC.'); return }
+    setBusy('Verificando…')
+    try {
+      const r = await rebajasAPI.verificarRuc(ruc); const d = r.data
+      setProvForm((f) => ({ ...f, nombre: d.razon_social || f.nombre, calificado: d.cumple === true }))
+    } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy('') }
+  }
+  const guardarProv = async () => {
+    const ruc = (provForm.ruc || '').trim(); if (!ruc) { alert('El RUC es obligatorio.'); return }
+    setBusy('Guardando proveedor…')
+    try {
+      if (provFile) await rebajasAPI.subirDocProveedor({ identificacion: ident, ruc, nombre: provForm.nombre, calificado: provForm.calificado, vigente_hasta: provForm.vigente_hasta || null, file: provFile })
+      else await rebajasAPI.upsertProveedor({ identificacion: ident, ruc, nombre: provForm.nombre, calificado: provForm.calificado, vigente_hasta: provForm.vigente_hasta || null })
+      setProvForm({ ruc: '', nombre: '', calificado: false, vigente_hasta: '' }); setProvFile(null)
+      if (provFileRef.current) provFileRef.current.value = ''
+      loadProv()
+    } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy('') }
+  }
+  const verDoc = async (path) => {
+    try { const r = await rebajasAPI.docUrl(path); if (r.data?.url) window.open(r.data.url, '_blank'); else alert('No se pudo abrir el documento.') }
+    catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
+  }
+  const borrarProv = async (id) => {
+    if (!window.confirm('¿Eliminar este proveedor del catálogo?')) return
+    try { await rebajasAPI.deleteProveedor(id); loadProv() } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
 
   if (!selectedClient || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
@@ -235,43 +287,27 @@ export default function RebajasExenciones() {
 
       <div className="re-prodsel">
         <label>Producto</label>
-        <input
-          list="re-prod-list"
-          value={producto}
-          onChange={(e) => setProducto(e.target.value.toUpperCase())}
-          placeholder="Escribe el producto o elígelo del catálogo…"
-        />
-        <datalist id="re-prod-list">
-          {productos.map((p) => <option key={p.id} value={p.nombre} />)}
-        </datalist>
-        <span className="re-hint">Puedes elegir uno del catálogo del cliente o escribir el nombre.</span>
+        <input list="re-prod-list" value={producto} onChange={(e) => setProducto(e.target.value.toUpperCase())}
+          placeholder="Escribe el producto o elígelo del catálogo…" />
+        <datalist id="re-prod-list">{productos.map((p) => <option key={p.id} value={p.nombre} />)}</datalist>
+        <span className="re-hint">Los componentes se guardan ligados a este producto.</span>
       </div>
 
       <details className="re-normas" open>
-        <summary>📖 Normas de aplicación</summary>
+        <summary>📖 Cómo funciona</summary>
         <div className="re-normas-body">
-          <p><strong>Rebaja / exención de ICE por componente nacional.</strong> El beneficio aplica cuando la bebida se elabora con al menos <strong>{UMBRAL}%</strong> de materia prima nacional adquirida a <strong>artesanos, micro, pequeñas o medianas empresas (MIPYME) u organizaciones de la economía popular y solidaria</strong>, categorizados por el Ministerio de Producción.</p>
           <ul>
-            <li>Al pulsar <strong>🔎 Verificar</strong> se consulta el RUC en el Ministerio: si está categorizado como <strong>MIPYME/artesano</strong> → <strong>cumple</strong>; si es <strong>"NO MIPYME"</strong> → <strong>no cumple</strong>. El proveedor verificado queda <strong>guardado</strong> para reutilizarlo.</li>
-            <li>El <strong>%</strong> se calcula sobre la <strong>equivalencia en litros</strong> de cada componente (las masas en g/kg se convierten con su <strong>densidad</strong>). El <strong>agua no se contabiliza</strong>.</li>
-            <li>Puedes cargar los componentes <strong>uno por uno</strong>, <strong>pegando</strong> desde Excel o <strong>subiendo</strong> un archivo .xlsx/.csv.</li>
+            <li><strong>Carga uno por uno</strong> con el formulario, o <strong>📋 Pega de Excel</strong> solo <strong>Ingrediente + Cantidad</strong> (la cantidad puede incluir la unidad, ej. <em>700 ml</em>, <em>50 g</em>).</li>
+            <li>Cada cantidad se lleva a su <strong>equivalencia en litros</strong> (las masas en g/kg con su densidad) y se calcula el <strong>%</strong>. El <strong>agua no cuenta</strong>.</li>
+            <li>Luego asigna el <strong>RUC del proveedor</strong> en cada fila y pulsa 🔎: se cataloga como <strong>calificado</strong> o no. La suma de los calificados debe ser ≥ {UMBRAL}%.</li>
+            <li>En <strong>Proveedores calificados</strong> puedes subir documentos (Excel/foto/PDF) con su <strong>vigencia</strong> como respaldo reutilizable.</li>
           </ul>
-          <p className="re-normas-nota">Fundamento: LRTI — rebaja de hasta 50% de la tarifa específica para bebidas con materia prima nacional de proveedores MIPYME/artesanos; la exención no aplica si el contenido nacional es menor al 70%.</p>
         </div>
       </details>
 
+      {/* Formulario uno por uno */}
       <div className="re-form">
-        <label className="re-f"><span>RUC proveedor</span>
-          <input list="re-prov-list" value={form.ruc_proveedor} onChange={(e) => onRucChange(e.target.value)} placeholder="RUC" /></label>
-        <datalist id="re-prov-list">
-          {proveedores.map((p) => <option key={p.id} value={p.ruc}>{p.nombre}{p.calificado ? ' ✔' : ''}</option>)}
-        </datalist>
-        <button type="button" className="re-verif" onClick={verificarRuc} title="Verificar categorización en el Ministerio de Producción">🔎 Verificar</button>
-        <label className="re-f"><span>¿Cumple?</span>
-          <span className="re-check"><input type="checkbox" checked={form.calificado} onChange={(e) => setForm({ ...form, calificado: e.target.checked })} /> {form.calificado ? 'Sí' : 'No'}</span></label>
-        <label className="re-f wide"><span>Empresa / Persona</span>
-          <input value={form.proveedor_nombre} onChange={(e) => setForm({ ...form, proveedor_nombre: e.target.value.toUpperCase() })} placeholder="Nombre del proveedor" /></label>
-        <label className="re-f wide"><span>Producto / Ingrediente</span>
+        <label className="re-f wide"><span>Ingrediente / Componente</span>
           <input value={form.ingrediente} onChange={(e) => setForm({ ...form, ingrediente: e.target.value.toUpperCase() })} placeholder="Ej. ALCOHOL, JUGO, AGUA…" /></label>
         <label className="re-f s"><span>Cantidad</span>
           <input type="number" step="0.0001" value={form.cantidad} onChange={(e) => setForm({ ...form, cantidad: e.target.value })} /></label>
@@ -280,18 +316,22 @@ export default function RebajasExenciones() {
           <datalist id="re-und-list"><option value="ml" /><option value="L" /><option value="cc" /><option value="g" /><option value="kg" /></datalist></label>
         <label className="re-f s"><span>Densidad (g/ml)</span>
           <input type="number" step="0.001" value={form.densidad} onChange={(e) => setForm({ ...form, densidad: e.target.value })} title="Para convertir masa (g/kg) a litros. Agua/líquidos ≈ 1" /></label>
+        <label className="re-f"><span>RUC proveedor (opcional)</span>
+          <input list="re-prov-list" value={form.ruc_proveedor} onChange={(e) => onRucChange(e.target.value)} placeholder="puedes asignarlo luego" /></label>
+        <datalist id="re-prov-list">{proveedores.map((p) => <option key={p.id} value={p.ruc}>{p.nombre}{p.calificado ? ' ✔' : ''}</option>)}</datalist>
+        <button type="button" className="re-verif" onClick={verificarRuc} title="Verificar en el Ministerio de Producción">🔎 Verificar</button>
         <button className="re-btn primary" onClick={agregar}>＋ Agregar</button>
-        <button type="button" className="re-btn" onClick={() => setPasteOpen((v) => !v)} title="Pegar varias filas desde Excel">📋 Pegar de Excel</button>
+        <button type="button" className="re-btn" onClick={() => setPasteOpen((v) => !v)}>📋 Pegar de Excel</button>
         <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv,.txt" style={{ display: 'none' }} onChange={(e) => cargarArchivo(e.target.files?.[0])} />
-        <button type="button" className="re-btn" onClick={() => fileRef.current?.click()} title="Subir .xlsx/.csv">⬆ Subir archivo</button>
-        <button type="button" className="re-btn" onClick={verificarTodos} title="Verificar en el Ministerio todos los RUC de este producto">✅ Verificar todos</button>
+        <button type="button" className="re-btn" onClick={() => fileRef.current?.click()}>⬆ Subir archivo</button>
+        <button type="button" className="re-btn" onClick={verificarTodos}>✅ Verificar todos</button>
       </div>
 
       {pasteOpen && (
         <div className="re-paste">
-          <p className="re-paste-hint">Pega filas desde Excel (con o sin encabezado). Columnas: <strong>RUC · Proveedor · Ingrediente · Cantidad · Unidad · Densidad</strong></p>
+          <p className="re-paste-hint">Pega 2 columnas desde Excel (con o sin encabezado): <strong>Ingrediente · Cantidad</strong>. La cantidad puede traer la unidad (ej. <em>700 ml</em>).</p>
           <textarea value={pasteTxt} onChange={(e) => setPasteTxt(e.target.value)} rows={6}
-            placeholder={'1790000000001\tDESTILERÍA X\tALCOHOL\t700\tml\t0.79\n—\t—\tAGUA\t250\tml\t1'} />
+            placeholder={'ALCOHOL\t700 ml\nJUGO DE CAÑA\t250 ml\nAZÚCAR\t50 g\nAGUA\t100 ml'} />
           <div className="re-paste-actions">
             <button className="re-btn primary" onClick={cargarPegado}>Cargar {parsePaste(pasteTxt).length || ''} filas</button>
             <button className="re-btn" onClick={() => { setPasteTxt(''); setPasteOpen(false) }}>Cancelar</button>
@@ -299,14 +339,10 @@ export default function RebajasExenciones() {
         </div>
       )}
 
-      <div
-        className={`re-drop${dragOver ? ' over' : ''}`}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={onDrop}
-        onClick={() => fileRef.current?.click()}
-      >
-        📥 Arrastra aquí un archivo .xlsx/.csv de componentes (o haz clic para elegirlo)
+      <div className={`re-drop${dragOver ? ' over' : ''}`}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true) }} onDragLeave={() => setDragOver(false)} onDrop={onDrop}
+        onClick={() => fileRef.current?.click()}>
+        📥 Arrastra aquí un archivo .xlsx/.csv (Ingrediente · Cantidad), o haz clic para elegirlo
       </div>
 
       {busy && <div className="re-busy">⏳ {busy}</div>}
@@ -315,8 +351,8 @@ export default function RebajasExenciones() {
       <div className="re-table-wrap">
         <table className="re-table">
           <thead><tr>
-            <th className="r">#</th><th>RUC</th><th>Cumple</th><th>Empresa / Persona</th><th>Producto</th>
-            <th className="r">Cantidad</th><th className="r">Litros</th><th className="r">%</th><th></th>
+            <th className="r">#</th><th>Ingrediente</th><th className="r">Cantidad</th><th className="r">Litros</th>
+            <th>RUC proveedor</th><th>Empresa / Persona</th><th>Cumple</th><th className="r">%</th><th></th>
           </tr></thead>
           <tbody>
             {ings.length === 0 ? (
@@ -326,15 +362,20 @@ export default function RebajasExenciones() {
               return (
                 <tr key={i.id} className={agua ? 'agua' : ''}>
                   <td className="r re-rownum">{idx + 1}</td>
-                  <td>{i.ruc_proveedor || '—'}</td>
-                  <td>
-                    <span className={`re-badge ${i.calificado ? 'ok' : 'no'}`}>{i.calificado ? 'Cumple' : 'No cumple'}</span>
-                    {i.ruc_proveedor && <a className="re-vlink" href={MINPROD} target="_blank" rel="noreferrer" title="Verificar en Min. Producción">🔎</a>}
-                  </td>
-                  <td>{i.proveedor_nombre || '—'}</td>
                   <td>{i.ingrediente}{agua && <em> (no cuenta)</em>}</td>
                   <td className="r">{(parseFloat(i.cantidad) || 0).toFixed(2)} {i.unidad}</td>
                   <td className="r">{litros(i).toFixed(4)}</td>
+                  <td>
+                    {agua ? '—' : (
+                      <span className="re-ruc-cell">
+                        <input className="re-ruc-inp" list="re-prov-list" value={i.ruc_proveedor || ''}
+                          onChange={(e) => onRucFila(i, e.target.value)} onBlur={() => guardarFila(i.id)} placeholder="RUC…" />
+                        <button className="re-ruc-v" title="Verificar este RUC" onClick={() => verificarFila(i)}>🔎</button>
+                      </span>
+                    )}
+                  </td>
+                  <td>{i.proveedor_nombre || '—'}</td>
+                  <td>{agua ? '—' : <span className={`re-badge ${i.calificado ? 'ok' : 'no'}`}>{i.calificado ? 'Cumple' : 'No cumple'}</span>}</td>
                   <td className="r strong">{incidencia(i).toFixed(2)}%</td>
                   <td><button className="re-del" onClick={() => borrar(i.id)}>✕</button></td>
                 </tr>
@@ -343,11 +384,9 @@ export default function RebajasExenciones() {
           </tbody>
           <tfoot>
             <tr className="re-foot">
-              <td colSpan={5}>
-                TOTAL · <span className={`re-cumple ${resumen.cumple ? 'ok' : 'no'}`}>{resumen.cumple ? `✔ Cumple (≥ ${UMBRAL}%)` : `✗ No cumple (mín. ${UMBRAL}%)`}</span>
-              </td>
-              <td></td>
+              <td colSpan={3}>TOTAL · <span className={`re-cumple ${resumen.cumple ? 'ok' : 'no'}`}>{resumen.cumple ? `✔ Cumple (≥ ${UMBRAL}%)` : `✗ No cumple (mín. ${UMBRAL}%)`}</span></td>
               <td className="r">{resumen.total.toFixed(4)} L</td>
+              <td colSpan={3}></td>
               <td className="r">{resumen.pct.toFixed(2)}%</td>
               <td></td>
             </tr>
@@ -355,19 +394,60 @@ export default function RebajasExenciones() {
         </table>
       </div>
 
+      {/* Panel de proveedores calificados con documentos y vigencia */}
+      <details className="re-normas" open={provOpen} onToggle={(e) => setProvOpen(e.target.open)}>
+        <summary>🗂️ Proveedores calificados (documentos y vigencia)</summary>
+        <div className="re-normas-body">
+          <p>Base reutilizable de personas/empresas calificadas. Adjunta el documento (Excel/foto/PDF) que respalda la calificación e indica hasta cuándo es válido.</p>
+          <div className="re-prov-form">
+            <label className="re-f"><span>RUC</span>
+              <input value={provForm.ruc} onChange={(e) => setProvForm({ ...provForm, ruc: e.target.value })} placeholder="RUC" /></label>
+            <button type="button" className="re-verif" onClick={verProvRuc}>🔎 Verificar</button>
+            <label className="re-f wide"><span>Nombre / Empresa</span>
+              <input value={provForm.nombre} onChange={(e) => setProvForm({ ...provForm, nombre: e.target.value.toUpperCase() })} /></label>
+            <label className="re-f"><span>¿Calificado?</span>
+              <span className="re-check"><input type="checkbox" checked={provForm.calificado} onChange={(e) => setProvForm({ ...provForm, calificado: e.target.checked })} /> {provForm.calificado ? 'Sí' : 'No'}</span></label>
+            <label className="re-f"><span>Válido hasta</span>
+              <input type="date" value={provForm.vigente_hasta} onChange={(e) => setProvForm({ ...provForm, vigente_hasta: e.target.value })} /></label>
+            <label className="re-f wide"><span>Documento (Excel/foto/PDF)</span>
+              <input ref={provFileRef} type="file" accept=".xlsx,.xls,.csv,.pdf,image/*" onChange={(e) => setProvFile(e.target.files?.[0] || null)} /></label>
+            <button className="re-btn primary" onClick={guardarProv}>💾 Guardar proveedor</button>
+          </div>
+
+          <div className="re-table-wrap" style={{ marginTop: 10 }}>
+            <table className="re-table">
+              <thead><tr><th>RUC</th><th>Nombre / Empresa</th><th>Calificado</th><th>Vigencia</th><th>Documentos</th><th></th></tr></thead>
+              <tbody>
+                {proveedores.length === 0 ? (
+                  <tr><td colSpan={6} className="re-empty">Sin proveedores guardados aún.</td></tr>
+                ) : proveedores.map((p) => (
+                  <tr key={p.id}>
+                    <td>{p.ruc}</td>
+                    <td>{p.nombre || '—'}</td>
+                    <td><span className={`re-badge ${p.calificado ? 'ok' : 'no'}`}>{p.calificado ? 'Sí' : 'No'}</span></td>
+                    <td>{p.vigente_hasta
+                      ? <span className={`re-badge ${estaVencido(p.vigente_hasta) ? 'no' : 'ok'}`}>{estaVencido(p.vigente_hasta) ? 'Vencido' : 'Vigente'} · {p.vigente_hasta}</span>
+                      : '—'}</td>
+                    <td>{(p.documentos || []).length === 0 ? '—' : (p.documentos || []).map((d, k) => (
+                      <button key={k} className="re-doclink" onClick={() => verDoc(d.path)} title={d.nombre}>📎 {d.nombre?.slice(0, 18) || 'doc'}</button>
+                    ))}</td>
+                    <td><button className="re-del" onClick={() => borrarProv(p.id)}>✕</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
       {producto && (
         <div className="re-normas" style={{ marginTop: 14 }}>
           <div className="re-normas-body">
             <p><strong>📋 Condiciones normativas de «{producto}»</strong> — determinan los beneficios en la declaración ICE:</p>
             <p style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
-              <label><input type="checkbox" checked={cond.es_cerveza}
-                onChange={(e) => setCondicion('es_cerveza', e.target.checked)} /> Es cerveza</label>
-              <label title="Sin marca primigenia registrada en propiedad intelectual + nueva notificación sanitaria (Art. 199.5 RLRTI)">
-                <input type="checkbox" checked={cond.nueva_marca}
-                  onChange={(e) => setCondicion('nueva_marca', e.target.checked)} /> Producto nuevo / nueva marca</label>
-              <label title="Cupo anual de exoneración otorgado por el SRI (Art. 77.1 LRTI / Art. 199.4 RLRTI)">
-                <input type="checkbox" checked={cond.cupo_anual_sri}
-                  onChange={(e) => setCondicion('cupo_anual_sri', e.target.checked)} /> Cupo anual SRI obtenido (exención)</label>
+              <label><input type="checkbox" checked={cond.es_cerveza} onChange={(e) => setCondicion('es_cerveza', e.target.checked)} /> Es cerveza</label>
+              <label title="Sin marca primigenia + nueva notificación sanitaria (Art. 199.5 RLRTI)"><input type="checkbox" checked={cond.nueva_marca} onChange={(e) => setCondicion('nueva_marca', e.target.checked)} /> Producto nuevo / nueva marca</label>
+              <label title="Cupo anual del SRI (Art. 77.1 LRTI / Art. 199.4 RLRTI)"><input type="checkbox" checked={cond.cupo_anual_sri} onChange={(e) => setCondicion('cupo_anual_sri', e.target.checked)} /> Cupo anual SRI obtenido (exención)</label>
             </p>
             {(() => {
               const marcaOk = !cond.es_cerveza || cond.nueva_marca
@@ -375,19 +455,11 @@ export default function RebajasExenciones() {
               const exencionOk = rebajaOk && cond.cupo_anual_sri
               return (
                 <ul>
-                  <li><span className={`re-badge ${rebajaOk ? 'ok' : 'no'}`}>{rebajaOk ? '✔' : '✗'}</span>{' '}
-                    <strong>Rebaja 50% tarifa específica</strong> (Art. 82 LRTI / Art. 199.5 RLRTI):
-                    {' '}{resumen.cumple ? `cumple el ≥${UMBRAL}% nacional` : `no cumple el ≥${UMBRAL}% nacional`}
-                    {cond.es_cerveza && (cond.nueva_marca ? '; cerveza con nueva marca ✔' : '; cerveza SIN nueva marca: la rebaja solo aplica a nuevas marcas')}.
-                  </li>
-                  <li><span className={`re-badge ${exencionOk ? 'ok' : 'no'}`}>{exencionOk ? '✔' : '✗'}</span>{' '}
-                    <strong>Exención del ICE</strong> (Art. 77.1 LRTI / Art. 199.4 RLRTI): requiere las condiciones de la rebaja
-                    {' '}y el <strong>cupo anual del SRI</strong>{cond.cupo_anual_sri ? ' (marcado ✔)' : ' (sin marcar)'}.
-                  </li>
+                  <li><span className={`re-badge ${rebajaOk ? 'ok' : 'no'}`}>{rebajaOk ? '✔' : '✗'}</span>{' '}<strong>Rebaja 50% tarifa específica</strong>: {resumen.cumple ? `cumple el ≥${UMBRAL}% nacional` : `no cumple el ≥${UMBRAL}% nacional`}{cond.es_cerveza && (cond.nueva_marca ? '; cerveza con nueva marca ✔' : '; cerveza SIN nueva marca')}.</li>
+                  <li><span className={`re-badge ${exencionOk ? 'ok' : 'no'}`}>{exencionOk ? '✔' : '✗'}</span>{' '}<strong>Exención del ICE</strong>: requiere la rebaja y el <strong>cupo anual del SRI</strong>{cond.cupo_anual_sri ? ' ✔' : ' (sin marcar)'}.</li>
                 </ul>
               )
             })()}
-            <p className="re-normas-nota">Estos datos se aplican automáticamente al calcular la <strong>Declaración ICE</strong>. Consulta los textos legales en <strong>Información útil → Normativa</strong>.</p>
           </div>
         </div>
       )}
