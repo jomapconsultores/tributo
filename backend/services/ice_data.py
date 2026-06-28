@@ -101,11 +101,15 @@ def descomponer_pack(descripcion: str):
 
 
 def get_botellas_por_caja(descripcion: str) -> int:
+    """Botellas por unidad de venta a partir de '(NU)' en la descripción:
+    '(1U)' = 1 botella (venta unitaria), '(12U)' = 12, '(24U)' = 24. Por defecto 12.
+    Evita inflar/desinflar el conteo de botellas (y por ende el ICE)."""
     desc = (descripcion or '').upper()
     if es_pack(descripcion):
         return 2
-    if '12U' in desc or '(12U)' in desc:
-        return 12
+    m = _re.search(r'\((\d+)\s*U\)', desc)
+    if m:
+        return max(1, int(m.group(1)))
     return 12
 
 
