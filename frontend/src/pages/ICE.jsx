@@ -26,6 +26,40 @@ import './ICE.css'
 import { fmtMoney as money } from '../utils/format'
 const n4 = (v) => (parseFloat(v) || 0).toFixed(4)
 
+// Coincidencia de texto para filtrar un cuadro por cualquiera de sus campos.
+const incluye = (q, ...vals) => {
+  const s = (q || '').toLowerCase().trim()
+  return !s || vals.some((v) => String(v ?? '').toLowerCase().includes(s))
+}
+
+// Verifica el cuadre de botellas de una línea: unidades vs (cajas × bot/caja).
+const chequearBotellas = (r) => {
+  const u = parseInt(r.unidades_botellas) || 0
+  const cajas = parseFloat(r.cantidad_cajas) || 0
+  const bxc = parseFloat(r.botellas_por_caja) || 0
+  const esperado = Math.round(cajas * bxc)
+  const dif = u - esperado
+  return { u, cajas, bxc, esperado, dif, verificable: bxc > 0 && cajas > 0, ok: !(bxc > 0 && cajas > 0) || Math.abs(dif) < 1 }
+}
+
+// Cuadro con filtro propio: filtra `data` por `fields` y entrega el subconjunto
+// a `children` (que arma la tabla con sus sumatorias sobre lo filtrado).
+function CuadroFiltrable({ title, hint, data, fields, value, onFilter, children }) {
+  const q = value || ''
+  const filt = q.trim() ? data.filter((d) => incluye(q, ...fields.map((f) => d[f]))) : data
+  return (
+    <div className="ice-report">
+      <h2 className="ice-report-title">
+        <span className="ice-rep-h">{title}</span>
+        <input className="ice-cuadro-fil" placeholder="🔍 filtrar este cuadro…" value={q} onChange={(e) => onFilter(e.target.value)} />
+        <span className="ice-cuadro-count">{filt.length}/{data.length}</span>
+      </h2>
+      {hint}
+      <div className="ice-scroll">{children(filt)}</div>
+    </div>
+  )
+}
+
 const ICE_STEPS = [
   { icon: '📚', label: 'Catálogo Productos', path: '/catalogo-productos' },
   { icon: '🧮', label: 'Cálculo previo ICE', path: '/calculo-ice' },
@@ -50,6 +84,8 @@ export default function ICE() {
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
+  const [filtros, setFiltros] = useState({}) // filtro por cada cuadro
+  const setFiltro = (k, v) => setFiltros((p) => ({ ...p, [k]: v }))
   const [dragActive, setDragActive] = useState(false)
   const [selected, setSelected] = useState(() => new Set())
   const xmlInputRef = useRef(null)
@@ -144,6 +180,9 @@ export default function ICE() {
 
   // Agrupaciones para los cuadros (desde las líneas cargadas)
   const okRows = useMemo(() => rows.filter((r) => r.estado !== 'DUPLICADO'), [rows])
+  // Líneas con descuadre de botellas (unidades ≠ cajas × bot/caja)
+  const botellasMal = useMemo(() => okRows.filter((r) => !chequearBotellas(r).ok), [okRows])
+  const totalBotellas = useMemo(() => okRows.reduce((s, r) => s + (parseInt(r.unidades_botellas) || 0), 0), [okRows])
   const cuadroProducto = useMemo(() => {
     const ag = {}
     okRows.forEach((r) => {
@@ -343,16 +382,16 @@ export default function ICE() {
 
       {/* CUADRO 1 — Reporte por factura (totales globales) */}
       {!loading && cuadroFactura.length > 0 && (
-        <div className="ice-report">
-          <h2 className="ice-report-title">🧾 Reporte por factura (totales globales) — {cuadroFactura.length} factura(s)</h2>
-          <div className="ice-scroll">
+        <CuadroFiltrable title="🧾 Reporte por factura (totales globales)" data={cuadroFactura}
+          fields={['fecha', 'ruc', 'cliente']} value={filtros.factura} onFilter={(v) => setFiltro('factura', v)}>
+          {(filt) => (
             <table className="ice-rep-table">
               <thead><tr>
                 <th>Fecha</th><th>RUC</th><th>Cliente</th><th className="r">Líneas</th><th className="r">Botellas</th>
                 <th className="r">Subtotal</th><th className="r">ICE</th><th className="r">IVA</th><th className="r">Total factura</th>
               </tr></thead>
               <tbody>
-                {cuadroFactura.map((f) => (
+                {filt.map((f) => (
                   <tr key={f.clave}>
                     <td>{f.fecha || '—'}</td>
                     <td>{f.ruc || '—'}</td>
@@ -369,17 +408,17 @@ export default function ICE() {
               <tfoot>
                 <tr className="ice-rep-total">
                   <td>TOTALES</td><td></td><td></td>
-                  <td className="r">{cuadroFactura.reduce((s, f) => s + f.lineas, 0)}</td>
-                  <td className="r">{cuadroFactura.reduce((s, f) => s + f.botellas, 0)}</td>
-                  <td className="r">{money(cuadroFactura.reduce((s, f) => s + f.subtotal, 0))}</td>
-                  <td className="r">{money(cuadroFactura.reduce((s, f) => s + f.ice, 0))}</td>
-                  <td className="r">{money(cuadroFactura.reduce((s, f) => s + f.iva, 0))}</td>
-                  <td className="r">{money(cuadroFactura.reduce((s, f) => s + f.total, 0))}</td>
+                  <td className="r">{filt.reduce((s, f) => s + f.lineas, 0)}</td>
+                  <td className="r">{filt.reduce((s, f) => s + f.botellas, 0)}</td>
+                  <td className="r">{money(filt.reduce((s, f) => s + f.subtotal, 0))}</td>
+                  <td className="r">{money(filt.reduce((s, f) => s + f.ice, 0))}</td>
+                  <td className="r">{money(filt.reduce((s, f) => s + f.iva, 0))}</td>
+                  <td className="r">{money(filt.reduce((s, f) => s + f.total, 0))}</td>
                 </tr>
               </tfoot>
             </table>
-          </div>
-        </div>
+          )}
+        </CuadroFiltrable>
       )}
 
       {loading ? (
@@ -390,6 +429,11 @@ export default function ICE() {
         <div className="ice-table-wrap">
           <h2 className="ice-report-title">🧮 Desglose de productos - factura</h2>
           <div className="ice-hint">{filtered.length} de {rows.length}</div>
+          {botellasMal.length > 0 ? (
+            <div className="ice-bot-warn">⚠ {botellasMal.length} línea(s) con DESCUADRE de botellas (unidades ≠ cajas × bot/caja). Revisa las filas resaltadas en rojo y la columna “Bot/Caja”.</div>
+          ) : (
+            <div className="ice-bot-ok">✔ Botellas verificadas: <b>{totalBotellas.toLocaleString('es-EC')}</b> botellas en total; unidades = cajas × bot/caja en todas las líneas.</div>
+          )}
           <BulkBar count={selected.size} onMove={bulkMove} onDelete={bulkDelete} onClear={clearSel} />
           <div className="ice-scroll">
             <table className="ice-table">
@@ -398,20 +442,26 @@ export default function ICE() {
                   <th className="sel-col"><input type="checkbox" checked={allSelected} onChange={toggleAll} /></th>
                   <th>Fecha</th><th>Cliente</th><th>Producto</th><th>Pack</th>
                   <th className="r">Cajas</th><th className="r">Botellas</th>
+                  <th className="r" title="Botellas por caja — verificación: unidades = cajas × bot/caja">Bot/Caja</th>
                   <th className="r">$/Caja</th><th className="r">$/Bot.</th>
                   <th className="r">Base ICE</th><th className="r">ICE</th><th className="r">Total</th><th></th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((r) => (
-                  <tr key={r.id} className={selected.has(r.id) ? 'row-sel' : ''}>
+                {filtered.map((r) => {
+                  const bc = chequearBotellas(r)
+                  return (
+                  <tr key={r.id} className={`${selected.has(r.id) ? 'row-sel' : ''} ${!bc.ok ? 'ice-row-bot-mal' : ''}`}>
                     <td className="sel-col"><input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSel(r.id)} /></td>
                     <td>{r.fecha || '-'}</td>
                     <td className="ice-cli" title={r.razon_social_cliente}>{r.razon_social_cliente || '-'}</td>
                     <td className="ice-prod" title={r.nombre_producto}>{r.nombre_producto || '-'}</td>
                     <td>{r.es_pack ? 'SÍ' : 'NO'}</td>
                     <td className="r">{(parseFloat(r.cantidad_cajas) || 0).toFixed(0)}</td>
-                    <td className="r">{r.unidades_botellas}</td>
+                    <td className={`r ${!bc.ok ? 'ice-bot-mal' : ''}`} title={!bc.ok ? `Esperado ${bc.esperado} (${bc.cajas}×${bc.bxc}); difiere en ${bc.dif > 0 ? '+' : ''}${bc.dif}` : ''}>{r.unidades_botellas}</td>
+                    <td className={`r ${!bc.ok ? 'ice-bot-mal' : ''}`} title={bc.verificable ? `Esperado: ${bc.cajas} cajas × ${bc.bxc} = ${bc.esperado} botellas` : 'Sin bot/caja para verificar'}>
+                      {bc.bxc ? bc.bxc.toFixed(0) : '—'}{!bc.ok ? ` ⚠ (${bc.dif > 0 ? '+' : ''}${bc.dif})` : ''}
+                    </td>
                     <td className="r">{money(r.precio_por_caja)}</td>
                     <td className="r">{n4(r.precio_por_botella)}</td>
                     <td className="r">{money(r.base_ice)}</td>
@@ -419,13 +469,15 @@ export default function ICE() {
                     <td className="r total">{money((parseFloat(r.base_iva) || 0) + (parseFloat(r.valor_iva) || 0))}</td>
                     <td><button className="ice-del" onClick={() => handleDelete(r.id)}>✕</button></td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
               <tfoot>
                 <tr className="ice-foot">
                   <td></td><td></td><td></td><td></td><td>TOTALES</td>
                   <td className="r">{filtered.reduce((s, r) => s + (parseFloat(r.cantidad_cajas) || 0), 0).toFixed(0)}</td>
                   <td className="r">{filtered.reduce((s, r) => s + (parseInt(r.unidades_botellas) || 0), 0)}</td>
+                  <td className="r" title="Botellas esperadas: Σ(cajas × bot/caja)">{filtered.reduce((s, r) => s + Math.round((parseFloat(r.cantidad_cajas) || 0) * (parseFloat(r.botellas_por_caja) || 0)), 0)}</td>
                   <td className="r"></td><td className="r"></td>
                   <td className="r">{money(filtered.reduce((s, r) => s + (parseFloat(r.base_ice) || 0), 0))}</td>
                   <td className="r">{money(filtered.reduce((s, r) => s + (parseFloat(r.valor_ice) || 0), 0))}</td>
@@ -440,19 +492,20 @@ export default function ICE() {
 
       {/* Reporte general — auditoría por producto POR BOTELLA (unitario, con grado y ml) */}
       {auditBotella.length > 0 && (
-        <div className="ice-report">
-          <h2 className="ice-report-title">🍾 Reporte general — auditoría por producto (por botella) ({anio})</h2>
-          <p className="ice-verif-note">Valores UNITARIOS por botella. El grado alcohólico (%) y la capacidad (ml) determinan el ICE específico; el ad-valorem depende del precio por litro.</p>
-          <div className="ice-scroll">
+        <CuadroFiltrable title={`🍾 Reporte general — auditoría por producto (por botella) (${anio})`} data={auditBotella}
+          fields={['producto']} value={filtros.botella} onFilter={(v) => setFiltro('botella', v)}
+          hint={<p className="ice-verif-note">Valores UNITARIOS por botella. El grado alcohólico (%) y la capacidad (ml) determinan el ICE específico; el ad-valorem depende del precio por litro.</p>}>
+          {(filt) => (
             <table className="ice-rep-table">
               <thead><tr>
-                <th>Producto</th><th className="r">Grado %</th><th className="r">Vol. (ml)</th><th className="r">$/Botella</th>
+                <th>Producto</th><th className="r">Botellas</th><th className="r">Grado %</th><th className="r">Vol. (ml)</th><th className="r">$/Botella</th>
                 <th className="r">ICE Esp./bot</th><th className="r">ICE AdV/bot</th><th className="r">Total ICE/bot</th><th>¿AdV?</th>
               </tr></thead>
               <tbody>
-                {auditBotella.map((a) => (
+                {filt.map((a) => (
                   <tr key={a.producto}>
                     <td className="ice-prod" title={a.producto}>{a.producto}</td>
+                    <td className="r">{(parseFloat(a.botellas) || 0).toFixed(0)}</td>
                     <td className="r">{(parseFloat(a.grado) || 0).toFixed(1)}</td>
                     <td className="r">{(parseFloat(a.volumen) || 0).toFixed(0)}</td>
                     <td className="r">{n4(a.precio_botella)}</td>
@@ -463,15 +516,21 @@ export default function ICE() {
                   </tr>
                 ))}
               </tbody>
+              <tfoot><tr className="ice-rep-total">
+                <td>TOTAL · {filt.length} producto(s)</td>
+                <td className="r">{filt.reduce((s, a) => s + (parseFloat(a.botellas) || 0), 0).toFixed(0)}</td>
+                <td className="r" colSpan={6}>(valores por botella, no sumables)</td>
+                <td></td>
+              </tr></tfoot>
             </table>
-          </div>
-        </div>
+          )}
+        </CuadroFiltrable>
       )}
 
       {report?.por_producto?.length > 0 && (
-        <div className="ice-report">
-          <h2 className="ice-report-title">📊 Reporte general acumulado (por número de botellas) ({anio})</h2>
-          <div className="ice-scroll">
+        <CuadroFiltrable title={`📊 Reporte general acumulado (por número de botellas) (${anio})`} data={report.por_producto}
+          fields={['producto']} value={filtros.acum} onFilter={(v) => setFiltro('acum', v)}>
+          {(filt) => (
             <table className="ice-rep-table">
               <thead>
                 <tr>
@@ -481,7 +540,7 @@ export default function ICE() {
                 </tr>
               </thead>
               <tbody>
-                {report.por_producto.map((f) => (
+                {filt.map((f) => (
                   <tr key={f.producto}>
                     <td className="ice-prod" title={f.producto}>{f.producto}</td>
                     <td className="r">{(parseFloat(f.botellas) || 0).toFixed(0)}</td>
@@ -497,28 +556,28 @@ export default function ICE() {
               </tbody>
               <tfoot>
                 <tr className="ice-rep-total">
-                  <td>TOTAL · {g?.lineas} línea(s)</td>
-                  <td className="r"></td>
-                  <td className="r">{money(g?.subtotal)}</td>
-                  <td className="r">{money(g?.ice_especifico)}</td>
-                  <td className="r">{money(g?.ice_advalorem)}</td>
-                  <td className="r">{money(g?.total_ice)}</td>
-                  <td className="r">{money(g?.base_iva)}</td>
-                  <td className="r">{money(g?.iva)}</td>
+                  <td>TOTAL · {filt.length} producto(s)</td>
+                  <td className="r">{filt.reduce((s, f) => s + (parseFloat(f.botellas) || 0), 0).toFixed(0)}</td>
+                  <td className="r">{money(filt.reduce((s, f) => s + (parseFloat(f.subtotal) || 0), 0))}</td>
+                  <td className="r">{money(filt.reduce((s, f) => s + (parseFloat(f.ice_especifico) || 0), 0))}</td>
+                  <td className="r">{money(filt.reduce((s, f) => s + (parseFloat(f.ice_advalorem) || 0), 0))}</td>
+                  <td className="r">{money(filt.reduce((s, f) => s + (parseFloat(f.total_ice) || 0), 0))}</td>
+                  <td className="r">{money(filt.reduce((s, f) => s + (parseFloat(f.base_iva) || 0), 0))}</td>
+                  <td className="r">{money(filt.reduce((s, f) => s + (parseFloat(f.iva) || 0), 0))}</td>
                   <td></td>
                 </tr>
               </tfoot>
             </table>
-          </div>
-        </div>
+          )}
+        </CuadroFiltrable>
       )}
 
       {/* Verificación del cálculo ICE (considera grado alcohólico y ml) */}
       {report?.detalle?.length > 0 && (
-        <div className="ice-report">
-          <h2 className="ice-report-title">✅ Verificación del cálculo ICE por producto ({anio})</h2>
-          <p className="ice-verif-note">ICE Específico = Litros de alcohol puro × Tarifa · ICE Ad-Valorem = (Precio/Litro − Umbral {money(report.params?.umbral)}) × 75% × Litros, si Precio/Litro &gt; Umbral.</p>
-          <div className="ice-scroll">
+        <CuadroFiltrable title={`✅ Verificación del cálculo ICE por producto (${anio})`} data={report.detalle}
+          fields={['producto_individual']} value={filtros.verif} onFilter={(v) => setFiltro('verif', v)}
+          hint={<p className="ice-verif-note">ICE Específico = Litros de alcohol puro × Tarifa · ICE Ad-Valorem = (Precio/Litro − Umbral {money(report.params?.umbral)}) × 75% × Litros, si Precio/Litro &gt; Umbral.</p>}>
+          {(filt) => (
             <table className="ice-rep-table">
               <thead><tr>
                 <th>Producto</th><th className="r">Botellas</th><th className="r">Vol. (cc)</th><th className="r">Grado %</th>
@@ -526,7 +585,7 @@ export default function ICE() {
                 <th className="r">Precio/Litro</th><th>¿AdV?</th><th className="r">ICE AdV</th><th className="r">Total ICE</th>
               </tr></thead>
               <tbody>
-                {report.detalle.map((d, i) => {
+                {filt.map((d, i) => {
                   const litrosAlc = (parseFloat(d.botellas) || 0) * (parseFloat(d.volumen) || 0) / 1000 * (parseFloat(d.grado) || 0) / 100
                   return (
                     <tr key={i}>
@@ -545,23 +604,34 @@ export default function ICE() {
                   )
                 })}
               </tbody>
+              <tfoot><tr className="ice-rep-total">
+                <td>TOTAL · {filt.length} ítem(s)</td>
+                <td className="r">{filt.reduce((s, d) => s + (parseFloat(d.botellas) || 0), 0).toFixed(0)}</td>
+                <td className="r"></td><td className="r"></td>
+                <td className="r">{filt.reduce((s, d) => s + (parseFloat(d.botellas) || 0) * (parseFloat(d.volumen) || 0) / 1000 * (parseFloat(d.grado) || 0) / 100, 0).toFixed(2)}</td>
+                <td className="r"></td>
+                <td className="r">{money(filt.reduce((s, d) => s + (parseFloat(d.ice_especifico) || 0), 0))}</td>
+                <td className="r"></td><td></td>
+                <td className="r">{money(filt.reduce((s, d) => s + (parseFloat(d.ice_advalorem) || 0), 0))}</td>
+                <td className="r">{money(filt.reduce((s, d) => s + (parseFloat(d.total_ice) || 0), 0))}</td>
+              </tr></tfoot>
             </table>
-          </div>
-        </div>
+          )}
+        </CuadroFiltrable>
       )}
 
       {/* Cuadro por producto */}
       {cuadroProducto.length > 0 && (
-        <div className="ice-report">
-          <h2 className="ice-report-title">📦 Cuadro por producto — {selectedClient.identificacion} · {selectedClient.nombre}</h2>
-          <div className="ice-scroll">
+        <CuadroFiltrable title={`📦 Cuadro por producto — ${selectedClient.identificacion} · ${selectedClient.nombre}`} data={cuadroProducto}
+          fields={['producto']} value={filtros.prod} onFilter={(v) => setFiltro('prod', v)}>
+          {(filt) => (
             <table className="ice-rep-table">
               <thead><tr>
                 <th>Producto</th><th className="r">Cajas</th><th className="r">Botellas</th>
                 <th className="r">Base ICE</th><th className="r">ICE</th><th className="r">Base IVA</th><th className="r">IVA</th><th className="r">Total</th>
               </tr></thead>
               <tbody>
-                {cuadroProducto.map((p) => (
+                {filt.map((p) => (
                   <tr key={p.producto}>
                     <td className="ice-prod" title={p.producto}>{p.producto}</td>
                     <td className="r">{p.cajas.toFixed(0)}</td>
@@ -576,31 +646,31 @@ export default function ICE() {
               </tbody>
               <tfoot><tr className="ice-rep-total">
                 <td>TOTALES</td>
-                <td className="r">{cuadroProducto.reduce((s, p) => s + (p.cajas || 0), 0).toFixed(0)}</td>
-                <td className="r">{cuadroProducto.reduce((s, p) => s + (p.botellas || 0), 0)}</td>
-                <td className="r">{money(cuadroProducto.reduce((s, p) => s + (p.base_ice || 0), 0))}</td>
-                <td className="r">{money(cuadroProducto.reduce((s, p) => s + (p.valor_ice || 0), 0))}</td>
-                <td className="r">{money(cuadroProducto.reduce((s, p) => s + (p.base_iva || 0), 0))}</td>
-                <td className="r">{money(cuadroProducto.reduce((s, p) => s + (p.valor_iva || 0), 0))}</td>
-                <td className="r">{money(cuadroProducto.reduce((s, p) => s + (p.total || 0), 0))}</td>
+                <td className="r">{filt.reduce((s, p) => s + (p.cajas || 0), 0).toFixed(0)}</td>
+                <td className="r">{filt.reduce((s, p) => s + (p.botellas || 0), 0)}</td>
+                <td className="r">{money(filt.reduce((s, p) => s + (p.base_ice || 0), 0))}</td>
+                <td className="r">{money(filt.reduce((s, p) => s + (p.valor_ice || 0), 0))}</td>
+                <td className="r">{money(filt.reduce((s, p) => s + (p.base_iva || 0), 0))}</td>
+                <td className="r">{money(filt.reduce((s, p) => s + (p.valor_iva || 0), 0))}</td>
+                <td className="r">{money(filt.reduce((s, p) => s + (p.total || 0), 0))}</td>
               </tr></tfoot>
             </table>
-          </div>
-        </div>
+          )}
+        </CuadroFiltrable>
       )}
 
       {/* Cuadro por cliente */}
       {cuadroCliente.length > 0 && (
-        <div className="ice-report">
-          <h2 className="ice-report-title">👥 Cuadro por cliente (genera el anexo SRI)</h2>
-          <div className="ice-scroll">
+        <CuadroFiltrable title="👥 Cuadro por cliente (genera el anexo SRI)" data={cuadroCliente}
+          fields={['ruc', 'nombre']} value={filtros.cli} onFilter={(v) => setFiltro('cli', v)}>
+          {(filt) => (
             <table className="ice-rep-table">
               <thead><tr>
                 <th>RUC</th><th>Cliente</th><th className="r">Botellas</th>
                 <th className="r">Base ICE</th><th className="r">ICE</th><th className="r">IVA</th><th className="r">Total</th>
               </tr></thead>
               <tbody>
-                {cuadroCliente.map((c) => (
+                {filt.map((c) => (
                   <tr key={c.ruc + c.nombre}>
                     <td>{c.ruc || '—'}</td>
                     <td className="ice-prod" title={c.nombre}>{c.nombre || '—'}</td>
@@ -614,15 +684,15 @@ export default function ICE() {
               </tbody>
               <tfoot><tr className="ice-rep-total">
                 <td>TOTALES</td><td></td>
-                <td className="r">{cuadroCliente.reduce((s, c) => s + (c.botellas || 0), 0)}</td>
-                <td className="r">{money(cuadroCliente.reduce((s, c) => s + (c.base_ice || 0), 0))}</td>
-                <td className="r">{money(cuadroCliente.reduce((s, c) => s + (c.valor_ice || 0), 0))}</td>
-                <td className="r">{money(cuadroCliente.reduce((s, c) => s + (c.valor_iva || 0), 0))}</td>
-                <td className="r">{money(cuadroCliente.reduce((s, c) => s + (c.total || 0), 0))}</td>
+                <td className="r">{filt.reduce((s, c) => s + (c.botellas || 0), 0)}</td>
+                <td className="r">{money(filt.reduce((s, c) => s + (c.base_ice || 0), 0))}</td>
+                <td className="r">{money(filt.reduce((s, c) => s + (c.valor_ice || 0), 0))}</td>
+                <td className="r">{money(filt.reduce((s, c) => s + (c.valor_iva || 0), 0))}</td>
+                <td className="r">{money(filt.reduce((s, c) => s + (c.total || 0), 0))}</td>
               </tr></tfoot>
             </table>
-          </div>
-        </div>
+          )}
+        </CuadroFiltrable>
       )}
 
       {/* Revisión / cuadre: factura vs auditoría */}
@@ -652,17 +722,17 @@ export default function ICE() {
 
       {/* Análisis de diferencias (solo si las hay) — tabla con explicación al hacer clic */}
       {diferencias.length > 0 && (
-        <div className="ice-report">
-          <h2 className="ice-report-title">🧠 Análisis de diferencias (factura vs cálculo)</h2>
-          <p className="ice-verif-note">{diferencias.length} producto(s) con diferencia. Haz clic en una fila para ver la explicación.</p>
-          <div className="ice-scroll">
+        <CuadroFiltrable title="🧠 Análisis de diferencias (factura vs cálculo)" data={diferencias}
+          fields={['producto']} value={filtros.dif} onFilter={(v) => setFiltro('dif', v)}
+          hint={<p className="ice-verif-note">{diferencias.length} producto(s) con diferencia. Haz clic en una fila para ver la explicación.</p>}>
+          {(filt) => (
             <table className="ice-rep-table ice-dif-table">
               <thead><tr>
                 <th>Producto</th><th className="r">ICE facturado</th><th className="r">ICE calculado</th>
                 <th className="r">Diferencia</th><th></th>
               </tr></thead>
               <tbody>
-                {diferencias.map((d) => {
+                {filt.map((d) => {
                   const mas = d.dif > 0
                   const abierto = difOpen === d.producto
                   return (
@@ -698,9 +768,16 @@ export default function ICE() {
                   )
                 })}
               </tbody>
+              <tfoot><tr className="ice-rep-total">
+                <td>TOTAL · {filt.length} producto(s)</td>
+                <td className="r">{money(filt.reduce((s, d) => s + (parseFloat(d.facIce) || 0), 0))}</td>
+                <td className="r">{money(filt.reduce((s, d) => s + (parseFloat(d.audIce) || 0), 0))}</td>
+                <td className="r">{money(filt.reduce((s, d) => s + (parseFloat(d.dif) || 0), 0))}</td>
+                <td></td>
+              </tr></tfoot>
             </table>
-          </div>
-        </div>
+          )}
+        </CuadroFiltrable>
       )}
 
       {/* Modal Anexo ICE */}
