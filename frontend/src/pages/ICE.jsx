@@ -173,6 +173,45 @@ export default function ICE() {
     return Object.values(ag).sort((x, y) => (x.nombre || '').localeCompare(y.nombre || ''))
   }, [okRows])
 
+  // CUADRO 1: reporte por FACTURA (totales globales). El importe_total es el total de
+  // la factura (repetido en cada línea); ICE/IVA/subtotal se suman de las líneas.
+  const cuadroFactura = useMemo(() => {
+    const ag = {}
+    okRows.forEach((r) => {
+      const clave = String(r.unique_id || '').replace(/-\d+$/, '') || `${r.fecha}|${r.id_cliente}`
+      const a = ag[clave] || (ag[clave] = { clave, fecha: r.fecha || '', ruc: r.id_cliente || '', cliente: r.razon_social_cliente || '', lineas: 0, botellas: 0, subtotal: 0, ice: 0, iva: 0, total: 0 })
+      a.lineas += 1
+      a.botellas += parseInt(r.unidades_botellas) || 0
+      a.subtotal += parseFloat(r.precio_total_sin_impuesto) || 0
+      a.ice += parseFloat(r.valor_ice) || 0
+      a.iva += parseFloat(r.valor_iva) || 0
+      a.total = parseFloat(r.importe_total) || a.total // total de la factura (no se suma)
+    })
+    return Object.values(ag).sort((x, y) => (x.fecha || '').localeCompare(y.fecha || ''))
+  }, [okRows])
+
+  // CUADRO por BOTELLA: auditoría por producto con valores UNITARIOS por botella
+  // (grado alcohólico y ml son vitales para el cálculo).
+  const auditBotella = useMemo(() => {
+    if (!report?.detalle) return []
+    const ag = {}
+    report.detalle.forEach((d) => {
+      const k = d.producto_individual
+      const a = ag[k] || (ag[k] = { producto: k, grado: d.grado, volumen: d.volumen, precio_botella: d.precio_botella, botellas: 0, ice_esp: 0, ice_adv: 0, total: 0, aplica_adv: false })
+      a.botellas += parseFloat(d.botellas) || 0
+      a.ice_esp += parseFloat(d.ice_especifico) || 0
+      a.ice_adv += parseFloat(d.ice_advalorem) || 0
+      a.total += parseFloat(d.total_ice) || 0
+      a.aplica_adv = a.aplica_adv || d.aplica_adv
+    })
+    return Object.values(ag).map((a) => ({
+      ...a,
+      ice_esp_bot: a.botellas ? a.ice_esp / a.botellas : 0,
+      ice_adv_bot: a.botellas ? a.ice_adv / a.botellas : 0,
+      total_bot: a.botellas ? a.total / a.botellas : 0,
+    })).sort((x, y) => x.producto.localeCompare(y.producto))
+  }, [report])
+
   // Revisión / cuadre: compara los valores de la factura (XML) vs la auditoría (cálculo)
   const cuadre = useMemo(() => {
     const facturaIce = okRows.reduce((s, r) => s + (parseFloat(r.valor_ice) || 0), 0)
@@ -299,12 +338,54 @@ export default function ICE() {
 
       {busy && <div className="ice-busy">⏳ {busy}</div>}
 
+      {/* CUADRO 1 — Reporte por factura (totales globales) */}
+      {!loading && cuadroFactura.length > 0 && (
+        <div className="ice-report">
+          <h2 className="ice-report-title">🧾 Reporte por factura (totales globales) — {cuadroFactura.length} factura(s)</h2>
+          <div className="ice-scroll">
+            <table className="ice-rep-table">
+              <thead><tr>
+                <th>Fecha</th><th>RUC</th><th>Cliente</th><th className="r">Líneas</th><th className="r">Botellas</th>
+                <th className="r">Subtotal</th><th className="r">ICE</th><th className="r">IVA</th><th className="r">Total factura</th>
+              </tr></thead>
+              <tbody>
+                {cuadroFactura.map((f) => (
+                  <tr key={f.clave}>
+                    <td>{f.fecha || '—'}</td>
+                    <td>{f.ruc || '—'}</td>
+                    <td className="ice-prod" title={f.cliente}>{f.cliente || '—'}</td>
+                    <td className="r">{f.lineas}</td>
+                    <td className="r">{f.botellas}</td>
+                    <td className="r">{money(f.subtotal)}</td>
+                    <td className="r">{money(f.ice)}</td>
+                    <td className="r">{money(f.iva)}</td>
+                    <td className="r strong total">{money(f.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="ice-rep-total">
+                  <td>TOTALES</td><td></td><td></td>
+                  <td className="r">{cuadroFactura.reduce((s, f) => s + f.lineas, 0)}</td>
+                  <td className="r">{cuadroFactura.reduce((s, f) => s + f.botellas, 0)}</td>
+                  <td className="r">{money(cuadroFactura.reduce((s, f) => s + f.subtotal, 0))}</td>
+                  <td className="r">{money(cuadroFactura.reduce((s, f) => s + f.ice, 0))}</td>
+                  <td className="r">{money(cuadroFactura.reduce((s, f) => s + f.iva, 0))}</td>
+                  <td className="r">{money(cuadroFactura.reduce((s, f) => s + f.total, 0))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="ice-empty">Cargando…</div>
       ) : rows.length === 0 ? (
         <div className="ice-empty">Sin datos. Carga facturas XML de venta de licor para comenzar.</div>
       ) : (
         <div className="ice-table-wrap">
+          <h2 className="ice-report-title">🧮 Desglose de productos - factura</h2>
           <div className="ice-hint">{filtered.length} de {rows.length}</div>
           <BulkBar count={selected.size} onMove={bulkMove} onDelete={bulkDelete} onClear={clearSel} />
           <div className="ice-scroll">
@@ -354,9 +435,39 @@ export default function ICE() {
         </div>
       )}
 
+      {/* Reporte general — auditoría por producto POR BOTELLA (unitario, con grado y ml) */}
+      {auditBotella.length > 0 && (
+        <div className="ice-report">
+          <h2 className="ice-report-title">🍾 Reporte general — auditoría por producto (por botella) ({anio})</h2>
+          <p className="ice-verif-note">Valores UNITARIOS por botella. El grado alcohólico (%) y la capacidad (ml) determinan el ICE específico; el ad-valorem depende del precio por litro.</p>
+          <div className="ice-scroll">
+            <table className="ice-rep-table">
+              <thead><tr>
+                <th>Producto</th><th className="r">Grado %</th><th className="r">Vol. (ml)</th><th className="r">$/Botella</th>
+                <th className="r">ICE Esp./bot</th><th className="r">ICE AdV/bot</th><th className="r">Total ICE/bot</th><th>¿AdV?</th>
+              </tr></thead>
+              <tbody>
+                {auditBotella.map((a) => (
+                  <tr key={a.producto}>
+                    <td className="ice-prod" title={a.producto}>{a.producto}</td>
+                    <td className="r">{(parseFloat(a.grado) || 0).toFixed(1)}</td>
+                    <td className="r">{(parseFloat(a.volumen) || 0).toFixed(0)}</td>
+                    <td className="r">{n4(a.precio_botella)}</td>
+                    <td className="r">{n4(a.ice_esp_bot)}</td>
+                    <td className="r">{n4(a.ice_adv_bot)}</td>
+                    <td className="r strong">{n4(a.total_bot)}</td>
+                    <td>{a.aplica_adv ? 'SÍ' : 'NO'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {report?.por_producto?.length > 0 && (
         <div className="ice-report">
-          <h2 className="ice-report-title">📊 Reporte general — auditoría por producto ({anio})</h2>
+          <h2 className="ice-report-title">📊 Reporte general acumulado (por número de botellas) ({anio})</h2>
           <div className="ice-scroll">
             <table className="ice-rep-table">
               <thead>
@@ -423,6 +534,16 @@ export default function ICE() {
                   </tr>
                 ))}
               </tbody>
+              <tfoot><tr className="ice-rep-total">
+                <td>TOTALES</td>
+                <td className="r">{cuadroProducto.reduce((s, p) => s + (p.cajas || 0), 0).toFixed(0)}</td>
+                <td className="r">{cuadroProducto.reduce((s, p) => s + (p.botellas || 0), 0)}</td>
+                <td className="r">{money(cuadroProducto.reduce((s, p) => s + (p.base_ice || 0), 0))}</td>
+                <td className="r">{money(cuadroProducto.reduce((s, p) => s + (p.valor_ice || 0), 0))}</td>
+                <td className="r">{money(cuadroProducto.reduce((s, p) => s + (p.base_iva || 0), 0))}</td>
+                <td className="r">{money(cuadroProducto.reduce((s, p) => s + (p.valor_iva || 0), 0))}</td>
+                <td className="r">{money(cuadroProducto.reduce((s, p) => s + (p.total || 0), 0))}</td>
+              </tr></tfoot>
             </table>
           </div>
         </div>
@@ -451,6 +572,14 @@ export default function ICE() {
                   </tr>
                 ))}
               </tbody>
+              <tfoot><tr className="ice-rep-total">
+                <td>TOTALES</td><td></td>
+                <td className="r">{cuadroCliente.reduce((s, c) => s + (c.botellas || 0), 0)}</td>
+                <td className="r">{money(cuadroCliente.reduce((s, c) => s + (c.base_ice || 0), 0))}</td>
+                <td className="r">{money(cuadroCliente.reduce((s, c) => s + (c.valor_ice || 0), 0))}</td>
+                <td className="r">{money(cuadroCliente.reduce((s, c) => s + (c.valor_iva || 0), 0))}</td>
+                <td className="r">{money(cuadroCliente.reduce((s, c) => s + (c.total || 0), 0))}</td>
+              </tr></tfoot>
             </table>
           </div>
         </div>
