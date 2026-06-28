@@ -89,10 +89,31 @@ export default function RebajasExenciones() {
   const [busy, setBusy] = useState('')
   const fileRef = useRef(null)
 
+  const [provEnr, setProvEnr] = useState('')
+  const traerActProv = useCallback(async (idt) => {
+    if (!idt) return
+    try {
+      let restantes = 1
+      for (let i = 0; i < 200 && restantes > 0; i++) {
+        const r = await rebajasAPI.enriquecerActProveedores(idt)
+        restantes = r.data?.restantes ?? 0
+        setProvEnr(restantes > 0 ? `Trayendo actividad (SRI)… faltan ${restantes}` : '')
+        if ((r.data?.procesados || 0) === 0) break
+      }
+      setProvEnr('')
+      const r = await rebajasAPI.listProveedores(idt)
+      setProveedores(r.data?.data || [])
+    } catch { setProvEnr('') }
+  }, [])
   const loadProv = useCallback(() => {
     if (!ident) { setProveedores([]); return }
-    rebajasAPI.listProveedores(ident).then((r) => setProveedores(r.data?.data || [])).catch(() => setProveedores([]))
-  }, [ident])
+    rebajasAPI.listProveedores(ident).then((r) => {
+      const rows = r.data?.data || []
+      setProveedores(rows)
+      // Despliega automáticamente la actividad (SRI) de los proveedores que falten
+      if (rows.some((x) => !String(x.actividad || '').trim())) traerActProv(ident)
+    }).catch(() => setProveedores([]))
+  }, [ident, traerActProv])
   useEffect(() => { loadProv() }, [loadProv])
 
   useEffect(() => {
@@ -506,6 +527,7 @@ export default function RebajasExenciones() {
         <div className="re-normas-body">
           <p>Base reutilizable de personas/empresas calificadas. Adjunta el documento (Excel/foto/PDF) que respalda la calificación e indica hasta cuándo es válido.</p>
           <p className="re-hint"><strong>Dos procesos:</strong> (1) <strong>Verificar calificación</strong> por RUC en el Ministerio (formulario), y (2) <strong>Cargar documentos</strong> — arrastra un <strong>PDF, foto o Excel</strong> y la <strong>IA lee</strong> el RUC, el nombre, la <strong>calificación</strong> y la <strong>vigencia (inicio–fin)</strong>, y los guarda solos. No necesitas escribir nada; los campos son opcionales (corrección manual).</p>
+          {provEnr && <p className="re-hint" style={{ color: '#2563eb' }}>⏳ {provEnr}</p>}
           <div className="re-prov-form">
             <label className="re-f"><span>RUC</span>
               <input value={provForm.ruc}

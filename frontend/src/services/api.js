@@ -263,6 +263,7 @@ export const rebajasAPI = {
   upsertProveedor: (entry) => api.put('/api/rebajas/proveedores', entry),
   deleteProveedor: (id) => api.delete(`/api/rebajas/proveedores/${id}`),
   verificarTodos: (identificacion, producto) => api.post('/api/rebajas/proveedores/verificar-todos', null, { params: { identificacion, producto } }),
+  enriquecerActProveedores: (identificacion) => api.post('/api/rebajas/proveedores/enriquecer-actividades', null, { params: { identificacion } }),
   subirDocProveedor: ({ identificacion, ruc, nombre, calificado, vigente_hasta, file }) => {
     const fd = new FormData()
     fd.append('file', file); fd.append('identificacion', identificacion)

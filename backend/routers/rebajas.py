@@ -342,6 +342,36 @@ async def list_proveedores(identificacion: str = Query(...), user_id: str = Depe
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/proveedores/enriquecer-actividades")
+async def enriquecer_actividades_prov(identificacion: str = Query(...), user_id: str = Depends(get_current_user)):
+    """Trae automáticamente la actividad económica del SRI para los proveedores
+    calificados que aún no la tienen. Por lotes; el frontend llama en bucle."""
+    try:
+        from services.min_produccion import consultar_sri
+        supabase = get_supabase_client()
+        rows = supabase.table("rebajas_proveedores").select("id,ruc,actividad")\
+            .eq("identificacion", identificacion).eq("user_id", user_id).execute().data or []
+        faltan = [r for r in rows if (r.get("ruc") or "").strip() and not (r.get("actividad") or "").strip()]
+        lote = faltan[:8]
+        actualizados = 0
+        for r in lote:
+            ruc = (r.get("ruc") or "").strip()
+            try:
+                sri = consultar_sri(ruc, timeout=6) or {}
+            except Exception:
+                sri = {}
+            ae = (sri.get("actividad_economica") or "").strip() or "—"
+            try:
+                supabase.table("rebajas_proveedores").update({"actividad": ae}).eq("id", r["id"]).execute()
+                if ae != "—":
+                    actualizados += 1
+            except Exception:
+                pass
+        return {"actualizados": actualizados, "procesados": len(lote), "restantes": max(0, len(faltan) - len(lote))}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def _upsert_proveedor(supabase, user_id, ident, ruc, nombre, calificado, categoria="", vigencia="", vigente_hasta=None, vigencia_inicio=None, actividad=None):
     data = {
         "user_id": user_id, "identificacion": ident, "ruc": (ruc or "").strip(),
