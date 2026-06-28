@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { rebajasAPI, productsAPI, compradoresAPI } from '../services/api'
+import { rebajasAPI, productsAPI, classificationAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
+import ClassifierTable from '../components/ClassifierTable'
 import WorkflowGuide from '../components/WorkflowGuide'
 import useDraft from '../hooks/useDraft'
 import './RebajasExenciones.css'
@@ -244,57 +245,46 @@ export default function RebajasExenciones() {
   }
 
   // ── Panel de proveedores calificados ──
-  const [provForm, setProvForm] = useState({ ruc: '', nombre: '', calificado: false, vigente_hasta: '', actividad: '' })
+  const [provForm, setProvForm] = useState({ ruc: '', nombre: '', calificado: false, categoria: '', vigente_hasta: '', actividad: '' })
   const [provDragOver, setProvDragOver] = useState(false)
   const provFileRef = useRef(null)
   const [provOpen, setProvOpen] = useState(false)
   const okDoc = (f) => /\.(xlsx|xls|csv|pdf)$/i.test(f.name) || /^image\//.test(f.type)
 
-  // Panel de compradores enriquecidos (clasificados y calificados)
-  const [compOpen, setCompOpen] = useState(false)
-  const [compRows, setCompRows] = useState([])
-  const [compQ, setCompQ] = useState('')
-  const [compCalif, setCompCalif] = useState('todos')
-  const [compEnr, setCompEnr] = useState('')
-  const [compVig, setCompVig] = useState(null)
-  const [compAct, setCompAct] = useState(null)
-  const loadComp = async (auto = false) => {
-    try {
-      const r = await compradoresAPI.listEnriquecido(ident)
-      const rows = r.data?.data || []
-      setCompRows(rows)
-      if (auto && !compEnr && rows.some((x) => !String(x.actividad || '').trim())) traerActComp(true)
-    } catch { setCompRows([]) }
+  // Panel de gastos a clasificar (clasificador de gastos embebido)
+  const [gastosOpen, setGastosOpen] = useState(false)
+  const [gastosRows, setGastosRows] = useState([])
+  const [gastosQ, setGastosQ] = useState('')
+  const gastosFileRef = useRef(null)
+  const loadGastos = async () => {
+    try { const r = await classificationAPI.list(); setGastosRows(r.data || []) } catch { setGastosRows([]) }
   }
-  useEffect(() => { if (compOpen) loadComp(true) }, [compOpen, ident])
-  const traerActComp = async (silent = false) => {
-    if (compEnr) return
+  useEffect(() => { if (gastosOpen) loadGastos() }, [gastosOpen])
+  const importarGastos = async (file) => {
+    if (!file) return
     try {
-      let restantes = 1, total = 0
-      for (let i = 0; i < 400 && restantes > 0; i++) {
-        const r = await compradoresAPI.enriquecerActividades(ident)
-        total += r.data?.actualizados || 0
-        restantes = r.data?.restantes ?? 0
-        setCompEnr(`Trayendo actividad del SRI… faltan ${restantes}`)
-        if ((r.data?.procesados || 0) === 0) break
-      }
-      setCompEnr(''); await loadComp()
-      if (!silent) alert(`✔ Actividad económica del SRI actualizada (${total} compradores).`)
-    } catch (e) { setCompEnr(''); if (!silent) alert('Error: ' + (e.response?.data?.detail || e.message)) }
+      const r = await classificationAPI.import(file)
+      await loadGastos()
+      const recl = r.data?.reclasificadas ? ` · ${r.data.reclasificadas} factura(s) reclasificadas` : ''
+      alert(`Importados: ${r.data?.imported ?? 0} · Actualizados: ${r.data?.updated ?? 0}${recl}`)
+    } catch (e) { alert('Error al importar: ' + (e.response?.data?.detail || e.message)) }
   }
-  const compFiltrados = compRows.filter((r) => {
-    const q = compQ.trim().toLowerCase()
-    if (compCalif === 'si' && !r.calificado) return false
-    if (compCalif === 'no' && r.calificado) return false
-    if (q && ![r.ruc, r.nombre, r.categoria, r.actividad, r.calif_categoria].some((f) => String(f || '').toLowerCase().includes(q))) return false
-    return true
-  })
+  const exportarGastos = async () => {
+    try { const r = await classificationAPI.exportExcel(); downloadBlob(r.data, 'clasificador.xlsx') }
+    catch (e) { alert('Error al exportar: ' + (e.response?.data?.detail || e.message)) }
+  }
+  const gastosFiltrados = (() => {
+    const q = gastosQ.trim().toLowerCase()
+    if (!q) return gastosRows
+    return gastosRows.filter((x) => [x.ruc, x.nombre_proveedor, x.categoria, x.actividad, x.calif_categoria]
+      .some((f) => String(f || '').toLowerCase().includes(q)))
+  })()
 
   // Guarda el proveedor en la base AL INSTANTE (sin botón). Usa el valor más reciente.
   const provGuardarAuto = (nf) => {
     const ruc = (nf.ruc || '').trim()
     if (!ruc) return
-    rebajasAPI.upsertProveedor({ identificacion: ident, ruc, nombre: nf.nombre, calificado: nf.calificado, actividad: nf.actividad || '', vigente_hasta: nf.vigente_hasta || null })
+    rebajasAPI.upsertProveedor({ identificacion: ident, ruc, nombre: nf.nombre, calificado: nf.calificado, categoria: nf.categoria || '', actividad: nf.actividad || '', vigente_hasta: nf.vigente_hasta || null })
       .then(() => loadProv()).catch(() => {})
   }
   const provField = (patch, guardar = false) => setProvForm((f) => {
@@ -307,7 +297,7 @@ export default function RebajasExenciones() {
     setBusy('Verificando…')
     try {
       const r = await rebajasAPI.verificarRuc(ruc); const d = r.data
-      const nf = { ...provForm, ruc, nombre: d.razon_social || provForm.nombre, calificado: d.cumple === true, actividad: d.actividad_economica || provForm.actividad }
+      const nf = { ...provForm, ruc, nombre: d.razon_social || provForm.nombre, calificado: d.cumple === true, categoria: d.categoria || provForm.categoria, actividad: d.actividad_economica || provForm.actividad }
       setProvForm(nf); provGuardarAuto(nf) // se cataloga al instante
       if (d.actividad_economica) setVerif({ estado: d.cumple ? 'ok' : 'no', texto: `${d.cumple ? '✔ Cumple' : '✗ No cumple'} · ${d.razon_social || ruc}${d.categoria ? ' · ' + d.categoria : ''} · Actividad SRI: ${d.actividad_economica}` })
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy('') }
@@ -475,13 +465,17 @@ export default function RebajasExenciones() {
           <div className="re-prov-form">
             <label className="re-f"><span>RUC</span>
               <input value={provForm.ruc}
-                onChange={(e) => { const v = e.target.value; const p = proveedores.find((x) => (x.ruc || '') === v.trim()); provField(p ? { ruc: v, nombre: p.nombre || '', calificado: !!p.calificado, vigente_hasta: p.vigente_hasta || '' } : { ruc: v }) }}
+                onChange={(e) => { const v = e.target.value; const p = proveedores.find((x) => (x.ruc || '') === v.trim()); provField(p ? { ruc: v, nombre: p.nombre || '', calificado: !!p.calificado, categoria: p.categoria || '', vigente_hasta: p.vigente_hasta || '' } : { ruc: v }) }}
                 onBlur={() => provField({}, true)} placeholder="RUC" /></label>
             <button type="button" className="re-verif" onClick={verProvRuc}>🔎 Verificar</button>
             <label className="re-f wide"><span>Nombre / Empresa</span>
               <input value={provForm.nombre} onChange={(e) => provField({ nombre: e.target.value.toUpperCase() })} onBlur={() => provField({}, true)} /></label>
             <label className="re-f"><span>¿Calificado?</span>
               <span className="re-check"><input type="checkbox" checked={provForm.calificado} onChange={(e) => provField({ calificado: e.target.checked }, true)} /> {provForm.calificado ? 'Sí' : 'No'}</span></label>
+            <label className="re-f"><span>Tipo de calificación</span>
+              <input value={provForm.categoria} list="re-tipos" placeholder="MICROEMPRESA, ARTESANO…"
+                onChange={(e) => provField({ categoria: e.target.value.toUpperCase() })} onBlur={() => provField({}, true)} /></label>
+            <datalist id="re-tipos"><option value="MICROEMPRESA" /><option value="PEQUEÑA EMPRESA" /><option value="MEDIANA EMPRESA" /><option value="ARTESANO" /><option value="ORGANIZACIÓN EPS" /></datalist>
             <label className="re-f"><span>Válido hasta</span>
               <input type="date" value={provForm.vigente_hasta} onChange={(e) => provField({ vigente_hasta: e.target.value }, true)} /></label>
             <div className="re-f wide"><span>Documentos (PDF, foto o Excel — la IA extrae los datos)</span>
@@ -508,8 +502,8 @@ export default function RebajasExenciones() {
                     <td>{p.nombre || '—'}</td>
                     <td className="re-cat" title={p.actividad || ''}>{p.actividad || '—'}</td>
                     <td>
-                      <span className={`re-badge ${p.calificado ? 'ok' : 'no'}`}>{p.calificado ? 'Calificado' : 'No'}</span>
-                      {p.categoria && <div className="re-cat">{p.categoria}</div>}
+                      <span className={`re-badge ${p.calificado ? 'ok' : 'no'}`}>{p.calificado ? (p.categoria || '✔ Calificado') : 'No'}</span>
+                      {p.calificado && !p.categoria && <div className="re-cat" style={{ color: '#b45309' }}>Indica el tipo (microempresa, artesano…) en el formulario</div>}
                     </td>
                     <td>{(p.vigencia_inicio || p.vigente_hasta)
                       ? <span className={`re-badge ${estaVencido(p.vigente_hasta) ? 'no' : 'ok'}`}>{estaVencido(p.vigente_hasta) ? 'Vencido' : 'Vigente'}{(p.vigencia_inicio || p.vigente_hasta) ? ` · ${p.vigencia_inicio || '—'} → ${p.vigente_hasta || '—'}` : ''}</span>
@@ -526,48 +520,19 @@ export default function RebajasExenciones() {
         </div>
       </details>
 
-      {/* Compradores clasificados y calificados */}
-      <details className="re-normas" open={compOpen} onToggle={(e) => setCompOpen(e.target.open)}>
-        <summary>👥 Compradores (clasificados y calificados)</summary>
+      {/* Gastos a clasificar (clasificador de gastos) */}
+      <details className="re-normas" open={gastosOpen} onToggle={(e) => setGastosOpen(e.target.open)}>
+        <summary>🏷️ Gastos a clasificar (importar y clasificar)</summary>
         <div className="re-normas-body">
-          <p className="re-hint">Compradores del contribuyente con su <strong>categoría</strong> (del clasificador de gastos), su <strong>calificación</strong> (catálogo de proveedores: tipo y vigencia) y su <strong>actividad económica</strong> del SRI.</p>
+          <p className="re-hint">Importa los datos de los <strong>gastos</strong> (RUC → categoría) y clasifícalos aquí. Incluye su <strong>actividad económica (SRI)</strong> y su <strong>calificación</strong> (tipo, del catálogo de proveedores). Haz clic en cualquier celda para editar.</p>
           <div className="cl-filters">
-            <input placeholder="🔍 Buscar RUC, nombre, categoría o actividad…" value={compQ} onChange={(e) => setCompQ(e.target.value)} />
-            <select value={compCalif} onChange={(e) => setCompCalif(e.target.value)}>
-              <option value="todos">Calificación: todas</option>
-              <option value="si">Solo calificados</option>
-              <option value="no">No calificados</option>
-            </select>
-            <button className="cl-clear" onClick={traerActComp} disabled={!!compEnr} title="Trae la actividad económica del SRI por RUC">
-              {compEnr ? '⏳ ' + compEnr : '🏛️ Traer actividad (SRI)'}
-            </button>
-            <span className="cl-count">{compFiltrados.length} de {compRows.length}</span>
+            <input placeholder="🔍 Buscar RUC, proveedor, categoría o actividad…" value={gastosQ} onChange={(e) => setGastosQ(e.target.value)} />
+            <input ref={gastosFileRef} type="file" accept=".xlsx" style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.[0]) importarGastos(e.target.files[0]); e.target.value = '' }} />
+            <button className="cl-clear" onClick={() => gastosFileRef.current?.click()}>📥 Importar Excel</button>
+            <button className="cl-clear" onClick={exportarGastos}>📤 Exportar Excel</button>
+            <span className="cl-count">{gastosFiltrados.length} de {gastosRows.length}</span>
           </div>
-          <div className="re-prov-table">
-            <table>
-              <thead><tr><th>RUC</th><th>Nombre / Comprador</th><th>Actividad (SRI)</th><th>Categoría (gasto)</th><th>Calificación</th></tr></thead>
-              <tbody>
-                {compFiltrados.length === 0 ? (
-                  <tr><td colSpan={5} className="re-empty">{compRows.length === 0 ? 'Sin compradores para este contribuyente.' : 'Ninguno coincide con el filtro.'}</td></tr>
-                ) : compFiltrados.map((r) => (
-                  <tr key={r.id}>
-                    <td>{r.ruc}</td>
-                    <td>{r.nombre || '—'}</td>
-                    <td className="re-cat" title="Clic para ver completa" style={compAct === r.id ? { whiteSpace: 'normal', maxWidth: 'none', cursor: 'pointer' } : { cursor: 'pointer' }} onClick={() => setCompAct(compAct === r.id ? null : r.id)}>{r.actividad || '—'}</td>
-                    <td>{r.categoria || '—'}</td>
-                    <td>
-                      {r.calificado ? (
-                        <button type="button" className="re-badge ok" style={{ cursor: 'pointer', border: 'none' }} title="Clic para ver la vigencia" onClick={() => setCompVig(compVig === r.id ? null : r.id)}>✔ {r.calif_categoria || 'Calificado'}</button>
-                      ) : (<span className="re-badge no">— No</span>)}
-                      {r.calificado && compVig === r.id && (
-                        <div className="re-cat" style={{ marginTop: 4 }}>Vigencia: {r.calif_inicio || '—'} → {r.calif_fin || '—'}</div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ClassifierTable classifications={gastosFiltrados} onClassificationsChange={loadGastos} />
         </div>
       </details>
 

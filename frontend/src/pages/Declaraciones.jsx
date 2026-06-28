@@ -129,11 +129,11 @@ export default function Declaraciones({ tipo }) {
 
   useEffect(() => { load() }, [load])
 
-  // Al cambiar de contribuyente o tipo, limpiar overrides de crédito/factor para no
-  // arrastrarlos de un cliente a otro; se recargarán los guardados de ese período.
+  // Al cambiar de contribuyente, tipo o PERÍODO, limpiar overrides de crédito/factor
+  // (el factor se aplica en SU período). Se recargan los guardados de ese período.
   useEffect(() => {
     setCredAdq(null); setCredRet(null); setFactorProp(null); ovRef.current = null
-  }, [selectedClientId, tipo])
+  }, [selectedClientId, tipo, selectedClient?.periodo_mes, selectedClient?.periodo_anio])
 
 
   // Servicios contratados + clave SRI en un solo viaje (reveal=true)
