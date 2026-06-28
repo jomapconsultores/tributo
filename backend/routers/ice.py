@@ -119,12 +119,25 @@ async def report(
 ):
     try:
         supabase = get_supabase_client()
+        catalogo = []
         if client_id:
             assert_client_owner(client_id, user_id)
             rows = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id))
+            # Catálogo del contribuyente (grado/capacidad correctos por producto)
+            try:
+                cli = supabase.table("clients").select("identificacion").eq("id", client_id).execute().data
+                ident = cli[0].get("identificacion") if cli else None
+                if ident:
+                    catalogo = supabase.table("client_products").select("*").eq("identificacion", ident).execute().data or []
+            except Exception:
+                catalogo = []
         else:
             rows = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("user_id", user_id))
-        return full_report(rows, anio)
+            try:
+                catalogo = fetch_all(lambda: supabase.table("client_products").select("*").eq("user_id", user_id))
+            except Exception:
+                catalogo = []
+        return full_report(rows, anio, catalogo)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
