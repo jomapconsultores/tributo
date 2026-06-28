@@ -2,7 +2,11 @@ import { useState, useRef } from 'react'
 import { classificationAPI } from '../services/api'
 import './ClassifierTable.css'
 
-export default function ClassifierTable({ classifications, onClassificationsChange }) {
+export default function ClassifierTable({ classifications, onClassificationsChange, opcionesCategoria = null }) {
+  // Opciones existentes para desplegar al editar (clasificación ágil)
+  const cats = (opcionesCategoria
+    || [...new Set((classifications || []).map((c) => String(c.categoria || '').trim()).filter(Boolean))]).sort()
+  const noms = [...new Set((classifications || []).map((c) => String(c.nombre_proveedor || '').trim()).filter(Boolean))].sort()
   const [edit, setEdit] = useState({ id: null, field: null })
   const [value, setValue] = useState('')
   const [vigOpen, setVigOpen] = useState(null) // id cuya vigencia se muestra
@@ -58,6 +62,7 @@ export default function ClassifierTable({ classifications, onClassificationsChan
         <input
           autoFocus
           value={value}
+          list={field === 'categoria' ? 'cl-cats' : field === 'nombre_proveedor' ? 'cl-noms' : undefined}
           onChange={(e) => setValue(e.target.value)}
           onBlur={() => { if (escRef.current) { escRef.current = false; cancel(); return } handleSave(item) }}
           onKeyDown={(e) => {
@@ -138,6 +143,8 @@ export default function ClassifierTable({ classifications, onClassificationsChan
           )}
         </tbody>
       </table>
+      <datalist id="cl-cats">{cats.map((v) => <option key={v} value={v} />)}</datalist>
+      <datalist id="cl-noms">{noms.map((v) => <option key={v} value={v} />)}</datalist>
     </div>
   )
 }

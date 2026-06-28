@@ -232,6 +232,7 @@ export default function Classifier() {
         <ClassifierTable
           classifications={filtered}
           onClassificationsChange={loadClassifications}
+          opcionesCategoria={opc.cat}
         />
       )}
     </div>

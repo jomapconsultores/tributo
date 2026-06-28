@@ -555,7 +555,7 @@ export default function RebajasExenciones() {
             <button className="cl-clear" onClick={exportarGastos}>📤 Exportar</button>
             <span className="cl-count">{gastosFiltrados.length} de {gastosRows.length}</span>
           </div>
-          <ClassifierTable classifications={gastosFiltrados} onClassificationsChange={loadGastos} />
+          <ClassifierTable classifications={gastosFiltrados} onClassificationsChange={loadGastos} opcionesCategoria={gOpc('categoria')} />
         </div>
       </details>
 
