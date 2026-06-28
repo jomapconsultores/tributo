@@ -239,8 +239,16 @@ export default function RebajasExenciones() {
   // ── Panel de proveedores calificados ──
   const [provForm, setProvForm] = useState({ ruc: '', nombre: '', calificado: false, vigente_hasta: '' })
   const [provFile, setProvFile] = useState(null)
+  const [provDragOver, setProvDragOver] = useState(false)
   const provFileRef = useRef(null)
   const [provOpen, setProvOpen] = useState(false)
+  const aceptarDocProv = (file) => {
+    if (!file) return
+    if (!/\.(xlsx|xls|csv|pdf)$/i.test(file.name) && !/^image\//.test(file.type)) {
+      alert('Sube un Excel (.xlsx/.xls/.csv), un PDF o una imagen.'); return
+    }
+    setProvFile(file)
+  }
   const verProvRuc = async () => {
     const ruc = (provForm.ruc || '').trim(); if (!ruc) { alert('Ingresa el RUC.'); return }
     setBusy('Verificando…')
@@ -409,8 +417,16 @@ export default function RebajasExenciones() {
               <span className="re-check"><input type="checkbox" checked={provForm.calificado} onChange={(e) => setProvForm({ ...provForm, calificado: e.target.checked })} /> {provForm.calificado ? 'Sí' : 'No'}</span></label>
             <label className="re-f"><span>Válido hasta</span>
               <input type="date" value={provForm.vigente_hasta} onChange={(e) => setProvForm({ ...provForm, vigente_hasta: e.target.value })} /></label>
-            <label className="re-f wide"><span>Documento (Excel/foto/PDF)</span>
-              <input ref={provFileRef} type="file" accept=".xlsx,.xls,.csv,.pdf,image/*" onChange={(e) => setProvFile(e.target.files?.[0] || null)} /></label>
+            <div className="re-f wide"><span>Documento (Excel/foto/PDF)</span>
+              <input ref={provFileRef} type="file" accept=".xlsx,.xls,.csv,.pdf,image/*" style={{ display: 'none' }} onChange={(e) => aceptarDocProv(e.target.files?.[0])} />
+              <div className={`re-drop sm${provDragOver ? ' over' : ''}`}
+                onDragOver={(e) => { e.preventDefault(); setProvDragOver(true) }}
+                onDragLeave={() => setProvDragOver(false)}
+                onDrop={(e) => { e.preventDefault(); setProvDragOver(false); aceptarDocProv(e.dataTransfer.files?.[0]) }}
+                onClick={() => provFileRef.current?.click()}>
+                {provFile ? `📎 ${provFile.name}` : '📥 Arrastra el documento aquí o haz clic para elegirlo'}
+              </div>
+            </div>
             <button className="re-btn primary" onClick={guardarProv}>💾 Guardar proveedor</button>
           </div>
 
