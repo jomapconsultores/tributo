@@ -130,3 +130,10 @@ button.calif-badge.ok:hover { filter:brightness(.96); }
 .classifier-table .delete-btn:hover { opacity:1; transform:scale(1.15); }
 .classifier-table .actividad-cell { color:#475569; font-size:.8rem; line-height:1.25; }
 .calif-badge { display:inline-flex; align-items:center; gap:4px; }
+
+/* Paginación */
+.cl-pager { display:flex; align-items:center; gap:8px; justify-content:center; margin:12px 0 4px; flex-wrap:wrap; }
+.cl-pager button { padding:6px 12px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; cursor:pointer; font-size:.84rem; font-weight:600; color:#0f172a; }
+.cl-pager button:hover:not(:disabled) { background:#eef6ff; border-color:#93c5fd; }
+.cl-pager button:disabled { opacity:.45; cursor:default; }
+.cl-pager span { color:#475569; font-size:.82rem; padding:0 6px; }

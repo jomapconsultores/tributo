@@ -1,12 +1,21 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { classificationAPI } from '../services/api'
 import './ClassifierTable.css'
+
+const PAGE_SIZE = 50
 
 export default function ClassifierTable({ classifications, onClassificationsChange, opcionesCategoria = null }) {
   // Opciones existentes para desplegar al editar (clasificación ágil)
   const cats = (opcionesCategoria
     || [...new Set((classifications || []).map((c) => String(c.categoria || '').trim()).filter(Boolean))]).sort()
   const noms = [...new Set((classifications || []).map((c) => String(c.nombre_proveedor || '').trim()).filter(Boolean))].sort()
+  // Paginación (acelera el render cuando hay muchos RUC)
+  const [page, setPage] = useState(1)
+  const total = (classifications || []).length
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  useEffect(() => { setPage(1) }, [total]) // al cambiar filtro/cantidad, vuelve a la 1
+  const pageSafe = Math.min(page, totalPages)
+  const pageRows = (classifications || []).slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE)
   const [edit, setEdit] = useState({ id: null, field: null })
   const [value, setValue] = useState('')
   const [vigOpen, setVigOpen] = useState(null) // id cuya vigencia se muestra
@@ -101,12 +110,12 @@ export default function ClassifierTable({ classifications, onClassificationsChan
           </tr>
         </thead>
         <tbody>
-          {classifications.length === 0 ? (
+          {total === 0 ? (
             <tr>
               <td colSpan="6" className="empty">No hay clasificaciones. Agrega una nueva o importa desde Excel.</td>
             </tr>
           ) : (
-            classifications.map((item) => (
+            pageRows.map((item) => (
               <tr key={item.id}>
                 <td className="ruc-cell">{cell(item, 'ruc', 'ruc-edit')}</td>
                 <td>{cell(item, 'nombre_proveedor')}</td>
@@ -143,6 +152,15 @@ export default function ClassifierTable({ classifications, onClassificationsChan
           )}
         </tbody>
       </table>
+      {totalPages > 1 && (
+        <div className="cl-pager">
+          <button onClick={() => setPage(1)} disabled={pageSafe === 1}>«</button>
+          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={pageSafe === 1}>‹ Anterior</button>
+          <span>Página {pageSafe} de {totalPages} · {total} registros</span>
+          <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={pageSafe === totalPages}>Siguiente ›</button>
+          <button onClick={() => setPage(totalPages)} disabled={pageSafe === totalPages}>»</button>
+        </div>
+      )}
       <datalist id="cl-cats">{cats.map((v) => <option key={v} value={v} />)}</datalist>
       <datalist id="cl-noms">{noms.map((v) => <option key={v} value={v} />)}</datalist>
     </div>
