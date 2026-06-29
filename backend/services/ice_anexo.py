@@ -140,6 +140,25 @@ def _match_catalogo_palabras(nombre, catalogo, vol_hint=None):
     return best if best_score >= 2 else None
 
 
+def _ajustar_cod(cod, nombre):
+    """El codProdICE del SRI lleva la capacidad y el grado REALES del producto (los del
+    nombre: '750ML'→capacidad, '15V'→grado). El catálogo del cliente a veces guarda esos
+    segmentos codificados (ej. grado 049) que el SRI NO reconoce y rechaza el detalle."""
+    if not cod or cod.count('-') != 7:
+        return cod
+    seg = cod.split('-')
+    # Clasificación de bebidas alcohólicas = 057 (el catálogo a veces trae 049/018 mal).
+    if seg[0] == '3031':
+        seg[1] = '057'
+    cap = _extraer_volumen(nombre)
+    grado = _extraer_grado(nombre)
+    if cap:
+        seg[4] = str(int(float(cap))).zfill(6)
+    if grado:
+        seg[7] = str(int(float(grado))).zfill(6)
+    return '-'.join(seg)
+
+
 def _resolver_cod_prod_ice(nombre_producto, catalogo_cliente=None, buscar_oficial=None):
     """Devuelve (codProdICE, reconocido). Orden: catálogo del cliente (nombre exacto,
     luego por palabras+capacidad) → catálogo base → catálogo oficial de Códigos ICE."""
@@ -149,10 +168,10 @@ def _resolver_cod_prod_ice(nombre_producto, catalogo_cliente=None, buscar_oficia
             pn = (p.get("nombre") or "").upper().strip()
             cod = (p.get("cod_prod_ice") or "").strip()
             if pn and cod and (pn in desc or desc in pn):
-                return cod, True
+                return _ajustar_cod(cod, nombre_producto), True
         p = _match_catalogo_palabras(nombre_producto, catalogo_cliente, _extraer_volumen(nombre_producto))
         if p and (p.get("cod_prod_ice") or "").strip():
-            return p["cod_prod_ice"].strip(), True
+            return _ajustar_cod(p["cod_prod_ice"].strip(), nombre_producto), True
     cat = buscar_en_catalogo(nombre_producto)
     cod_sri = (cat.get('codProdSRI', '') or '').strip()
     if cod_sri:
