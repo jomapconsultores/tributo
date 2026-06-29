@@ -278,6 +278,52 @@ export default function InvoiceTabs({ invoices, client, onInvoicesChange }) {
     }
   }
 
+  // Sube un documento de respaldo de la calificación del proveedor. Los
+  // documentos NO se descartan: quedan adjuntos al proveedor (junto con su
+  // rango de vigencia inicio–fin), reutilizables en cualquier período.
+  const subirDocumento = async (ruc, nombre, file) => {
+    ruc = (ruc || '').trim()
+    if (!ident || !ruc || !file || calBusy) return
+    const cur = provByRuc[ruc] || {}
+    setCalBusy(ruc)
+    try {
+      const res = await rebajasAPI.subirDocProveedor({
+        identificacion: ident, ruc,
+        nombre: cur.nombre || nombre || '',
+        calificado: cur.calificado ?? false,
+        vigente_hasta: cur.vigente_hasta || '',
+        file,
+      })
+      const saved = res?.data
+      if (saved) {
+        setProveedores((prev) => {
+          const i = prev.findIndex((p) => (p.ruc || '').trim() === ruc)
+          if (i >= 0) { const cp = [...prev]; cp[i] = { ...cp[i], ...saved }; return cp }
+          return [...prev, saved]
+        })
+      } else {
+        loadProveedores()
+      }
+      setCalMsg(`✔ Documento adjuntado · ${cur.nombre || nombre || ruc}`)
+    } catch (e) {
+      setCalMsg('⚠ No se pudo subir el documento: ' + (e.response?.data?.detail || e.message))
+    } finally {
+      setCalBusy('')
+    }
+  }
+
+  // Abre el documento en una pestaña nueva mediante URL firmada temporal.
+  const verDocumento = async (path) => {
+    try {
+      const res = await rebajasAPI.docUrl(path)
+      const url = res?.data?.url
+      if (url) window.open(url, '_blank', 'noopener')
+      else setCalMsg('⚠ No se pudo abrir el documento')
+    } catch (e) {
+      setCalMsg('⚠ No se pudo abrir: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+
   return (
     <div className="itabs">
       <div className="itabs-bar">
@@ -390,7 +436,8 @@ export default function InvoiceTabs({ invoices, client, onInvoicesChange }) {
                 Gastos de <strong>proveedores calificados</strong> por mes. En <span className="cal-key cal-vig">amarillo</span> los
                 que estaban <strong>vigentes</strong> a la fecha de la factura; en <span className="cal-key cal-novig">gris</span> los
                 que <strong>no están en vigencia</strong> (vencidos o sin fechas definidas). Define el rango de vigencia de cada
-                calificación (puede ser de distintos años) en las celdas de fecha.
+                calificación (puede ser de distintos años) en las celdas de fecha y <strong>adjunta los documentos</strong> de
+                respaldo: no se descartan, quedan guardados con su rango de vigencia inicio–fin.
               </p>
               <label className="cal-toggle">
                 <input type="checkbox" checked={calIncluirNo} onChange={(e) => setCalIncluirNo(e.target.checked)} />
@@ -423,6 +470,7 @@ export default function InvoiceTabs({ invoices, client, onInvoicesChange }) {
                             <th>Categoría</th>
                             <th className="r">Total</th>
                             <th>Vigencia (inicio → fin)</th>
+                            <th>Documentos</th>
                             <th>Estado</th>
                           </tr>
                         </thead>
@@ -445,6 +493,27 @@ export default function InvoiceTabs({ invoices, client, onInvoicesChange }) {
                                       <span className="cal-sep">→</span>
                                       <input type="date" value={prov?.vigente_hasta || ''} disabled={guardando}
                                         onChange={(e) => guardarProveedor(ruc, inv.nombre_proveedor, { vigente_hasta: e.target.value || null })} />
+                                    </>
+                                  ) : (
+                                    <span className="cal-nocalif">—</span>
+                                  )}
+                                </td>
+                                <td className="cal-docs">
+                                  {esCalif ? (
+                                    <>
+                                      {(prov?.documentos || []).map((d, di) => (
+                                        <button key={di} type="button" className="cal-doc-link"
+                                          title={d.nombre || d.path}
+                                          onClick={() => verDocumento(d.path)}>
+                                          📄 {(() => { const n = d.nombre || 'documento'; return n.length > 18 ? n.slice(0, 16) + '…' : n })()}
+                                        </button>
+                                      ))}
+                                      <label className="cal-doc-up">
+                                        {guardando ? '…' : '＋ Adjuntar'}
+                                        <input type="file" hidden disabled={guardando}
+                                          accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.xlsx,.xls,.csv"
+                                          onChange={(e) => { const f = e.target.files?.[0]; if (f) subirDocumento(ruc, inv.nombre_proveedor, f); e.target.value = '' }} />
+                                      </label>
                                     </>
                                   ) : (
                                     <span className="cal-nocalif">—</span>

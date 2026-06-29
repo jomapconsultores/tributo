@@ -199,3 +199,16 @@
 
 .cal-marcar { display:flex; align-items:center; gap:6px; font-size:.78rem; color:#475569; cursor:pointer; }
 .cal-marcar input { cursor:pointer; }
+
+.cal-docs { white-space:nowrap; }
+.cal-doc-link {
+  display:inline-block; max-width:160px; margin:0 4px 3px 0; padding:2px 8px;
+  border:1px solid #cdd8e6; border-radius:6px; background:#fff; color:#1a3d6b;
+  font-size:.74rem; cursor:pointer; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;
+}
+.cal-doc-link:hover { background:#eef3fb; border-color:#ca8a04; }
+.cal-doc-up {
+  display:inline-block; padding:2px 9px; border-radius:6px; cursor:pointer; vertical-align:middle;
+  background:#fde68a; color:#854d0e; font-size:.74rem; font-weight:700;
+}
+.cal-doc-up:hover { background:#fcd34d; }
