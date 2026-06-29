@@ -13,12 +13,14 @@ def _sin_tildes(s):
     s = unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii')
     return s.replace('\x00', 'Ñ').replace('\x01', 'ñ')
 
-# tipoIdentificacionComprador (factura) → tipoIdCliente (anexo ICE)
-_TIPO_ID = {'04': 'R', '05': 'C', '06': 'P', '07': 'F', '08': 'F'}
+# tipoIdentificacionComprador (factura) → tipoIdCliente (anexo ICE).
+# El SRI exige códigos NUMÉRICOS: 01=RUC, 02=Cédula, 03=Pasaporte,
+# 04=Consumidor final, 05=Identificación del exterior.
+_TIPO_ID = {'04': '01', '05': '02', '06': '03', '07': '04', '08': '05'}
 
 
 def _map_tipo_id(t):
-    return _TIPO_ID.get(str(t or '').strip(), 'F')
+    return _TIPO_ID.get(str(t or '').strip(), '04')
 
 
 # Palabras de empaque/medida que no forman parte de la marca en el catálogo SRI
