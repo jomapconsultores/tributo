@@ -4,7 +4,7 @@ import re
 import unicodedata
 from collections import defaultdict, OrderedDict
 from xml.sax.saxutils import escape
-from services.ice_data import buscar_en_catalogo
+from services.ice_data import buscar_en_catalogo, es_pack, descomponer_pack
 
 
 def _sin_tildes(s):
@@ -106,11 +106,42 @@ def _buscar_codigo_oficial(nombre_producto, buscar_oficial):
     return candidatos[0][1]
 
 
+_RUIDO_ANEXO = {"CAJA", "PACK", "DUO", "TRIO", "MULTI", "MEGA", "BOTELLA", "BOTELLAS",
+                "UNIDAD", "UNIDADES", "ML", "CC", "LT", "DE", "DEL", "LA", "EL", "LOS",
+                "CON", "Y", "A", "SABOR", "CORP", "BAJO", "ALCOHOLICO", "ALCOHOLICA",
+                "CONTENIDO", "BEBIDA", "GRADO"}
+
+
+def _tokens_anexo(nombre):
+    s = unicodedata.normalize("NFKD", str(nombre or "")).encode("ascii", "ignore").decode().upper()
+    return {t for t in re.split(r"[^A-Z0-9]+", s) if len(t) >= 3 and not t.isdigit() and t not in _RUIDO_ANEXO}
+
+
+def _match_catalogo_palabras(nombre, catalogo, vol_hint=None):
+    """Empareja el producto con el catálogo del cliente por mayor coincidencia de
+    palabras (desempate por capacidad). Devuelve el PRODUCTO del catálogo o None."""
+    stoks = _tokens_anexo(nombre)
+    if not stoks:
+        return None
+    best, best_score = None, 0.0
+    for p in catalogo:
+        if not (p.get("cod_prod_ice") or "").strip():
+            continue
+        comunes = len(_tokens_anexo(p.get("nombre")) & stoks)
+        if comunes == 0:
+            continue
+        score = comunes
+        cap = str(p.get("capacidad") or "").strip()
+        if vol_hint and cap and cap == str(vol_hint).strip():
+            score += 0.5
+        if score > best_score:
+            best_score, best = score, p
+    return best if best_score >= 2 else None
+
+
 def _resolver_cod_prod_ice(nombre_producto, catalogo_cliente=None, buscar_oficial=None):
-    """Devuelve (codProdICE, reconocido). Orden de búsqueda: catálogo del
-    cliente (por coincidencia de nombre) → catálogo base → catálogo oficial
-    de Códigos ICE del SRI (marca por descripción, capacidad y grado
-    extraídos del nombre del producto)."""
+    """Devuelve (codProdICE, reconocido). Orden: catálogo del cliente (nombre exacto,
+    luego por palabras+capacidad) → catálogo base → catálogo oficial de Códigos ICE."""
     desc = (nombre_producto or "").upper()
     if catalogo_cliente:
         for p in catalogo_cliente:
@@ -118,15 +149,22 @@ def _resolver_cod_prod_ice(nombre_producto, catalogo_cliente=None, buscar_oficia
             cod = (p.get("cod_prod_ice") or "").strip()
             if pn and cod and (pn in desc or desc in pn):
                 return cod, True
+        p = _match_catalogo_palabras(nombre_producto, catalogo_cliente, _extraer_volumen(nombre_producto))
+        if p and (p.get("cod_prod_ice") or "").strip():
+            return p["cod_prod_ice"].strip(), True
     cat = buscar_en_catalogo(nombre_producto)
     cod_sri = (cat.get('codProdSRI', '') or '').strip()
     if cod_sri:
         if '-' in cod_sri:
             return cod_sri, True
+        # Capacidad y grado REALES del nombre (ej. componente de pack '... 375ML 15V');
+        # si no están, los del catálogo base.
+        cap = _extraer_volumen(nombre_producto) or cat.get('capacidad', '750') or '750'
+        grado = _extraer_grado(nombre_producto) or cat.get('grado', '15') or '15'
         return _armar_codigo(
             cat.get('codImpuesto', '3031'), '057', cod_sri,
-            cat.get('presentacion', '13') or '13', cat.get('capacidad', '750') or '750',
-            cat.get('unidad', '66'), '593', cat.get('grado', '15') or '15'), True
+            cat.get('presentacion', '13') or '13', cap,
+            cat.get('unidad', '66'), '593', grado), True
     if buscar_oficial:
         of = _buscar_codigo_oficial(nombre_producto, buscar_oficial)
         if of and (of.get('marca') or '').strip():
@@ -196,30 +234,39 @@ def _build_vtas(rows, catalogo_cliente=None, buscar_oficial=None):
     for r in rows:
         idc = r.get("id_cliente") or ""
         nombre = r.get("nombre_producto") or ""
-        if nombre in cache:
-            cod_ice, ok = cache[nombre]
+        cajas = int(_f(r.get("cantidad_cajas")))
+        # Los PACKS se DIVIDEN en sus componentes: cada uno va al SRI con su propio
+        # codProdICE y sus botellas (G=1 bot/caja × cajas). No hay descuento de ICE.
+        if es_pack(nombre):
+            grado = _extraer_grado(nombre) or "15"
+            componentes = [(f"{cn} {grado}V {cc}ML", cajas) for cn, cc in descomponer_pack(nombre)]
         else:
-            cod_ice, ok = _resolver_cod_prod_ice(nombre, catalogo_cliente, buscar_oficial)
-            cache[nombre] = (cod_ice, ok)
-        if not ok:
-            no_reconocidos.add(nombre[:80])
-        clave = (idc, cod_ice)
-        ent = dedup.get(clave)
-        bottles = int(_f(r.get("unidades_botellas")))
-        if ent:
-            ent["ventaICE"] += bottles
-        else:
-            dedup[clave] = {
-                "codProdICE": cod_ice,
-                "gramoAzucar": "0.00",
-                "tipoIdCliente": _map_tipo_id(r.get("tipo_id_cliente")),
-                "idCliente": idc,
-                "tipoVentaICE": "1",
-                "ventaICE": bottles,
-                "devICE": "0",
-                "cantProdBajaICE": "0",
-                "nombreProducto": nombre,
-            }
+            componentes = [(nombre, int(_f(r.get("unidades_botellas"))))]
+
+        for comp_nombre, bottles in componentes:
+            if comp_nombre in cache:
+                cod_ice, ok = cache[comp_nombre]
+            else:
+                cod_ice, ok = _resolver_cod_prod_ice(comp_nombre, catalogo_cliente, buscar_oficial)
+                cache[comp_nombre] = (cod_ice, ok)
+            if not ok:
+                no_reconocidos.add(comp_nombre[:80])
+            clave = (idc, cod_ice)
+            ent = dedup.get(clave)
+            if ent:
+                ent["ventaICE"] += bottles
+            else:
+                dedup[clave] = {
+                    "codProdICE": cod_ice,
+                    "gramoAzucar": "0.00",
+                    "tipoIdCliente": _map_tipo_id(r.get("tipo_id_cliente")),
+                    "idCliente": idc,
+                    "tipoVentaICE": "1",
+                    "ventaICE": bottles,
+                    "devICE": "0",
+                    "cantProdBajaICE": "0",
+                    "nombreProducto": comp_nombre,
+                }
     advertencias = []
     if no_reconocidos:
         advertencias.append(
@@ -238,6 +285,11 @@ def _resolver_cod_prod_pvp(nombre_producto, catalogo_cliente=None, buscar_oficia
             pn = (p.get("nombre") or "").upper().strip()
             cod = (p.get("cod_prod_pvp") or p.get("cod_prod_ice") or "").strip()
             if pn and cod and (pn in desc or desc in pn):
+                return cod.split('-')[2].lstrip('0') if cod.count('-') == 7 else cod, True
+        p = _match_catalogo_palabras(nombre_producto, catalogo_cliente, _extraer_volumen(nombre_producto))
+        if p:
+            cod = (p.get("cod_prod_pvp") or p.get("cod_prod_ice") or "").strip()
+            if cod:
                 return cod.split('-')[2].lstrip('0') if cod.count('-') == 7 else cod, True
     cat = buscar_en_catalogo(nombre_producto)
     cod_sri = (cat.get('codProdSRI', '') or '').strip()
@@ -258,20 +310,33 @@ def _build_vtas_pvp(rows, anio, mes, catalogo_cliente=None, buscar_oficial=None)
     cache = {}
     for r in rows:
         nombre = r.get("nombre_producto") or ""
-        if nombre in cache:
-            cod, ok = cache[nombre]
+        cajas = int(_f(r.get("cantidad_cajas")))
+        # Los PACKS se dividen también en el PVP: precio prorrateado por componente.
+        if es_pack(nombre):
+            comps = descomponer_pack(nombre)
+            num = len(comps) or 1
+            grado = _extraer_grado(nombre) or "15"
+            sin_imp_c = _f(r.get("precio_total_sin_impuesto")) / num
+            total_c = _f(r.get("importe_total")) / num
+            items = [(f"{cn} {grado}V {cc}ML", cajas, sin_imp_c, total_c) for cn, cc in comps]
         else:
-            cod, ok = _resolver_cod_prod_pvp(nombre, catalogo_cliente, buscar_oficial)
-            cache[nombre] = (cod, ok)
-        if not ok:
-            no_reconocidos.add(nombre[:80])
-        a = ag.get(cod or nombre)
-        if not a:
-            a = ag[cod or nombre] = {"cod": cod, "nombre": nombre, "botellas": 0,
-                                     "sin_imp": 0.0, "total": 0.0}
-        a["botellas"] += int(_f(r.get("unidades_botellas")))
-        a["sin_imp"] += _f(r.get("precio_total_sin_impuesto"))
-        a["total"] += _f(r.get("importe_total"))
+            items = [(nombre, int(_f(r.get("unidades_botellas"))),
+                      _f(r.get("precio_total_sin_impuesto")), _f(r.get("importe_total")))]
+        for comp_nombre, bottles, sin_imp, total in items:
+            if comp_nombre in cache:
+                cod, ok = cache[comp_nombre]
+            else:
+                cod, ok = _resolver_cod_prod_pvp(comp_nombre, catalogo_cliente, buscar_oficial)
+                cache[comp_nombre] = (cod, ok)
+            if not ok:
+                no_reconocidos.add(comp_nombre[:80])
+            a = ag.get(cod or comp_nombre)
+            if not a:
+                a = ag[cod or comp_nombre] = {"cod": cod, "nombre": comp_nombre, "botellas": 0,
+                                              "sin_imp": 0.0, "total": 0.0}
+            a["botellas"] += bottles
+            a["sin_imp"] += sin_imp
+            a["total"] += total
     fecha_ini = f"01/{str(mes).zfill(2)}/{anio}"
     vtas = []
     for a in ag.values():
