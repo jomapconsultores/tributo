@@ -84,7 +84,14 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     v_ice_solo_ok = [v for v in ventas_ice if (v.get("estado") or "OK") == "OK"]
     v_ice_base_15 = sum(_f(v.get("base_iva")) for v in v_ice_solo_ok)
     v_ice_iva_15  = sum(_f(v.get("valor_iva")) for v in v_ice_solo_ok)
-    n_ventas_ice  = sum(1 for v in v_ice_solo_ok if _f(v.get("base_iva")) > 0 or _f(v.get("valor_iva")) > 0)
+    # Número de FACTURAS (comprobantes distintos), no de líneas: la tabla ice_sales tiene
+    # una fila por producto; el unique_id es 'claveAcceso-linea', así que la factura es la
+    # clave (todo antes del último '-').
+    n_ventas_ice  = len({
+        str(v.get("unique_id") or "").rsplit("-", 1)[0]
+        for v in v_ice_solo_ok
+        if _f(v.get("base_iva")) > 0 or _f(v.get("valor_iva")) > 0
+    })
 
     # ── Ventas sin ICE (tabla sales_iva) ─────────────────────────────────
     v_iva_solo_ok = [v for v in ventas_iva if (v.get("estado") or "OK") == "OK"]
@@ -340,10 +347,13 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
     # Base imponible ad valorem (303): SOLO las ventas cuyo precio por litro
     # supera el umbral (si ninguna cumple, el casillero queda en 0)
     base = sum(_f(d.get("subtotal")) for d in ice_audit_detail(ice_rows, anio) if d.get("aplica_adv"))
-    # Volumen = LITROS DE ALCOHOL PURO (litros de bebida × grado/100)
+    # Volumen = LITROS DE ALCOHOL PURO (litros de bebida × grado/100).
+    # Se calcula desde la AUDITORÍA (que descompone los packs y usa la capacidad y el
+    # grado REALES de cada componente). Calcularlo desde las filas crudas usaría la
+    # capacidad del pack (750) para el aguardiente de 375 ml e inflaría el volumen.
     litros_alcohol = sum(
-        _f(r.get("unidades_botellas")) * (_f(r.get("capacidad")) / 1000.0) * (_f(r.get("grado_alcoholico")) / 100.0)
-        for r in ice_rows
+        _f(d.get("botellas")) * (_f(d.get("volumen")) / 1000.0) * (_f(d.get("grado")) / 100.0)
+        for d in ice_audit_detail(ice_rows, anio)
     )
     ice_esp = g.get("ice_especifico", 0.0)
     ice_adv = g.get("ice_advalorem", 0.0)
