@@ -7,3 +7,8 @@
 .alerta-decl.nivel-pronto { background: #fffbeb; color: #92400e; border-color: #fcd34d; }
 .alerta-decl.nivel-hoy { background: #fef2f2; color: #991b1b; border-color: #fecaca; font-weight: 600; }
 .alerta-decl.nivel-vencido { background: #fef2f2; color: #991b1b; border-color: #fca5a5; font-weight: 600; }
+
+/* Recordatorio de pagos aplazados (estilo SRI) */
+.recordatorio-aplazado { align-items:center; gap:10px; }
+.recordatorio-btn { margin-left:auto; white-space:nowrap; padding:5px 12px; border:none; border-radius:8px; background:#1e293b; color:#fff; font-weight:600; font-size:.85rem; cursor:pointer; }
+.recordatorio-btn:hover { background:#0f172a; }

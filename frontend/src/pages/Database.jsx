@@ -27,12 +27,14 @@ export default function Database() {
   const [busy, setBusy] = useState('')
   const [editClient, setEditClient] = useState(null)
 
-  const loadInvoices = useCallback(async () => {
+  const loadInvoices = useCallback(async (silent = false) => {
     if (!selectedClientId) {
       setInvoices([])
       return
     }
-    setLoading(true)
+    // Recarga "silenciosa" (sin spinner) para no desmontar InvoiceTabs y perder la
+    // pestaña activa (ej. al asignar una categoría desde Pendientes).
+    if (!silent) setLoading(true)
     setError('')
     try {
       const res = await invoicesAPI.list(selectedClientId)
@@ -40,7 +42,7 @@ export default function Database() {
     } catch (err) {
       setError('Error al cargar facturas: ' + (err.response?.data?.detail || err.message))
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [selectedClientId])
 
@@ -207,7 +209,7 @@ export default function Database() {
       ) : invoices.length === 0 ? (
         <div className="db-empty">Sin facturas. Importa un TXT (claves SRI) o archivos XML para comenzar.</div>
       ) : (
-        <InvoiceTabs invoices={invoices} onInvoicesChange={loadInvoices} />
+        <InvoiceTabs invoices={invoices} onInvoicesChange={() => loadInvoices(true)} />
       )}
 
       <NewClientModal open={!!editClient} editClient={editClient} onClose={() => setEditClient(null)} />
