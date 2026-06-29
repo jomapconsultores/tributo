@@ -78,7 +78,8 @@ export default function Declaraciones({ tipo }) {
   const [diferirMeses, setDiferirMeses] = useDraft(dk('diferirMeses'), 0)
 
   const isIVA = tipo === 'IVA'
-  const maxDiferir = isIVA ? 3 : 1
+  // Facilidades de pago: 1 a 3 meses para ambos impuestos (IVA y ICE).
+  const maxDiferir = 3
 
   const load = useCallback(async () => {
     if (!selectedClientId) { setDecl(null); setSaved([]); setAplazados([]); return }
@@ -580,18 +581,16 @@ export default function Declaraciones({ tipo }) {
       {/* Toolbar con guardar + aplazar pago */}
       <div className="dc-toolbar">
         <button className="dc-btn primary" onClick={guardar} disabled={!decl}>💾 Guardar declaración</button>
-        {hayMontoAPagar && (
-          <label className="dc-aplazar-control">
-            Aplazar pago:
-            <select value={diferirMeses} onChange={(e) => setDiferirMeses(parseInt(e.target.value, 10))}>
-              <option value={0}>No aplazar</option>
-              {Array.from({ length: maxDiferir }, (_, i) => i + 1).map((n) => (
-                <option key={n} value={n}>{n} mes{n > 1 ? 'es' : ''}</option>
-              ))}
-            </select>
-            <small>{isIVA ? '(IVA: hasta 3 meses, Art. 67 LRTI)' : '(ICE: 1 mes max, reglamento ICE)'}</small>
-          </label>
-        )}
+        <label className="dc-aplazar-control">
+          Aplazar pago:
+          <select value={diferirMeses} onChange={(e) => setDiferirMeses(parseInt(e.target.value, 10))} disabled={!hayMontoAPagar}>
+            <option value={0}>No aplazar</option>
+            {Array.from({ length: maxDiferir }, (_, i) => i + 1).map((n) => (
+              <option key={n} value={n}>{n} mes{n > 1 ? 'es' : ''}</option>
+            ))}
+          </select>
+          <small>{!hayMontoAPagar ? '(sin impuesto a pagar este período)' : 'Facilidades de pago: 1 a 3 meses'}</small>
+        </label>
         <button className="dc-btn small" onClick={exportar} disabled={!decl}>⬇ Excel (código/valor)</button>
         <button className="dc-btn oficial" onClick={exportarOficial} disabled={!decl}>📄 Formulario oficial SRI</button>
       </div>

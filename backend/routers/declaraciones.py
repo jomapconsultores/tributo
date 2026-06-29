@@ -381,12 +381,8 @@ async def guardar(entry: SaveDecl, user_id: str = Depends(get_current_user)):
         mes = c.get("periodo_mes")
         tipo = entry.tipo.upper()
 
-        # Validar aplazamiento
+        # Validar aplazamiento (facilidades de pago: 1 a 3 meses para IVA e ICE)
         diferir = max(0, int(entry.diferir_pago_meses or 0))
-        if tipo == "ICE" and diferir > 1:
-            raise HTTPException(status_code=400, detail="ICE solo permite aplazar hasta 1 mes (regla SRI).")
-        if tipo == "IVA" and diferir > 3:
-            raise HTTPException(status_code=400, detail="IVA solo permite aplazar hasta 3 meses.")
         if diferir < 0 or diferir > 3:
             raise HTTPException(status_code=400, detail="Meses a aplazar inválidos (0-3).")
 
