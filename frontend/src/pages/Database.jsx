@@ -209,7 +209,7 @@ export default function Database() {
       ) : invoices.length === 0 ? (
         <div className="db-empty">Sin facturas. Importa un TXT (claves SRI) o archivos XML para comenzar.</div>
       ) : (
-        <InvoiceTabs invoices={invoices} onInvoicesChange={() => loadInvoices(true)} />
+        <InvoiceTabs invoices={invoices} client={selectedClient} onInvoicesChange={() => loadInvoices(true)} />
       )}
 
       <NewClientModal open={!!editClient} editClient={editClient} onClose={() => setEditClient(null)} />

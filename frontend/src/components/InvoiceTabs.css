@@ -148,3 +148,54 @@
 /* Pendientes: mensaje de confirmación no bloqueante + ayuda */
 .pend-msg { background:#dcfce7; color:#166534; border:1px solid #86efac; border-radius:8px; padding:8px 12px; margin-bottom:8px; font-weight:600; font-size:.9rem; }
 .pend-hint { color:#64748b; font-size:.85rem; margin:0 0 10px; }
+
+/* ── Calificados: gastos de proveedores calificados por mes ── */
+.itabs-badge.cal { background:#ca8a04; }
+
+.cal-key { padding:0 6px; border-radius:4px; font-weight:700; }
+.cal-key.cal-vig { background:#fde68a; color:#854d0e; }
+.cal-key.cal-novig { background:#e5e7eb; color:#475569; }
+
+.cal-toggle { display:flex; align-items:center; gap:7px; font-size:.83rem; color:#475569; margin:-6px 0 4px; cursor:pointer; }
+.cal-toggle input { cursor:pointer; }
+
+.cal-mes {
+  background:#fff;
+  border:1px solid #e8edf3;
+  border-radius:10px;
+  box-shadow:0 1px 3px rgba(16,40,80,.05);
+  overflow:hidden;
+}
+.cal-mes-head {
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:11px 16px; cursor:pointer; font-weight:700; color:#1a3d6b;
+  background:#f6f8fb; border-left:4px solid #ca8a04; list-style:none;
+}
+.cal-mes-head::-webkit-details-marker { display:none; }
+.cal-mes-head::before { content:'▸'; color:#ca8a04; transition:transform .15s; }
+.cal-mes[open] .cal-mes-head::before { transform:rotate(90deg); }
+.cal-mes-nom { flex:1; text-transform:capitalize; }
+.cal-mes-meta { font-weight:600; font-size:.8rem; color:#64748b; }
+.cal-mes-vig { color:#16a34a; }
+
+.cal-table thead th { background:#ca8a04; }
+.cal-table tbody tr.cal-vig { background:#fef9c3; }
+.cal-table tbody tr.cal-vig:hover { background:#fef08a; }
+.cal-table tbody tr.cal-novig { background:#f1f5f9; color:#64748b; }
+.cal-table tbody tr.cal-novig:hover { background:#e7edf3; }
+
+.cal-vigedit { white-space:nowrap; }
+.cal-vigedit input[type="date"] {
+  border:1px solid #cdd8e6; border-radius:6px; padding:3px 6px; font-size:.78rem;
+  background:#fff; color:#1a3d6b;
+}
+.cal-vigedit input[type="date"]:focus { border-color:#ca8a04; outline:none; box-shadow:0 0 0 2px rgba(202,138,4,.18); }
+.cal-sep { margin:0 6px; color:#94a3b8; }
+.cal-nocalif { color:#94a3b8; }
+
+.cal-badge { padding:2px 9px; border-radius:10px; font-size:.74rem; font-weight:700; white-space:nowrap; }
+.cal-badge.vig { background:#fde68a; color:#854d0e; }
+.cal-badge.novig { background:#e5e7eb; color:#475569; }
+
+.cal-marcar { display:flex; align-items:center; gap:6px; font-size:.78rem; color:#475569; cursor:pointer; }
+.cal-marcar input { cursor:pointer; }

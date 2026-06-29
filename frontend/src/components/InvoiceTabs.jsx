@@ -1,10 +1,42 @@
 import { useState, useMemo, useEffect } from 'react'
 import InvoiceTable from './InvoiceTable'
 import { esPersonal, GASTOS_PERSONALES } from '../utils/categorias'
-import { classificationAPI } from '../services/api'
+import { classificationAPI, rebajasAPI } from '../services/api'
+import { nombreMes } from '../utils/periodo'
 import './InvoiceTabs.css'
 
 import { fmtMoney as money } from '../utils/format'
+
+// La fecha del comprobante viene como 'dd/mm/yyyy' (SRI) o 'yyyy-mm-dd'. La
+// vigencia del proveedor se guarda como 'yyyy-mm-dd'. Normalizamos a ISO para
+// comparar y para agrupar por mes (clave 'yyyy-mm').
+function fechaISO(f) {
+  if (!f) return ''
+  const s = String(f).trim()
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`
+  return ''
+}
+
+// True si la calificación del proveedor estaba VIGENTE en la fecha de la factura.
+// Sin rango definido -> no se puede afirmar vigencia (gris).
+function vigenteEn(iso, prov) {
+  if (!iso || !prov || !prov.calificado) return false
+  const ini = prov.vigencia_inicio || ''
+  const fin = prov.vigente_hasta || ''
+  if (!ini && !fin) return false
+  if (ini && iso < ini) return false
+  if (fin && iso > fin) return false
+  return true
+}
+
+function etiquetaMes(key) {
+  if (key === 'sin-fecha') return 'Sin fecha'
+  const [y, m] = key.split('-')
+  return `${nombreMes(m)} ${y}`
+}
 
 // Columnas del RESUMEN, en el mismo orden que la hoja RESUMEN del Excel.
 const RESUMEN_COLS = [
@@ -64,13 +96,28 @@ function SummaryTable({ titulo, filas, color }) {
   )
 }
 
-export default function InvoiceTabs({ invoices, onInvoicesChange }) {
+export default function InvoiceTabs({ invoices, client, onInvoicesChange }) {
   const [tab, setTab] = useState('datos')
   const [pendCatalog, setPendCatalog] = useState([])
   const [pendInput, setPendInput] = useState({})
   const [pendBusy, setPendBusy] = useState('')
   const [pendMsg, setPendMsg] = useState('') // confirmación no bloqueante
   const [actMap, setActMap] = useState({}) // RUC -> actividad económica (SRI)
+  const [proveedores, setProveedores] = useState([]) // catálogo de proveedores calificados
+  const [calIncluirNo, setCalIncluirNo] = useState(false) // mostrar también no calificados (para calificar)
+  const [calMsg, setCalMsg] = useState('')
+  const [calBusy, setCalBusy] = useState('') // RUC que se está guardando
+
+  const ident = client?.identificacion || ''
+
+  // Catálogo de proveedores calificados del contribuyente (RUC -> calificado + vigencia)
+  const loadProveedores = () => {
+    if (!ident) { setProveedores([]); return }
+    rebajasAPI.listProveedores(ident)
+      .then((res) => setProveedores(res.data?.data || []))
+      .catch(() => {})
+  }
+  useEffect(() => { loadProveedores() }, [ident])
 
   useEffect(() => {
     classificationAPI.list()
@@ -154,6 +201,83 @@ export default function InvoiceTabs({ invoices, onInvoicesChange }) {
       .catch(() => {})
   }, [pendientes])
 
+  // ── CALIFICADOS: gastos de proveedores calificados, agrupados por mes ──
+  const provByRuc = useMemo(() => {
+    const m = {}
+    for (const p of proveedores) {
+      const r = (p.ruc || '').trim()
+      if (r) m[r] = p
+    }
+    return m
+  }, [proveedores])
+
+  // Nº de gastos cuyo proveedor está calificado (para la insignia de la pestaña)
+  const calCount = useMemo(() => rowsOk.reduce((n, i) => {
+    const p = provByRuc[(i.ruc_proveedor || '').trim()]
+    return n + (p && p.calificado ? 1 : 0)
+  }, 0), [rowsOk, provByRuc])
+
+  // Agrupa los gastos por mes (yyyy-mm). Solo proveedores calificados, salvo que
+  // se active "incluir no calificados" para poder calificarlos desde aquí.
+  const calMeses = useMemo(() => {
+    const groups = {}
+    for (const inv of rowsOk) {
+      const ruc = (inv.ruc_proveedor || '').trim()
+      if (!ruc) continue
+      const prov = provByRuc[ruc] || null
+      const esCalif = !!(prov && prov.calificado)
+      if (!calIncluirNo && !esCalif) continue
+      const iso = fechaISO(inv.fecha)
+      const key = iso ? iso.slice(0, 7) : 'sin-fecha'
+      if (!groups[key]) groups[key] = { key, rows: [], total: 0, vigentes: 0 }
+      const vig = esCalif && vigenteEn(iso, prov)
+      groups[key].rows.push({ inv, prov, esCalif, iso, vig })
+      groups[key].total += parseFloat(inv.total) || 0
+      if (vig) groups[key].vigentes += 1
+    }
+    return Object.values(groups).sort((a, b) => (a.key < b.key ? 1 : -1))
+  }, [rowsOk, provByRuc, calIncluirNo])
+
+  useEffect(() => {
+    if (!calMsg) return
+    const t = setTimeout(() => setCalMsg(''), 4000)
+    return () => clearTimeout(t)
+  }, [calMsg])
+
+  // Guarda/actualiza un proveedor del catálogo (calificación y/o vigencia).
+  // Es a nivel de proveedor: afecta a todos sus gastos del listado.
+  const guardarProveedor = async (ruc, nombre, patch) => {
+    ruc = (ruc || '').trim()
+    if (!ident || !ruc || calBusy) return
+    const cur = provByRuc[ruc] || {}
+    const body = {
+      identificacion: ident,
+      ruc,
+      nombre: (cur.nombre || nombre || '').trim(),
+      calificado: patch.calificado ?? !!cur.calificado,
+      categoria: cur.categoria || '',
+      actividad: cur.actividad || '',
+      vigencia: cur.vigencia || '',
+      vigencia_inicio: patch.vigencia_inicio ?? cur.vigencia_inicio ?? null,
+      vigente_hasta: patch.vigente_hasta ?? cur.vigente_hasta ?? null,
+    }
+    setCalBusy(ruc)
+    try {
+      const res = await rebajasAPI.upsertProveedor(body)
+      const saved = res?.data || body
+      setProveedores((prev) => {
+        const i = prev.findIndex((p) => (p.ruc || '').trim() === ruc)
+        if (i >= 0) { const cp = [...prev]; cp[i] = { ...cp[i], ...saved }; return cp }
+        return [...prev, saved]
+      })
+      setCalMsg(`✔ Guardado · ${body.nombre || ruc}`)
+    } catch (e) {
+      setCalMsg('⚠ No se pudo guardar: ' + (e.response?.data?.detail || e.message))
+    } finally {
+      setCalBusy('')
+    }
+  }
+
   return (
     <div className="itabs">
       <div className="itabs-bar">
@@ -165,6 +289,9 @@ export default function InvoiceTabs({ invoices, onInvoicesChange }) {
         </button>
         <button className={tab === 'pendientes' ? 'active' : ''} onClick={() => setTab('pendientes')}>
           ⚠️ Pendientes {pendientes.length > 0 && <span className="itabs-badge">{pendientes.length}</span>}
+        </button>
+        <button className={tab === 'calificados' ? 'active' : ''} onClick={() => setTab('calificados')}>
+          🏅 Calificados {calCount > 0 && <span className="itabs-badge cal">{calCount}</span>}
         </button>
       </div>
 
@@ -247,6 +374,104 @@ export default function InvoiceTabs({ invoices, onInvoicesChange }) {
                   })}
                 </tbody>
               </table>
+            </>
+          )}
+        </div>
+      )}
+
+      {tab === 'calificados' && (
+        <div className="rs-wrap">
+          {!ident ? (
+            <div className="itabs-empty">Selecciona un contribuyente para ver sus proveedores calificados.</div>
+          ) : (
+            <>
+              {calMsg && <div className="pend-msg">{calMsg}</div>}
+              <p className="pend-hint">
+                Gastos de <strong>proveedores calificados</strong> por mes. En <span className="cal-key cal-vig">amarillo</span> los
+                que estaban <strong>vigentes</strong> a la fecha de la factura; en <span className="cal-key cal-novig">gris</span> los
+                que <strong>no están en vigencia</strong> (vencidos o sin fechas definidas). Define el rango de vigencia de cada
+                calificación (puede ser de distintos años) en las celdas de fecha.
+              </p>
+              <label className="cal-toggle">
+                <input type="checkbox" checked={calIncluirNo} onChange={(e) => setCalIncluirNo(e.target.checked)} />
+                Incluir proveedores no calificados (para marcarlos como calificados)
+              </label>
+
+              {calMeses.length === 0 ? (
+                <div className="itabs-empty">
+                  {calIncluirNo
+                    ? 'No hay gastos con RUC de proveedor en este período.'
+                    : 'No hay gastos de proveedores calificados. Activa la casilla de arriba para marcar proveedores como calificados.'}
+                </div>
+              ) : (
+                calMeses.map((g) => (
+                  <details key={g.key} className="cal-mes" open>
+                    <summary className="cal-mes-head">
+                      <span className="cal-mes-nom">{etiquetaMes(g.key)}</span>
+                      <span className="cal-mes-meta">
+                        {g.rows.length} gasto(s) · {money(g.total)}
+                        {g.vigentes > 0 && <span className="cal-mes-vig"> · {g.vigentes} vigente(s)</span>}
+                      </span>
+                    </summary>
+                    <div className="rs-scroll">
+                      <table className="rs-table cal-table">
+                        <thead>
+                          <tr>
+                            <th>Fecha</th>
+                            <th>RUC</th>
+                            <th>Proveedor</th>
+                            <th>Categoría</th>
+                            <th className="r">Total</th>
+                            <th>Vigencia (inicio → fin)</th>
+                            <th>Estado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {g.rows.map(({ inv, prov, esCalif, iso, vig }) => {
+                            const ruc = (inv.ruc_proveedor || '').trim()
+                            const guardando = calBusy === ruc
+                            return (
+                              <tr key={inv.id} className={vig ? 'cal-vig' : 'cal-novig'}>
+                                <td>{inv.fecha || '-'}</td>
+                                <td>{ruc || '-'}</td>
+                                <td>{inv.nombre_proveedor || '-'}</td>
+                                <td>{inv.clasificacion || 'SIN CLASIFICAR'}</td>
+                                <td className="r">{money(parseFloat(inv.total) || 0)}</td>
+                                <td className="cal-vigedit">
+                                  {esCalif ? (
+                                    <>
+                                      <input type="date" value={prov?.vigencia_inicio || ''} disabled={guardando}
+                                        onChange={(e) => guardarProveedor(ruc, inv.nombre_proveedor, { vigencia_inicio: e.target.value || null })} />
+                                      <span className="cal-sep">→</span>
+                                      <input type="date" value={prov?.vigente_hasta || ''} disabled={guardando}
+                                        onChange={(e) => guardarProveedor(ruc, inv.nombre_proveedor, { vigente_hasta: e.target.value || null })} />
+                                    </>
+                                  ) : (
+                                    <span className="cal-nocalif">—</span>
+                                  )}
+                                </td>
+                                <td>
+                                  {esCalif ? (
+                                    <span className={`cal-badge ${vig ? 'vig' : 'novig'}`} title={iso ? `Factura: ${iso}` : ''}>
+                                      {vig ? '✔ Vigente' : (prov?.vigencia_inicio || prov?.vigente_hasta ? '✗ No vigente' : 'Sin vigencia')}
+                                    </span>
+                                  ) : (
+                                    <label className="cal-marcar">
+                                      <input type="checkbox" disabled={guardando}
+                                        onChange={() => guardarProveedor(ruc, inv.nombre_proveedor, { calificado: true })} />
+                                      Calificar
+                                    </label>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </details>
+                ))
+              )}
             </>
           )}
         </div>
