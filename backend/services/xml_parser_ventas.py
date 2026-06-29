@@ -22,7 +22,8 @@ from .xml_parser import find_text_ignore_ns, find_node_ignore_ns, balance_compon
 #   5    → 5%
 #   6    → no objeto de IVA
 #   7    → exento de IVA
-TARIFA_15 = {'2', '3', '4', '10'}
+#   8    → 8% (tarifa especial feriados): se agrupa con las gravadas con IVA
+TARIFA_15 = {'2', '3', '4', '8', '10'}
 
 
 def parse_venta_xml(xml_content: str) -> Optional[Dict]:

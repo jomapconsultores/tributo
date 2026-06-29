@@ -164,7 +164,10 @@ def parse_xml_invoice(
 
                     if cod_porc == '0':
                         base_0 += base_imponible
-                    elif cod_porc in ['2', '3', '4', '10']:
+                    elif cod_porc in ['2', '3', '4', '8', '10']:
+                        # 2=12% 3=14% 4=15% 8=8%(feriados) 10=13%: todas tarifas con IVA.
+                        # El modelo no tiene casilla 8% aparte, se agrupa aquí para no perder
+                        # el crédito de IVA (el valor del XML se conserva tal cual).
                         base_15 += base_imponible
                         iva_15 += valor_impuesto
                     elif cod_porc == '5':
