@@ -347,17 +347,17 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
     # Base imponible ad valorem (303): SOLO las ventas cuyo precio por litro
     # supera el umbral (si ninguna cumple, el casillero queda en 0)
     base = sum(_f(d.get("subtotal")) for d in ice_audit_detail(ice_rows, anio) if d.get("aplica_adv"))
-    # Volumen = LITROS DE ALCOHOL PURO (litros de bebida × grado/100).
-    # Se calcula desde la AUDITORÍA (que descompone los packs y usa la capacidad y el
-    # grado REALES de cada componente). Calcularlo desde las filas crudas usaría la
-    # capacidad del pack (750) para el aguardiente de 375 ml e inflaría el volumen.
-    litros_alcohol = sum(
-        _f(d.get("botellas")) * (_f(d.get("volumen")) / 1000.0) * (_f(d.get("grado")) / 100.0)
-        for d in ice_audit_detail(ice_rows, anio)
-    )
-    ice_esp = g.get("ice_especifico", 0.0)
+    # El ICE a declarar = el FACTURADO (lo que consta en las facturas, suma de valor_ice),
+    # para que la declaración COINCIDA con las facturas. El ad-valorem se toma de la auditoría
+    # y el específico = facturado − ad-valorem. El volumen (litros de alcohol puro, casilla
+    # 314) se deriva del específico para que cuadre 314 × 315 = 319.
     ice_adv = g.get("ice_advalorem", 0.0)
-    total_ice = g.get("total_ice", 0.0)
+    ice_facturado = sum(
+        _f(r.get("valor_ice")) for r in ice_rows if (r.get("estado") or "OK") == "OK"
+    )
+    ice_esp = round(ice_facturado - ice_adv, 2)
+    total_ice = round(ice_facturado, 2)
+    litros_alcohol = round(ice_esp / esp, 4) if esp else 0.0
 
     # ── Rebaja y exención por producto (módulo Rebajas y exenciones) ─────
     # Elegibilidad según la normativa:
