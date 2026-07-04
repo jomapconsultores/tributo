@@ -19,12 +19,13 @@ jobs:
       - name: Enviar recordatorio de cobros a Johanna
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
         run: |
           for i in 1 2 3; do
             if curl -fsS --max-time 120 -X POST \
-              "https://tributos-api.onrender.com/api/odoo/recordatorio-cobros?token=${CRON_SECRET}" ; then
+              "${BACKEND_URL}/api/odoo/recordatorio-cobros?token=${CRON_SECRET}" ; then
               echo ""; echo "Recordatorio disparado"; exit 0
             fi
-            echo "Reintentando (backend arrancando en frio)..."; sleep 20
+            echo "Reintentando..."; sleep 20
           done
           echo "No respondio; el proximo lunes reintenta"; exit 0

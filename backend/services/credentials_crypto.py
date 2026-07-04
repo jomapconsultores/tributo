@@ -3,7 +3,7 @@
 Modelo de amenaza:
 - Atacante con SELECT a la tabla service_credentials → ve ciphertext inútil sin MASTER_KEY.
 - Atacante con la anon key de Supabase → ya no puede leer la tabla (RLS activado, sin policies).
-- Atacante con el bundle JS del frontend → la MASTER_KEY NO está ahí, solo en el backend (env Render).
+- Atacante con el bundle JS del frontend → la MASTER_KEY NO está ahí, solo en el backend (env vars del servidor).
 - Atacante con la MASTER_KEY → puede descifrar todo. Por eso vive solo en env var y nunca en repo.
 
 Rotación: cada ciphertext lleva su key_version. Para rotar:
@@ -27,7 +27,7 @@ def _load_keys() -> dict:
         raise RuntimeError(
             "CREDENTIALS_MASTER_KEY no está configurada. Generala con: "
             "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\" "
-            "y pégala en las env vars del backend (Render dashboard)."
+            "y pégala en las env vars del backend."
         )
     keys[1] = Fernet(primary.encode() if isinstance(primary, str) else primary)
     v = 2

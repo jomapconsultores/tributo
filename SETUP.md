@@ -4,8 +4,8 @@
 
 Se ha creado una plataforma web completa que migra el script `SRI-XML.py` a una arquitectura moderna:
 
-- **Backend**: FastAPI + Python (Render Web Service)
-- **Frontend**: React + Vite (Render Static Site)
+- **Backend**: FastAPI + Python
+- **Frontend**: React + Vite
 - **Base de datos**: Supabase PostgreSQL
 - **Autenticación**: Supabase Auth
 - **Funcionalidades**: Procesar XMLs del SRI, clasificar facturas, exportar Excel/PDF
@@ -91,35 +91,6 @@ git push -u origin main
 
 ---
 
-## Paso 4: Desplegar en Render
-
-### Backend Deploy
-1. Ve a https://render.com
-2. Conecta tu repositorio GitHub
-3. Crear Web Service:
-   - **Name**: tributos-api
-   - **Runtime**: Python 3.11
-   - **Build command**: `pip install -r requirements.txt`
-   - **Start command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-   - **Root directory**: `backend`
-   - **Environment variables**:
-     - `SUPABASE_URL`
-     - `SUPABASE_SERVICE_KEY`
-     - `SUPABASE_ANON_KEY`
-     - `JWT_SECRET`
-     - `CORS_ORIGINS`
-
-### Frontend Deploy
-1. Crear Static Site:
-   - **Name**: tributos-web
-   - **Build command**: `npm install && npm run build`
-   - **Publish directory**: `dist`
-   - **Root directory**: `frontend`
-   - **Environment variables**:
-     - `VITE_API_URL=https://tributos-api.onrender.com`
-
----
-
 ## Información Importante
 
 ### Clasificador
@@ -152,7 +123,6 @@ git push -u origin main
 
 ### Error de CORS
 - Agregar dominio en `CORS_ORIGINS` del backend
-- Render otorga dominio automáticamente (ej: tributos-api.onrender.com)
 
 ### XMLs No Se Descargan del SRI
 - El SRI puede estar saturado
@@ -164,9 +134,8 @@ git push -u origin main
 ## Soporte
 
 Para problemas específicos:
-1. Revisar logs en Render Dashboard
-2. Comprobar variables de entorno
-3. Verificar estado del SRI: https://www.sri.gob.ec
+1. Comprobar variables de entorno
+2. Verificar estado del SRI: https://www.sri.gob.ec
 
 ---
 

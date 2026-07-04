@@ -40,7 +40,7 @@ def _rp_id() -> str:
     """Deriva el RP ID del frontend_url configurado."""
     url = (settings.frontend_url or "http://localhost:5173").rstrip("/")
     host = url.replace("https://", "").replace("http://", "").split(":")[0].split("/")[0]
-    return host  # "localhost" o "tributos-web.onrender.com"
+    return host  # "localhost" o el dominio del frontend en producción
 
 
 def _origin() -> str:
