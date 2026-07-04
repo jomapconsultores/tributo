@@ -50,6 +50,7 @@ export const adminAPI = {
   setSubscription: (uid, data) => api.put(`/api/admin/users/${uid}/subscription`, data),
   registrarPago: (uid, data) => api.post(`/api/admin/users/${uid}/pago`, data),
   pagos: (uid) => api.get(`/api/admin/users/${uid}/pagos`),
+  descuentos: () => api.get('/api/admin/descuentos'),
   contactos: () => api.get('/api/admin/contactos'),
   resetIps: (uid) => api.delete(`/api/admin/users/${uid}/ips`),
   permisos: () => api.get('/api/admin/permisos'),
@@ -202,6 +203,7 @@ export const salesIvaAPI = {
 
 // Cálculo ICE manual (por cliente)
 export const iceCalcAPI = {
+  tarifas: () => api.get('/api/ice-calc/tarifas'),
   list: (clientId) => api.get('/api/ice-calc/', { params: { client_id: clientId } }),
   create: (row) => api.post('/api/ice-calc/', row),
   update: (id, data) => api.put(`/api/ice-calc/${id}`, data),

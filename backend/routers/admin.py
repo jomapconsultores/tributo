@@ -198,6 +198,14 @@ async def registrar_pago(uid: str, body: PagoIn, _: str = Depends(require_admin)
     return {"ok": True, "proximo_pago": sub_upd.get("proximo_pago")}
 
 
+@router.get("/descuentos")
+async def descuentos(_: str = Depends(require_admin)):
+    """Tabla de descuentos por pago anticipado (meses -> % descuento). El
+    frontend la usa para el desplegable de meses en el modal de registrar pago,
+    en vez de mantener una copia propia que podría desincronizarse de esta."""
+    return {"descuentos": DESCUENTOS}
+
+
 @router.get("/precio")
 async def precio_sugerido(plan: str, meses: int = 1, _: str = Depends(require_admin)):
     """Calcula el monto sugerido (neto, con descuento por anticipo)."""

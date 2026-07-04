@@ -170,6 +170,9 @@ function App() {
               <Route path="/admin" element={<RequireSuperAdmin><Admin /></RequireSuperAdmin>} />
               <Route path="/admin/credenciales" element={<RequireSuperAdmin><AdminCredentials /></RequireSuperAdmin>} />
               <Route path="/odoo-facturacion" element={<RequireAdmin><OdooFacturacion /></RequireAdmin>} />
+              {/* Sin guard a propósito: es de solo lectura y /api/odoo/facturas ya
+                  filtra server-side por RUC autorizado para el rol 'cliente' (a
+                  diferencia de /odoo-facturacion, que factura y sí requiere admin/socio). */}
               <Route path="/odoo-facturacion/procesadas" element={<FacturasProcesadas />} />
               <Route path="/admin/acceso-clientes" element={<RequireSuperAdmin><AdminClientAccess /></RequireSuperAdmin>} />
               <Route path="/admin/permisos" element={<RequireSuperAdmin><AdminPermisos /></RequireSuperAdmin>} />

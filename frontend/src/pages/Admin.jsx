@@ -17,7 +17,6 @@ const PLANES = [
   { key: 'completo', label: 'Sistema Completo ($150)' },
 ]
 const ESTADOS = ['prueba', 'activo', 'suspendido']
-const DESCUENTOS = { 1: 0, 3: 0.05, 6: 0.10, 12: 0.25 }
 
 export default function Admin() {
   const { isSuperAdmin } = useAccess()
@@ -28,8 +27,12 @@ export default function Admin() {
   const [busy, setBusy] = useState(false)
   const [contactos, setContactos] = useState([])
   const [pagoModal, setPagoModal] = useState(null) // { uid, email, precio }
+  // Traído del backend (mismo dict que usa /api/admin/precio) para no mantener
+  // una copia local que podría desincronizarse.
+  const [descuentos, setDescuentos] = useState({ 1: 0, 3: 0.05, 6: 0.10, 12: 0.25 })
 
   useEffect(() => { adminAPI.contactos().then((r) => setContactos(r.data?.data || [])).catch(() => {}) }, [])
+  useEffect(() => { adminAPI.descuentos().then((r) => setDescuentos(r.data?.descuentos || {})).catch(() => {}) }, [])
 
   const load = () => {
     setLoading(true)
@@ -127,6 +130,7 @@ export default function Admin() {
           email={pagoModal.email}
           precioBase={pagoModal.precio}
           ivaIncluidoDefault={pagoModal.iva_incluido}
+          descuentos={descuentos}
           onConfirm={(data) => confirmarPago({ uid: pagoModal.uid, ...data })}
           onCancel={() => setPagoModal(null)}
           busy={busy}
@@ -235,22 +239,22 @@ export default function Admin() {
   )
 }
 
-function PagoModalForm({ email, precioBase, ivaIncluidoDefault, onConfirm, onCancel, busy }) {
+function PagoModalForm({ email, precioBase, ivaIncluidoDefault, descuentos, onConfirm, onCancel, busy }) {
   const [meses, setMeses] = useState(1)
   const [monto, setMonto] = useState('')
   const [ivaIncluido, setIvaIncluido] = useState(ivaIncluidoDefault || false)
   const inputRef = useRef(null)
 
   useEffect(() => {
-    const desc = DESCUENTOS[meses] || 0
+    const desc = descuentos[meses] || 0
     const sugerido = precioBase ? (precioBase * meses * (1 - desc)).toFixed(2) : ''
     setMonto(sugerido)
-  }, [meses, precioBase])
+  }, [meses, precioBase, descuentos])
 
   useEffect(() => { inputRef.current?.focus() }, [])
 
   const val = parseFloat(monto) || 0
-  const desc = DESCUENTOS[meses] || 0
+  const desc = descuentos[meses] || 0
   const base = ivaIncluido ? val / 1.15 : val
   const iva = ivaIncluido ? val - base : val * 0.15
   const total = ivaIncluido ? val : val * 1.15
@@ -270,7 +274,7 @@ function PagoModalForm({ email, precioBase, ivaIncluidoDefault, onConfirm, onCan
           <label className="pago-label">Meses
             <select value={meses} onChange={(e) => setMeses(parseInt(e.target.value))} className="pago-select">
               {[1, 3, 6, 12].map((m) => (
-                <option key={m} value={m}>{m} mes{m > 1 ? 'es' : ''}{DESCUENTOS[m] ? ` (−${DESCUENTOS[m] * 100}%)` : ''}</option>
+                <option key={m} value={m}>{m} mes{m > 1 ? 'es' : ''}{descuentos[m] ? ` (−${descuentos[m] * 100}%)` : ''}</option>
               ))}
             </select>
           </label>

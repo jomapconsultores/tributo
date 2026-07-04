@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { iceCalcAPI, productsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, MESES } from '../utils/periodo'
-import { calcRow, ivaRate, umbralAdValorem, CATEGORIAS, CAT_LABEL, CAT_IMPUESTO, RANGOS_IND_2021, aplicaRangoInd2021 } from '../utils/iceCalc'
+import { calcRow, ivaRate, umbralAdValorem, CATEGORIAS, CAT_LABEL, CAT_IMPUESTO, RANGOS_IND_2021, aplicaRangoInd2021, TARIFAS } from '../utils/iceCalc'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import WorkflowGuide from '../components/WorkflowGuide'
@@ -43,6 +43,21 @@ export default function CalculoICE() {
   const [saving, setSaving] = useState(false)
   const [catalogo, setCatalogo] = useState([])
   const [editId, setEditId] = useState(null)
+
+  // TARIFAS (arriba) es una copia local para el cálculo instantáneo en pantalla
+  // (no se puede pedir al backend en cada tecla); esta verificación en desarrollo
+  // avisa en consola si esa copia se desincroniza de la tabla real del backend
+  // (services/ice_calc_data.py), en vez de fallar en silencio.
+  useEffect(() => {
+    iceCalcAPI.tarifas().then((r) => {
+      const real = r.data?.tarifas || {}
+      for (const anio of Object.keys(real)) {
+        if (JSON.stringify(real[anio]) !== JSON.stringify(TARIFAS[anio])) {
+          console.warn(`[CalculoICE] Tarifa ICE ${anio} desincronizada entre frontend (utils/iceCalc.js) y backend:`, TARIFAS[anio], 'vs', real[anio])
+        }
+      }
+    }).catch(() => {})
+  }, [])
 
   // Catálogo de productos del cliente
   useEffect(() => {

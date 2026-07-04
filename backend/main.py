@@ -99,12 +99,16 @@ async def rate_limit(request: Request, call_next):
 # sin tener que enganchar cada endpoint a mano. Los flujos con detalle fino
 # (subidas con cantidad/contribuyente, declaraciones, etc.) ya se registran en
 # sus routers; aquí se omiten para no duplicar. ----------------------------
-import base64 as _b64
-import json as _json
 import threading as _threading
 from services.activity import registrar as _registrar
+from auth import decode_token
 
-_AUDIT_LABELS = {
+# OJO: estas son categorías de visualización para la bitácora de Movimientos
+# (columna `module` de activity_log), NO tienen relación con MODULOS de
+# access.py (los módulos contratados que controlan permisos) — comparten la
+# palabra "módulo" mas no el mismo concepto; de ahí el prefijo _AUDIT_ y el
+# nombre CATEGORIES en vez de LABELS/MODULOS para no confundirlos.
+_AUDIT_CATEGORIES = {
     "invoices":       ("Facturas de gastos", "gastos"),
     "classification": ("Clasificación de gastos", "gastos"),
     "sales-iva":      ("Ingresos IVA", "ingresos_iva"),
@@ -134,6 +138,11 @@ def _audit_ya_registrado(method: str, path: str) -> bool:
 
 
 def _audit_uid(request: Request):
+    """Quien hizo la accion, para la bitacora de Movimientos. Reusa la misma
+    verificacion de firma que get_current_user (antes decodificaba el JWT sin
+    comprobar nada, solo para leer `sub` — funcionalmente inofensivo porque
+    esto solo corre sobre respuestas ya exitosas de un request ya autenticado,
+    pero mantenerlo consistente evita tener dos formas de leer el mismo token)."""
     auth = request.headers.get("authorization")
     if not auth:
         return None
@@ -141,9 +150,7 @@ def _audit_uid(request: Request):
         scheme, token = auth.split()
         if scheme.lower() != "bearer":
             return None
-        payload = token.split(".")[1]
-        payload += "=" * (-len(payload) % 4)
-        return _json.loads(_b64.urlsafe_b64decode(payload)).get("sub")
+        return decode_token(token)
     except Exception:
         return None
 
@@ -158,10 +165,10 @@ async def audit_mutaciones(request: Request, call_next):
             segs = path.split("/")
             if len(segs) >= 3 and segs[1] == "api":
                 seg = segs[2]
-                if seg in _AUDIT_LABELS and not _audit_ya_registrado(method, path):
+                if seg in _AUDIT_CATEGORIES and not _audit_ya_registrado(method, path):
                     uid = _audit_uid(request)
                     if uid:
-                        label, module = _AUDIT_LABELS[seg]
+                        label, module = _AUDIT_CATEGORIES[seg]
                         low = path.lower()
                         action = _AUDIT_ACTION[method]
                         if low.endswith("/clear") or "bulk-delete" in low:

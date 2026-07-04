@@ -35,7 +35,6 @@ export const RANGOS_IND_2021 = [
   { key: 'R2', label: 'Mediana escala (≤ 1.400.000 hl)', tarifa: 10.48 },
   { key: 'R3', label: 'Gran escala (> 1.400.000 hl)', tarifa: 13.08 },
 ]
-export const RANGO_IND_2021_DEFAULT = 'R1'
 export function tarifaRangoInd2021(rangoKey) {
   const r = RANGOS_IND_2021.find((x) => x.key === rangoKey)
   return r ? r.tarifa : RANGOS_IND_2021[0].tarifa

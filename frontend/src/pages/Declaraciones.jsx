@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, Fragment } from 'react'
-import useDraft from '../hooks/useDraft'
+import useDraft, { clearDraftsByPrefix } from '../hooks/useDraft'
 import { useOutletContext } from 'react-router-dom'
 import { declaracionesAPI, credentialsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
@@ -185,6 +185,7 @@ export default function Declaraciones({ tipo }) {
     try {
       await declaracionesAPI.save(selectedClientId, tipo, decl, diferirMeses)
       setDiferirMeses(0)
+      if (draftKey) clearDraftsByPrefix(draftKey) // ya se guardó en el servidor: no dejar el borrador local reapareciendo
       await load()
       let msg = '✔ Declaración guardada. Queda LISTA para facturar (aparece marcada en Reportes).'
       if (diferirMeses > 0) {
