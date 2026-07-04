@@ -7,7 +7,7 @@ Plataforma web para procesar, clasificar y exportar facturas del SRI (Servicio d
 - **Backend**: FastAPI + Python
 - **Frontend**: React + Vite
 - **Base de datos**: Supabase (PostgreSQL)
-- **Hosting**: Render
+- **Hosting**: Coolify
 
 ## Setup Local
 
@@ -42,4 +42,4 @@ npm run dev
 
 ## Deployment
 
-Conectar repositorio GitHub a Render para deploy automático.
+Conectar repositorio GitHub a Coolify para deploy automático (build por Dockerfile o buildpack según el servicio).

@@ -1,6 +1,6 @@
 """Almacenamiento del archivo de Códigos ICE en Supabase Storage.
 
-En producción (Render) el disco es efímero, así que el archivo reemplazable se
+En producción el disco del contenedor es efímero, así que el archivo reemplazable se
 guarda en un bucket de Supabase. Se mantiene respaldo al archivo local para dev.
 """
 import os
