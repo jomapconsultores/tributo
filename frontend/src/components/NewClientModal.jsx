@@ -5,8 +5,7 @@ import { MESES } from '../utils/periodo'
 import { periodoADeclarar } from '../utils/declaracionSRI'
 import './NewClientModal.css'
 
-const ANIO_ACTUAL = 2026
-const ANIOS = Array.from({ length: 12 }, (_, i) => ANIO_ACTUAL - i)
+const ANIOS = Array.from({ length: 12 }, (_, i) => new Date().getFullYear() - i)
 
 // Por defecto, el período a declarar (mes anterior) — lo que normalmente se carga
 const _per = periodoADeclarar()

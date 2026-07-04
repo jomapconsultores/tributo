@@ -1,29 +1,26 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useCallback } from 'react'
 import { accessAPI } from '../services/api'
-import { withCache } from '../services/cache'
+import useCachedResource from '../hooks/useCachedResource'
 
-const AccessContext = createContext({ modules: [], isAdmin: false, role: 'cliente', loading: true, has: () => false })
+const DEFAULTS = { modules: [], isAdmin: false, role: 'cliente', subscription: null }
+
+const AccessContext = createContext({ ...DEFAULTS, loading: true, has: () => false })
 
 export const useAccess = () => useContext(AccessContext)
 
+const transformMe = (r) => ({
+  modules: r.data?.modules || [],
+  isAdmin: !!r.data?.is_admin,
+  role: r.data?.role || 'cliente',
+  subscription: r.data?.subscription || null,
+})
+
 export function AccessProvider({ children }) {
-  const [state, setState] = useState({
-    modules: [], isAdmin: false, role: 'cliente', subscription: null, loading: true,
-  })
+  // Cacheado 5 min: los módulos y el rol cambian con poca frecuencia.
+  const fetchMe = useCallback(() => accessAPI.me(), [])
+  const { data, loading } = useCachedResource('access:me', 5 * 60_000, fetchMe, transformMe)
 
-  useEffect(() => {
-    // Cacheado 5 min: los módulos y el rol cambian con poca frecuencia.
-    withCache('access:me', 5 * 60_000, () => accessAPI.me())
-      .then((r) => setState({
-        modules: r.data?.modules || [],
-        isAdmin: !!r.data?.is_admin,
-        role: r.data?.role || 'cliente',
-        subscription: r.data?.subscription || null,
-        loading: false,
-      }))
-      .catch(() => setState({ modules: [], isAdmin: false, role: 'cliente', subscription: null, loading: false }))
-  }, [])
-
+  const state = { ...DEFAULTS, ...data, loading }
   const isSuperAdmin = state.role === 'admin'
   const has = (m) => isSuperAdmin || state.modules.includes(m)
   return (

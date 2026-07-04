@@ -45,3 +45,16 @@ def fetch_in(query_factory, ids, col: str = "client_id", chunk: int = 150):
         trozo = ids[i:i + chunk]
         filas.extend(fetch_all(lambda t=trozo: query_factory().in_(col, t)))
     return filas
+
+
+def es_error_duplicado(e: Exception) -> bool:
+    """True si la excepción de un insert es por violar una constraint UNIQUE.
+    Usa el código SQLSTATE real (23505 = unique_violation) cuando está
+    disponible (postgrest.exceptions.APIError lo expone en `.code`), en vez de
+    buscar 'duplicate'/'unique' como substring del mensaje — antes usado en
+    invoices.py/ice.py/retentions.py, frágil ante cualquier mensaje de error
+    que por casualidad contenga esas palabras sin ser realmente una duplicada."""
+    if getattr(e, "code", None) == "23505":
+        return True
+    msg = str(e).lower()
+    return "duplicate" in msg or "unique" in msg

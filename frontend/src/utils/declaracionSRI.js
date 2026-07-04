@@ -12,15 +12,15 @@
 // Nota: si el día cae en fin de semana o feriado, el SRI lo traslada al
 // siguiente día hábil. Aquí se devuelve la fecha base según el dígito.
 
+import { nombreMes } from './periodo'
+
 const DIA_POR_DIGITO = {
   1: 10, 2: 12, 3: 14, 4: 16, 5: 18,
   6: 20, 7: 22, 8: 24, 9: 26, 0: 28,
 }
 
-const MESES = [
-  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
-]
+// nombre de mes en minúscula (para insertar en frases: "10 de mayo de 2026")
+const nombreMesMin = (mes) => nombreMes(mes).toLowerCase()
 
 // Noveno dígito del RUC (índice 8). Devuelve null si el RUC no es válido.
 export function novenoDigito(ruc) {
@@ -56,7 +56,7 @@ export function periodoADeclarar(hoy = new Date()) {
   let m = hoy.getMonth() - 1   // mes anterior (0-11)
   let a = hoy.getFullYear()
   if (m < 0) { m = 11; a -= 1 }
-  return { mes: m + 1, anio: a, nombre: MESES[m] }
+  return { mes: m + 1, anio: a, nombre: nombreMesMin(m + 1) }
 }
 
 // Estado del plazo de declaración para un RUC: se declara el mes anterior y el
@@ -77,7 +77,7 @@ export function estadoDeclaracion(ruc, hoy = new Date()) {
   return {
     valido: true, dia, nivel, mensaje, dias, limite,
     mesADeclarar: per.mes, anioADeclarar: per.anio, nombreMes: per.nombre,
-    limiteTexto: `${dia} de ${MESES[hoy.getMonth()]} de ${hoy.getFullYear()}`,
+    limiteTexto: `${dia} de ${nombreMesMin(hoy.getMonth() + 1)} de ${hoy.getFullYear()}`,
   }
 }
 
@@ -94,6 +94,6 @@ export function infoDeclaracion(ruc, hoy = new Date()) {
     digito,
     dia,
     proximaFecha: f,
-    proximaFechaTexto: `${f.getDate()} de ${MESES[f.getMonth()]} de ${f.getFullYear()}`,
+    proximaFechaTexto: `${f.getDate()} de ${nombreMesMin(f.getMonth() + 1)} de ${f.getFullYear()}`,
   }
 }

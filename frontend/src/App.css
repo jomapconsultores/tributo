@@ -27,3 +27,9 @@
   border: 1px solid #b9d3e8; border-radius: 3px; padding: 1px 7px;
   color: #0d3349; letter-spacing: 0.5px;
 }
+.clave-header-reveal {
+  font-size: 0.78em; background: #fff; border: 1px solid #b9d3e8; border-radius: 3px;
+  padding: 1px 8px; color: #1a5276; cursor: pointer;
+}
+.clave-header-reveal:hover { background: #f4f9ff; }
+.clave-header-reveal:disabled { cursor: wait; opacity: 0.7; }

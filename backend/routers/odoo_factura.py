@@ -6,6 +6,7 @@ Credenciales Odoo desde variables de entorno (nunca hardcodeadas):
   ODOO_USERNAME   jomapconsultores@outlook.com
   ODOO_API_KEY    (api key de Odoo)
 """
+import hmac
 import os
 import re
 import time
@@ -33,7 +34,7 @@ ODOO_NOTIFY_EMAIL = os.getenv("ODOO_NOTIFY_EMAIL", "johannanievecela@hotmail.com
 # Empresa EMISORA que NO genera recordatorio de cobro (se excluye por nombre).
 EXCLUIR_EMISOR = os.getenv("ODOO_EXCLUIR_EMISOR", "marco antonio").strip().lower()
 # Token para que el cron semanal pueda llamar al recordatorio sin sesión.
-_CRON_DEFAULT = os.getenv("CRON_SECRET", "jomap-cobros-semanal-2026")
+_CRON_DEFAULT = os.getenv("CRON_SECRET", "")
 
 
 def _idents_autorizadas(sb, user_id: str) -> set:
@@ -75,22 +76,11 @@ def _notificar_johanna(*, actor_user_id: str, exitosas: list):
 # Helpers de conexión
 # ---------------------------------------------------------------------------
 
-# Valores por defecto de Odoo (PROVISIONAL, a pedido del cliente — opción B).
-# Las env vars del servidor, si existen, SIEMPRE tienen prioridad sobre estos.
-# Recomendado: regenerar la API key en Odoo y moverla a una env var secreta.
-_ODOO_DEFAULTS = {
-    "ODOO_URL": "https://cmaj-asociados-sas.odoo.com",
-    "ODOO_DB": "cmaj-asociados-sas",
-    "ODOO_USERNAME": "jomapconsultores@outlook.com",
-    "ODOO_API_KEY": "e56f2003a8b2c3fe0a408c08042432087e0090ea",
-}
-
-
 def _cfg():
-    url = (os.getenv("ODOO_URL") or _ODOO_DEFAULTS["ODOO_URL"]).rstrip("/")
-    db = os.getenv("ODOO_DB") or _ODOO_DEFAULTS["ODOO_DB"]
-    user = os.getenv("ODOO_USERNAME") or _ODOO_DEFAULTS["ODOO_USERNAME"]
-    key = os.getenv("ODOO_API_KEY") or _ODOO_DEFAULTS["ODOO_API_KEY"]
+    url = (os.getenv("ODOO_URL") or "").rstrip("/")
+    db = os.getenv("ODOO_DB") or ""
+    user = os.getenv("ODOO_USERNAME") or ""
+    key = os.getenv("ODOO_API_KEY") or ""
     if not all([url, db, user, key]):
         raise HTTPException(status_code=503,
                             detail="Odoo no configurado en el servidor (env vars faltantes)")
@@ -567,6 +557,12 @@ async def odoo_cuentas_cobrar(body: CuentasClientesIn, user_id: str = Depends(ge
     """Por cada cliente busca su cuenta por cobrar individual EN EL PLAN DE CUENTAS
     de su empresa emisora (company_id). Si no existe, devuelve el SIGUIENTE código
     que le tocaría. Devuelve {ruc: {...}}."""
+    # Acceso: admin y socio pueden consultar cualquier RUC; un 'cliente' solo los
+    # contribuyentes que le fueron autorizados (mismo criterio que /facturar).
+    sb = get_supabase_client()
+    if rol_de(user_id) == "cliente":
+        idents_ok = _idents_autorizadas(sb, user_id)
+        body.clientes = [c for c in body.clientes if c.ruc in idents_ok]
     try:
         models, uid, db, key = _connect()
     except HTTPException as e:
@@ -693,6 +689,8 @@ async def crear_cliente(body: CrearClienteIn, user_id: str = Depends(get_current
 async def estado_sri(body: IdsIn, user_id: str = Depends(get_current_user)):
     """Verifica el envío al SRI de las facturas (número de autorización / edi_state)
     y, si alguna no se autorizó, reintenta el envío. Devuelve el estado por factura."""
+    sb = get_supabase_client()
+    idents_ok = _idents_autorizadas(sb, user_id) if rol_de(user_id) == "cliente" else None
     try:
         models, uid, db, key = _connect()
     except HTTPException as e:
@@ -702,15 +700,37 @@ async def estado_sri(body: IdsIn, user_id: str = Depends(get_current_user)):
     except Exception:
         comp_ids = []
     ctx = {"allowed_company_ids": comp_ids} if comp_ids else {}
-    campos = ["name", "state", "edi_state", "l10n_ec_authorization_number"]
+    campos = ["name", "state", "edi_state", "l10n_ec_authorization_number", "partner_id"]
+    vat_de_partner = {}
+    if idents_ok is not None:
+        try:
+            for p in _x(models, db, uid, key, "res.partner", "search_read", [[]], {"fields": ["id", "vat"]}):
+                vat_de_partner[p["id"]] = p.get("vat") or ""
+        except Exception:
+            vat_de_partner = {}
+    # Un solo read en lote para todas las facturas (antes: un read por factura,
+    # uno por uno en el loop). El reintento de envío al SRI SÍ sigue siendo por
+    # factura (es una acción con efecto individual en Odoo), pero solo se llama
+    # para las que realmente lo necesitan.
+    por_id = {}
+    try:
+        for m in _x(models, db, uid, key, "account.move", "read", [body.ids], {"fields": campos, "context": ctx}):
+            por_id[m["id"]] = m
+    except Exception as e:
+        return {"data": [{"id": mid, "error": str(e)[:120]} for mid in body.ids]}
+
     out = []
     for mid in body.ids:
-        try:
-            data = _x(models, db, uid, key, "account.move", "read", [[mid]], {"fields": campos, "context": ctx})
-            if not data:
-                out.append({"id": mid, "error": "no existe"})
+        m = por_id.get(mid)
+        if not m:
+            out.append({"id": mid, "error": "no existe"})
+            continue
+        if idents_ok is not None:
+            pid = (m.get("partner_id") or [0])[0]
+            if vat_de_partner.get(pid, "") not in idents_ok:
+                out.append({"id": mid, "error": "no autorizado"})
                 continue
-            m = data[0]
+        try:
             # Reintentar el envío al SRI si está posteada pero aún no autorizada.
             if m.get("state") == "posted" and m.get("edi_state") not in ("sent",):
                 try:
@@ -737,6 +757,8 @@ async def estado_sri(body: IdsIn, user_id: str = Depends(get_current_user)):
 async def odoo_facturas(user_id: str = Depends(get_current_user)):
     """Facturas de venta (honorarios) emitidas/posteadas en Odoo, para el submenú
     'Facturas procesadas' (con búsqueda por fecha/RUC/nombre). Las más recientes."""
+    sb = get_supabase_client()
+    idents_ok = _idents_autorizadas(sb, user_id) if rol_de(user_id) == "cliente" else None
     try:
         models, uid, db, key = _connect()
     except Exception:
@@ -761,10 +783,13 @@ async def odoo_facturas(user_id: str = Depends(get_current_user)):
     data = []
     for r in rows:
         pid = r.get("partner_id") or [0, ""]
+        ruc = vat.get(pid[0], "")
+        if idents_ok is not None and ruc not in idents_ok:
+            continue
         data.append({
             "numero": r.get("name"),
             "fecha": r.get("invoice_date"),
-            "ruc": vat.get(pid[0], ""),
+            "ruc": ruc,
             "nombre": pid[1],
             "total": r.get("amount_total"),
             "empresa": (r.get("company_id") or [0, ""])[1],
@@ -780,6 +805,8 @@ async def cobros_pendientes(user_id: str = Depends(get_current_user)):
     """Clientes con facturas de venta pendientes de cobro en Odoo (para el aviso
     al iniciar sesión). Excluye la empresa emisora 'Marco Antonio'. Agrupado por
     cliente con el monto total que falta por pagar."""
+    sb = get_supabase_client()
+    idents_ok = _idents_autorizadas(sb, user_id) if rol_de(user_id) == "cliente" else None
     try:
         models, uid, db, key = _connect()
     except Exception:
@@ -801,7 +828,10 @@ async def cobros_pendientes(user_id: str = Depends(get_current_user)):
     por_cliente = {}
     for r in rows:
         pid = r.get("partner_id") or [0, "—"]
-        g = por_cliente.setdefault(pid[0], {"cliente": pid[1], "ruc": vat.get(pid[0], ""),
+        ruc = vat.get(pid[0], "")
+        if idents_ok is not None and ruc not in idents_ok:
+            continue
+        g = por_cliente.setdefault(pid[0], {"cliente": pid[1], "ruc": ruc,
                                             "pendiente": 0.0, "facturas": 0})
         g["pendiente"] += float(r.get("amount_residual") or 0)
         g["facturas"] += 1
@@ -816,7 +846,9 @@ async def recordatorio_cobros(token: Optional[str] = None):
     """Recordatorio SEMANAL de cobros pendientes a Johanna (lo dispara el cron).
     Incluye las facturas de venta posteadas sin pagar de TODAS las empresas
     emisoras EXCEPTO 'Marco Antonio'. Protegido por token (no requiere sesión)."""
-    if not token or token != _CRON_DEFAULT:
+    if not _CRON_DEFAULT:
+        raise HTTPException(status_code=503, detail="CRON_SECRET no configurado en el servidor")
+    if not token or not hmac.compare_digest(token, _CRON_DEFAULT):
         raise HTTPException(status_code=401, detail="Token inválido")
     destino = (ODOO_NOTIFY_EMAIL or "").strip()
     if not destino:

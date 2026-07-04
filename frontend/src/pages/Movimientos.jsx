@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { actividadAPI } from '../services/api'
+import { filterBySearch } from '../utils/search'
 import './Movimientos.css'
 
 // Etiquetas e íconos por módulo/acción
@@ -59,21 +60,19 @@ export default function Movimientos() {
   }, [cargar])
 
   const filtrados = useMemo(() => {
-    const q = filtro.trim().toLowerCase()
     // Rango de fechas (inclusive). hasta = fin del día.
     const desdeT = desde ? new Date(desde + 'T00:00:00').getTime() : null
     const hastaT = hasta ? new Date(hasta + 'T23:59:59').getTime() : null
-    return items.filter((m) => {
+    const base = items.filter((m) => {
       if (modFiltro && m.module !== modFiltro) return false
       if (desdeT || hastaT) {
         const t = new Date(m.occurred_at).getTime()
         if (desdeT && t < desdeT) return false
         if (hastaT && t > hastaT) return false
       }
-      if (!q) return true
-      return [m.actor_email, m.contribuyente, m.identificacion, m.entity]
-        .some((f) => String(f || '').toLowerCase().includes(q))
+      return true
     })
+    return filterBySearch(base, filtro, (m) => [m.actor_email, m.contribuyente, m.identificacion, m.entity])
   }, [items, filtro, modFiltro, desde, hasta])
 
   const hayFiltro = !!(filtro || modFiltro || desde || hasta)

@@ -1,27 +1,7 @@
 import xml.etree.ElementTree as ET
 from typing import Dict, Optional
 
-
-def find_text_ignore_ns(parent, tag_name: str) -> str:
-    if parent is None:
-        return ""
-    node = parent.find(tag_name)
-    if node is not None and node.text:
-        return node.text.strip()
-    for element in parent.iter():
-        if element.tag.endswith(f"}}{tag_name}") or element.tag == tag_name:
-            if element.text:
-                return element.text.strip()
-    return ""
-
-
-def find_node_ignore_ns(parent, tag_name: str):
-    if parent is None:
-        return None
-    for element in parent.iter():
-        if element.tag.endswith(f"}}{tag_name}") or element.tag == tag_name:
-            return element
-    return None
+from .xml_parser import find_text_ignore_ns, find_node_ignore_ns
 
 
 def parse_retention_xml(xml_content: str) -> Optional[Dict]:

@@ -17,10 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Enviar recordatorio de cobros a Johanna
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           for i in 1 2 3; do
             if curl -fsS --max-time 120 -X POST \
-              "https://tributos-api.onrender.com/api/odoo/recordatorio-cobros?token=jomap-cobros-semanal-2026" ; then
+              "https://tributos-api.onrender.com/api/odoo/recordatorio-cobros?token=${CRON_SECRET}" ; then
               echo ""; echo "Recordatorio disparado"; exit 0
             fi
             echo "Reintentando (backend arrancando en frio)..."; sleep 20

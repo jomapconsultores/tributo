@@ -26,29 +26,36 @@ export default function UploadPanel({ onProcessTxt, onProcessXml }) {
     if (files.length === 0) return
 
     setLoading(true)
-
-    if (files[0].name.endsWith('.txt')) {
-      onProcessTxt(files[0])
-    } else if (files[0].name.endsWith('.xml')) {
-      onProcessXml(files)
+    try {
+      if (files[0].name.endsWith('.txt')) {
+        await onProcessTxt(files[0])
+      } else if (files[0].name.endsWith('.xml')) {
+        await onProcessXml(files)
+      }
+    } finally {
+      setLoading(false)
     }
-
-    setTimeout(() => setLoading(false), 1000)
   }
 
-  const handleTxtChange = (e) => {
+  const handleTxtChange = async (e) => {
     if (e.target.files?.[0]) {
       setLoading(true)
-      onProcessTxt(e.target.files[0])
-      setTimeout(() => setLoading(false), 1000)
+      try {
+        await onProcessTxt(e.target.files[0])
+      } finally {
+        setLoading(false)
+      }
     }
   }
 
-  const handleXmlChange = (e) => {
+  const handleXmlChange = async (e) => {
     if (e.target.files?.length > 0) {
       setLoading(true)
-      onProcessXml(Array.from(e.target.files))
-      setTimeout(() => setLoading(false), 1000)
+      try {
+        await onProcessXml(Array.from(e.target.files))
+      } finally {
+        setLoading(false)
+      }
     }
   }
 

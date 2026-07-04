@@ -1,4 +1,5 @@
 import io
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from typing import Optional
@@ -7,7 +8,6 @@ from auth import get_current_user
 from database import get_supabase_client, fetch_all, fetch_in
 from services.declaracion import declaracion_iva, declaracion_ice
 from services.declaracion_oficial import llenar_oficial
-from services.credentials_crypto import decrypt
 from tenancy import assert_client_owner, visible_client_ids
 from routers.access import es_admin, es_data_admin
 from services.activity import registrar
@@ -173,7 +173,7 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
               override_rebaja=None, override_exencion=None, marcar_rebaja=False, marcar_exencion=False,
               override_ventas_15=None, override_ventas_5=None, override_ventas_0=None, factor_prop=None):
     c = _cliente(supabase, client_id)
-    anio = c.get("periodo_anio") or 2026
+    anio = c.get("periodo_anio") or date.today().year
     mes = c.get("periodo_mes") or 1
     # Para clientes compartidos: usar user_id del dueño del cliente para queries históricos
     owner_uid = c.get("user_id") or user_id
@@ -261,9 +261,11 @@ async def calcular(
 
 
 @router.get("/credenciales")
-async def credenciales_cliente(client_id: str = Query(...), reveal: bool = Query(False), user_id: str = Depends(get_current_user)):
-    """Servicios contratados + credencial SRI (admin). Con reveal=true devuelve
-    la clave descifrada en un solo viaje, evitando la llamada /reveal separada."""
+async def credenciales_cliente(client_id: str = Query(...), user_id: str = Depends(get_current_user)):
+    """Servicios contratados + metadata de la credencial SRI (admin), SIN password.
+    Para revelar la clave, el frontend usa /api/credentials/{id}/reveal (auditado
+    en credential_access_log) — antes este endpoint también podía descifrarla
+    con reveal=true, saltándose esa auditoría; se eliminó ese camino."""
     try:
         supabase = get_supabase_client()
         admin = es_admin(user_id)
@@ -281,16 +283,11 @@ async def credenciales_cliente(client_id: str = Query(...), reveal: bool = Query
         servicios = sorted({s["service"] for s in servicios})
         credencial = None
         if data_admin:
-            cols = "id,service,username,ciphertext,key_version" if reveal else "id,service,username"
-            cred = supabase.table("service_credentials").select(cols).in_("client_id", ids).eq("service", "sri_portal").execute().data
+            cred = supabase.table("service_credentials").select("id,service,username").in_(
+                "client_id", ids).eq("service", "sri_portal").execute().data
             if cred:
                 c = cred[0]
                 credencial = {"id": c["id"], "service": c["service"], "username": c.get("username")}
-                if reveal and c.get("ciphertext"):
-                    try:
-                        credencial["password"] = decrypt(c["ciphertext"], c.get("key_version", 1))
-                    except Exception:
-                        credencial["password"] = None
         return {"servicios": servicios, "es_admin": data_admin, "credencial": credencial}
     except HTTPException:
         raise
@@ -381,10 +378,14 @@ async def guardar(entry: SaveDecl, user_id: str = Depends(get_current_user)):
         mes = c.get("periodo_mes")
         tipo = entry.tipo.upper()
 
-        # Validar aplazamiento (facilidades de pago: 1 a 3 meses para IVA e ICE)
+        # Validar aplazamiento (facilidades de pago: 1 a 3 meses, solo IVA por
+        # ahora — declaracion_ice no resta el monto diferido del casillero
+        # 902/899, así que permitirlo en ICE duplicaría el valor a pagar).
         diferir = max(0, int(entry.diferir_pago_meses or 0))
         if diferir < 0 or diferir > 3:
             raise HTTPException(status_code=400, detail="Meses a aplazar inválidos (0-3).")
+        if diferir > 0 and tipo != "IVA":
+            raise HTTPException(status_code=400, detail="El aplazamiento de pago aún no está disponible para ICE.")
 
         # Insertar declaración
         res = supabase.table("declaraciones").insert({
@@ -465,9 +466,14 @@ async def marcar_aplazado(aplazado_id: str, body: MarcarPagado, user_id: str = D
         raise HTTPException(status_code=400, detail="Estado inválido. Use 'pagado' o 'cancelado'.")
     try:
         supabase = get_supabase_client()
-        supabase.table("pagos_aplazados").update({"estado": body.estado}).eq(
-            "id", aplazado_id).eq("user_id", user_id).execute()
+        row = supabase.table("pagos_aplazados").select("client_id").eq("id", aplazado_id).execute().data
+        if not row:
+            raise HTTPException(status_code=404, detail="No encontrado")
+        assert_client_owner(row[0]["client_id"], user_id)
+        supabase.table("pagos_aplazados").update({"estado": body.estado}).eq("id", aplazado_id).execute()
         return {"ok": True}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -476,8 +482,14 @@ async def marcar_aplazado(aplazado_id: str, body: MarcarPagado, user_id: str = D
 async def eliminar(decl_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("declaraciones").delete().eq("id", decl_id).eq("user_id", user_id).execute()
+        row = supabase.table("declaraciones").select("client_id").eq("id", decl_id).execute().data
+        if not row:
+            raise HTTPException(status_code=404, detail="No encontrada")
+        assert_client_owner(row[0]["client_id"], user_id)
+        supabase.table("declaraciones").delete().eq("id", decl_id).execute()
         return {"message": "Eliminada"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -485,6 +497,7 @@ async def eliminar(decl_id: str, user_id: str = Depends(get_current_user)):
 @router.get("/export/oficial")
 async def export_oficial(client_id: str = Query(...), tipo: str = Query("IVA"),
                          credito_adq: Optional[float] = Query(None), credito_ret: Optional[float] = Query(None),
+                         diferir_meses: int = Query(0),
                          rebaja_ice: Optional[float] = Query(None), exencion_ice: Optional[float] = Query(None),
                          rebaja_manual: int = Query(0), exencion_manual: int = Query(0),
                          ventas_15: Optional[float] = Query(None), ventas_5: Optional[float] = Query(None),
@@ -494,7 +507,7 @@ async def export_oficial(client_id: str = Query(...), tipo: str = Query("IVA"),
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
-        decl = _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret, 0,
+        decl = _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret, diferir_meses,
                          override_rebaja=rebaja_ice, override_exencion=exencion_ice,
                          marcar_rebaja=bool(rebaja_manual), marcar_exencion=bool(exencion_manual),
                          override_ventas_15=ventas_15, override_ventas_5=ventas_5, override_ventas_0=ventas_0,
@@ -520,6 +533,7 @@ async def export_oficial(client_id: str = Query(...), tipo: str = Query("IVA"),
 @router.get("/export/excel")
 async def export_excel(client_id: str = Query(...), tipo: str = Query("IVA"),
                        credito_adq: Optional[float] = Query(None), credito_ret: Optional[float] = Query(None),
+                       diferir_meses: int = Query(0),
                        rebaja_ice: Optional[float] = Query(None), exencion_ice: Optional[float] = Query(None),
                        rebaja_manual: int = Query(0), exencion_manual: int = Query(0),
                        ventas_15: Optional[float] = Query(None), ventas_5: Optional[float] = Query(None),
@@ -529,7 +543,7 @@ async def export_excel(client_id: str = Query(...), tipo: str = Query("IVA"),
         import xlsxwriter
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
-        decl = _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret, 0,
+        decl = _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret, diferir_meses,
                          override_rebaja=rebaja_ice, override_exencion=exencion_ice,
                          marcar_rebaja=bool(rebaja_manual), marcar_exencion=bool(exencion_manual),
                          override_ventas_15=ventas_15, override_ventas_5=ventas_5, override_ventas_0=ventas_0,

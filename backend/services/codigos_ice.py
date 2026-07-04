@@ -138,12 +138,21 @@ def buscar_bd(supabase, q, impuesto=None, limit=40):
 
 
 def importar_a_bd(supabase):
-    """Importa TODO el archivo a la tabla ice_codigos (reemplazo total:
-    borra lo existente e inserta lo del archivo). Devuelve cuántos códigos quedaron."""
+    """Importa TODO el archivo a la tabla ice_codigos (reemplazo total).
+    La tabla no tiene una clave natural única (solo el id autogenerado), así
+    que en vez de borrar todo y volver a insertar (lo que deja el catálogo
+    compartido vacío para todos los usuarios si el proceso falla a mitad de
+    camino), primero se insertan las filas nuevas y recién al final se
+    borran las filas viejas (id <= al id máximo antes de insertar). Si el
+    proceso se interrumpe en cualquier punto, el catálogo nunca queda vacío:
+    en el peor caso quedan filas viejas conviviendo con las nuevas
+    (duplicados temporales) hasta que se vuelva a correr la importación."""
     marcas = _cargar_marcas(force=True)
-    # Borrar todo
-    supabase.table("ice_codigos").delete().neq("id", 0).execute()
-    # Insertar por lotes
+    # Id máximo de las filas existentes ("viejas"); todo lo insertado a
+    # partir de ahora tendrá un id mayor (bigserial es siempre creciente).
+    r = supabase.table("ice_codigos").select("id").order("id", desc=True).limit(1).execute()
+    id_max_viejo = r.data[0]["id"] if r.data else 0
+    # Insertar primero lo nuevo (convive con lo viejo mientras dura el import)
     lote = []
     insertados = 0
     for m in marcas:
@@ -159,6 +168,9 @@ def importar_a_bd(supabase):
     if lote:
         supabase.table("ice_codigos").insert(lote).execute()
         insertados += len(lote)
+    # Recién ahora, con lo nuevo ya insertado con éxito, borrar solo lo viejo
+    if id_max_viejo:
+        supabase.table("ice_codigos").delete().lte("id", id_max_viejo).execute()
     return insertados
 
 

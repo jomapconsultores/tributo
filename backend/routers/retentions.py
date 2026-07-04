@@ -8,8 +8,8 @@ from services.retention_parser import parse_retention_xml
 from services.retention_export import generate_retention_excel
 from services.xml_store import guardar_xml_original
 from services.periodo import periodo_cliente, es_de_otro_periodo, etiqueta_periodo
-from database import fetch_all, fetch_in
-from tenancy import assert_client_owner, visible_client_ids
+from database import fetch_all, fetch_in, es_error_duplicado
+from tenancy import assert_client_owner, visible_client_ids, fetch_visible_rows, filter_ids_by_tenancy
 from services.activity import registrar
 
 router = APIRouter(prefix="/api/retentions", tags=["retentions"])
@@ -39,7 +39,7 @@ def _store_retention(supabase, client_id: str, user_id: str, ret: dict) -> str:
         }).execute()
         return "new"
     except Exception as e:
-        if "duplicate" in str(e).lower() or "unique" in str(e).lower():
+        if es_error_duplicado(e):
             return "duplicate"
         print(f"Error insertando retención {ret.get('unique_id')}: {e}")
         return "error"
@@ -56,18 +56,7 @@ async def list_retentions(
             assert_client_owner(client_id, user_id)
             data = fetch_all(lambda: supabase.table("retentions").select(RETENTION_COLUMNS).eq("client_id", client_id).order("fecha", desc=True))
         else:
-            vis = visible_client_ids(user_id)   # None = admin (ve todo)
-            if vis is None:
-                data = fetch_all(lambda: supabase.table("retentions").select(RETENTION_COLUMNS).order("fecha", desc=True))
-            else:
-                own = fetch_all(lambda: supabase.table("retentions").select(RETENTION_COLUMNS).eq("user_id", user_id).order("fecha", desc=True))
-                sh = fetch_in(lambda: supabase.table("retentions").select(RETENTION_COLUMNS), vis, "client_id")
-                seen, data = set(), []
-                for r in own + sh:
-                    if r["id"] not in seen:
-                        seen.add(r["id"])
-                        data.append(r)
-                data.sort(key=lambda x: x.get("fecha") or "", reverse=True)
+            data = fetch_visible_rows(supabase, "retentions", RETENTION_COLUMNS, user_id, order_col="fecha", desc=True)
         return {"data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -120,14 +109,14 @@ async def clear_retentions(
 ):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("retentions").delete().eq("user_id", user_id)
         if client_id:
             assert_client_owner(client_id, user_id)
-            q = q.eq("client_id", client_id)
+            supabase.table("retentions").delete().eq("client_id", client_id).execute()
         else:
-            q = q.neq("id", "00000000-0000-0000-0000-000000000000")
-        q.execute()
+            supabase.table("retentions").delete().eq("user_id", user_id).execute()
         return {"message": "Retenciones eliminadas"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -139,15 +128,14 @@ async def bulk_move(payload: BulkMove, user_id: str = Depends(get_current_user))
     try:
         supabase = get_supabase_client()
         assert_client_owner(payload.client_id, user_id)
-        moved = skipped = 0
-        for rid in payload.ids:
-            try:
-                supabase.table("retentions").update({"client_id": payload.client_id}).eq("id", rid).eq("user_id", user_id).execute()
-                moved += 1
-            except Exception as e:
-                print(f"No se pudo mover retención {rid}: {e}")
-                skipped += 1
-        return {"moved": moved, "skipped": skipped}
+        if not payload.ids:
+            return {"moved": 0, "skipped": 0}
+        ok_ids = filter_ids_by_tenancy(supabase, "retentions", payload.ids, user_id)
+        if ok_ids:
+            supabase.table("retentions").update({"client_id": payload.client_id}).in_("id", ok_ids).execute()
+        return {"moved": len(ok_ids), "skipped": len(payload.ids) - len(ok_ids)}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -159,8 +147,10 @@ async def bulk_delete(payload: BulkIds, user_id: str = Depends(get_current_user)
         if not payload.ids:
             return {"deleted": 0}
         supabase = get_supabase_client()
-        supabase.table("retentions").delete().in_("id", payload.ids).eq("user_id", user_id).execute()
-        return {"deleted": len(payload.ids)}
+        ok_ids = filter_ids_by_tenancy(supabase, "retentions", payload.ids, user_id)
+        if ok_ids:
+            supabase.table("retentions").delete().in_("id", ok_ids).execute()
+        return {"deleted": len(ok_ids)}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -169,8 +159,14 @@ async def bulk_delete(payload: BulkIds, user_id: str = Depends(get_current_user)
 async def delete_retention(retention_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("retentions").delete().eq("id", retention_id).eq("user_id", user_id).execute()
+        row = supabase.table("retentions").select("client_id").eq("id", retention_id).execute().data
+        if not row:
+            raise HTTPException(status_code=404, detail="No encontrada")
+        assert_client_owner(row[0]["client_id"], user_id)
+        supabase.table("retentions").delete().eq("id", retention_id).execute()
         return {"message": "Eliminada"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from typing import Optional, List
 from pydantic import BaseModel
 from auth import get_current_user
-from database import get_supabase_client, fetch_all, fetch_in
+from database import get_supabase_client, fetch_all, fetch_in, es_error_duplicado
 from services.ice_parser import parse_ice_invoice
 from services.ice_calc import full_report
 from services.ice_export import generate_ice_excel, generate_ice_pdf
@@ -13,7 +13,7 @@ from services.codigos_ice import buscar_tokens_bd
 from services.compradores import extraer_compradores, upsert_compradores
 from services.xml_store import guardar_xml_original
 from services.activity import registrar
-from tenancy import assert_client_owner, visible_client_ids
+from tenancy import assert_client_owner, visible_client_ids, fetch_visible_rows, filter_ids_by_tenancy
 
 router = APIRouter(prefix="/api/ice", tags=["ice"])
 
@@ -48,18 +48,7 @@ async def list_ice(user_id: str = Depends(get_current_user), client_id: Optional
             assert_client_owner(client_id, user_id)
             data = fetch_all(lambda: supabase.table("ice_sales").select(ICE_COLUMNS).eq("client_id", client_id).order("fecha", desc=True))
         else:
-            vis = visible_client_ids(user_id)   # None = admin (ve todo)
-            if vis is None:
-                data = fetch_all(lambda: supabase.table("ice_sales").select(ICE_COLUMNS).order("fecha", desc=True))
-            else:
-                own = fetch_all(lambda: supabase.table("ice_sales").select(ICE_COLUMNS).eq("user_id", user_id).order("fecha", desc=True))
-                sh = fetch_in(lambda: supabase.table("ice_sales").select(ICE_COLUMNS), vis, "client_id")
-                seen, data = set(), []
-                for r in own + sh:
-                    if r["id"] not in seen:
-                        seen.add(r["id"])
-                        data.append(r)
-                data.sort(key=lambda x: x.get("fecha") or "", reverse=True)
+            data = fetch_visible_rows(supabase, "ice_sales", ICE_COLUMNS, user_id, order_col="fecha", desc=True)
         return {"data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -92,7 +81,7 @@ async def process_xml(
                     }).execute()
                     new_count += 1
                 except Exception as e:
-                    if "duplicate" in str(e).lower() or "unique" in str(e).lower():
+                    if es_error_duplicado(e):
                         dup_count += 1
                     else:
                         print(f"Error insertando ICE {reg.get('unique_id')}: {e}")
@@ -147,15 +136,17 @@ async def bulk_move(payload: BulkMove, user_id: str = Depends(get_current_user))
     try:
         supabase = get_supabase_client()
         assert_client_owner(payload.client_id, user_id)
-        moved = skipped = 0
-        for iid in payload.ids:
-            try:
-                supabase.table("ice_sales").update({"client_id": payload.client_id}).eq("id", iid).eq("user_id", user_id).execute()
-                moved += 1
-            except Exception as e:
-                print(f"No se pudo mover ICE {iid}: {e}")
-                skipped += 1
-        return {"moved": moved, "skipped": skipped}
+        if not payload.ids:
+            return {"moved": 0, "skipped": 0}
+        # Verificar tenencia sobre el client_id ACTUAL de cada fila (no solo el
+        # destino): filtrar por user_id de sesión hacía que mover filas de otro
+        # dueño (acceso compartido) fallara en silencio (0 filas, "éxito" falso).
+        ok_ids = filter_ids_by_tenancy(supabase, "ice_sales", payload.ids, user_id)
+        if ok_ids:
+            supabase.table("ice_sales").update({"client_id": payload.client_id}).in_("id", ok_ids).execute()
+        return {"moved": len(ok_ids), "skipped": len(payload.ids) - len(ok_ids)}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -166,8 +157,10 @@ async def bulk_delete(payload: BulkIds, user_id: str = Depends(get_current_user)
         if not payload.ids:
             return {"deleted": 0}
         supabase = get_supabase_client()
-        supabase.table("ice_sales").delete().in_("id", payload.ids).eq("user_id", user_id).execute()
-        return {"deleted": len(payload.ids)}
+        ok_ids = filter_ids_by_tenancy(supabase, "ice_sales", payload.ids, user_id)
+        if ok_ids:
+            supabase.table("ice_sales").delete().in_("id", ok_ids).execute()
+        return {"deleted": len(ok_ids)}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -176,14 +169,15 @@ async def bulk_delete(payload: BulkIds, user_id: str = Depends(get_current_user)
 async def clear_ice(client_id: Optional[str] = Query(None), user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("ice_sales").delete().eq("user_id", user_id)
         if client_id:
             assert_client_owner(client_id, user_id)
-            q = q.eq("client_id", client_id)
+            supabase.table("ice_sales").delete().eq("client_id", client_id).execute()
         else:
-            q = q.neq("id", "00000000-0000-0000-0000-000000000000")
-        q.execute()
+            # Sin client_id: solo lo propio (no hay contribuyente que validar).
+            supabase.table("ice_sales").delete().eq("user_id", user_id).execute()
         return {"message": "ICE eliminado"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -192,8 +186,14 @@ async def clear_ice(client_id: Optional[str] = Query(None), user_id: str = Depen
 async def delete_ice(ice_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("ice_sales").delete().eq("id", ice_id).eq("user_id", user_id).execute()
+        row = supabase.table("ice_sales").select("client_id").eq("id", ice_id).execute().data
+        if not row:
+            raise HTTPException(status_code=404, detail="No encontrado")
+        assert_client_owner(row[0]["client_id"], user_id)
+        supabase.table("ice_sales").delete().eq("id", ice_id).execute()
         return {"message": "Eliminado"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

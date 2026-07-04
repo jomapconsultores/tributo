@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { adminAPI } from '../services/api'
+import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import './AdminClientAccess.css'
 
 const MODULOS = [
@@ -97,13 +98,7 @@ export default function AdminClientAccess() {
     }
   }
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return grupos
-    return grupos.filter((g) =>
-      [g.nombre, g.identificacion].some((f) => (f || '').toLowerCase().includes(q))
-    )
-  }, [grupos, search])
+  const filtered = useMemo(() => filtrarClientesPorTexto(grupos, search), [grupos, search])
 
   const conAcceso   = grupos.filter((g) => g.con_acceso).length
   const selectedUser = users.find((u) => u.user_id === selectedUid)

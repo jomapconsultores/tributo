@@ -141,7 +141,7 @@ export default function Admin() {
         <h2>Crear usuario</h2>
         <div className="adm-new-row">
           <input placeholder="correo@cliente.com" value={nuevo.email} onChange={(e) => setNuevo({ ...nuevo, email: e.target.value })} />
-          <input type="text" placeholder="contraseña (mín. 6)" value={nuevo.password} onChange={(e) => setNuevo({ ...nuevo, password: e.target.value })} />
+          <input type="password" placeholder="contraseña (mín. 6)" value={nuevo.password} onChange={(e) => setNuevo({ ...nuevo, password: e.target.value })} />
           <select value={nuevo.plan} onChange={(e) => setNuevo({ ...nuevo, plan: e.target.value })}>
             {PLANES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
           </select>

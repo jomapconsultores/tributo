@@ -111,11 +111,25 @@ def parse_venta_pdf(pdf_bytes: bytes) -> Optional[Dict]:
     exento = _num_antes(t, "SUBTOTAL EXENTO DE IVA")
     iva_15 = _num_antes(t, "IVA 15%")
     iva_5 = _num_antes(t, "IVA 5%")
-    importe_total = _num_antes(t, "VALOR TOTAL")
+    importe_total = round(_num_antes(t, "VALOR TOTAL"), 2)
+
+    # Si no se pudo extraer el valor total, el PDF no tiene el formato esperado
+    # (etiquetas distintas, PDF escaneado, etc.). No lo marcamos "OK": eso haría
+    # ver la factura como procesada normalmente con monto 0, subdeclarando el
+    # ingreso. Se guarda igual (editable luego) pero con estado "REVISAR", la
+    # misma convención que ya usa la app para filas que no deben sumarse a los
+    # totales limpios (ver estado == 'DUPLICADO' en ICE/Retenciones/Gastos).
+    if importe_total <= 0:
+        estado = "REVISAR"
+        notas = "No se pudo leer el VALOR TOTAL del PDF: revisar y completar los montos manualmente."
+    else:
+        estado = "OK"
+        notas = None
 
     return {
         "unique_id": unique_id,
-        "estado": "OK",
+        "estado": estado,
+        "notas": notas,
         "fecha": fecha,
         "tipo_id_cliente": _tipo_id(id_cliente),
         "id_cliente": id_cliente,
@@ -128,5 +142,5 @@ def parse_venta_pdf(pdf_bytes: bytes) -> Optional[Dict]:
         "iva_15": round(iva_15, 2),
         "base_5": round(base_5, 2),
         "iva_5": round(iva_5, 2),
-        "importe_total": round(importe_total, 2),
+        "importe_total": importe_total,
     }

@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useClients } from '../context/ClientContext'
 import { useAccess, homeFor } from '../context/AccessContext'
 import { actividadAPI } from '../services/api'
 import bajadorBookmarklet from '../utils/bajador-facturas.bookmarklet.txt?raw'
 import bajadorIngresosBookmarklet from '../utils/bajador-ingresos.bookmarklet.txt?raw'
+import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import './Sidebar.css'
 
 export default function Sidebar({ onNewClient, onLogout, userEmail, open = false }) {
@@ -37,31 +38,30 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   }, [isSuperAdmin])
 
   // Contribuyentes únicos (por identificación) para el listado por nombre
-  const contribuyentes = []
-  const vistos = new Set()
-  for (const c of clients) {
-    if (vistos.has(c.identificacion)) {
-      // Si algún período es compartido, marcar el contribuyente como compartido
-      const existing = contribuyentes.find((x) => x.identificacion === c.identificacion)
-      if (existing && c.is_shared) {
-        existing.is_shared = true
-        if (!existing.owner_email && c.owner_email) existing.owner_email = c.owner_email
+  const contribuyentes = useMemo(() => {
+    const porIdentificacion = new Map()
+    for (const c of clients) {
+      const existing = porIdentificacion.get(c.identificacion)
+      if (existing) {
+        // Si algún período es compartido, marcar el contribuyente como compartido
+        if (c.is_shared) {
+          existing.is_shared = true
+          if (!existing.owner_email && c.owner_email) existing.owner_email = c.owner_email
+        }
+        continue
       }
-      continue
+      porIdentificacion.set(c.identificacion, {
+        identificacion: c.identificacion,
+        nombre: c.nombre,
+        is_shared: !!c.is_shared,
+        owner_email: c.owner_email || '',
+      })
     }
-    vistos.add(c.identificacion)
-    contribuyentes.push({
-      identificacion: c.identificacion,
-      nombre: c.nombre,
-      is_shared: !!c.is_shared,
-      owner_email: c.owner_email || '',
-    })
-  }
-  contribuyentes.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
+    return Array.from(porIdentificacion.values())
+      .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
+  }, [clients])
   const sharedCount = contribuyentes.filter((c) => c.is_shared).length
-  const contribFiltrados = clientSearch.trim()
-    ? contribuyentes.filter((c) => [c.nombre, c.identificacion].some((f) => String(f || '').toLowerCase().includes(clientSearch.toLowerCase())))
-    : contribuyentes
+  const contribFiltrados = filtrarClientesPorTexto(contribuyentes, clientSearch)
 
   const verContribuyente = (ident) => {
     setFocusIdent(ident)

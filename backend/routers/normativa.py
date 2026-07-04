@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from auth import get_current_user
 from database import get_supabase_client
+from routers.access import es_admin
 
 router = APIRouter(prefix="/api/normativa", tags=["normativa"])
 
@@ -125,11 +126,13 @@ async def reemplazar(
     file: UploadFile = File(...),
     titulo: str = Form(""),
     descripcion: str = Form(""),
-    _: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ):
     """Sube (o reemplaza) el PDF del cuerpo legal: extrae el texto por página
     para la búsqueda y guarda el original en Storage. Reemplazable cuando la
     normativa se actualice."""
+    if not es_admin(user_id):
+        raise HTTPException(status_code=403, detail="Solo administradores")
     if not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="El archivo debe ser un PDF.")
     try:

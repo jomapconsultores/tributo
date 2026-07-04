@@ -3,10 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useClients } from '../context/ClientContext'
 import { declaracionesAPI } from '../services/api'
 import { fmtMoney as money } from '../utils/format'
+import { nombreMes } from '../utils/periodo'
 import './AlertaDeclaracion.css'
-
-const NOMBRE_MES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
 /**
  * Recordatorio global de pagos APLAZADOS que ya vencen (o vencieron), estilo SRI.
@@ -50,7 +48,7 @@ export default function RecordatorioAplazados() {
               Recordatorio de pago aplazado: <strong>{nombre(a.client_id)}</strong> tiene un pago de{' '}
               <strong>{a.tipo}</strong> de <strong>{money(a.monto)}</strong>{' '}
               que {yaVencio ? <strong>VENCIÓ</strong> : 'vence'} en{' '}
-              <strong>{NOMBRE_MES[a.vence_mes]} {a.vence_anio}</strong>. Debe declararse y pagarse.
+              <strong>{nombreMes(a.vence_mes)} {a.vence_anio}</strong>. Debe declararse y pagarse.
             </span>
             <button className="recordatorio-btn" onClick={() => irA(a)}>Ir a declarar →</button>
           </div>

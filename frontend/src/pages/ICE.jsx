@@ -1,22 +1,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
-import { iceAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
-
-// Descarga el ZIP de XML originales subidos, nombrado Tipo_RUC_nombre_mes_año
-const descargarXmlsOriginales = async (cliente, clientId, tipo, modulo) => {
-  try {
-    const nom = (cliente?.nombre || '').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 20)
-    const nombre = `${tipo}_${cliente?.identificacion || ''}_${nom}_${String(cliente?.periodo_mes || '').padStart(2, '0')}_${cliente?.periodo_anio || ''}.zip`
-    const res = await xmlOriginalesAPI.descargar(clientId, modulo)
-    downloadBlob(res.data, nombre, 'application/zip')
-  } catch (err) {
-    if (err.response?.status === 404) alert('Aún no hay XML guardados para este período. Se guardan automáticamente al subir nuevos XML.')
-    else alert('Error: ' + (err.response?.data?.detail || err.message))
-  }
-}
+import { iceAPI, downloadBlob } from '../services/api'
+import { descargarXmlsOriginales } from '../utils/xmlOriginales'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import BulkBar from '../components/BulkBar'
+import { useBulkSelection } from '../hooks/useBulkSelection'
+import { useClientList } from '../hooks/useClientList'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import ClaveHeader from '../components/ClaveHeader'
@@ -91,32 +81,20 @@ export default function ICE() {
   const [anexo, setAnexo] = useState(null) // { actImport, xml, advertencias, ventas } | 'open'
   const [difOpen, setDifOpen] = useState(null) // producto cuya explicación está abierta
 
-  const [rows, setRows] = useState([])
+  const { data: rows, loading, error, reload: load } = useClientList(
+    iceAPI.list, selectedClientId, { errorMessage: 'Error al cargar ICE' }
+  )
   const [report, setReport] = useState(null)
   const [anio, setAnio] = useState(String(selectedClient?.periodo_anio || 2026))
   const [years, setYears] = useState(['2026'])
-  const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState('')
-  const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [filtros, setFiltros] = useState({}) // filtro por cada cuadro
   const setFiltro = (k, v) => setFiltros((p) => ({ ...p, [k]: v }))
   const [dragActive, setDragActive] = useState(false)
-  const [selected, setSelected] = useState(() => new Set())
   const xmlInputRef = useRef(null)
 
   useEffect(() => { iceAPI.taxYears().then((r) => setYears(r.data.years || ['2026'])).catch(() => {}) }, [])
-
-  const load = useCallback(async () => {
-    if (!selectedClientId) { setRows([]); setReport(null); return }
-    setLoading(true); setError('')
-    try {
-      const res = await iceAPI.list(selectedClientId)
-      setRows(res.data?.data || [])
-    } catch (err) {
-      setError('Error al cargar ICE: ' + (err.response?.data?.detail || err.message))
-    } finally { setLoading(false) }
-  }, [selectedClientId])
 
   const loadReport = useCallback(async () => {
     if (!selectedClientId) { setReport(null); return }
@@ -126,7 +104,6 @@ export default function ICE() {
     } catch { setReport(null) }
   }, [selectedClientId, anio])
 
-  useEffect(() => { load() }, [load])
   useEffect(() => { loadReport() }, [loadReport, rows])
 
   const handleUploadXml = async (files) => {
@@ -334,13 +311,7 @@ export default function ICE() {
   }, [rows, search])
 
   // selección múltiple
-  const toggleSel = (id) => setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const allSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.id))
-  const toggleAll = () => setSelected((p) => {
-    if (filtered.every((r) => p.has(r.id))) { const n = new Set(p); filtered.forEach((r) => n.delete(r.id)); return n }
-    return new Set([...p, ...filtered.map((r) => r.id)])
-  })
-  const clearSel = () => setSelected(new Set())
+  const { selected, toggleSel, allSelected, toggleAll, clearSel } = useBulkSelection(filtered)
   const bulkMove = async (clientId) => {
     const ids = [...selected]
     try {

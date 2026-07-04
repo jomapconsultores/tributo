@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { odooAPI } from '../services/api'
 import WorkflowGuide from '../components/WorkflowGuide'
+import { filterBySearch } from '../utils/search'
 
 const fmtMoney = (v) => `$${Number(v || 0).toFixed(2)}`
 
@@ -30,14 +31,12 @@ export default function FacturasProcesadas() {
   useEffect(() => { cargar() }, [])
 
   const filtradas = useMemo(() => {
-    const t = q.trim().toLowerCase()
-    return data.filter((f) => {
+    const byFecha = data.filter((f) => {
       if (desde && (f.fecha || '') < desde) return false
       if (hasta && (f.fecha || '') > hasta) return false
-      if (!t) return true
-      return [f.fecha, f.ruc, f.nombre, f.numero, f.empresa]
-        .some((x) => String(x || '').toLowerCase().includes(t))
+      return true
     })
+    return filterBySearch(byFecha, q, (f) => [f.fecha, f.ruc, f.nombre, f.numero, f.empresa])
   }, [data, q, desde, hasta])
 
   const total = useMemo(() => filtradas.reduce((s, f) => s + (parseFloat(f.total) || 0), 0), [filtradas])

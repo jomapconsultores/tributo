@@ -7,7 +7,7 @@ from database import get_supabase_client, fetch_all, fetch_in
 from services.ice_calc_report import full_report
 from services.ice_calc_export import generate_calc_excel, generate_calc_pdf
 from services.ice_calc_data import TARIFAS
-from tenancy import assert_client_owner, visible_client_ids
+from tenancy import assert_client_owner, visible_client_ids, fetch_visible_rows
 
 router = APIRouter(prefix="/api/ice-calc", tags=["ice-calc"])
 
@@ -68,18 +68,7 @@ async def list_calc(user_id: str = Depends(get_current_user), client_id: Optiona
             assert_client_owner(client_id, user_id)
             rows = supabase.table("ice_calc").select(COLUMNS).eq("client_id", client_id).order("created_at").execute().data or []
         else:
-            vis = visible_client_ids(user_id)   # None = admin (ve todo)
-            if vis is None:
-                rows = fetch_all(lambda: supabase.table("ice_calc").select(COLUMNS).order("created_at"))
-            else:
-                own = supabase.table("ice_calc").select(COLUMNS).eq("user_id", user_id).order("created_at").execute().data or []
-                sh = fetch_in(lambda: supabase.table("ice_calc").select(COLUMNS), vis, "client_id")
-                seen, rows = set(), []
-                for r in own + sh:
-                    if r["id"] not in seen:
-                        seen.add(r["id"])
-                        rows.append(r)
-                rows.sort(key=lambda x: x.get("created_at") or "")
+            rows = fetch_visible_rows(supabase, "ice_calc", COLUMNS, user_id, order_col="created_at", desc=False)
         period = _period(supabase, client_id) if client_id else None
         return {"data": rows, "cliente": period}
     except Exception as e:
@@ -107,9 +96,15 @@ async def create_calc(entry: CalcRow, user_id: str = Depends(get_current_user)):
 async def update_calc(row_id: str, entry: CalcUpdate, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
+        row = supabase.table("ice_calc").select("client_id").eq("id", row_id).execute().data
+        if not row:
+            raise HTTPException(status_code=404, detail="No encontrado")
+        assert_client_owner(row[0]["client_id"], user_id)
         data = {k: v for k, v in entry.dict().items() if v is not None}
-        res = supabase.table("ice_calc").update(data).eq("id", row_id).eq("user_id", user_id).execute()
+        res = supabase.table("ice_calc").update(data).eq("id", row_id).execute()
         return res.data[0] if res.data else None
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -118,14 +113,14 @@ async def update_calc(row_id: str, entry: CalcUpdate, user_id: str = Depends(get
 async def clear_calc(client_id: Optional[str] = Query(None), user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("ice_calc").delete().eq("user_id", user_id)
         if client_id:
             assert_client_owner(client_id, user_id)
-            q = q.eq("client_id", client_id)
+            supabase.table("ice_calc").delete().eq("client_id", client_id).execute()
         else:
-            q = q.neq("id", "00000000-0000-0000-0000-000000000000")
-        q.execute()
+            supabase.table("ice_calc").delete().eq("user_id", user_id).execute()
         return {"message": "Cálculos eliminados"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -134,8 +129,14 @@ async def clear_calc(client_id: Optional[str] = Query(None), user_id: str = Depe
 async def delete_calc(row_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("ice_calc").delete().eq("id", row_id).eq("user_id", user_id).execute()
+        row = supabase.table("ice_calc").select("client_id").eq("id", row_id).execute().data
+        if not row:
+            raise HTTPException(status_code=404, detail="No encontrado")
+        assert_client_owner(row[0]["client_id"], user_id)
+        supabase.table("ice_calc").delete().eq("id", row_id).execute()
         return {"message": "Eliminado"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

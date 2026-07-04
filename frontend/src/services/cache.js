@@ -36,3 +36,10 @@ export function bustPrefix(prefix) {
     if (k.startsWith(prefix)) _store.delete(k)
   }
 }
+
+/** Invalida todo el caché. Debe llamarse en login/logout: las claves no
+ * incluyen user_id, así que sin esto un usuario nuevo podría heredar por
+ * unos minutos los datos cacheados del usuario anterior en el mismo navegador. */
+export function clearAll() {
+  _store.clear()
+}

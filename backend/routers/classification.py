@@ -14,6 +14,11 @@ from reportlab.lib.units import inch
 
 router = APIRouter(prefix="/api/classification", tags=["classification"])
 
+import time as _time
+
+_BACKFILL_TTL = 60  # seg: no repetir el escaneo completo en cada carga de la pagina
+_backfill_cache: dict = {}  # (user_id, is_admin) -> timestamp del ultimo backfill
+
 class ClassificationEntry(BaseModel):
     ruc: str
     nombre_proveedor: str
@@ -93,7 +98,15 @@ def _fill_actividad(supabase, ruc, user_id=None):
 
 def _incluir_proveedores_calificados(supabase, user_id, is_admin):
     """Asegura que los proveedores calificados (Rebajas/Exenciones) también aparezcan
-    en el clasificador de gastos: crea su fila en classification_map si falta."""
+    en el clasificador de gastos: crea su fila en classification_map si falta.
+    Escanea rebajas_proveedores + classification_map completos, así que se
+    limita a una vez cada _BACKFILL_TTL segundos (antes corría en cada carga
+    de la página del clasificador)."""
+    cache_key = (user_id, is_admin)
+    hit = _backfill_cache.get(cache_key)
+    if hit and (_time.monotonic() - hit) < _BACKFILL_TTL:
+        return
+    _backfill_cache[cache_key] = _time.monotonic()
     try:
         cols = "ruc,nombre,categoria,user_id"
         if is_admin:
@@ -102,20 +115,24 @@ def _incluir_proveedores_calificados(supabase, user_id, is_admin):
         else:
             prov = supabase.table("rebajas_proveedores").select(cols).eq("user_id", user_id).eq("calificado", True).execute().data or []
             existentes = {(r.get("ruc") or "").strip() for r in (supabase.table("classification_map").select("ruc").eq("user_id", user_id).execute().data or [])}
+        # Entran SIN CLASIFICAR (categoría de gasto vacía) para que el usuario
+        # los clasifique. Su tipo de calificación se muestra en la columna
+        # Calificación. Un solo insert en lote en vez de uno por proveedor.
+        nuevas = []
         for p in prov:
             ruc = (p.get("ruc") or "").strip()
             if not ruc or ruc in existentes:
                 continue
+            nuevas.append({
+                "user_id": p.get("user_id") or user_id,
+                "ruc": ruc,
+                "nombre_proveedor": (p.get("nombre") or "").upper(),
+                "categoria": "",
+            })
+            existentes.add(ruc)
+        for i in range(0, len(nuevas), 200):
             try:
-                # Entran SIN CLASIFICAR (categoría de gasto vacía) para que el usuario
-                # los clasifique. Su tipo de calificación se muestra en la columna Calificación.
-                supabase.table("classification_map").insert({
-                    "user_id": p.get("user_id") or user_id,
-                    "ruc": ruc,
-                    "nombre_proveedor": (p.get("nombre") or "").upper(),
-                    "categoria": "",
-                }).execute()
-                existentes.add(ruc)
+                supabase.table("classification_map").insert(nuevas[i:i + 200]).execute()
             except Exception:
                 pass
     except Exception:
@@ -421,6 +438,42 @@ async def delete_classification(ruc: str, user_id: str = Depends(get_current_use
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+def _propagate_classifications_bulk(supabase, filas: dict, user_id: str) -> int:
+    """Como _propagate_classification pero para muchos RUC a la vez (usado en
+    /import): consulta las facturas de TODOS los RUC en pocos lotes (en vez de
+    una consulta por RUC) y agrupa los ids por categoría destino para hacer
+    pocos UPDATE en lote en vez de uno por RUC."""
+    rucs = list(filas.keys())
+    if not rucs:
+        return 0
+    invoices = []
+    for i in range(0, len(rucs), 200):
+        lote = rucs[i:i + 200]
+        rows = supabase.table("invoices").select("id,ruc_proveedor,clasificacion")\
+            .eq("user_id", user_id).in_("ruc_proveedor", lote).execute().data or []
+        invoices.extend(rows)
+
+    por_categoria = {}  # categoria destino -> [ids a cambiar]
+    for inv in invoices:
+        categoria = filas.get(inv.get("ruc_proveedor"), (None, None))[1]
+        if not categoria:
+            continue
+        actual = (inv.get("clasificacion") or "").strip().upper()
+        if actual != categoria:
+            por_categoria.setdefault(categoria, []).append(inv["id"])
+
+    cambiadas = 0
+    for categoria, ids in por_categoria.items():
+        for i in range(0, len(ids), 200):
+            lote = ids[i:i + 200]
+            try:
+                r = supabase.table("invoices").update({"clasificacion": categoria}).in_("id", lote).execute()
+                cambiadas += len(r.data or [])
+            except Exception as e:
+                print(f"Error propagando clasificación en lote ({categoria}): {e}")
+    return cambiadas
+
+
 @router.post("/import")
 async def import_classifications(
     file: UploadFile = File(...),
@@ -431,37 +484,42 @@ async def import_classifications(
         df = pd.read_excel(io.BytesIO(content), header=None)
 
         supabase = get_supabase_client()
-        new_count = 0
-        updated = 0
-        reclasificadas = 0
 
+        # 1) Parsear todo el Excel en memoria antes de tocar la BD (RUC repetido
+        # en el archivo: la última fila gana, igual que antes fila por fila).
+        filas = {}  # ruc -> (nombre, categoria)
         for _, row in df.iterrows():
-            try:
-                ruc = str(row[0]).strip().replace("'", "").zfill(13)
-                nombre = str(row[1]).strip().upper() if len(row) > 1 else ""
-                categoria = str(row[2]).strip().upper() if len(row) > 2 else ""
+            ruc = str(row[0]).strip().replace("'", "").zfill(13)
+            nombre = str(row[1]).strip().upper() if len(row) > 1 else ""
+            categoria = str(row[2]).strip().upper() if len(row) > 2 else ""
+            if not ruc or not categoria or ruc == "NAN":
+                continue
+            filas[ruc] = (nombre, categoria)
 
-                if not ruc or not categoria or ruc == "NAN":
-                    continue
+        if not filas:
+            return {"imported": 0, "updated": 0, "reclasificadas": 0}
 
-                existing = supabase.table("classification_map").select("id").eq("ruc", ruc).eq("user_id", user_id).execute()
-                if existing.data:
-                    supabase.table("classification_map").update({
-                        "nombre_proveedor": nombre,
-                        "categoria": categoria
-                    }).eq("ruc", ruc).eq("user_id", user_id).execute()
-                    updated += 1
-                else:
-                    supabase.table("classification_map").insert({
-                        "user_id": user_id,
-                        "ruc": ruc,
-                        "nombre_proveedor": nombre,
-                        "categoria": categoria
-                    }).execute()
-                    new_count += 1
-                reclasificadas += _propagate_classification(supabase, ruc, categoria, user_id)
-            except Exception as row_e:
-                print(f"Error row {ruc}: {row_e}")
+        rucs = list(filas.keys())
+
+        # 2) UNA consulta por lote (no una por fila) para saber cuáles ya existen.
+        existentes = set()
+        for i in range(0, len(rucs), 200):
+            lote = rucs[i:i + 200]
+            rows = supabase.table("classification_map").select("ruc")\
+                .eq("user_id", user_id).in_("ruc", lote).execute().data or []
+            existentes.update(r["ruc"] for r in rows)
+
+        # 3) Upsert en lotes (no insert/update fila por fila).
+        registros = [{"user_id": user_id, "ruc": ruc, "nombre_proveedor": nombre, "categoria": categoria}
+                     for ruc, (nombre, categoria) in filas.items()]
+        for i in range(0, len(registros), 200):
+            lote = registros[i:i + 200]
+            supabase.table("classification_map").upsert(lote, on_conflict="user_id,ruc").execute()
+
+        new_count = sum(1 for ruc in filas if ruc not in existentes)
+        updated = len(filas) - new_count
+
+        reclasificadas = _propagate_classifications_bulk(supabase, filas, user_id)
 
         return {"imported": new_count, "updated": updated, "reclasificadas": reclasificadas}
     except Exception as e:

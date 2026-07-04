@@ -1,14 +1,17 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { classificationAPI } from '../services/api'
+import { useEditableCell, useCopyFeedback } from '../hooks/useEditableCell'
 import './ClassifierTable.css'
 
 const PAGE_SIZE = 50
 
 export default function ClassifierTable({ classifications, onClassificationsChange, onRowChange = null, onRowDelete = null, opcionesCategoria = null }) {
   // Opciones existentes para desplegar al editar (clasificación ágil)
-  const cats = (opcionesCategoria
-    || [...new Set((classifications || []).map((c) => String(c.categoria || '').trim()).filter(Boolean))]).sort()
-  const noms = [...new Set((classifications || []).map((c) => String(c.nombre_proveedor || '').trim()).filter(Boolean))].sort()
+  const cats = useMemo(() => (opcionesCategoria
+    || [...new Set((classifications || []).map((c) => String(c.categoria || '').trim()).filter(Boolean))]).sort(),
+    [opcionesCategoria, classifications])
+  const noms = useMemo(() => [...new Set((classifications || []).map((c) => String(c.nombre_proveedor || '').trim()).filter(Boolean))].sort(),
+    [classifications])
   // Paginación (acelera el render cuando hay muchos RUC)
   const [page, setPage] = useState(1)
   const total = (classifications || []).length
@@ -16,36 +19,19 @@ export default function ClassifierTable({ classifications, onClassificationsChan
   useEffect(() => { setPage(1) }, [total]) // al cambiar filtro/cantidad, vuelve a la 1
   const pageSafe = Math.min(page, totalPages)
   const pageRows = (classifications || []).slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE)
-  const [edit, setEdit] = useState({ id: null, field: null })
-  const [value, setValue] = useState('')
+  const { edit, value, setValue, isEditing, startEdit, cancel, bind } = useEditableCell()
   const [vigOpen, setVigOpen] = useState(null) // id cuya vigencia se muestra
   const [actOpen, setActOpen] = useState(null) // id cuya actividad se ve completa
-  const [copied, setCopied] = useState(null)   // clave recién copiada (feedback)
-  const escRef = useRef(false)                  // se presionó Esc (no guardar al blur)
-
-  const copiar = (texto, clave) => {
-    const t = String(texto ?? '').trim()
-    if (!t || t === '-') return
-    try { navigator.clipboard?.writeText(t) } catch { /* */ }
-    setCopied(clave)
-    setTimeout(() => setCopied((k) => (k === clave ? null : k)), 1000)
-  }
-
-  const startEdit = (id, field, current) => {
-    setEdit({ id, field })
-    setValue(current ?? '')
-  }
-
-  const cancel = () => setEdit({ id: null, field: null })
+  const { copiedKey: copied, copy: copiar } = useCopyFeedback()
 
   const handleSave = async (item) => {
     const { field } = edit
     const ruc = field === 'ruc' ? value.trim() : item.ruc
     const nombre = field === 'nombre_proveedor' ? value : item.nombre_proveedor
     const categoria = field === 'categoria' ? value : item.categoria
-    cancel()
     try {
       const res = await classificationAPI.updateById(item.id, ruc, nombre, categoria)
+      cancel()
       // Solo actualiza ESA fila en pantalla (no recarga toda la tabla → mucho más rápido)
       if (onRowChange) onRowChange(item.id, { ruc, nombre_proveedor: nombre, categoria })
       else onClassificationsChange()
@@ -53,7 +39,7 @@ export default function ClassifierTable({ classifications, onClassificationsChan
       if (n > 0) alert(`✔ ${n} factura(s) SIN CLASIFICAR de este RUC se actualizaron a "${categoria.toUpperCase()}"`)
     } catch (error) {
       alert('Error al guardar: ' + (error.response?.data?.detail || error.message))
-      onClassificationsChange() // si falló, recargar para volver al estado real
+      onClassificationsChange() // si falló, recargar para volver al estado real (se mantiene en edición con lo escrito)
     }
   }
 
@@ -69,20 +55,13 @@ export default function ClassifierTable({ classifications, onClassificationsChan
   }
 
   const cell = (item, field, extraClass = '', placeholder = '-') => {
-    const isEditing = edit.id === item.id && edit.field === field
-    if (isEditing) {
+    if (isEditing(item.id, field)) {
       return (
         <input
           autoFocus
-          value={value}
           list={field === 'categoria' ? 'cl-cats' : field === 'nombre_proveedor' ? 'cl-noms' : undefined}
-          onChange={(e) => setValue(e.target.value)}
-          onBlur={() => { if (escRef.current) { escRef.current = false; cancel(); return } handleSave(item) }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') handleSave(item)
-            if (e.key === 'Escape') { escRef.current = true; cancel() }  // vuelve al estado normal
-          }}
           className="inline-edit"
+          {...bind(() => handleSave(item))}
         />
       )
     }

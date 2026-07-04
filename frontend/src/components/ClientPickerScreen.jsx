@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
+import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import './ClientPickerScreen.css'
 
 const initials = (nombre) => {
@@ -25,11 +26,7 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
 
   const visible = useMemo(() => {
     const base = idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : []
-    if (!search.trim()) return base
-    const q = search.toLowerCase()
-    return base.filter((c) =>
-      [c.nombre, c.identificacion].some((f) => String(f || '').toLowerCase().includes(q))
-    )
+    return filtrarClientesPorTexto(base, search)
   }, [clients, idents_svc, search])
 
   return (

@@ -5,6 +5,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib import colors
+from services.xlsx_styles import ice_formats
 
 COLS = {
     "ICE": ["codProdICE", "gramoAzucar", "tipoIdCliente", "idCliente",
@@ -44,13 +45,10 @@ def generar_anexo_excel(tipo: str, header: dict, rows: list) -> bytes:
     tipo = (tipo or "ICE").upper()
     output = io.BytesIO()
     wb = xlsxwriter.Workbook(output, {"in_memory": True})
-    title_fmt = wb.add_format({"bold": True, "font_color": "#1a5276", "font_size": 13})
-    lbl = wb.add_format({"bold": True, "bg_color": "#eaf2f8", "border": 1})
+    fmt = ice_formats(wb)
+    title_fmt, head, cell, num = fmt["title"], fmt["head"], fmt["cell"], fmt["money"]
+    lbl = wb.add_format({"bold": True, "bg_color": "#eaf2f8", "border": 1})  # estilo propio de este anexo
     val = wb.add_format({"border": 1})
-    head = wb.add_format({"bold": True, "bg_color": "#1a5276", "font_color": "white",
-                          "border": 1, "align": "center", "text_wrap": True})
-    cell = wb.add_format({"border": 1})
-    num = wb.add_format({"border": 1, "num_format": "#,##0.00"})
 
     ws = wb.add_worksheet(f"Anexo {tipo}")
     ws.write(0, 0, f"ANEXO {tipo} — {header.get('Anio', '')}/{str(header.get('Mes', '')).zfill(2)}", title_fmt)

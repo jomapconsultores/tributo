@@ -1,21 +1,13 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
-import { retentionsAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
+import { retentionsAPI, downloadBlob } from '../services/api'
+import { descargarXmlsOriginales } from '../utils/xmlOriginales'
+import { filterBySearch } from '../utils/search'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import BulkBar from '../components/BulkBar'
-
-const descargarXmlsOriginales = async (cliente, clientId, tipo, modulo) => {
-  try {
-    const nom = (cliente?.nombre || '').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 20)
-    const nombre = `${tipo}_${cliente?.identificacion || ''}_${nom}_${String(cliente?.periodo_mes || '').padStart(2, '0')}_${cliente?.periodo_anio || ''}.zip`
-    const res = await xmlOriginalesAPI.descargar(clientId, modulo)
-    downloadBlob(res.data, nombre, 'application/zip')
-  } catch (err) {
-    if (err.response?.status === 404) alert('Aún no hay XML guardados para este período. Se guardan automáticamente al subir nuevos XML.')
-    else alert('Error: ' + (err.response?.data?.detail || err.message))
-  }
-}
+import { useBulkSelection } from '../hooks/useBulkSelection'
+import { useClientList } from '../hooks/useClientList'
 import RetentionReport from '../components/RetentionReport'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
@@ -37,30 +29,13 @@ export default function Retenciones() {
   const { clients, selectedClient, selectedClientId, selectClient, identsForSvc } = useClients()
   const idents_svc = identsForSvc('declaracion_iva,declaracion_ice')
 
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(false)
+  const { data: rows, loading, error, reload: load } = useClientList(
+    retentionsAPI.list, selectedClientId, { errorMessage: 'Error al cargar retenciones' }
+  )
   const [busy, setBusy] = useState('')
-  const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [dragActive, setDragActive] = useState(false)
-  const [selected, setSelected] = useState(() => new Set())
   const xmlInputRef = useRef(null)
-
-  const load = useCallback(async () => {
-    if (!selectedClientId) { setRows([]); return }
-    setLoading(true)
-    setError('')
-    try {
-      const res = await retentionsAPI.list(selectedClientId)
-      setRows(res.data?.data || [])
-    } catch (err) {
-      setError('Error al cargar retenciones: ' + (err.response?.data?.detail || err.message))
-    } finally {
-      setLoading(false)
-    }
-  }, [selectedClientId])
-
-  useEffect(() => { load() }, [load])
 
   const handleUploadXml = async (files) => {
     if (!selectedClientId || !files.length) return
@@ -117,14 +92,9 @@ export default function Retenciones() {
     }
   }
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return rows
-    const q = search.toLowerCase()
-    return rows.filter((r) =>
-      [r.fecha, r.ruc_emisor, r.agente_retencion, r.nro_comprobante, r.periodo_fiscal]
-        .some((f) => String(f || '').toLowerCase().includes(q))
-    )
-  }, [rows, search])
+  const filtered = useMemo(() =>
+    filterBySearch(rows, search, (r) => [r.fecha, r.ruc_emisor, r.agente_retencion, r.nro_comprobante, r.periodo_fiscal]),
+  [rows, search])
 
   const tot = useMemo(() => filtered.reduce((t, r) => ({
     renta: t.renta + (parseFloat(r.ret_renta) || 0),
@@ -134,19 +104,7 @@ export default function Retenciones() {
   }), { renta: 0, iva: 0, isd: 0, total: 0 }), [filtered])
 
   // ---- Selección múltiple ----
-  const toggleSel = (id) => setSelected((prev) => {
-    const n = new Set(prev)
-    n.has(id) ? n.delete(id) : n.add(id)
-    return n
-  })
-  const allSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.id))
-  const toggleAll = () => setSelected((prev) => {
-    if (filtered.every((r) => prev.has(r.id))) {
-      const n = new Set(prev); filtered.forEach((r) => n.delete(r.id)); return n
-    }
-    return new Set([...prev, ...filtered.map((r) => r.id)])
-  })
-  const clearSel = () => setSelected(new Set())
+  const { selected, toggleSel, allSelected, toggleAll, clearSel } = useBulkSelection(filtered)
 
   const bulkMove = async (clientId) => {
     const ids = [...selected]

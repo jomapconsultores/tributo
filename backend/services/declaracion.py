@@ -341,12 +341,16 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
     if pagos_aplazados_vencen_este_periodo is None:
         pagos_aplazados_vencen_este_periodo = []
 
-    g = ice_audit_general(ice_rows, anio)
+    # audit_detail se calcula UNA sola vez y se reutiliza en resumen_general y
+    # resumen_por_producto (antes cada uno lo recalculaba por su cuenta: 2-3
+    # pasadas completas sobre las mismas filas).
+    det = ice_audit_detail(ice_rows, anio)
+    g = ice_audit_general(ice_rows, anio, det=det)
     tax = tax_params(anio)
     esp = tax.get("esp", 0.0)
     # Base imponible ad valorem (303): SOLO las ventas cuyo precio por litro
     # supera el umbral (si ninguna cumple, el casillero queda en 0)
-    base = sum(_f(d.get("subtotal")) for d in ice_audit_detail(ice_rows, anio) if d.get("aplica_adv"))
+    base = sum(_f(d.get("subtotal")) for d in det if d.get("aplica_adv"))
     # El ICE a declarar = el FACTURADO (lo que consta en las facturas, suma de valor_ice),
     # para que la declaración COINCIDA con las facturas. El ad-valorem se toma de la auditoría
     # y el específico = facturado − ad-valorem. El volumen (litros de alcohol puro, casilla
@@ -370,7 +374,7 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
     rebaja_auto = 0.0
     exencion_auto = 0.0
     if cumplen:
-        for fp in ice_por_producto(ice_rows, anio):
+        for fp in ice_por_producto(ice_rows, anio, det=det):
             nombre = (fp.get("producto") or "").upper().strip()
             for p, d in cumplen.items():
                 pn = p.upper().strip()

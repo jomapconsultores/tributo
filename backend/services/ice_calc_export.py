@@ -1,6 +1,7 @@
 import io
 from services.ice_calc_report import enrich, por_categoria, por_producto, general
 from services.ice_calc_data import CAT_LABEL, tarifas_anio, iva_rate
+from services.xlsx_styles import ice_formats
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
@@ -20,16 +21,13 @@ def generate_calc_excel(rows, anio, mes, cliente=None) -> bytes:
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         wb = writer.book
-        head = wb.add_format({'bold': True, 'bg_color': '#1a5276', 'font_color': 'white', 'border': 1, 'align': 'center', 'text_wrap': True})
-        money = wb.add_format({'num_format': '#,##0.00', 'border': 1})
-        cell = wb.add_format({'border': 1})
-        tot = wb.add_format({'bold': True, 'bg_color': '#27ae60', 'font_color': 'white', 'border': 1, 'num_format': '#,##0.00'})
-        totlbl = wb.add_format({'bold': True, 'bg_color': '#27ae60', 'font_color': 'white', 'border': 1})
+        fmt = ice_formats(wb)
+        head, money, cell, tot, totlbl = fmt["head"], fmt["money"], fmt["cell"], fmt["tot"], fmt["tot_lbl"]
 
         # Hoja Detalle
         ws = wb.add_worksheet("Detalle")
         ws.write(0, 0, f"CÁLCULO ICE — {_label_cliente(cliente)} — {mes}/{anio} (IVA {int(iva_rate(anio, mes)*100)}%)",
-                 wb.add_format({'bold': True, 'font_color': '#1a5276', 'font_size': 13}))
+                 fmt["title"])
         cols = ["Producto", "Categoría", "Por cajas", "Cajas", "Bot/Caja", "Botellas",
                 "Grado %", "Cap. ml", "Precio", "$/Bot", "ICE Específico", "ICE Ad-Valorem",
                 "Total ICE", "Subtotal", "Base IVA", "IVA", "PVP"]

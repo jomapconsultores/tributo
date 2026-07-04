@@ -8,7 +8,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from pydantic import BaseModel
 from auth import get_current_user
-from database import get_supabase_client
+from database import get_supabase_client, es_error_duplicado
 from services.xml_parser_ventas import parse_venta_xml
 from services.pdf_parser_ventas import parse_venta_pdf
 from services.xml_store import guardar_xml_original
@@ -16,7 +16,7 @@ from services.periodo import periodo_cliente, es_de_otro_periodo, etiqueta_perio
 from services.sri_service import extract_claves_from_txt, descargar_multiples_xmls
 from services.activity import registrar
 from database import fetch_all, fetch_in
-from tenancy import assert_client_owner, visible_client_ids
+from tenancy import assert_client_owner, visible_client_ids, fetch_visible_rows, filter_ids_by_tenancy
 
 router = APIRouter(prefix="/api/sales-iva", tags=["sales_iva"])
 
@@ -63,18 +63,7 @@ async def list_sales(user_id: str = Depends(get_current_user), client_id: Option
             assert_client_owner(client_id, user_id)
             data = fetch_all(lambda: supabase.table("sales_iva").select(COLUMNS).eq("client_id", client_id).order("fecha", desc=True))
         else:
-            vis = visible_client_ids(user_id)   # None = admin (ve todo)
-            if vis is None:
-                data = fetch_all(lambda: supabase.table("sales_iva").select(COLUMNS).order("fecha", desc=True))
-            else:
-                own = fetch_all(lambda: supabase.table("sales_iva").select(COLUMNS).eq("user_id", user_id).order("fecha", desc=True))
-                sh = fetch_in(lambda: supabase.table("sales_iva").select(COLUMNS), vis, "client_id")
-                seen, data = set(), []
-                for r in own + sh:
-                    if r["id"] not in seen:
-                        seen.add(r["id"])
-                        data.append(r)
-                data.sort(key=lambda x: x.get("fecha") or "", reverse=True)
+            data = fetch_visible_rows(supabase, "sales_iva", COLUMNS, user_id, order_col="fecha", desc=True)
         return {"data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -131,8 +120,7 @@ async def process_xml(
                 }).execute()
                 new_count += 1
             except Exception as e:
-                msg = str(e).lower()
-                if "duplicate" in msg or "unique" in msg:
+                if es_error_duplicado(e):
                     dup_count += 1
                 else:
                     print(f"Error insertando sales_iva {parsed.get('unique_id')}: {e}")
@@ -172,8 +160,7 @@ def _guardar_venta(supabase, client_id, user_id, xml_content, pmes=None, panio=N
         supabase.table("sales_iva").insert({"client_id": client_id, "user_id": user_id, **parsed}).execute()
         return "new", None
     except Exception as e:
-        msg = str(e).lower()
-        if "duplicate" in msg or "unique" in msg:
+        if es_error_duplicado(e):
             return "dup", None
         print(f"Error insertando sales_iva {parsed.get('unique_id')}: {e}")
         return "err", None
@@ -253,8 +240,14 @@ async def clear(client_id: str = Query(...), user_id: str = Depends(get_current_
 async def delete_one(sale_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("sales_iva").delete().eq("id", sale_id).eq("user_id", user_id).execute()
+        row = supabase.table("sales_iva").select("client_id").eq("id", sale_id).execute().data
+        if not row:
+            raise HTTPException(status_code=404, detail="Factura no encontrada")
+        assert_client_owner(row[0]["client_id"], user_id)
+        supabase.table("sales_iva").delete().eq("id", sale_id).execute()
         return {"ok": True}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -270,9 +263,10 @@ async def update_sale(sale_id: str, body: SaleUpdate, user_id: str = Depends(get
         if not cambios:
             raise HTTPException(status_code=400, detail="Sin cambios")
         # Verificar propiedad y obtener fila actual
-        cur = supabase.table("sales_iva").select(COLUMNS).eq("id", sale_id).eq("user_id", user_id).limit(1).execute()
+        cur = supabase.table("sales_iva").select(COLUMNS).eq("id", sale_id).limit(1).execute()
         if not cur.data:
             raise HTTPException(status_code=404, detail="Factura no encontrada")
+        assert_client_owner(cur.data[0]["client_id"], user_id)
         row = {**cur.data[0], **cambios}
         # Recalcular total si no se envió explícitamente
         if "importe_total" not in cambios:
@@ -281,7 +275,7 @@ async def update_sale(sale_id: str, body: SaleUpdate, user_id: str = Depends(get
                 + float(row.get("iva_15") or 0) + float(row.get("base_5") or 0)
                 + float(row.get("iva_5") or 0) + float(row.get("no_objeto_iva") or 0)
                 + float(row.get("exento_iva") or 0), 2)
-        supabase.table("sales_iva").update(cambios).eq("id", sale_id).eq("user_id", user_id).execute()
+        supabase.table("sales_iva").update(cambios).eq("id", sale_id).execute()
         registrar(actor_user_id=user_id, action="update", module="ingresos_iva",
                   entity=f"Factura {row.get('factura_numero') or sale_id}",
                   client_id=row.get("client_id"))
@@ -298,14 +292,17 @@ async def bulk_move(body: BulkMove, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
         assert_client_owner(body.client_id, user_id)
-        moved = skipped = 0
-        for sale_id in body.ids:
-            try:
-                supabase.table("sales_iva").update({"client_id": body.client_id}).eq("id", sale_id).eq("user_id", user_id).execute()
-                moved += 1
-            except Exception:
-                skipped += 1
-        return {"ok": True, "moved": moved, "skipped": skipped}
+        if not body.ids:
+            return {"ok": True, "moved": 0, "skipped": 0}
+        # Verificar tenencia sobre el client_id ACTUAL de cada fila (no solo el
+        # destino): con acceso compartido, filtrar por user_id de sesión hacía
+        # que mover filas de otro dueño fallara en silencio (0 filas, "éxito" falso).
+        ok_ids = filter_ids_by_tenancy(supabase, "sales_iva", body.ids, user_id)
+        if ok_ids:
+            supabase.table("sales_iva").update({"client_id": body.client_id}).in_("id", ok_ids).execute()
+        return {"ok": True, "moved": len(ok_ids), "skipped": len(body.ids) - len(ok_ids)}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -314,8 +311,11 @@ async def bulk_move(body: BulkMove, user_id: str = Depends(get_current_user)):
 async def bulk_delete(body: BulkIds, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        for sale_id in body.ids:
-            supabase.table("sales_iva").delete().eq("id", sale_id).eq("user_id", user_id).execute()
-        return {"ok": True, "deleted": len(body.ids)}
+        if not body.ids:
+            return {"ok": True, "deleted": 0}
+        ok_ids = filter_ids_by_tenancy(supabase, "sales_iva", body.ids, user_id)
+        if ok_ids:
+            supabase.table("sales_iva").delete().in_("id", ok_ids).execute()
+        return {"ok": True, "deleted": len(ok_ids)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

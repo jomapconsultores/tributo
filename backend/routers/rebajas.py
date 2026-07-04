@@ -7,10 +7,36 @@ from typing import Optional, List
 from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client
+from tenancy import can_access_identificacion
 from services.min_produccion import verificar_ruc
 from services.doc_ia import leer_documento_ia
 
 router = APIRouter(prefix="/api/rebajas", tags=["rebajas"])
+
+
+def _owner_uid(supabase, identificacion: str, user_id: str) -> str:
+    """Resuelve el user_id DUEÑO real del contribuyente (el mismo para todos sus
+    períodos). Los componentes/proveedores de rebajas se guardan SIEMPRE bajo el
+    dueño real (no bajo quien los carga) para que _rebajas_por_producto (usada al
+    calcular la declaración ICE, que consulta por owner_uid) los encuentre sin
+    importar si quien los cargó fue un socio con acceso compartido."""
+    if not can_access_identificacion(user_id, identificacion):
+        raise HTTPException(status_code=404, detail="Contribuyente no encontrado")
+    r = supabase.table("clients").select("user_id").eq("identificacion", identificacion).limit(1).execute().data
+    return r[0]["user_id"] if r else user_id
+
+
+def _owner_uid_de_fila(supabase, tabla: str, rid: str, user_id: str) -> str:
+    """Para endpoints con :id (sin identificacion en la URL): ubica la fila,
+    verifica que el usuario puede acceder a su identificacion, y devuelve el
+    owner_uid real de esa fila (para reusar el mismo filtro de guardado)."""
+    row = supabase.table(tabla).select("identificacion,user_id").eq("id", rid).execute().data
+    if not row:
+        raise HTTPException(status_code=404, detail="No encontrado")
+    ident = row[0].get("identificacion")
+    if not can_access_identificacion(user_id, ident):
+        raise HTTPException(status_code=404, detail="No encontrado")
+    return row[0].get("user_id") or user_id
 
 
 @router.get("/verificar-ruc")
@@ -42,10 +68,13 @@ async def list_rebajas(
 ):
     try:
         supabase = get_supabase_client()
-        q = supabase.table("rebajas_ingredientes").select(COLUMNS).eq("identificacion", identificacion).eq("user_id", user_id)
+        owner_uid = _owner_uid(supabase, identificacion, user_id)
+        q = supabase.table("rebajas_ingredientes").select(COLUMNS).eq("identificacion", identificacion).eq("user_id", owner_uid)
         if producto:
             q = q.eq("producto", producto)
         return {"data": q.order("ingrediente").execute().data or []}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -55,7 +84,7 @@ async def create_rebaja(entry: RebajaIn, user_id: str = Depends(get_current_user
     try:
         supabase = get_supabase_client()
         data = entry.dict()
-        data["user_id"] = user_id
+        data["user_id"] = _owner_uid(supabase, entry.identificacion, user_id)
         data["ingrediente"] = (data.get("ingrediente") or "").strip().upper()
         data["origen"] = (data.get("origen") or "NACIONAL").upper()
         if not data["ingrediente"]:
@@ -83,13 +112,16 @@ async def update_rebaja(rid: str, entry: RebajaUpdate, user_id: str = Depends(ge
     """Edita un componente (p. ej. asignar/cambiar el RUC del proveedor por fila)."""
     try:
         supabase = get_supabase_client()
+        owner_uid = _owner_uid_de_fila(supabase, "rebajas_ingredientes", rid, user_id)
         data = {k: v for k, v in entry.dict().items() if v is not None}
         if "ingrediente" in data:
             data["ingrediente"] = data["ingrediente"].strip().upper()
         if "proveedor_nombre" in data:
             data["proveedor_nombre"] = (data["proveedor_nombre"] or "").strip().upper()
-        res = supabase.table("rebajas_ingredientes").update(data).eq("id", rid).eq("user_id", user_id).execute()
+        res = supabase.table("rebajas_ingredientes").update(data).eq("id", rid).eq("user_id", owner_uid).execute()
         return res.data[0] if res.data else None
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -98,8 +130,11 @@ async def update_rebaja(rid: str, entry: RebajaUpdate, user_id: str = Depends(ge
 async def delete_rebaja(rid: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("rebajas_ingredientes").delete().eq("id", rid).eq("user_id", user_id).execute()
+        owner_uid = _owner_uid_de_fila(supabase, "rebajas_ingredientes", rid, user_id)
+        supabase.table("rebajas_ingredientes").delete().eq("id", rid).eq("user_id", owner_uid).execute()
         return {"message": "Eliminado"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -187,8 +222,11 @@ async def bulk_create(entry: RebajaBulkIn, user_id: str = Depends(get_current_us
     """Carga masiva de componentes pegados desde Excel (filas ya parseadas)."""
     try:
         supabase = get_supabase_client()
-        n = _insertar_componentes(supabase, user_id, entry.identificacion, entry.producto, entry.items)
+        owner_uid = _owner_uid(supabase, entry.identificacion, user_id)
+        n = _insertar_componentes(supabase, owner_uid, entry.identificacion, entry.producto, entry.items)
         return {"insertados": n}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -266,7 +304,8 @@ async def parse_file(
                 rows.append(list(r))
         items = _filas_a_items(rows)
         supabase = get_supabase_client()
-        n = _insertar_componentes(supabase, user_id, identificacion, producto, items)
+        owner_uid = _owner_uid(supabase, identificacion, user_id)
+        n = _insertar_componentes(supabase, owner_uid, identificacion, producto, items)
         return {"insertados": n}
     except HTTPException:
         raise
@@ -335,9 +374,12 @@ class ProveedorIn(BaseModel):
 async def list_proveedores(identificacion: str = Query(...), user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
+        owner_uid = _owner_uid(supabase, identificacion, user_id)
         r = supabase.table("rebajas_proveedores").select(PROV_COLS)\
-            .eq("identificacion", identificacion).eq("user_id", user_id).order("nombre").execute()
+            .eq("identificacion", identificacion).eq("user_id", owner_uid).order("nombre").execute()
         return {"data": r.data or []}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -349,8 +391,9 @@ async def enriquecer_actividades_prov(identificacion: str = Query(...), user_id:
     try:
         from services.min_produccion import consultar_sri
         supabase = get_supabase_client()
+        owner_uid = _owner_uid(supabase, identificacion, user_id)
         rows = supabase.table("rebajas_proveedores").select("id,ruc,actividad")\
-            .eq("identificacion", identificacion).eq("user_id", user_id).execute().data or []
+            .eq("identificacion", identificacion).eq("user_id", owner_uid).execute().data or []
         faltan = [r for r in rows if (r.get("ruc") or "").strip() and not (r.get("actividad") or "").strip()]
         lote = faltan[:8]
         actualizados = 0
@@ -396,7 +439,8 @@ async def upsert_proveedor(entry: ProveedorIn, user_id: str = Depends(get_curren
         if not (entry.ruc or "").strip():
             raise HTTPException(status_code=400, detail="El RUC es obligatorio")
         supabase = get_supabase_client()
-        res = _upsert_proveedor(supabase, user_id, entry.identificacion, entry.ruc,
+        owner_uid = _owner_uid(supabase, entry.identificacion, user_id)
+        res = _upsert_proveedor(supabase, owner_uid, entry.identificacion, entry.ruc,
                                 entry.nombre, entry.calificado, entry.categoria, entry.vigencia, entry.vigente_hasta, entry.vigencia_inicio, entry.actividad)
         return res.data[0] if res.data else None
     except HTTPException:
@@ -409,8 +453,11 @@ async def upsert_proveedor(entry: ProveedorIn, user_id: str = Depends(get_curren
 async def delete_proveedor(pid: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("rebajas_proveedores").delete().eq("id", pid).eq("user_id", user_id).execute()
+        owner_uid = _owner_uid_de_fila(supabase, "rebajas_proveedores", pid, user_id)
+        supabase.table("rebajas_proveedores").delete().eq("id", pid).eq("user_id", owner_uid).execute()
         return {"message": "Eliminado"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -439,6 +486,7 @@ async def subir_documento(
     calificación y vigencia (inicio–fin) automáticamente."""
     try:
         supabase = get_supabase_client()
+        owner_uid = _owner_uid(supabase, identificacion, user_id)
         _prov_bucket(supabase)
         content = await file.read()
         auto = not (ruc or "").strip()
@@ -466,12 +514,12 @@ async def subir_documento(
         supabase.storage.from_(PROV_BUCKET).upload(
             path, content, {"content-type": file.content_type or "application/octet-stream", "upsert": "true"})
         cur = supabase.table("rebajas_proveedores").select("id,documentos,nombre,calificado,vigente_hasta,vigencia_inicio,actividad")\
-            .eq("user_id", user_id).eq("identificacion", identificacion).eq("ruc", ruc).execute().data
+            .eq("user_id", owner_uid).eq("identificacion", identificacion).eq("ruc", ruc).execute().data
         prev = cur[0] if cur else {}
         docs = (prev.get("documentos") or []) if prev else []
         docs.append({"nombre": file.filename, "path": path, "subido": datetime.now(timezone.utc).isoformat()})
         data = {
-            "user_id": user_id, "identificacion": identificacion, "ruc": ruc,
+            "user_id": owner_uid, "identificacion": identificacion, "ruc": ruc,
             "nombre": (nombre or ia.get("nombre") or verif.get("razon_social") or prev.get("nombre") or "").strip().upper(),
             "calificado": bool(calificado) or bool(ia.get("calificado")) or bool(verif.get("cumple")) or bool(prev.get("calificado")),
             "categoria": ia.get("categoria") or verif.get("categoria") or "",
@@ -495,13 +543,22 @@ async def subir_documento(
 
 
 @router.get("/proveedores/documento-url")
-async def documento_url(path: str = Query(...), _: str = Depends(get_current_user)):
+async def documento_url(path: str = Query(...), user_id: str = Depends(get_current_user)):
     """Devuelve una URL firmada temporal para ver/descargar un documento."""
     try:
+        # El path se guarda como "{identificacion}/{ruc}/{archivo}" (ver
+        # subir_documento) — valida acceso al RUC antes de firmar la URL, para
+        # que un usuario no pueda descargar documentos de otro contribuyente
+        # solo por adivinar/conocer el path.
+        identificacion = path.split("/", 1)[0] if path else ""
+        if not identificacion or not can_access_identificacion(user_id, identificacion):
+            raise HTTPException(status_code=404, detail="No encontrado")
         supabase = get_supabase_client()
         r = supabase.storage.from_(PROV_BUCKET).create_signed_url(path, 3600)
         url = r.get("signedURL") or r.get("signedUrl") or r.get("signed_url") if isinstance(r, dict) else None
         return {"url": url}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -516,8 +573,9 @@ async def verificar_todos(
     completo), actualiza el catálogo de proveedores y los componentes guardados."""
     try:
         supabase = get_supabase_client()
+        owner_uid = _owner_uid(supabase, identificacion, user_id)
         q = supabase.table("rebajas_ingredientes").select("ruc_proveedor")\
-            .eq("identificacion", identificacion).eq("user_id", user_id)
+            .eq("identificacion", identificacion).eq("user_id", owner_uid)
         if producto:
             q = q.eq("producto", producto.strip().upper())
         rucs = sorted({(r.get("ruc_proveedor") or "").strip() for r in (q.execute().data or [])} - {""})
@@ -530,19 +588,21 @@ async def verificar_todos(
                 continue
             cumple = bool(d.get("cumple"))
             nombre = d.get("razon_social") or ""
-            _upsert_proveedor(supabase, user_id, identificacion, ruc, nombre, cumple,
+            _upsert_proveedor(supabase, owner_uid, identificacion, ruc, nombre, cumple,
                               d.get("categoria", ""), d.get("vigencia", ""),
                               d.get("vigencia_fin"), d.get("vigencia_inicio"), d.get("actividad_economica"))
             # Propaga a los componentes guardados con ese RUC
             upd = supabase.table("rebajas_ingredientes").update(
                 {"calificado": cumple, "proveedor_nombre": (nombre or "").upper()})\
-                .eq("identificacion", identificacion).eq("user_id", user_id).eq("ruc_proveedor", ruc)
+                .eq("identificacion", identificacion).eq("user_id", owner_uid).eq("ruc_proveedor", ruc)
             if producto:
                 upd = upd.eq("producto", producto.strip().upper())
             upd.execute()
             resultados.append({"ruc": ruc, "cumple": cumple, "nombre": nombre,
                                "categoria": d.get("categoria", ""), "mensaje": d.get("mensaje", "")})
         return {"verificados": len(resultados), "data": resultados}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -569,11 +629,14 @@ async def get_condiciones(
     """Condiciones normativas guardadas (de un producto, o todas las del RUC)."""
     try:
         supabase = get_supabase_client()
+        owner_uid = _owner_uid(supabase, identificacion, user_id)
         q = supabase.table("rebajas_productos").select(PROD_COLS).eq(
-            "identificacion", identificacion).eq("user_id", user_id)
+            "identificacion", identificacion).eq("user_id", owner_uid)
         if producto:
             q = q.eq("producto", producto.strip().upper())
         return {"data": q.execute().data or []}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -587,7 +650,7 @@ async def set_condiciones(entry: CondicionesProducto, user_id: str = Depends(get
         data["producto"] = (data.get("producto") or "").strip().upper()
         if not data["producto"]:
             raise HTTPException(status_code=400, detail="El producto es obligatorio")
-        data["user_id"] = user_id
+        data["user_id"] = _owner_uid(supabase, entry.identificacion, user_id)
         res = supabase.table("rebajas_productos").upsert(
             data, on_conflict="user_id,identificacion,producto").execute()
         return res.data[0] if res.data else None

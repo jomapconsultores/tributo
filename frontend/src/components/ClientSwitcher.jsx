@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useClients } from '../context/ClientContext'
 import { periodoCorto } from '../utils/periodo'
+import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import './ClientSwitcher.css'
 
 export default function ClientSwitcher({ onNewClient, idents_svc = null }) {
@@ -29,13 +30,7 @@ export default function ClientSwitcher({ onNewClient, idents_svc = null }) {
     return out.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
   }, [clients, idents_svc])
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return contribs
-    return contribs.filter((c) =>
-      [c.nombre, c.identificacion].some((f) => String(f || '').toLowerCase().includes(q))
-    )
-  }, [contribs, search])
+  const filtered = useMemo(() => filtrarClientesPorTexto(contribs, search), [contribs, search])
 
   const periodos = useMemo(() =>
     clients

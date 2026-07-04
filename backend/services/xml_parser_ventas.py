@@ -123,6 +123,15 @@ def parse_venta_xml(xml_content: str) -> Optional[Dict]:
                 if cod_porc == '0':
                     base_0 += base
                 elif cod_porc in TARIFA_15:
+                    if cod_porc == '8':
+                        # 8% (feriados fiscales): tarifa distinta al 15%. El
+                        # modelo (columnas base_15/iva_15) no tiene casilla
+                        # propia para el 8% — se agrupa con la tarifa general
+                        # (no se pierde el IVA) pero se avisa para que el
+                        # contador verifique el casillero manualmente.
+                        print(f"[xml_parser_ventas] Aviso: factura {factura_numero or unique_id} "
+                              f"tiene ${base:.2f} gravados al 8%% (IVA ${valor:.2f}) — se agrupó "
+                              f"con la tarifa general (15%%); verificar manualmente.")
                     base_15 += base
                     iva_15 += valor
                 elif cod_porc == '5':

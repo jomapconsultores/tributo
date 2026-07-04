@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { credentialsAPI, clientsAPI } from '../services/api'
 import { infoDeclaracion } from '../utils/declaracionSRI'
+import { filterBySearch } from '../utils/search'
 import './AdminCredentials.css'
 
 const SERVICIOS = [{ key: 'sri_portal', label: 'Portal SRI' }]
@@ -92,14 +93,12 @@ export default function AdminCredentials() {
   }, [creds, contribs, servicesByRuc])
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    let list = allRows.filter((c) => {
-      const matchSearch = !q ||
-        [c.nombre, c.ruc, c.username, c.notes].some((f) => String(f || '').toLowerCase().includes(q))
+    let list = filterBySearch(allRows, search, (c) => [c.nombre, c.ruc, c.username, c.notes])
+    list = list.filter((c) => {
       const matchSvc = svcFilter.length === 0 ||
         svcFilter.some((k) => c.client_services?.includes(k))
       const matchDia = !diaFilter || infoDeclaracion(c.ruc).dia === Number(diaFilter)
-      return matchSearch && matchSvc && matchDia
+      return matchSvc && matchDia
     })
     if (ordenFecha) {
       list = [...list].sort((a, b) => {

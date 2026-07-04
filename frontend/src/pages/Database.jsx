@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
-import { invoicesAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
+import { invoicesAPI, downloadBlob } from '../services/api'
+import { descargarXmlsOriginales } from '../utils/xmlOriginales'
 import { useClients } from '../context/ClientContext'
 import WorkflowGuide from '../components/WorkflowGuide'
 import InvoiceTabs from '../components/InvoiceTabs'
@@ -111,18 +112,7 @@ export default function Database() {
     }
   }
 
-  const handleDownloadXmls = async () => {
-    try {
-      const c = selectedClient || {}
-      const nom = (c.nombre || '').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 20)
-      const nombre = `Gastos_${c.identificacion || ''}_${nom}_${String(c.periodo_mes || '').padStart(2, '0')}_${c.periodo_anio || ''}.zip`
-      const res = await xmlOriginalesAPI.descargar(selectedClientId, 'gasto')
-      downloadBlob(res.data, nombre, 'application/zip')
-    } catch (err) {
-      if (err.response?.status === 404) alert('Aún no hay XML guardados para este período. Se guardan automáticamente al subir nuevos XML.')
-      else alert('Error: ' + (err.response?.data?.detail || err.message))
-    }
-  }
+  const handleDownloadXmls = () => descargarXmlsOriginales(selectedClient, selectedClientId, 'Gastos', 'gasto')
 
   const handleClear = async () => {
     if (!window.confirm(`¿Eliminar TODAS las facturas de ${selectedClient?.nombre}?`)) return

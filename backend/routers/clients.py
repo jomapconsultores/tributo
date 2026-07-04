@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client, fetch_all
 from services.sri_ruc import consultar_ruc
-from tenancy import visible_clients, assert_client_owner, invalidate_clients_cache
+from tenancy import visible_clients, assert_client_owner, invalidate_clients_cache, can_access_identificacion
 from services.activity import registrar
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
@@ -177,7 +177,9 @@ async def client_summary(identificacion: str, user_id: str = Depends(get_current
     try:
         supabase = get_supabase_client()
         ident = identificacion.strip()
-        recs = supabase.table("clients").select("*").eq("identificacion", ident).eq("user_id", user_id).execute().data or []
+        if not can_access_identificacion(user_id, ident):
+            raise HTTPException(status_code=404, detail="No hay registros para esa identificación")
+        recs = supabase.table("clients").select("*").eq("identificacion", ident).execute().data or []
         if not recs:
             raise HTTPException(status_code=404, detail="No hay registros para esa identificación")
 
@@ -251,7 +253,8 @@ async def services_map(user_id: str = Depends(get_current_user)):
 async def get_client(client_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        response = supabase.table("clients").select("*").eq("id", client_id).eq("user_id", user_id).execute()
+        assert_client_owner(client_id, user_id)
+        response = supabase.table("clients").select("*").eq("id", client_id).execute()
         if not response.data:
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
         return response.data[0]
@@ -325,18 +328,23 @@ async def update_client(client_id: str, entry: ClientUpdate, user_id: str = Depe
         if "nombre" in data:
             data["nombre"] = data["nombre"].strip().upper()
         data["updated_at"] = "now()"
-        # Identificación actual (para ubicar todos los períodos del contribuyente).
-        cur = supabase.table("clients").select("identificacion").eq("id", client_id).execute().data
+        # Identificación y dueño actuales (para ubicar todos los períodos del
+        # MISMO contribuyente, sin tocar los de otros usuarios/despachos que
+        # coincidan por casualidad en el mismo RUC).
+        cur = supabase.table("clients").select("identificacion,user_id").eq("id", client_id).execute().data
         ident_actual = cur[0]["identificacion"] if cur else None
+        owner_actual = cur[0]["user_id"] if cur else None
         # 1) El registro seleccionado recibe TODOS los cambios (incluido período).
         response = supabase.table("clients").update(data).eq("id", client_id).execute()
         # 2) Los campos de identidad se propagan al resto de períodos del MISMO
-        #    contribuyente, para que el cambio afecte a todo el módulo.
+        #    contribuyente y del MISMO dueño, para que el cambio afecte a todo
+        #    el módulo sin filtrar hacia clientes de otros usuarios.
         identidad = {k: v for k, v in data.items() if k in _CAMPOS_IDENTIDAD}
-        if ident_actual and identidad:
+        if ident_actual and owner_actual and identidad:
             identidad["updated_at"] = "now()"
             supabase.table("clients").update(identidad).eq(
-                "identificacion", ident_actual).neq("id", client_id).execute()
+                "identificacion", ident_actual).eq(
+                "user_id", owner_actual).neq("id", client_id).execute()
         invalidate_clients_cache()
         return response.data[0] if response.data else None
     except HTTPException:

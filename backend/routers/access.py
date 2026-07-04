@@ -37,7 +37,12 @@ def rol_de(user_id: str) -> str:
         return hit[0]
     try:
         r = get_supabase_client().table("app_admins").select("role").eq("user_id", user_id).execute().data
-        role = r[0].get("role") or "admin" if r else "cliente"
+        # OJO: si hay fila pero el campo role viene vacío/null, el default debe
+        # ser el MENOS privilegiado ('socio', no 'admin') — antes, por
+        # precedencia de operadores ("x or 'admin' if r else 'cliente'" se lee
+        # como "(x or 'admin') if r else 'cliente'"), un role vacío escalaba a
+        # admin en silencio.
+        role = (r[0].get("role") or "socio") if r else "cliente"
     except Exception:
         role = "cliente"
     _role_cache[user_id] = (role, _now())

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, Fragment } from 'react'
 import useDraft from '../hooks/useDraft'
 import { useOutletContext } from 'react-router-dom'
-import { declaracionesAPI, downloadBlob } from '../services/api'
+import { declaracionesAPI, credentialsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, nombreMes } from '../utils/periodo'
 import ClientSwitcher from '../components/ClientSwitcher'
@@ -42,6 +42,7 @@ export default function Declaraciones({ tipo }) {
   // Credenciales/servicios del contribuyente (punto 4)
   const [creds, setCreds] = useState(null)
   const [claveSRI, setClaveSRI] = useState('')
+  const [revelandoClave, setRevelandoClave] = useState(false)
 
   // Overrides editables del crédito tributario mes anterior (605/606)
   // null = usar el pre-cargado del backend; número = override manual
@@ -81,8 +82,11 @@ export default function Declaraciones({ tipo }) {
   // Facilidades de pago: 1 a 3 meses para ambos impuestos (IVA y ICE).
   const maxDiferir = 3
 
-  const load = useCallback(async () => {
-    if (!selectedClientId) { setDecl(null); setSaved([]); setAplazados([]); return }
+  // Solo el cálculo depende de los overrides en vivo — separado de la carga de
+  // guardados/aplazados para que editar un override no dispare de nuevo esas
+  // dos consultas adicionales en cada tecla.
+  const calcular = useCallback(async () => {
+    if (!selectedClientId) { setDecl(null); return }
     setLoading(true)
     try {
       const params = {}
@@ -97,46 +101,85 @@ export default function Declaraciones({ tipo }) {
       if (ventas0 != null) params.ventas_0 = ventas0
       if (factorProp != null) params.factor_prop = factorProp
       if (diferirMeses > 0) params.diferir_meses = diferirMeses
-      const [c, s, a] = await Promise.all([
-        declaracionesAPI.calcular(selectedClientId, tipo, params),
+      const c = await declaracionesAPI.calcular(selectedClientId, tipo, params)
+      setDecl(c.data)
+    } catch (e) {
+      alert('Error: ' + (e.response?.data?.detail || e.message))
+    } finally { setLoading(false) }
+  }, [selectedClientId, tipo, credAdq, credRet, rebajaIce, exencionIce, marcaReb, marcaExe, ventas15, ventas5, ventas0, factorProp, diferirMeses])
+
+  const cargarGuardados = useCallback(async () => {
+    if (!selectedClientId) { setSaved([]); setAplazados([]); return }
+    try {
+      const [s, a] = await Promise.all([
         declaracionesAPI.list(selectedClientId, tipo),
         declaracionesAPI.listAplazados(selectedClientId).catch(() => ({ data: { data: [] } })),
       ])
-      setDecl(c.data)
       setSaved(s.data?.data || [])
       // Filtrar aplazados por tipo de declaración (IVA o ICE)
       const allAplazados = a.data?.data || []
       setAplazados(allAplazados.filter((x) => (x.tipo || '').toUpperCase() === tipo))
     } catch (e) {
       alert('Error: ' + (e.response?.data?.detail || e.message))
-    } finally { setLoading(false) }
-  }, [selectedClientId, tipo, credAdq, credRet, rebajaIce, exencionIce, marcaReb, marcaExe, ventas15, ventas5, ventas0, factorProp, diferirMeses, isIVA])
+    }
+  }, [selectedClientId, tipo])
 
-  useEffect(() => { load() }, [load])
+  // load() = recarga completa (cálculo + guardados + aplazados), para usar
+  // tras guardar/borrar/marcar-pagado, donde ambos de verdad cambian.
+  const load = useCallback(async () => {
+    await Promise.all([calcular(), cargarGuardados()])
+  }, [calcular, cargarGuardados])
 
-  // Al cambiar de contribuyente, tipo o PERÍODO, limpiar overrides de crédito/factor
-  // (el factor se aplica en SU período). Se recargan los guardados de ese período.
+  useEffect(() => { calcular() }, [calcular])
+  useEffect(() => { cargarGuardados() }, [cargarGuardados])
+
+  // Al cambiar de contribuyente, tipo o PERÍODO, limpiar TODOS los overrides
+  // manuales (crédito/factor, ventas, rebaja/exención ICE, aplazamiento). La
+  // clave del borrador (draftKey) no incluye mes/año, así que si el período de
+  // este mismo client_id cambia (p.ej. se corrige en Clientes), sin este reseteo
+  // un override cargado en un período se aplicaría silenciosamente al siguiente.
   useEffect(() => {
     setCredAdq(null); setCredRet(null); setFactorProp(null)
+    setVentas15(null); setVentas5(null); setVentas0(null)
+    setRebajaIce(null); setExencionIce(null)
+    setMarcaReb(false); setMarcaExe(false)
+    setDiferirMeses(0)
   }, [selectedClientId, tipo, selectedClient?.periodo_mes, selectedClient?.periodo_anio])
 
-
-  // Servicios contratados + clave SRI en un solo viaje (reveal=true)
+  // El aplazamiento de pago (diferir_meses) todavía no está implementado para
+  // ICE en el backend (declaracion_ice no lo resta del casillero 902/899);
+  // limpiar cualquier valor residual de un borrador anterior para no generar
+  // un pagos_aplazados duplicado sobre el 100% del ICE.
   useEffect(() => {
-    setCreds(null); setClaveSRI('')
+    if (!isIVA && diferirMeses > 0) setDiferirMeses(0)
+  }, [isIVA, diferirMeses, setDiferirMeses])
+
+
+  // Servicios contratados + metadata de credencial SRI (sin password: se revela
+  // bajo demanda con un clic, no automáticamente al seleccionar el cliente).
+  useEffect(() => {
+    setCreds(null); setClaveSRI(''); setRevelandoClave(false)
     if (!selectedClientId) return
     let cancelled = false
-    declaracionesAPI.credenciales(selectedClientId, true)
+    declaracionesAPI.credenciales(selectedClientId, false)
       .then((r) => {
         if (cancelled) return
         setCreds(r.data)
-        if (r.data?.es_admin && r.data?.credencial?.password) {
-          setClaveSRI(r.data.credencial.password)
-        }
       })
       .catch(() => { if (!cancelled) setCreds(null) })
     return () => { cancelled = true }
   }, [selectedClientId])
+
+  const revelarClaveSRI = async () => {
+    if (!creds?.credencial?.id || claveSRI || revelandoClave) return
+    setRevelandoClave(true)
+    try {
+      const r = await credentialsAPI.reveal(creds.credencial.id)
+      if (r.data?.password) setClaveSRI(r.data.password)
+    } finally {
+      setRevelandoClave(false)
+    }
+  }
 
   const guardar = async () => {
     try {
@@ -228,6 +271,7 @@ export default function Declaraciones({ tipo }) {
     if (ventas5 != null) ov.ventas_5 = ventas5
     if (ventas0 != null) ov.ventas_0 = ventas0
     if (factorProp != null) ov.factor_prop = factorProp
+    if (diferirMeses > 0) ov.diferir_meses = diferirMeses
     return ov
   }
 
@@ -251,7 +295,7 @@ export default function Declaraciones({ tipo }) {
   // diferirMeses > 0 (se pasa como query param). Acá solo derivamos la fecha
   // de vencimiento y el monto para mostrar el resumen amigable.
   const previewAplazamiento = (() => {
-    if (!diferirMeses || diferirMeses < 1) return null
+    if (!isIVA || !diferirMeses || diferirMeses < 1) return null
     const m0 = selectedClient.periodo_mes
     const a0 = selectedClient.periodo_anio
     const total = (m0 - 1) + diferirMeses
@@ -296,7 +340,13 @@ export default function Declaraciones({ tipo }) {
             {creds?.es_admin && creds?.credencial && (
               <span className="clave-header-tag">
                 🔐 <strong>{creds.credencial.username || '—'}</strong>
-                {claveSRI && <code className="clave-header-code">{claveSRI}</code>}
+                {claveSRI ? (
+                  <code className="clave-header-code">{claveSRI}</code>
+                ) : (
+                  <button type="button" className="clave-header-reveal" onClick={revelarClaveSRI} disabled={revelandoClave}>
+                    {revelandoClave ? '…' : 'revelar clave'}
+                  </button>
+                )}
               </span>
             )}
           </p>
@@ -583,13 +633,17 @@ export default function Declaraciones({ tipo }) {
         <button className="dc-btn primary" onClick={guardar} disabled={!decl}>💾 Guardar declaración</button>
         <label className="dc-aplazar-control">
           Aplazar pago:
-          <select value={diferirMeses} onChange={(e) => setDiferirMeses(parseInt(e.target.value, 10))} disabled={!hayMontoAPagar}>
+          <select value={diferirMeses} onChange={(e) => setDiferirMeses(parseInt(e.target.value, 10))} disabled={!isIVA || !hayMontoAPagar}>
             <option value={0}>No aplazar</option>
             {Array.from({ length: maxDiferir }, (_, i) => i + 1).map((n) => (
               <option key={n} value={n}>{n} mes{n > 1 ? 'es' : ''}</option>
             ))}
           </select>
-          <small>{!hayMontoAPagar ? '(sin impuesto a pagar este período)' : 'Facilidades de pago: 1 a 3 meses'}</small>
+          <small>
+            {!isIVA
+              ? '(aplazamiento aún no disponible para ICE)'
+              : !hayMontoAPagar ? '(sin impuesto a pagar este período)' : 'Facilidades de pago: 1 a 3 meses'}
+          </small>
         </label>
         <button className="dc-btn small" onClick={exportar} disabled={!decl}>⬇ Excel (código/valor)</button>
         <button className="dc-btn oficial" onClick={exportarOficial} disabled={!decl}>📄 Formulario oficial SRI</button>

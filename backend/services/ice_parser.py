@@ -4,17 +4,11 @@ from services.ice_data import (
     buscar_en_catalogo, es_pack, get_botellas_por_caja,
 )
 from services.ice_anexo import _extraer_grado, _extraer_volumen
+from services.xml_parser import find_node_ignore_ns as _find_node
 
-
-def _find_node(parent, tag):
-    if parent is None:
-        return None
-    for el in parent.iter():
-        if el.tag == tag or el.tag.endswith('}' + tag):
-            return el
-    return None
-
-
+# _text no se deduplica con find_text_ignore_ns (xml_parser.py) porque acá
+# admite un parámetro `default` propio (usado por llamadas de este módulo);
+# la lógica de búsqueda ignorando namespace es la misma.
 def _text(parent, tag, default=""):
     node = _find_node(parent, tag)
     return node.text.strip() if (node is not None and node.text) else default

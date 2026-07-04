@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import InvoiceTable from './InvoiceTable'
 import { esPersonal, GASTOS_PERSONALES } from '../utils/categorias'
 import { classificationAPI, rebajasAPI } from '../services/api'
@@ -192,9 +192,14 @@ export default function InvoiceTabs({ invoices, client, onInvoicesChange }) {
     return Object.values(map).sort((a, b) => a.nombre.localeCompare(b.nombre))
   }, [rowsOk])
 
-  // Trae la actividad económica (SRI) de los RUC pendientes, para discriminar mejor
+  // Trae la actividad económica (SRI) de los RUC pendientes, para discriminar mejor.
+  // Se excluyen los RUC ya resueltos (presentes en actMap) para no re-consultar
+  // el mismo RUC en cada cambio de la lista de pendientes.
+  const actMapRef = useRef(actMap)
+  useEffect(() => { actMapRef.current = actMap }, [actMap])
+
   useEffect(() => {
-    const rucs = pendientes.map((p) => p.ruc).filter(Boolean)
+    const rucs = pendientes.map((p) => p.ruc).filter((r) => r && !(r in actMapRef.current))
     if (rucs.length === 0) return
     classificationAPI.actividadesRucs(rucs)
       .then((res) => setActMap((m) => ({ ...m, ...(res.data || {}) })))
@@ -342,7 +347,7 @@ export default function InvoiceTabs({ invoices, client, onInvoicesChange }) {
       </div>
 
       {tab === 'datos' && (
-        <InvoiceTable invoices={invoices} onInvoicesChange={onInvoicesChange} />
+        <InvoiceTable invoices={invoices} onInvoicesChange={onInvoicesChange} catalog={pendCatalog} />
       )}
 
       {tab === 'resumen' && (

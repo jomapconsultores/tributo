@@ -4,6 +4,7 @@ import pandas as pd
 from services.ice_calc import audit_detail, resumen_por_producto, resumen_general
 from services.ice_data import tax_params
 from services.ice_anexo import grupo_por_producto, grupo_por_cliente
+from services.xlsx_styles import ice_formats
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
@@ -34,13 +35,15 @@ def generate_ice_pdf(rows: List[Dict], anio: str, cliente=None) -> bytes:
         ]))
         return t
 
-    # Reporte general (auditoría por producto)
+    # Reporte general (auditoría por producto) — audit_detail se calcula una
+    # sola vez y se reutiliza en ambos resúmenes.
+    det = audit_detail(rows_ok, anio)
     story.append(Paragraph("Reporte general (auditoría por producto)", st['Heading2']))
     d = [["Producto", "Botellas", "Subtotal", "ICE Esp.", "ICE AdV", "Total ICE", "Base IVA", "IVA"]]
-    for f in resumen_por_producto(rows_ok, anio):
+    for f in resumen_por_producto(rows_ok, anio, det=det):
         d.append([f["producto"][:34], f"{f['botellas']:.0f}", money(f["subtotal"]), money(f["ice_especifico"]),
                   money(f["ice_advalorem"]), money(f["total_ice"]), money(f["base_iva"]), money(f["iva"])])
-    g = resumen_general(rows_ok, anio)
+    g = resumen_general(rows_ok, anio, det=det)
     d.append(["TOTAL", "", money(g["subtotal"]), money(g["ice_especifico"]), money(g["ice_advalorem"]),
               money(g["total_ice"]), money(g["base_iva"]), money(g["iva"])])
     story.append(tabla(d, 1)); story.append(Spacer(1, 0.22 * inch))
@@ -74,18 +77,14 @@ def generate_ice_excel(rows: List[Dict], anio: str) -> bytes:
     try:
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
             wb = writer.book
-            head = wb.add_format({'bold': True, 'bg_color': '#1a5276', 'font_color': 'white', 'border': 1, 'align': 'center', 'text_wrap': True})
-            money = wb.add_format({'num_format': '#,##0.00', 'border': 1})
-            num4 = wb.add_format({'num_format': '#,##0.0000', 'border': 1})
-            pct = wb.add_format({'num_format': '0.00%', 'border': 1})
-            cell = wb.add_format({'border': 1})
-            tot = wb.add_format({'bold': True, 'bg_color': '#27ae60', 'font_color': 'white', 'border': 1, 'num_format': '#,##0.00'})
-            tot_lbl = wb.add_format({'bold': True, 'bg_color': '#27ae60', 'font_color': 'white', 'border': 1})
+            fmt = ice_formats(wb)
+            head, money, num4, pct, cell, tot, tot_lbl = (
+                fmt["head"], fmt["money"], fmt["num4"], fmt["pct"], fmt["cell"], fmt["tot"], fmt["tot_lbl"])
 
             # -------- Hoja 1: Auditoría por Producto --------
             ws = wb.add_worksheet("Auditoría por Producto")
             ws.write(0, 0, f"AUDITORÍA ICE {anio} — Tarifa Esp: {tax['esp']} · Umbral: {tax['umb']} · IVA: {int(tax['iva']*100)}%",
-                     wb.add_format({'bold': True, 'font_color': '#1a5276', 'font_size': 13}))
+                     fmt['title'])
             cols = ["#", "Fecha", "Cliente", "Producto Original", "Pack", "Producto Individual",
                     "Botellas", "Grado %", "Volumen cc", "Precio/Bot", "Precio/Litro", "Aplica AdV",
                     "ICE Específico", "ICE Ad-Valorem", "Total ICE", "Subtotal", "Base IVA", "IVA", "PVP Final"]
@@ -101,14 +100,14 @@ def generate_ice_excel(rows: List[Dict], anio: str) -> bytes:
                         "SÍ" if d["aplica_adv"] else "NO", d["ice_especifico"], d["ice_advalorem"],
                         d["total_ice"], d["subtotal"], d["base_iva"], d["iva"], d["pvp"]]
                 for j, v in enumerate(vals):
-                    fmt = cell
+                    celda_fmt = cell
                     if j in (9, 10):
-                        fmt = num4
+                        celda_fmt = num4
                     elif j in (12, 13, 14):
-                        fmt = num4
+                        celda_fmt = num4
                     elif j in (15, 16, 17, 18):
-                        fmt = money
-                    ws.write(r, j, v, fmt)
+                        celda_fmt = money
+                    ws.write(r, j, v, celda_fmt)
                 r += 1
             # Totales
             if det:
@@ -125,12 +124,12 @@ def generate_ice_excel(rows: List[Dict], anio: str) -> bytes:
 
             # -------- Hoja 2: Resumen ICE --------
             ws2 = wb.add_worksheet("Resumen ICE")
-            ws2.write(0, 0, f"RESUMEN ICE {anio}", wb.add_format({'bold': True, 'font_color': '#1a5276', 'font_size': 13}))
+            ws2.write(0, 0, f"RESUMEN ICE {anio}", fmt['title'])
             heads2 = ["Producto", "Botellas", "Subtotal", "ICE Específico", "ICE Ad-Valorem",
                       "Total ICE", "Base IVA", "IVA", "Aplica AdV"]
             for j, c in enumerate(heads2):
                 ws2.write(2, j, c, head)
-            filas = resumen_por_producto(rows, anio)
+            filas = resumen_por_producto(rows, anio, det=det)
             rr = 3
             for f in filas:
                 vals = [f["producto"], f["botellas"], f["subtotal"], f["ice_especifico"],
@@ -152,8 +151,8 @@ def generate_ice_excel(rows: List[Dict], anio: str) -> bytes:
 
             # -------- Hoja 3: Resumen General --------
             ws3 = wb.add_worksheet("Resumen General")
-            ws3.write(0, 0, f"RESUMEN GENERAL — ICE {anio}", wb.add_format({'bold': True, 'font_color': '#1a5276', 'font_size': 13}))
-            g = resumen_general(rows, anio)
+            ws3.write(0, 0, f"RESUMEN GENERAL — ICE {anio}", fmt['title'])
+            g = resumen_general(rows, anio, det=det)
             heads3 = ["Concepto", "Subtotal", "ICE Específico", "ICE Ad-Valorem", "Total ICE", "Base IVA", "IVA", "Total General"]
             for j, c in enumerate(heads3):
                 ws3.write(2, j, c, head)

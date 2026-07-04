@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import Response
 from auth import get_current_user
+from routers.access import es_admin
 from services import storage
 from services import codigos_ice
 
@@ -25,8 +26,10 @@ async def get_codigos(_: str = Depends(get_current_user)):
 
 
 @router.post("/codigos-ice")
-async def replace_codigos(file: UploadFile = File(...), _: str = Depends(get_current_user)):
+async def replace_codigos(file: UploadFile = File(...), user_id: str = Depends(get_current_user)):
     """Reemplaza el archivo de Códigos ICE en Supabase Storage."""
+    if not es_admin(user_id):
+        raise HTTPException(status_code=403, detail="Solo administradores")
     try:
         content = await file.read()
         storage.subir_codigos(content)

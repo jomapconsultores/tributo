@@ -3,6 +3,7 @@ import { clientsAPI, anexosAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { nombreMes } from '../utils/periodo'
 import { infoDeclaracion } from '../utils/declaracionSRI'
+import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import WorkflowGuide from '../components/WorkflowGuide'
 import './SavedData.css'
 
@@ -60,9 +61,7 @@ export default function SavedData() {
   }, [clients])
 
   const filtered = useMemo(() => {
-    let list = contribuyentes
-    const q = search.trim().toLowerCase()
-    if (q) list = list.filter((c) => [c.nombre, c.identificacion].some((f) => String(f || '').toLowerCase().includes(q)))
+    let list = filtrarClientesPorTexto(contribuyentes, search)
     if (diaFilter) list = list.filter((c) => infoDeclaracion(c.identificacion).dia === Number(diaFilter))
     if (ordenFecha) {
       list = [...list].sort((a, b) => {

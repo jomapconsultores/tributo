@@ -145,6 +145,7 @@ def parse_xml_invoice(
         # Bases e impuestos
         base_0, base_15, iva_15 = 0.0, 0.0, 0.0
         base_5, iva_5 = 0.0, 0.0
+        base_8, iva_8 = 0.0, 0.0
         base_exento, base_no_objeto = 0.0, 0.0
 
         total_con_impuestos = find_node_ignore_ns(info_factura, 'totalConImpuestos')
@@ -164,10 +165,21 @@ def parse_xml_invoice(
 
                     if cod_porc == '0':
                         base_0 += base_imponible
-                    elif cod_porc in ['2', '3', '4', '8', '10']:
-                        # 2=12% 3=14% 4=15% 8=8%(feriados) 10=13%: todas tarifas con IVA.
-                        # El modelo no tiene casilla 8% aparte, se agrupa aquí para no perder
-                        # el crédito de IVA (el valor del XML se conserva tal cual).
+                    elif cod_porc in ['2', '3', '4', '10']:
+                        # 2=12% 3=14% 4=15% 10=13%: variantes históricas de la
+                        # tarifa general, se agrupan como "tarifa 15%".
+                        base_15 += base_imponible
+                        iva_15 += valor_impuesto
+                    elif cod_porc == '8':
+                        # 8% (feriados fiscales): tarifa realmente distinta al
+                        # 15%. El modelo de datos (columnas base_15/iva_15) no
+                        # tiene una casilla propia para el 8% — agregarla
+                        # requeriría una migración de esquema, así que por ahora
+                        # se sigue sumando a la tarifa general (no se pierde el
+                        # valor de IVA) pero queda una advertencia en logs para
+                        # que el contador verifique el casillero manualmente.
+                        base_8 += base_imponible
+                        iva_8 += valor_impuesto
                         base_15 += base_imponible
                         iva_15 += valor_impuesto
                     elif cod_porc == '5':
@@ -197,6 +209,11 @@ def parse_xml_invoice(
                 base_0 + base_5 + iva_5 + base_exento + base_no_objeto + base_15 + iva_15,
                 2
             )
+
+        if base_8 > 0:
+            print(f"[xml_parser] Aviso: factura {factura_numero or unique_id} de {nombre} tiene "
+                  f"${base_8:.2f} gravados al 8%% (IVA ${iva_8:.2f}) — se agrupó con la tarifa "
+                  f"general (15%%) por falta de casillero propio; verificar manualmente.")
 
         # Memoria de tarjeta
         mem_key = f"{nombre}|{total_original:.2f}"

@@ -26,15 +26,17 @@ export default function Compradores() {
     return m
   }, [clients])
 
-  const cargar = async () => {
+  const cargar = async (ident) => {
     setLoading(true)
     try {
-      const r = await compradoresAPI.list()
+      const r = await compradoresAPI.list(ident)
       setRows(r.data?.data || [])
     } catch { setRows([]) }
     finally { setLoading(false) }
   }
-  useEffect(() => { cargar() }, [])
+  // Si viene ?ident= en la URL, filtramos ya en el servidor (evita traer todos
+  // los contribuyentes y filtrar en el cliente).
+  useEffect(() => { cargar(identParam) }, [identParam])
 
   useEffect(() => {
     if (identParam) setAbiertos((s) => new Set([...s, identParam]))
@@ -43,14 +45,14 @@ export default function Compradores() {
   const sincronizar = async () => {
     try {
       const r = await compradoresAPI.sync()
-      await cargar()
+      await cargar(identParam)
       alert(`✔ ${r.data?.total ?? 0} cliente(s) sincronizados desde las ventas ICE.`)
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
 
   const borrar = async (id) => {
     if (!window.confirm('¿Eliminar este cliente guardado?')) return
-    try { await compradoresAPI.delete(id); await cargar() }
+    try { await compradoresAPI.delete(id); await cargar(identParam) }
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
 

@@ -106,6 +106,18 @@ export default function AnexoPVPICE() {
   const [tipoImport, setTipoImport] = useState('ICE')
   const [saved, setSaved] = useState([])
   const [savedId, setSavedId] = useDraft(`${DRAFT}:savedId`, null) // anexo guardado en edición (para actualizar, no duplicar)
+
+  // header/rows/savedId son un borrador GLOBAL (no por cliente): al cambiar de
+  // RUC/período hay que limpiarlos, o se podría guardar el anexo de un cliente
+  // bajo el client_id de otro. No dispara al montar (solo cuando clientSel
+  // realmente cambia), para no perder un borrador que se está retomando.
+  const prevClientSelRef = useRef(clientSel)
+  useEffect(() => {
+    if (prevClientSelRef.current !== clientSel) {
+      prevClientSelRef.current = clientSel
+      setHeader({}); setRows([]); setSavedId(null)
+    }
+  }, [clientSel])
   const [filtro, setFiltro] = useState('')
   const [busqCod, setBusqCod] = useState('')
   const [resCod, setResCod] = useState([])

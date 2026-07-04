@@ -29,7 +29,11 @@ def _email_de(uid: str) -> str:
         email = getattr(user, "email", "") or ""
     except Exception as e:
         print(f"[activity] no se pudo resolver email de {uid}: {e}")
-    _email_cache[uid] = email
+    # Solo se cachean resoluciones exitosas: si falló (o vino vacío, p. ej. por
+    # un error transitorio de auth) NO se guarda, para que el próximo llamado
+    # reintente en vez de quedar con el fallo pegado indefinidamente.
+    if email:
+        _email_cache[uid] = email
     return email
 
 

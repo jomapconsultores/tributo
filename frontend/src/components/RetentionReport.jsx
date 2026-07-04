@@ -13,12 +13,28 @@ import { fmtMoney as money, fmtPct as pct } from '../utils/format'
 export default function RetentionReport({ rows }) {
   const { filas, total } = useMemo(() => {
     const ok = rows.filter((r) => r.estado !== 'DUPLICADO')
+
+    // Primero: mapa nombre normalizado -> ruc, a partir de las filas que SÍ
+    // traen ruc_emisor. Así, si un mismo agente aparece con y sin RUC en
+    // distintas filas, todas se agrupan bajo el mismo RUC en vez de partirse
+    // en dos grupos (uno por RUC y otro por nombre).
+    const normNombre = (n) => (n || '').trim().toUpperCase()
+    const nombreARuc = {}
+    for (const r of ok) {
+      const nombre = normNombre(r.agente_retencion)
+      if (r.ruc_emisor && nombre && !nombreARuc[nombre]) {
+        nombreARuc[nombre] = r.ruc_emisor
+      }
+    }
+
     const agg = {}
     for (const r of ok) {
-      const key = r.ruc_emisor || r.agente_retencion || '—'
+      const nombre = normNombre(r.agente_retencion)
+      const rucResuelto = r.ruc_emisor || nombreARuc[nombre] || ''
+      const key = rucResuelto || nombre || '—'
       const a = agg[key] || (agg[key] = {
         agente: r.agente_retencion || '—',
-        ruc: r.ruc_emisor || '',
+        ruc: rucResuelto,
         num: 0, base_imponible: 0, iva: 0, ret_renta: 0, ret_iva: 0, total_retenido: 0,
       })
       a.num += 1

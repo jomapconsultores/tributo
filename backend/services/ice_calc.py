@@ -146,8 +146,11 @@ def _audit_row(idx, r, prod_individual, pack, grado, vol, bottles, precio_bot, e
     }
 
 
-def resumen_por_producto(rows: List[Dict], anio: str, catalogo: List[Dict] = None) -> List[Dict]:
-    det = audit_detail(rows, anio, catalogo)
+def resumen_por_producto(rows: List[Dict], anio: str, catalogo: List[Dict] = None, det: List[Dict] = None) -> List[Dict]:
+    """`det` opcional: si ya se calculó audit_detail(rows, anio, catalogo) antes
+    (p.ej. en declaracion_ice), se reutiliza en vez de recalcularlo."""
+    if det is None:
+        det = audit_detail(rows, anio, catalogo)
     ag = defaultdict(lambda: {"botellas": 0.0, "subtotal": 0.0, "ice_especifico": 0.0,
                               "ice_advalorem": 0.0, "total_ice": 0.0, "base_iva": 0.0,
                               "iva": 0.0, "pvp": 0.0, "aplica_adv": False})
@@ -169,8 +172,11 @@ def resumen_por_producto(rows: List[Dict], anio: str, catalogo: List[Dict] = Non
     return filas
 
 
-def resumen_general(rows: List[Dict], anio: str, catalogo: List[Dict] = None) -> Dict:
-    det = audit_detail(rows, anio, catalogo)
+def resumen_general(rows: List[Dict], anio: str, catalogo: List[Dict] = None, det: List[Dict] = None) -> Dict:
+    """`det` opcional: si ya se calculó audit_detail(rows, anio, catalogo) antes
+    (p.ej. en declaracion_ice), se reutiliza en vez de recalcularlo."""
+    if det is None:
+        det = audit_detail(rows, anio, catalogo)
     tot = {"botellas": 0.0, "subtotal": 0.0, "ice_especifico": 0.0, "ice_advalorem": 0.0,
            "total_ice": 0.0, "base_iva": 0.0, "iva": 0.0, "pvp": 0.0, "lineas": 0}
     for d in det:

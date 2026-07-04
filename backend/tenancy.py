@@ -6,7 +6,7 @@ verifica la propiedad del cliente. Los accesos otorgados por el administrador
 (tabla client_access) también se respetan.
 """
 from fastapi import HTTPException
-from database import get_supabase_client, fetch_all
+from database import get_supabase_client, fetch_all, fetch_in
 
 
 def assert_client_owner(client_id, user_id):
@@ -130,3 +130,47 @@ def can_access_identificacion(user_id: str, identificacion: str) -> bool:
         return True
     return any(c.get("identificacion") == identificacion
                for c in visible_clients(user_id, "identificacion"))
+
+
+def fetch_visible_rows(supabase, table: str, columns: str, user_id: str,
+                        order_col: str = None, desc: bool = True):
+    """Filas de `table` visibles para `user_id` según su ROL: propias +
+    compartidas (deduplicadas por id), o TODAS si es admin. Mismo patrón que
+    estaba copiado en list_ice/list_sales/list_retentions/list_invoices (cada
+    router lo reimplementaba por su cuenta, ya con alguna divergencia entre
+    ellos)."""
+    def _q():
+        return supabase.table(table).select(columns)
+
+    vis = visible_client_ids(user_id)  # None = admin (ve todo)
+    if vis is None:
+        rows = fetch_all(_q)
+    else:
+        propios = fetch_all(lambda: _q().eq("user_id", user_id))
+        compartidas = fetch_in(_q, vis, "client_id")
+        seen, rows = set(), []
+        for r in propios + compartidas:
+            if r["id"] not in seen:
+                seen.add(r["id"])
+                rows.append(r)
+    if order_col:
+        rows.sort(key=lambda r: r.get(order_col) or "", reverse=desc)
+    return rows
+
+
+def filter_ids_by_tenancy(supabase, table: str, ids: list, user_id: str) -> list:
+    """De una lista de ids de `table`, devuelve solo los que pertenecen a un
+    client_id al que `user_id` tiene acceso (según su ROL). Mismo patrón que
+    estaba copiado en bulk_move/bulk_delete de invoices/ice/sales_iva/retentions
+    (verifica tenencia fila por fila antes de un update/delete en lote)."""
+    if not ids:
+        return []
+    rows = supabase.table(table).select("id,client_id").in_("id", ids).execute().data or []
+    ok_ids = []
+    for r in rows:
+        try:
+            assert_client_owner(r["client_id"], user_id)
+            ok_ids.append(r["id"])
+        except HTTPException:
+            pass
+    return ok_ids

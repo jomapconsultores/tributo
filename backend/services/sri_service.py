@@ -2,11 +2,8 @@ import requests
 import time
 import xml.etree.ElementTree as ET
 import re
-import urllib3
 from typing import Optional, List, Set, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 SRI_URLS = [
     "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl",
@@ -26,6 +23,13 @@ def descargar_xml_sri(clave_acceso: str, intentos: int = SRI_INTENTOS_POR_LLAMAD
     falla de forma intermitente por saturación; un fallo puntual NO debe
     descartar la factura.
     """
+    # Una clave de acceso del SRI es siempre de 49 dígitos. Validamos antes
+    # de interpolarla en el SOAP body para no construir un XML inválido (o,
+    # si algún día llega de una fuente sin sanear, evitar inyección en el
+    # payload enviado al WS del SRI).
+    if not clave_acceso or not re.fullmatch(r'\d{49}', clave_acceso):
+        return None
+
     soap_body = f"""<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ec="http://ec.gob.sri.ws.autorizacion">
         <soapenv:Header/><soapenv:Body><ec:autorizacionComprobante><claveAccesoComprobante>{clave_acceso}</claveAccesoComprobante></ec:autorizacionComprobante></soapenv:Body></soapenv:Envelope>"""
 
@@ -37,7 +41,7 @@ def descargar_xml_sri(clave_acceso: str, intentos: int = SRI_INTENTOS_POR_LLAMAD
     for intento in range(max(1, intentos)):
         for url in SRI_URLS:
             try:
-                response = requests.post(url, data=soap_body, headers=headers, timeout=SRI_TIMEOUT, verify=False)
+                response = requests.post(url, data=soap_body, headers=headers, timeout=SRI_TIMEOUT)
                 if response.status_code == 200:
                     try:
                         root = ET.fromstring(response.content)

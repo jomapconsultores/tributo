@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { reportesAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import WorkflowGuide from '../components/WorkflowGuide'
+import { filterBySearch } from '../utils/search'
 import './Reportes.css'
 
 import { fmtMoney as money } from '../utils/format'
@@ -43,6 +44,9 @@ export default function Reportes({ modo }) {
   const desglosa = (t) => { const base = Math.round((t / 1.15) * 100) / 100; return { base, iva: Math.round((t - base) * 100) / 100 } }
   // Total a cobrar por ítem (con IVA incluido): si es "+IVA" se suma el 15%; si ya está incluido, queda igual.
   const bruto = (r) => (parseFloat(r.valor) || 0) * (r.iva_incluido ? 1 : 1.15)
+  // Clave estable de una fila (identificacion+concepto). Se usa para ubicarla en
+  // el array `rows` sin recurrir a indexOf (evita un scan O(n) por fila en cada render).
+  const rowKey = (r) => r.identificacion + '|' + r.concepto
 
   const cargar = useCallback(async () => {
     setLoading(true); setError('')
@@ -89,10 +93,11 @@ export default function Reportes({ modo }) {
 
   // Edita oficial / descuento / neto manteniendo la relación neto = oficial×(1−desc/100).
   const r2 = (n) => Math.round((parseFloat(n) || 0) * 100) / 100
-  const setPrecio = (i, campo, val, guardar = false) => {
+  const setPrecio = (key, campo, val, guardar = false) => {
     setRows((rs) => {
-      const next = rs.map((r, idx) => {
-        if (idx !== i) return r
+      let f = null
+      const next = rs.map((r) => {
+        if (rowKey(r) !== key) return r
         let oficial = parseFloat(r.precio_oficial) || 0
         let desc = parseFloat(r.descuento) || 0
         let neto = parseFloat(r.valor) || 0
@@ -100,22 +105,30 @@ export default function Reportes({ modo }) {
         if (campo === 'oficial') { oficial = v; neto = r2(oficial * (1 - desc / 100)) }
         else if (campo === 'descuento') { desc = Math.min(100, Math.max(0, v)); neto = r2(oficial * (1 - desc / 100)) }
         else if (campo === 'neto') { neto = v; desc = oficial > 0 ? r2(Math.max(0, (1 - neto / oficial) * 100)) : 0 }
-        return { ...r, precio_oficial: oficial, descuento: desc, valor: neto }
+        f = { ...r, precio_oficial: oficial, descuento: desc, valor: neto }
+        return f
       })
-      const f = next[i]
-      writeRpDraft(f.identificacion + '|' + f.concepto, { valor: f.valor, cobrar: f.cobrar, iva_incluido: f.iva_incluido, precio_oficial: f.precio_oficial, descuento: f.descuento })
-      if (guardar) guardarFila(f)
+      if (f) {
+        writeRpDraft(f.identificacion + '|' + f.concepto, { valor: f.valor, cobrar: f.cobrar, iva_incluido: f.iva_incluido, precio_oficial: f.precio_oficial, descuento: f.descuento })
+        if (guardar) guardarFila(f)
+      }
       return next
     })
   }
 
-  const setFila = (i, cambios, guardar = false) => {
+  const setFila = (key, cambios, guardar = false) => {
     setRows((rs) => {
-      const next = rs.map((r, idx) => (idx === i ? { ...r, ...cambios } : r))
-      const f = next[i]
-      // Guardar al instante en el navegador cada cambio (sobrevive a cortes de internet)
-      writeRpDraft(f.identificacion + '|' + f.concepto, { valor: f.valor, cobrar: f.cobrar, iva_incluido: f.iva_incluido, precio_oficial: f.precio_oficial, descuento: f.descuento })
-      if (guardar) guardarFila(f)
+      let f = null
+      const next = rs.map((r) => {
+        if (rowKey(r) !== key) return r
+        f = { ...r, ...cambios }
+        return f
+      })
+      if (f) {
+        // Guardar al instante en el navegador cada cambio (sobrevive a cortes de internet)
+        writeRpDraft(f.identificacion + '|' + f.concepto, { valor: f.valor, cobrar: f.cobrar, iva_incluido: f.iva_incluido, precio_oficial: f.precio_oficial, descuento: f.descuento })
+        if (guardar) guardarFila(f)
+      }
       return next
     })
   }
@@ -160,10 +173,7 @@ export default function Reportes({ modo }) {
   const filtradas = useMemo(() => {
     let base = rows
     if (idents_svc) base = base.filter((r) => idents_svc.has(r.identificacion))
-    const q = search.trim().toLowerCase()
-    if (!q) return base
-    return base.filter((r) => [r.contribuyente, r.identificacion, r.concepto]
-      .some((f) => String(f || '').toLowerCase().includes(q)))
+    return filterBySearch(base, search, (r) => [r.contribuyente, r.identificacion, r.concepto])
   }, [rows, search, idents_svc])
 
   // Agrupado por contribuyente, con subtotal
@@ -270,7 +280,7 @@ export default function Reportes({ modo }) {
         {lista.map((g) => (
           <Grupo key={g.identificacion} g={g} cerrado={colapsados.has(g.identificacion)}
             onToggle={() => toggleGrupo(g.identificacion)}
-            rows={rows} setFila={setFila} setPrecio={setPrecio} guardando={guardando}
+            setFila={setFila} setPrecio={setPrecio} guardando={guardando}
             onAddRubro={() => agregarRubro(g.identificacion, g.contribuyente)}
             onDelRubro={borrarRubro} money={money}
             bruto={bruto} desglosa={desglosa}
@@ -400,7 +410,7 @@ export default function Reportes({ modo }) {
   )
 }
 
-function Grupo({ g, cerrado, onToggle, rows, setFila, setPrecio, guardando, onAddRubro, onDelRubro, money, bruto, desglosa, historial, histAbierto, onToggleHist }) {
+function Grupo({ g, cerrado, onToggle, setFila, setPrecio, guardando, onAddRubro, onDelRubro, money, bruto, desglosa, historial, histAbierto, onToggleHist }) {
   const d = g.subtotal > 0 ? desglosa(g.subtotal) : null
   return (
     <>
@@ -425,7 +435,6 @@ function Grupo({ g, cerrado, onToggle, rows, setFila, setPrecio, guardando, onAd
         <td></td>
       </tr>
       {!cerrado && g.rows.map((r) => {
-        const realIdx = rows.indexOf(r)
         const key = r.identificacion + '|' + r.concepto
         return (
           <tr key={key} className={`${!r.cobrar ? 'rp-row-off ' : ''}${r.hecho ? 'rp-row-hecho' : ''}`}>
@@ -439,38 +448,38 @@ function Grupo({ g, cerrado, onToggle, rows, setFila, setPrecio, guardando, onAd
             </td>
             <td className="c">
               <input type="checkbox" checked={!!r.cobrar}
-                onChange={(e) => setFila(realIdx, { cobrar: e.target.checked }, true)} />
+                onChange={(e) => setFila(key, { cobrar: e.target.checked }, true)} />
             </td>
             <td className="r">
               <div className="rp-precio-cell">
                 <label className="rp-pc" title="Precio oficial (de lista). A Odoo va como precio unitario.">
                   <span>Oficial</span>
                   <input type="number" step="0.01" min="0" value={r.precio_oficial ?? ''}
-                    onChange={(e) => setPrecio(realIdx, 'oficial', e.target.value)}
-                    onBlur={() => setPrecio(realIdx, 'oficial', r.precio_oficial, true)}
+                    onChange={(e) => setPrecio(key, 'oficial', e.target.value)}
+                    onBlur={() => setPrecio(key, 'oficial', r.precio_oficial, true)}
                     disabled={!r.cobrar} />
                 </label>
                 <label className="rp-pc rp-pc-desc" title="% de descuento sobre el oficial. A Odoo va como descuento de la línea.">
                   <span>Desc%</span>
                   <input type="number" step="0.01" min="0" max="100" value={r.descuento ?? 0}
-                    onChange={(e) => setPrecio(realIdx, 'descuento', e.target.value)}
-                    onBlur={() => setPrecio(realIdx, 'descuento', r.descuento, true)}
+                    onChange={(e) => setPrecio(key, 'descuento', e.target.value)}
+                    onBlur={() => setPrecio(key, 'descuento', r.descuento, true)}
                     disabled={!r.cobrar} />
                 </label>
                 <label className="rp-pc rp-pc-neto" title="Neto a cobrar (oficial con el descuento). Si lo cambiás, el descuento se recalcula.">
                   <span>Neto</span>
                   <input type="number" step="0.01" min="0" value={r.valor}
-                    onChange={(e) => setPrecio(realIdx, 'neto', e.target.value)}
-                    onBlur={() => setPrecio(realIdx, 'neto', r.valor, true)}
+                    onChange={(e) => setPrecio(key, 'neto', e.target.value)}
+                    onBlur={() => setPrecio(key, 'neto', r.valor, true)}
                     disabled={!r.cobrar} />
                 </label>
                 <span className="rp-iva-mode" role="group" aria-label="Modo de IVA">
                   <button type="button" className={`rp-iva-opt ${!r.iva_incluido ? 'on' : ''}`}
                     title="El neto es base; se le suma el 15% de IVA"
-                    onClick={() => setFila(realIdx, { iva_incluido: false }, true)} disabled={!r.cobrar}>+IVA</button>
+                    onClick={() => setFila(key, { iva_incluido: false }, true)} disabled={!r.cobrar}>+IVA</button>
                   <button type="button" className={`rp-iva-opt ${r.iva_incluido ? 'on' : ''}`}
                     title="El neto ya incluye el 15% de IVA"
-                    onClick={() => setFila(realIdx, { iva_incluido: true }, true)} disabled={!r.cobrar}>incl.</button>
+                    onClick={() => setFila(key, { iva_incluido: true }, true)} disabled={!r.cobrar}>incl.</button>
                 </span>
               </div>
               {r.cobrar && (parseFloat(r.valor) || 0) > 0 && (
@@ -487,7 +496,7 @@ function Grupo({ g, cerrado, onToggle, rows, setFila, setPrecio, guardando, onAd
                     : <strong>{money(r.sugerido)}</strong>}
                   <span className="rp-sug-con"> {r.sugerido_concepto}</span>
                   {Math.abs((parseFloat(r.valor) || 0) - r.sugerido) > 0.005
-                    ? <button className="rp-sug-aplicar" onClick={() => setFila(realIdx, { precio_oficial: r.sugerido_oficial, descuento: r.sugerido_descuento, valor: r.sugerido, iva_incluido: false, cobrar: true }, true)}>usar</button>
+                    ? <button className="rp-sug-aplicar" onClick={() => setFila(key, { precio_oficial: r.sugerido_oficial, descuento: r.sugerido_descuento, valor: r.sugerido, iva_incluido: false, cobrar: true }, true)}>usar</button>
                     : <span className="rp-sug-ok"> ✓ aplicado</span>}
                 </div>
               )}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { productsAPI } from '../services/api'
+import { withCache } from '../services/cache'
 import { useClients } from '../context/ClientContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
@@ -66,7 +67,11 @@ export default function CatalogoProductos() {
 
   // Listas auxiliares de la base (presentación, unidad, país, clasificación, etc.)
   const [lk, setLk] = useState({ presentacion: [], unidad: [], pais: [], capacidad: [], grado: [], clasificacion: [] })
-  useEffect(() => { productsAPI.lookups?.().then((r) => setLk(r.data || {})).catch(() => {}) }, [])
+  useEffect(() => {
+    withCache('productos:lookups', 60 * 60_000, () => productsAPI.lookups?.())
+      .then((r) => setLk(r?.data || {}))
+      .catch(() => {})
+  }, [])
 
   // Descripción oficial de la marca del formulario: busca el código en la matriz
   // (Códigos ICE) por código de marca + impuesto y despliega su descripción.

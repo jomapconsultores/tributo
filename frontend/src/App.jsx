@@ -2,7 +2,8 @@ import { useState, useEffect, lazy, Suspense } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AccessProvider, useAccess, homeFor } from './context/AccessContext'
-import { ClientProvider } from './context/ClientContext'
+import { ClientProvider, SELECTED_CLIENT_KEY } from './context/ClientContext'
+import { clearAll as clearApiCache } from './services/cache'
 import Layout from './components/Layout'
 import './App.css'
 
@@ -110,6 +111,7 @@ function App() {
   }, [])
 
   const handleLogin = (token, userId, email) => {
+    clearApiCache() // evita heredar datos cacheados de una sesión anterior en este navegador
     localStorage.setItem('token', token)
     localStorage.setItem('userId', userId)
     localStorage.setItem('email', email)
@@ -117,10 +119,11 @@ function App() {
   }
 
   const handleLogout = () => {
+    clearApiCache()
     localStorage.removeItem('token')
     localStorage.removeItem('userId')
     localStorage.removeItem('email')
-    localStorage.removeItem('selectedClientId')
+    localStorage.removeItem(SELECTED_CLIENT_KEY)
     setUser(null)
   }
 
@@ -166,7 +169,7 @@ function App() {
               <Route path="/capacitaciones" element={<Capacitaciones />} />
               <Route path="/admin" element={<RequireSuperAdmin><Admin /></RequireSuperAdmin>} />
               <Route path="/admin/credenciales" element={<RequireSuperAdmin><AdminCredentials /></RequireSuperAdmin>} />
-              <Route path="/odoo-facturacion" element={<OdooFacturacion />} />
+              <Route path="/odoo-facturacion" element={<RequireAdmin><OdooFacturacion /></RequireAdmin>} />
               <Route path="/odoo-facturacion/procesadas" element={<FacturasProcesadas />} />
               <Route path="/admin/acceso-clientes" element={<RequireSuperAdmin><AdminClientAccess /></RequireSuperAdmin>} />
               <Route path="/admin/permisos" element={<RequireSuperAdmin><AdminPermisos /></RequireSuperAdmin>} />

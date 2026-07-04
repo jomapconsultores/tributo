@@ -468,10 +468,14 @@ async def guardar_cobro(entry: CobroIn, user_id: str = Depends(get_current_user)
 
 @router.delete("/cobros")
 async def borrar_cobro(identificacion: str, producto: str, user_id: str = Depends(get_current_user)):
-    """Elimina una fila guardada (sirve para quitar un rubro personalizado)."""
+    """Elimina una fila guardada del período ACTUAL (sirve para quitar un rubro
+    personalizado). Antes no filtraba por mes/año y borraba el rubro de todos
+    los períodos históricos del contribuyente."""
     sb = get_supabase_client()
+    cur_mes, cur_anio = _periodo_actual()
     sb.table("reportes_honorarios").delete().eq("user_id", user_id).eq(
-        "identificacion", (identificacion or "").strip()).eq("producto", (producto or "").strip()).execute()
+        "identificacion", (identificacion or "").strip()).eq("producto", (producto or "").strip()).eq(
+        "mes", cur_mes).eq("anio", cur_anio).execute()
     return {"ok": True}
 
 

@@ -1,9 +1,7 @@
 import { useClients } from '../context/ClientContext'
 import { estadoDeclaracion } from '../utils/declaracionSRI'
+import { nombreMes } from '../utils/periodo'
 import './AlertaDeclaracion.css'
-
-const NOMBRE_MES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
 /**
  * Banner global del plazo de declaración del contribuyente seleccionado:
@@ -23,7 +21,7 @@ export default function AlertaDeclaracion() {
     <div className={`alerta-decl nivel-${e.nivel}`}>
       <span className="alerta-decl-ico">{icono}</span>
       <span>
-        Declaración de <strong>{NOMBRE_MES[e.mesADeclarar]} {e.anioADeclarar}</strong>
+        Declaración de <strong>{nombreMes(e.mesADeclarar)} {e.anioADeclarar}</strong>
         {' '}· fecha máxima: <strong>{e.limiteTexto}</strong>
         {' '}(día {e.dia} por el 9no dígito) · <strong>{e.mensaje}</strong>
       </span>

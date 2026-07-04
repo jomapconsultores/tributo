@@ -36,6 +36,14 @@ export default function BulkBar({ count, onMove, onDelete, onClear }) {
     }
   }
 
+  const handleMove = () => {
+    const destino = targets.find((c) => String(c.id) === String(moveTo))
+    const nombreDestino = destino ? destino.nombre : 'el contribuyente seleccionado'
+    if (!window.confirm(`¿Mover ${count} elemento(s) seleccionado(s) a ${nombreDestino}?`)) return
+    onMove(moveTo)
+    setMoveTo('')
+  }
+
   return (
     <div className="bulk-bar">
       <span className="bulk-count">✓ {count} seleccionada(s)</span>
@@ -47,7 +55,7 @@ export default function BulkBar({ count, onMove, onDelete, onClear }) {
           ))}
           <option value="__new__">➕ Crear nuevo cliente…</option>
         </select>
-        <button className="bulk-btn move" disabled={!moveTo} onClick={() => { onMove(moveTo); setMoveTo('') }}>
+        <button className="bulk-btn move" disabled={!moveTo} onClick={handleMove}>
           ↪ Mover
         </button>
         <button className="bulk-btn del" onClick={onDelete}>🗑 Eliminar</button>

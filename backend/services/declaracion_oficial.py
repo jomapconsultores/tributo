@@ -44,9 +44,18 @@ def llenar_oficial(tipo, decl):
     # 605/606, factor 563, crédito 564, etc.). Las celdas de VENTAS/
     # ADQUISICIONES se traducen al casillero oficial; las de RESULTADO ya
     # usan el código oficial.
+    # Códigos internos SIN casillero oficial estándar del SRI (p. ej. "R-50"
+    # rebaja ICE, "EXE" exención ICE — Art. 82/77.1 LRTI): no hay un casillero
+    # de la sección RESULTADO del formulario 104 al que trasladarlos de forma
+    # confiable, así que NO se descartan en silencio. Si tienen valor, se
+    # reportan en "omitidos" para que el contador los ubique manualmente.
+    no_estandar = {}
     for f in decl.get("filas", []):
         cod = str(f.get("codigo", "")).strip()
         if not cod.isdigit():
+            valor = f.get("valor", 0)
+            if valor:
+                no_estandar[cod] = valor
             continue
         if not es_ice and f.get("seccion") != "RESULTADO":
             cod = MAP_IVA.get(cod, cod)   # traducir al casillero oficial
@@ -56,6 +65,8 @@ def llenar_oficial(tipo, decl):
 
     wb = openpyxl.load_workbook(path)
     llenados, omitidos = [], []
+    for cod, valor in no_estandar.items():
+        omitidos.append(f"{cod}={valor} (sin casillero oficial del SRI — ubicar manualmente)")
 
     for ws in wb.worksheets:
         for row in ws.iter_rows():

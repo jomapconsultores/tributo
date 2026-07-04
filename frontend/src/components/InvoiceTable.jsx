@@ -1,15 +1,13 @@
 import { useState, useMemo, useEffect } from 'react'
-import { invoicesAPI, memoryAPI, classificationAPI } from '../services/api'
+import { invoicesAPI, memoryAPI } from '../services/api'
 import ClasifEditor from './ClasifEditor'
 import BulkBar from './BulkBar'
+import { useEditableCell, useCopyFeedback } from '../hooks/useEditableCell'
 import './InvoiceTable.css'
 
-const GASTOS_PERSONALES = [
-  'ALIMENTACIÓN', 'EDUCACIÓN', 'SALUD', 'VESTIMENTA', 'VIVIENDA',
-  'TURISMO', 'ARTE Y CULTURA', 'VARIOS',
-]
-
+import { GASTOS_PERSONALES } from '../utils/categorias'
 import { fmtMoney as money } from '../utils/format'
+import { filterBySearch } from '../utils/search'
 
 // Filtro por tipo de valor: muestra solo facturas con monto > 0 en esa columna.
 const VALOR_OPCIONES = [
@@ -35,16 +33,15 @@ function readPersistedFiltros() {
   }
 }
 
-export default function InvoiceTable({ invoices, onInvoicesChange }) {
-  const [edit, setEdit] = useState({ id: null, field: null })
-  const [value, setValue] = useState('')
+export default function InvoiceTable({ invoices, onInvoicesChange, catalog = [] }) {
+  const { edit, value, setValue, isEditing, startEdit, cancel, bind } = useEditableCell()
+  const { copiedKey: copiedId, copy: copyCell } = useCopyFeedback()
   const persisted = readPersistedFiltros() || {}
   const [search, setSearch] = useState(persisted.search || '')
   const [fClasif, setFClasif] = useState(persisted.fClasif || '')
   const [fForma, setFForma] = useState(persisted.fForma || '')
   const [fValor, setFValor] = useState(persisted.fValor || '')
   const [selected, setSelected] = useState(() => new Set())
-  const [copiedId, setCopiedId] = useState('')
 
   useEffect(() => {
     try {
@@ -55,39 +52,9 @@ export default function InvoiceTable({ invoices, onInvoicesChange }) {
     } catch { /* localStorage lleno o deshabilitado: ignorar */ }
   }, [search, fClasif, fForma, fValor])
 
-  const copyCell = async (text, cellId) => {
-    if (!text) return
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text)
-      } else {
-        const ta = document.createElement('textarea')
-        ta.value = text
-        ta.style.position = 'fixed'
-        ta.style.opacity = '0'
-        document.body.appendChild(ta)
-        ta.select()
-        document.execCommand('copy')
-        document.body.removeChild(ta)
-      }
-      setCopiedId(cellId)
-      setTimeout(() => setCopiedId((c) => (c === cellId ? '' : c)), 1100)
-    } catch { /* clipboard bloqueado: feedback omitido */ }
-  }
-
   // Catálogo maestro de categorías (las definidas en el Clasificador de Gastos)
-  const [catalog, setCatalog] = useState([])
-  useEffect(() => {
-    classificationAPI.list()
-      .then((res) => {
-        const cats = (res.data || [])
-          .map((c) => (c.categoria || '').toUpperCase().trim())
-          .filter(Boolean)
-        setCatalog([...new Set(cats)])
-      })
-      .catch(() => {})
-  }, [])
-
+  // Se recibe como prop desde InvoiceTabs, que ya lo obtiene con classificationAPI.list()
+  // (evita duplicar la misma petición de red).
   const categorias = useMemo(() => {
     const set = new Set(GASTOS_PERSONALES)
     catalog.forEach((c) => set.add(c))
@@ -115,10 +82,9 @@ export default function InvoiceTable({ invoices, onInvoicesChange }) {
   }
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return invoices.filter((i) => {
-      if (q && ![i.fecha, i.ruc_proveedor, i.nombre_proveedor, i.clasificacion, i.concepto, i.factura_numero]
-        .some((f) => String(f || '').toLowerCase().includes(q))) return false
+    const bySearch = filterBySearch(invoices, search, (i) =>
+      [i.fecha, i.ruc_proveedor, i.nombre_proveedor, i.clasificacion, i.concepto, i.factura_numero])
+    return bySearch.filter((i) => {
       if (fClasif && (i.clasificacion || 'SIN CLASIFICAR') !== fClasif) return false
       if (fForma && i.forma_pago !== fForma) return false
       if (fValor && !((parseFloat(i[fValor]) || 0) > 0)) return false
@@ -169,13 +135,6 @@ export default function InvoiceTable({ invoices, onInvoicesChange }) {
     }
   }
 
-  const startEdit = (id, field, current) => {
-    setEdit({ id, field })
-    setValue(current ?? '')
-  }
-
-  const cancel = () => setEdit({ id: null, field: null })
-
   const save = async (inv) => {
     const { field } = edit
     try {
@@ -222,8 +181,7 @@ export default function InvoiceTable({ invoices, onInvoicesChange }) {
   }
 
   const renderEditable = (inv, field, display, type = 'text') => {
-    const isEditing = edit.id === inv.id && edit.field === field
-    if (isEditing && field === 'clasificacion') {
+    if (isEditing(inv.id, field) && field === 'clasificacion') {
       return (
         <ClasifEditor
           initial={inv.clasificacion}
@@ -233,24 +191,15 @@ export default function InvoiceTable({ invoices, onInvoicesChange }) {
         />
       )
     }
-    if (isEditing) {
+    if (isEditing(inv.id, field)) {
       return (
-        <>
-          <input
-            autoFocus
-            type={type}
-            value={value}
-            list={field === 'clasificacion' ? 'categorias-list' : undefined}
-            onChange={(e) => setValue(field === 'clasificacion' ? e.target.value.toUpperCase() : e.target.value)}
-            onBlur={() => save(inv)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') save(inv)
-              if (e.key === 'Escape') cancel()
-            }}
-            className="cell-edit"
-            step={type === 'number' ? '0.01' : undefined}
-          />
-        </>
+        <input
+          autoFocus
+          type={type}
+          className="cell-edit"
+          step={type === 'number' ? '0.01' : undefined}
+          {...bind(() => save(inv))}
+        />
       )
     }
     return (

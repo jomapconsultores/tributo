@@ -3,14 +3,14 @@ from fastapi.responses import StreamingResponse
 from typing import Optional, List
 from pydantic import BaseModel
 from auth import get_current_user
-from database import get_supabase_client
+from database import get_supabase_client, es_error_duplicado
 from services.sri_service import extract_claves_from_txt, descargar_multiples_xmls
 from services.xml_parser import parse_xml_invoice
 from services.export_service import generate_excel, generate_pdf
 from services.xml_store import guardar_xml_original
 from services.periodo import periodo_cliente, es_de_otro_periodo, etiqueta_periodo
 from database import fetch_all
-from tenancy import assert_client_owner, visible_client_ids
+from tenancy import assert_client_owner, visible_client_ids, filter_ids_by_tenancy
 from services.activity import registrar
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
@@ -44,11 +44,18 @@ class BulkIds(BaseModel):
     ids: List[str]
 
 
-def _load_maps(supabase):
-    class_response = supabase.table("classification_map").select("ruc, categoria").execute()
-    classification_map = {row['ruc']: row['categoria'] for row in class_response.data or []}
-    memory_response = supabase.table("card_memory").select("mem_key, tarjeta_credito").execute()
-    card_memory = {row['mem_key']: row['tarjeta_credito'] for row in memory_response.data or []}
+def _load_maps(supabase, user_id: str = None):
+    """Mapas de clasificación/tarjeta usados para auto-completar una factura al
+    subirla. Se limitan al usuario de sesión (mismo criterio que usa el propio
+    clasificador en classification.py) en vez de cargar classification_map y
+    card_memory COMPLETAS de todos los usuarios de la app en cada subida."""
+    class_q = supabase.table("classification_map").select("ruc, categoria")
+    mem_q = supabase.table("card_memory").select("mem_key, tarjeta_credito")
+    if user_id:
+        class_q = class_q.eq("user_id", user_id)
+        mem_q = mem_q.eq("user_id", user_id)
+    classification_map = {row['ruc']: row['categoria'] for row in (class_q.execute().data or [])}
+    card_memory = {row['mem_key']: row['tarjeta_credito'] for row in (mem_q.execute().data or [])}
     return classification_map, card_memory
 
 
@@ -64,7 +71,7 @@ def _store_invoice(supabase, client_id: str, user_id: str, invoice: dict) -> str
         }).execute()
         return "new"
     except Exception as e:
-        if "duplicate" in str(e).lower() or "unique" in str(e).lower():
+        if es_error_duplicado(e):
             return "duplicate"
         print(f"Error insertando factura {unique_id}: {e}")
         return "error"
@@ -139,7 +146,7 @@ async def process_txt(
         xmls, no_descargadas = descargar_multiples_xmls(claves_list, max_workers=8, max_rondas=3)
         errores = no_descargadas
 
-        classification_map, card_memory = _load_maps(supabase)
+        classification_map, card_memory = _load_maps(supabase, user_id)
         pmes, panio = periodo_cliente(supabase, client_id)
 
         new_count = dup_count = err_count = fp_count = 0
@@ -193,7 +200,7 @@ async def process_xml(
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
-        classification_map, card_memory = _load_maps(supabase)
+        classification_map, card_memory = _load_maps(supabase, user_id)
         pmes, panio = periodo_cliente(supabase, client_id)
 
         new_count = dup_count = err_count = fp_count = 0
@@ -253,15 +260,19 @@ async def bulk_move(payload: BulkMove, user_id: str = Depends(get_current_user))
     try:
         supabase = get_supabase_client()
         assert_client_owner(payload.client_id, user_id)
-        moved = skipped = 0
-        for iid in payload.ids:
+        if not payload.ids:
+            return {"moved": 0, "skipped": 0}
+        # Verificar tenencia sobre el client_id ACTUAL de cada factura (no solo
+        # el destino): filtrar por user_id de sesión hacía que mover facturas
+        # de otro dueño (acceso compartido) fallara en silencio.
+        ok_ids = filter_ids_by_tenancy(supabase, "invoices", payload.ids, user_id)
+        if ok_ids:
             try:
-                supabase.table("invoices").update({"client_id": payload.client_id}).eq("id", iid).eq("user_id", user_id).execute()
-                moved += 1
+                supabase.table("invoices").update({"client_id": payload.client_id}).in_("id", ok_ids).execute()
             except Exception as e:
-                print(f"No se pudo mover factura {iid}: {e}")
-                skipped += 1
-        return {"moved": moved, "skipped": skipped}
+                print(f"No se pudieron mover facturas: {e}")
+                return {"moved": 0, "skipped": len(payload.ids)}
+        return {"moved": len(ok_ids), "skipped": len(payload.ids) - len(ok_ids)}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -273,8 +284,10 @@ async def bulk_delete(payload: BulkIds, user_id: str = Depends(get_current_user)
         if not payload.ids:
             return {"deleted": 0}
         supabase = get_supabase_client()
-        supabase.table("invoices").delete().in_("id", payload.ids).eq("user_id", user_id).execute()
-        return {"deleted": len(payload.ids)}
+        ok_ids = filter_ids_by_tenancy(supabase, "invoices", payload.ids, user_id)
+        if ok_ids:
+            supabase.table("invoices").delete().in_("id", ok_ids).execute()
+        return {"deleted": len(ok_ids)}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -287,13 +300,17 @@ async def update_invoice(
 ):
     try:
         supabase = get_supabase_client()
+        cur_cid = supabase.table("invoices").select("client_id").eq("id", invoice_id).execute().data
+        if not cur_cid:
+            raise HTTPException(status_code=404, detail="Factura no encontrada")
+        assert_client_owner(cur_cid[0]["client_id"], user_id)
         update_data = {k: v for k, v in update.dict().items() if v is not None}
 
         # Si cambia el descuento manual, recalcular Base 15%, IVA 15% y Total
         if "desc_manual" in update_data:
             current = supabase.table("invoices").select(
                 "base_15_original,base_0,base_5,iva_5,exento_iva,no_objeto_iva"
-            ).eq("id", invoice_id).eq("user_id", user_id).execute()
+            ).eq("id", invoice_id).execute()
             if current.data:
                 row = current.data[0]
                 base_15_orig = float(row.get("base_15_original") or 0)
@@ -316,7 +333,7 @@ async def update_invoice(
             update_data["clasificacion"] = update_data["clasificacion"].upper()
             clasif_value = update_data["clasificacion"]
 
-        response = supabase.table("invoices").update(update_data).eq("id", invoice_id).eq("user_id", user_id).execute()
+        response = supabase.table("invoices").update(update_data).eq("id", invoice_id).execute()
         row = response.data[0] if response.data else None
 
         reclasificadas = 0
@@ -350,6 +367,8 @@ async def update_invoice(
         if row is not None:
             return {**row, "reclasificadas": reclasificadas}
         return None
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -358,8 +377,14 @@ async def update_invoice(
 async def delete_invoice(invoice_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("invoices").delete().eq("id", invoice_id).eq("user_id", user_id).execute()
+        cur_cid = supabase.table("invoices").select("client_id").eq("id", invoice_id).execute().data
+        if not cur_cid:
+            raise HTTPException(status_code=404, detail="Factura no encontrada")
+        assert_client_owner(cur_cid[0]["client_id"], user_id)
+        supabase.table("invoices").delete().eq("id", invoice_id).execute()
         return {"message": "Deleted"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

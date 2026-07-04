@@ -1,17 +1,16 @@
 """Datos tributarios, catálogo de productos y cálculos de ICE.
 Portado de ICEcompleto(1).py (lógica, sin la interfaz tkinter)."""
 
-# Base tributaria por año: esp = tarifa específica, umb = umbral ad-valorem, iva.
-TAX_DB = {
-    "2021": {"esp": 7.18, "umb": 4.29, "iva": 0.12},
-    "2022": {"esp": 10.00, "umb": 4.37, "iva": 0.12},
-    "2023": {"esp": 10.00, "umb": 4.53, "iva": 0.12},
-    "2024": {"esp": 10.15, "umb": 4.60, "iva": 0.15},
-    "2025": {"esp": 10.30, "umb": 4.67, "iva": 0.15},
-    "2026": {"esp": 10.41, "umb": 4.72, "iva": 0.15},
-}
+from services.ice_calc_data import TARIFAS, PORC_ADVALOREM, iva_rate as _iva_rate
 
-PORC_ADVALOREM = 0.75
+# Base tributaria por año: esp = tarifa específica, umb = umbral ad-valorem, iva.
+# Se deriva de services.ice_calc_data.TARIFAS (fuente única) para bebidas
+# alcohólicas — antes había una segunda tabla hardcodeada aquí que podía
+# desincronizarse si se actualizaba una tarifa anual y se olvidaba la otra.
+TAX_DB = {
+    anio: {"esp": tar["ALCOHOLICA"], "umb": tar["umbral"], "iva": _iva_rate(int(anio), 12)}
+    for anio, tar in TARIFAS.items()
+}
 
 CATALOGO_BASE = {
     'LICOR ORO': {'codMarca': '019167', 'codProdSRI': '19167', 'presentacion': '13', 'capacidad': '750', 'unidad': '66', 'grado': '15', 'codImpuesto': '3031', 'tipo': 'Licor', 'botellas_por_caja': 12},

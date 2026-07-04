@@ -1,14 +1,15 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { iceCalcAPI, productsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, MESES } from '../utils/periodo'
-import { calcRow, ivaRate, CATEGORIAS, CAT_LABEL, CAT_IMPUESTO, RANGOS_IND_2021, aplicaRangoInd2021 } from '../utils/iceCalc'
+import { calcRow, ivaRate, umbralAdValorem, CATEGORIAS, CAT_LABEL, CAT_IMPUESTO, RANGOS_IND_2021, aplicaRangoInd2021 } from '../utils/iceCalc'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import WorkflowGuide from '../components/WorkflowGuide'
 import TarifaImpuestoBadge from '../components/TarifaImpuestoBadge'
 import useDraft from '../hooks/useDraft'
+import { useClientList } from '../hooks/useClientList'
 import './CalculoICE.css'
 
 import { fmtMoney as money } from '../utils/format'
@@ -35,9 +36,10 @@ export default function CalculoICE() {
   const { clients, selectedClient, selectedClientId, selectClient, identsForSvc } = useClients()
   const idents_svc = identsForSvc('declaracion_ice')
 
-  const [rows, setRows] = useState([])
+  const { data: rows, loading, reload: load } = useClientList(
+    iceCalcAPI.list, selectedClientId, { errorMessage: 'Error al cargar cálculos ICE' }
+  )
   const [form, setForm] = useDraft(selectedClientId ? `draft:calcice:form:${selectedClientId}` : null, EMPTY)
-  const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [catalogo, setCatalogo] = useState([])
   const [editId, setEditId] = useState(null)
@@ -52,17 +54,6 @@ export default function CalculoICE() {
   const anio = selectedClient?.periodo_anio || 2026
   const mes = selectedClient?.periodo_mes || 1
   const iva = ivaRate(form.anio, form.mes)
-
-  const load = useCallback(async () => {
-    if (!selectedClientId) { setRows([]); return }
-    setLoading(true)
-    try {
-      const res = await iceCalcAPI.list(selectedClientId)
-      setRows(res.data?.data || [])
-    } finally { setLoading(false) }
-  }, [selectedClientId])
-
-  useEffect(() => { load() }, [load])
 
   // El período del formulario arranca con el del cliente, pero se puede cambiar
   useEffect(() => {
@@ -203,12 +194,12 @@ export default function CalculoICE() {
           <>
             <label className="ci-field"><span>Cajas</span><input className="ci-in s" type="number" value={form.cajas} onChange={(e) => setForm({ ...form, cajas: e.target.value })} /></label>
             <label className="ci-field"><span>Botellas por caja</span><input className="ci-in s" type="number" value={form.botellas_por_caja} onChange={(e) => setForm({ ...form, botellas_por_caja: e.target.value })} /></label>
-            <label className="ci-field"><span>Precio por caja ($)</span><input className="ci-in s" type="number" step="0.01" value={form.precio} onChange={(e) => setForm({ ...form, precio: e.target.value })} /></label>
+            <label className="ci-field"><span>Precio ex fábrica / caja ($)</span><input className="ci-in s" type="number" step="0.01" value={form.precio} onChange={(e) => setForm({ ...form, precio: e.target.value })} /></label>
           </>
         ) : (
           <>
             <label className="ci-field"><span>Botellas</span><input className="ci-in s" type="number" value={form.unidades} onChange={(e) => setForm({ ...form, unidades: e.target.value })} /></label>
-            <label className="ci-field"><span>Precio por botella ($)</span><input className="ci-in s" type="number" step="0.01" value={form.precio} onChange={(e) => setForm({ ...form, precio: e.target.value })} /></label>
+            <label className="ci-field"><span>Precio ex fábrica / botella ($)</span><input className="ci-in s" type="number" step="0.01" value={form.precio} onChange={(e) => setForm({ ...form, precio: e.target.value })} /></label>
           </>
         )}
         <label className="ci-field"><span>Grado alcohólico (%)</span><input className="ci-in s" type="number" value={form.grado} onChange={(e) => setForm({ ...form, grado: e.target.value })} /></label>
@@ -220,15 +211,20 @@ export default function CalculoICE() {
       {/* Cálculo en vivo del producto que se está ingresando */}
       <div className="ci-preview">
         <span className="ci-preview-lbl">Cálculo en vivo:</span>
-        <span>ICE / Botella <b>{money(preview.icePorBotella)}</b></span>
+        <span title="tarifa × grado × capacidad — automático con grado y capacidad">ICE Específico <b>{money(preview.iceEspBot)}</b>/bot</span>
+        <span title="75% del excedente del precio ex fábrica/litro sobre el umbral — automático con el precio ex fábrica">ICE Ad-valorem <b>{money(preview.iceAdvBot)}</b>/bot{preview.aplicaAdv ? ' ▲' : ''}</span>
+        <span>ICE / Botella <b className="ci-preview-hi">{money(preview.icePorBotella)}</b></span>
         {form.por_cajas && <span>ICE / Caja <b>{money(preview.icePorCaja)}</b></span>}
         <span>Botellas <b>{preview.totalBot.toFixed(0)}</b></span>
-        <span>ICE Esp. <b>{money(preview.iceEsp)}</b></span>
-        <span>ICE AdV <b>{money(preview.iceAdv)}</b>{preview.aplicaAdv ? ' ▲' : ''}</span>
         <span>Total ICE <b className="ci-preview-hi">{money(preview.totalIce)}</b></span>
         <span>IVA <b>{money(preview.iva)}</b></span>
         <span>PVP <b>{money(preview.pvp)}</b></span>
       </div>
+      <p className="ci-percaja-note">
+        {preview.aplicaAdv
+          ? `▲ Ad-valorem aplica: precio ex fábrica ${money(preview.precioLitro)}/L supera el umbral ${money(umbralAdValorem(form.anio))}/L (${form.anio}). Se cobra 75% sobre el excedente.`
+          : `Ad-valorem no aplica: precio ex fábrica ${money(preview.precioLitro)}/L ≤ umbral ${money(umbralAdValorem(form.anio))}/L (${form.anio}). Solo se cobra el ICE específico.`}
+      </p>
 
       <div className="ci-toolbar">
         <button className="ci-btn small" onClick={() => exportar('excel')}>⬇ Excel</button>

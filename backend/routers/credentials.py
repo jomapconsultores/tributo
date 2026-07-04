@@ -7,7 +7,7 @@ en el endpoint /reveal y nunca se devuelven en /list.
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from database import get_supabase_client, fetch_all, fetch_in
+from database import get_supabase_client, fetch_all, fetch_in, es_error_duplicado
 from routers.admin import require_admin
 from services.credentials_crypto import encrypt, decrypt, can_decrypt
 
@@ -250,10 +250,9 @@ async def crear(body: CredentialIn, req: Request, admin_id: str = Depends(requir
             "created_by": admin_id,
         }).execute()
     except Exception as e:
-        msg = str(e)
-        if "duplicate" in msg.lower() or "unique" in msg.lower():
+        if es_error_duplicado(e):
             raise HTTPException(status_code=409, detail="Ya existe una credencial para ese cliente+servicio")
-        raise HTTPException(status_code=500, detail=msg)
+        raise HTTPException(status_code=500, detail=str(e))
     new_id = res.data[0]["id"] if res.data else None
     _log(credential_id=new_id, admin_user_id=admin_id, action="create", req=req)
     return {"id": new_id, "ok": True}

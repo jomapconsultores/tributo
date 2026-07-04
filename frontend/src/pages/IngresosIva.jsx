@@ -1,19 +1,10 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
-import { salesIvaAPI, xmlOriginalesAPI, downloadBlob } from '../services/api'
-
-const descargarXmlsOriginales = async (cliente, clientId, tipo, modulo) => {
-  try {
-    const nom = (cliente?.nombre || '').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 20)
-    const nombre = `${tipo}_${cliente?.identificacion || ''}_${nom}_${String(cliente?.periodo_mes || '').padStart(2, '0')}_${cliente?.periodo_anio || ''}.zip`
-    const res = await xmlOriginalesAPI.descargar(clientId, modulo)
-    downloadBlob(res.data, nombre, 'application/zip')
-  } catch (err) {
-    if (err.response?.status === 404) alert('Aún no hay XML guardados para este período. Se guardan automáticamente al subir nuevos XML.')
-    else alert('Error: ' + (err.response?.data?.detail || err.message))
-  }
-}
+import { salesIvaAPI, downloadBlob } from '../services/api'
+import { descargarXmlsOriginales } from '../utils/xmlOriginales'
+import { filterBySearch } from '../utils/search'
 import { useClients } from '../context/ClientContext'
+import { useClientList } from '../hooks/useClientList'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import ClaveHeader from '../components/ClaveHeader'
@@ -36,10 +27,10 @@ export default function IngresosIva() {
   const navigate = useNavigate()
   const { clients, selectedClient, selectedClientId, selectClient, identsForSvc } = useClients()
   const idents_svc = identsForSvc('declaracion_iva')
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(false)
+  const { data: rows, loading, error, reload: load } = useClientList(
+    salesIvaAPI.list, selectedClientId, { errorMessage: 'Error al cargar ventas IVA' }
+  )
   const [busy, setBusy] = useState('')
-  const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [dragActive, setDragActive] = useState(false)
   const [editId, setEditId] = useState(null)
@@ -81,19 +72,6 @@ export default function IngresosIva() {
       alert('Error: ' + (err.response?.data?.detail || err.message))
     } finally { setSavingEdit(false) }
   }
-
-  const load = useCallback(async () => {
-    if (!selectedClientId) { setRows([]); return }
-    setLoading(true); setError('')
-    try {
-      const res = await salesIvaAPI.list(selectedClientId)
-      setRows(res.data?.data || [])
-    } catch (err) {
-      setError('Error al cargar ventas IVA: ' + (err.response?.data?.detail || err.message))
-    } finally { setLoading(false) }
-  }, [selectedClientId])
-
-  useEffect(() => { load() }, [load])
 
   const handleUploadXml = async (files) => {
     if (!selectedClientId || !files.length) return
@@ -166,14 +144,9 @@ export default function IngresosIva() {
     catch (err) { alert('Error: ' + (err.response?.data?.detail || err.message)) }
   }
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter((r) =>
-      [r.fecha, r.factura_numero, r.id_cliente, r.razon_social_cliente]
-        .some((f) => String(f || '').toLowerCase().includes(q))
-    )
-  }, [rows, search])
+  const filtered = useMemo(() =>
+    filterBySearch(rows, search, (r) => [r.fecha, r.factura_numero, r.id_cliente, r.razon_social_cliente]),
+  [rows, search])
 
   const totales = useMemo(() => {
     const acc = {
