@@ -1,4 +1,5 @@
 import io
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -187,16 +188,28 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
                                marcar_rebaja=marcar_rebaja, marcar_exencion=marcar_exencion)
         decl["aplazados_vencen"] = aplazados_ice
     else:
-        invoices = fetch_all(lambda: supabase.table("invoices").select("*").eq("client_id", client_id))
-        ventas_ice = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id))
-        ventas_iva = fetch_all(lambda: supabase.table("sales_iva").select("*").eq("client_id", client_id))
-        retentions = fetch_all(lambda: supabase.table("retentions").select("*").eq("client_id", client_id))
+        # Las 7 consultas de abajo son independientes entre sí (ninguna depende
+        # del resultado de otra), así que se paralelizan igual que
+        # routers/reportes.py::_filas_y_total.
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            f_invoices = ex.submit(lambda: fetch_all(lambda: supabase.table("invoices").select("*").eq("client_id", client_id)))
+            f_ventas_ice = ex.submit(lambda: fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id)))
+            f_ventas_iva = ex.submit(lambda: fetch_all(lambda: supabase.table("sales_iva").select("*").eq("client_id", client_id)))
+            f_retentions = ex.submit(lambda: fetch_all(lambda: supabase.table("retentions").select("*").eq("client_id", client_id)))
+            f_credito_prev = ex.submit(_cargar_credito_mes_anterior, supabase, client_id, mes, anio)
+            f_ov_pers = ex.submit(_cargar_overrides, supabase, client_id, "IVA", mes, anio)
+            f_aplazados = ex.submit(_pagos_aplazados_vencen, supabase, client_id, mes, anio, "IVA")
+            invoices = f_invoices.result()
+            ventas_ice = f_ventas_ice.result()
+            ventas_iva = f_ventas_iva.result()
+            retentions = f_retentions.result()
+            cred_adq_prev, cred_ret_prev = f_credito_prev.result()
+            ov_pers = f_ov_pers.result()
+            aplazados = f_aplazados.result()
 
         # Crédito mes anterior: parte del historial y cada casillero (605/606) se
         # puede sobreescribir de forma INDEPENDIENTE si el usuario lo ingresa.
-        cred_adq_prev, cred_ret_prev = _cargar_credito_mes_anterior(supabase, client_id, mes, anio)
         # Overrides persistidos del período (manual): tienen prioridad sobre el arrastre.
-        ov_pers = _cargar_overrides(supabase, client_id, "IVA", mes, anio)
         if ov_pers.get("credito_adq") is not None:
             cred_adq_prev = float(ov_pers["credito_adq"])
         if ov_pers.get("credito_ret") is not None:
@@ -208,9 +221,6 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
             cred_adq_prev = float(override_credito_adq)
         if override_credito_ret is not None:
             cred_ret_prev = float(override_credito_ret)
-
-        # Pagos aplazados que vencen este período
-        aplazados = _pagos_aplazados_vencen(supabase, client_id, mes, anio, "IVA")
 
         decl = declaracion_iva(
             invoices, ventas_ice, ventas_iva,

@@ -263,19 +263,32 @@ async def por_contribuyente(identificacion: str = Query(...), user_id: str = Dep
             if k not in porruc or (not (porruc[k].get("categoria") or "").strip() and (x.get("categoria") or "").strip()):
                 porruc[k] = x
         rows = []
+        faltantes = []
         for ruc, nombre in prov.items():
             if ruc in porruc:
                 rows.append(porruc[ruc])
             else:
-                try:
-                    ins = supabase.table("classification_map").insert({
-                        "user_id": user_id, "ruc": ruc,
-                        "nombre_proveedor": (nombre or "").upper(), "categoria": "",
-                    }).execute()
-                    if ins.data:
-                        rows.append(ins.data[0])
-                except Exception:
-                    pass
+                faltantes.append((ruc, nombre))
+        if faltantes:
+            try:
+                ins = supabase.table("classification_map").insert([{
+                    "user_id": user_id, "ruc": ruc,
+                    "nombre_proveedor": (nombre or "").upper(), "categoria": "",
+                } for ruc, nombre in faltantes]).execute()
+                rows.extend(ins.data or [])
+            except Exception:
+                # Fallback: insertar fila por fila (p.ej. si el batch falla por
+                # un conflicto puntual de unicidad en alguna fila del lote).
+                for ruc, nombre in faltantes:
+                    try:
+                        ins = supabase.table("classification_map").insert({
+                            "user_id": user_id, "ruc": ruc,
+                            "nombre_proveedor": (nombre or "").upper(), "categoria": "",
+                        }).execute()
+                        if ins.data:
+                            rows.append(ins.data[0])
+                    except Exception:
+                        pass
         pmap = _prov_map(supabase, user_id, is_admin)
         for r in rows:
             k = (r.get("ruc") or "").strip()

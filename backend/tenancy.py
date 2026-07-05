@@ -5,6 +5,7 @@ aislamiento se aplica en la capa de aplicación: se filtra por user_id y se
 verifica la propiedad del cliente. Los accesos otorgados por el administrador
 (tabla client_access) también se respetan.
 """
+import time as _time
 from fastapi import HTTPException
 from database import get_supabase_client, fetch_all, fetch_in
 
@@ -42,18 +43,26 @@ def shared_client_ids(user_id: str) -> list:
     return [r["client_id"] for r in rows]
 
 
+_ADMIN_IDS_TTL = 30  # seg: cache de administradores (evita 1 query por client_id único en filter_ids_by_tenancy)
+_admin_ids_cache = {"ids": None, "ts": 0.0}
+
+
 def _admin_user_ids() -> set:
     """user_id de los administradores máximos (role='admin'). Lo que crea un
     administrador solo lo ve otro administrador: ni el socio ni los clientes."""
+    now = _time.monotonic()
+    if _admin_ids_cache["ids"] is not None and (now - _admin_ids_cache["ts"]) < _ADMIN_IDS_TTL:
+        return _admin_ids_cache["ids"]
     supabase = get_supabase_client()
     try:
         rows = supabase.table("app_admins").select("user_id,role").eq("role", "admin").execute().data or []
     except Exception:
         rows = []
-    return {r["user_id"] for r in rows}
+    ids = {r["user_id"] for r in rows}
+    _admin_ids_cache["ids"] = ids
+    _admin_ids_cache["ts"] = now
+    return ids
 
-
-import time as _time
 
 _VC_TTL = 30  # seg: cache de clientes visibles por usuario (evita viajes repetidos)
 _vc_cache: dict = {}  # user_id -> (rows_full, ts)
@@ -166,11 +175,12 @@ def filter_ids_by_tenancy(supabase, table: str, ids: list, user_id: str) -> list
     if not ids:
         return []
     rows = supabase.table(table).select("id,client_id").in_("id", ids).execute().data or []
-    ok_ids = []
-    for r in rows:
+    unique_client_ids = {r["client_id"] for r in rows}
+    allowed = set()
+    for cid in unique_client_ids:
         try:
-            assert_client_owner(r["client_id"], user_id)
-            ok_ids.append(r["id"])
+            assert_client_owner(cid, user_id)
+            allowed.add(cid)
         except HTTPException:
             pass
-    return ok_ids
+    return [r["id"] for r in rows if r["client_id"] in allowed]
