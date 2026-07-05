@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import StreamingResponse
 from typing import Optional, List
@@ -109,8 +110,12 @@ async def list_invoices(
                 count_q = count_q.eq("user_id", user_id)
                 data_q = data_q.eq("user_id", user_id)
 
-        total = count_q.execute().count or 0
-        response = data_q.order("fecha", desc=True).range(skip, skip + limit - 1).execute()
+        # Independientes entre sí: se paralelizan igual que reportes.py/declaraciones.py.
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            f_total = ex.submit(lambda: count_q.execute().count or 0)
+            f_data = ex.submit(lambda: data_q.order("fecha", desc=True).range(skip, skip + limit - 1).execute())
+            total = f_total.result()
+            response = f_data.result()
 
         return {
             "data": response.data or [],

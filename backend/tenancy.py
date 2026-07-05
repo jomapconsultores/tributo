@@ -175,12 +175,25 @@ def filter_ids_by_tenancy(supabase, table: str, ids: list, user_id: str) -> list
     if not ids:
         return []
     rows = supabase.table(table).select("id,client_id").in_("id", ids).execute().data or []
-    unique_client_ids = {r["client_id"] for r in rows}
+    unique_client_ids = list({r["client_id"] for r in rows})
+    if not unique_client_ids:
+        return []
+    # Resuelve tenencia para TODOS los client_id únicos con un par de queries en
+    # lote (en vez de un assert_client_owner -y sus 1-2 queries- por cada uno),
+    # replicando en Python la misma lógica de rol que assert_client_owner.
+    from routers.access import rol_de
+    role = rol_de(user_id)
+    clients_rows = supabase.table("clients").select("id,user_id").in_("id", unique_client_ids).execute().data or []
+    owner_by_id = {c["id"]: c.get("user_id") for c in clients_rows}
+    access_rows = supabase.table("client_access").select("client_id")\
+        .in_("client_id", unique_client_ids).eq("granted_to", user_id).execute().data or []
+    granted = {r["client_id"] for r in access_rows}
+    admin_uids = _admin_user_ids() if role == "socio" else set()
     allowed = set()
     for cid in unique_client_ids:
-        try:
-            assert_client_owner(cid, user_id)
+        owner = owner_by_id.get(cid)
+        if owner is None:
+            continue  # cliente no encontrado -> sin acceso
+        if owner == user_id or cid in granted or role == "admin" or (role == "socio" and owner not in admin_uids):
             allowed.add(cid)
-        except HTTPException:
-            pass
     return [r["id"] for r in rows if r["client_id"] in allowed]

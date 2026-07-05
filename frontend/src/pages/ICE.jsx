@@ -51,7 +51,7 @@ const chequearBotellas = (r) => {
 // `children` (que arma la tabla con sus sumatorias sobre lo filtrado).
 function CuadroFiltrable({ title, hint, data, value, onFilter, children }) {
   const q = (value || '').trim()
-  const filt = q ? data.filter((d) => filaCoincide(d, q)) : data
+  const filt = useMemo(() => (q ? data.filter((d) => filaCoincide(d, q)) : data), [data, q])
   return (
     <div className="ice-report">
       <h2 className="ice-report-title">
