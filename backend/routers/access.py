@@ -7,6 +7,7 @@ dependencia de router para bloquear (403) el acceso a módulos no contratados.
 import time
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client
 
@@ -126,6 +127,85 @@ def modulos_de(user_id: str):
     return mods
 
 
+# ---------------------------------------------------------------------------
+# Roles múltiples: un usuario puede tener VARIOS roles otorgados (tabla
+# user_roles) y cambiar entre ellos. app_admins guarda el rol ACTIVO (lo que
+# lee rol_de); user_roles guarda el CONJUNTO otorgado por el administrador.
+# ---------------------------------------------------------------------------
+_ROL_ORDEN = {"admin": 0, "socio": 1, "cliente": 2}
+
+
+def roles_otorgados(user_id: str) -> set:
+    """Conjunto de roles que el administrador le otorgó (tabla user_roles).
+    Vacío si es un usuario normal (solo tendrá su rol propio, ver abajo)."""
+    try:
+        rows = get_supabase_client().table("user_roles").select("role").eq("user_id", user_id).execute().data or []
+    except Exception:
+        rows = []
+    return {r["role"] for r in rows}
+
+
+def roles_asumibles(user_id: str) -> list:
+    """Roles entre los que el usuario PUEDE cambiar. Siempre incluye su rol
+    activo actual (rol_de), aunque no esté en user_roles. Ordenados de mayor a
+    menor privilegio. Un usuario sin roles múltiples otorgados obtiene una sola
+    entrada (su propio rol) → el frontend no muestra el selector."""
+    roles = roles_otorgados(user_id)
+    roles.add(rol_de(user_id))
+    return sorted(roles, key=lambda r: _ROL_ORDEN.get(r, 9))
+
+
+def cambiar_rol_activo(user_id: str, target: str) -> str:
+    """Cambia el rol ACTIVO del usuario re-apuntando app_admins. Solo permite
+    roles que ya le fueron otorgados (self-service, no escala privilegios)."""
+    target = (target or "").strip().lower()
+    if target not in ("admin", "socio", "cliente"):
+        raise HTTPException(status_code=400, detail="Rol inválido (admin | socio | cliente)")
+    # Validación ESTRICTA contra el conjunto que fijó el administrador (user_roles),
+    # no contra la unión con el rol activo: así una divergencia futura
+    # app_admins/user_roles nunca queda auto-conmutable (defensa en profundidad).
+    if target not in roles_otorgados(user_id):
+        raise HTTPException(status_code=403, detail="No tienes ese rol otorgado por el administrador")
+    sb = get_supabase_client()
+    if target == "cliente":
+        # 'cliente' = ausencia de fila en app_admins. user_roles conserva el
+        # conjunto, así que puede volver a subir de rol después.
+        sb.table("app_admins").delete().eq("user_id", user_id).execute()
+    else:
+        existing = sb.table("app_admins").select("user_id").eq("user_id", user_id).execute().data
+        if existing:
+            sb.table("app_admins").update({"role": target}).eq("user_id", user_id).execute()
+        else:
+            sb.table("app_admins").insert({"user_id": user_id, "role": target}).execute()
+    invalidar_cache_rol(user_id)
+    # La visibilidad de datos depende del rol → limpiar también el cache de clientes.
+    try:
+        from tenancy import invalidate_clients_cache
+        invalidate_clients_cache(user_id)
+    except Exception:
+        pass
+    return target
+
+
+class SwitchRoleIn(BaseModel):
+    role: str
+
+
+@router.post("/switch-role")
+async def switch_role(body: SwitchRoleIn, user_id: str = Depends(get_current_user)):
+    """El propio usuario cambia su rol activo, SOLO entre los roles que el
+    administrador le otorgó (user_roles). Devuelve el estado de acceso ya
+    recalculado con el rol nuevo."""
+    nuevo = cambiar_rol_activo(user_id, body.role)
+    sub, mods = _cargar_acceso(user_id)
+    return {
+        "role": nuevo,
+        "roles": roles_asumibles(user_id),
+        "modules": mods,
+        "is_admin": es_admin(user_id),
+    }
+
+
 def require_module(modulo: str):
     async def dep(user_id: str = Depends(get_current_user)):
         if modulo not in modulos_de(user_id):
@@ -142,6 +222,7 @@ async def me(user_id: str = Depends(get_current_user)):
         "modules": mods,
         "is_admin": es_admin(user_id),
         "role": rol_de(user_id),
+        "roles": roles_asumibles(user_id),   # roles entre los que puede cambiar
         "subscription": {
             "estado": sub.get("estado"),
             "plan": sub.get("plan"),

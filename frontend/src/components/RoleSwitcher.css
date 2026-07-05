@@ -1,0 +1,73 @@
+/* Selector de rol en la barra superior oscura (user-topbar) */
+.role-switcher { position: relative; margin-left: auto; }
+
+.role-badge {
+  margin-left: auto;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.15);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 20px;
+  padding: 3px 12px;
+  white-space: nowrap;
+}
+
+.role-switcher-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #e0f2fe;
+  background: rgba(59, 130, 246, 0.20);
+  border: 1px solid rgba(59, 130, 246, 0.45);
+  border-radius: 20px;
+  padding: 4px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.role-switcher-btn:hover { background: rgba(59, 130, 246, 0.32); }
+.role-switcher-btn:disabled { opacity: 0.6; cursor: default; }
+.role-caret { font-size: 0.6rem; opacity: 0.8; }
+
+.role-switcher-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 190px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.25);
+  padding: 6px;
+  z-index: 50;
+}
+.role-switcher-title {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #94a3b8;
+  font-weight: 700;
+  padding: 4px 10px 6px;
+}
+.role-switcher-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #1e293b;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 8px 10px;
+  cursor: pointer;
+  text-align: left;
+}
+.role-switcher-item:hover { background: #f1f5f9; }
+.role-switcher-item.active { background: #eff6ff; color: #1d4ed8; }
+.role-check { color: #1d4ed8; font-weight: 700; }

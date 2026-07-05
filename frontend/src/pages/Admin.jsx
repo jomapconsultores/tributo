@@ -59,10 +59,14 @@ export default function Admin() {
   }
   useEffect(load, [])
 
-  const cambiarRol = async (uid, role) => {
-    if (!window.confirm(`¿Cambiar el rol de este usuario a "${role}"?`)) return
+  // Otorga el CONJUNTO de roles del usuario (puede tener varios y cambiar entre ellos).
+  const toggleRol = async (uid, actuales, r) => {
+    const s = new Set(actuales)
+    s.has(r) ? s.delete(r) : s.add(r)
+    const nuevos = [...s]
+    if (nuevos.length === 0) { alert('El usuario debe tener al menos un rol.'); return }
     setBusy(true)
-    try { await adminAPI.setRole(uid, role); await load() }
+    try { await adminAPI.setRoles(uid, nuevos); await load() }
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
     finally { setBusy(false) }
   }
@@ -169,14 +173,22 @@ export default function Admin() {
                   <tr key={u.user_id} className={venc ? 'vencida' : ''}>
                     <td>
                       <div className="adm-email">{u.email}</div>
-                      <div className="adm-meta">{ROL_LBL[u.role] || '👤 Cliente'} · alta {u.created_at}{venc ? ' · ⚠ vencida' : ''} · IPs {u.ips ?? 0}/3</div>
+                      <div className="adm-meta">Rol activo: {ROL_LBL[u.role] || '👤 Cliente'} · alta {u.created_at}{venc ? ' · ⚠ vencida' : ''} · IPs {u.ips ?? 0}/3</div>
                       {isSuperAdmin && (
-                        <select className="adm-rol-select" value={u.role || 'cliente'} disabled={busy}
-                          onChange={(ev) => cambiarRol(u.user_id, ev.target.value)} title="Cambiar rol">
-                          <option value="cliente">👤 Cliente</option>
-                          <option value="socio">🤝 Socio</option>
-                          <option value="admin">👑 Administrador</option>
-                        </select>
+                        <div className="adm-roles" title="Roles otorgados: si tiene más de uno, el usuario puede cambiar entre ellos con el selector de arriba a la derecha.">
+                          <span className="adm-roles-lbl">Roles:</span>
+                          {['cliente', 'socio', 'admin'].map((r) => {
+                            const otorgados = u.roles || [u.role || 'cliente']
+                            return (
+                              <label key={r} className="adm-rol-chk">
+                                <input type="checkbox" disabled={busy}
+                                  checked={otorgados.includes(r)}
+                                  onChange={() => toggleRol(u.user_id, otorgados, r)} />
+                                {ROL_LBL[r]}
+                              </label>
+                            )
+                          })}
+                        </div>
                       )}
                     </td>
                     {MODS.map((m) => (

@@ -41,6 +41,13 @@ class RoleIn(BaseModel):
     role: str   # 'admin' | 'socio' | 'cliente'
 
 
+class RolesIn(BaseModel):
+    roles: List[str]   # conjunto otorgado, p.ej. ['admin', 'cliente']
+
+
+_ROL_ORDEN = {"admin": 0, "socio": 1, "cliente": 2}
+
+
 class ClientAccessIn(BaseModel):
     identificacion: str
     granted_to: str          # user_id del beneficiario
@@ -110,6 +117,11 @@ async def list_users(_: str = Depends(require_admin)):
     admin_rows = sb.table("app_admins").select("user_id,role").execute().data or []
     roles = {a["user_id"]: (a.get("role") or "admin") for a in admin_rows}
     admins = set(roles.keys())
+    # Conjunto de roles OTORGADOS por usuario (para las casillas del panel)
+    role_set_rows = sb.table("user_roles").select("user_id,role").execute().data or []
+    roles_set = {}
+    for r in role_set_rows:
+        roles_set.setdefault(r["user_id"], set()).add(r["role"])
     subs = {s["user_id"]: s for s in (sb.table("subscriptions").select("user_id,plan,precio_mensual,estado,proximo_pago,iva_incluido").execute().data or [])}
     ip_rows = sb.table("user_ips").select("user_id").execute().data or []
     ip_count = {}
@@ -136,7 +148,8 @@ async def list_users(_: str = Depends(require_admin)):
             "email": u.email,
             "created_at": str(u.created_at)[:10],
             "is_admin": uid in admins,
-            "role": roles.get(uid, "cliente"),
+            "role": roles.get(uid, "cliente"),   # rol ACTIVO
+            "roles": sorted(roles_set.get(uid) or {roles.get(uid, "cliente")}, key=lambda r: _ROL_ORDEN.get(r, 9)),  # conjunto OTORGADO
             "modules": by_user.get(uid, {}),
             "subscription": sub,
             "ips": ip_count.get(uid, 0),
@@ -402,7 +415,55 @@ async def set_role(uid: str, body: RoleIn, admin_id: str = Depends(require_super
             sb.table("app_admins").update({"role": role}).eq("user_id", uid).execute()
         else:
             sb.table("app_admins").insert({"user_id": uid, "role": role}).execute()
+    # Mantener user_roles en un solo rol (compat: este endpoint asigna UN rol).
+    sb.table("user_roles").delete().eq("user_id", uid).execute()
+    sb.table("user_roles").insert({"user_id": uid, "role": role, "granted_by": admin_id}).execute()
+    from routers.access import invalidar_cache_rol
+    invalidar_cache_rol(uid)
     return {"ok": True, "role": role}
+
+
+@router.put("/users/{uid}/roles")
+async def set_roles(uid: str, body: RolesIn, admin_id: str = Depends(require_super_admin)):
+    """Otorga el CONJUNTO de roles de un usuario (tabla user_roles), entre los
+    que luego podrá cambiar con el selector. El rol ACTIVO (app_admins) se
+    mantiene si sigue permitido; si no, baja/sube al de mayor privilegio del
+    conjunto. Solo el administrador máximo puede otorgar roles."""
+    validos = {"admin", "socio", "cliente"}
+    pedidos = {(r or "").strip().lower() for r in (body.roles or [])} & validos
+    if not pedidos:
+        pedidos = {"cliente"}
+    if uid == admin_id and "admin" not in pedidos:
+        raise HTTPException(status_code=400, detail="No puedes quitarte tu propio rol de administrador")
+    sb = get_supabase_client()
+
+    # Sincronizar user_roles con el conjunto pedido
+    actuales = {r["role"] for r in (sb.table("user_roles").select("role").eq("user_id", uid).execute().data or [])}
+    for r in pedidos - actuales:
+        sb.table("user_roles").insert({"user_id": uid, "role": r, "granted_by": admin_id}).execute()
+    for r in actuales - pedidos:
+        sb.table("user_roles").delete().eq("user_id", uid).eq("role", r).execute()
+
+    # Rol ACTIVO: conservar el actual si sigue permitido; si no, el de mayor privilegio.
+    ex = sb.table("app_admins").select("role").eq("user_id", uid).execute().data
+    activo_actual = (ex[0].get("role") if ex else None) or ("socio" if ex else "cliente")
+    if activo_actual not in pedidos:
+        activo = sorted(pedidos, key=lambda r: _ROL_ORDEN.get(r, 9))[0]
+        if activo == "cliente":
+            sb.table("app_admins").delete().eq("user_id", uid).execute()
+        elif ex:
+            sb.table("app_admins").update({"role": activo}).eq("user_id", uid).execute()
+        else:
+            sb.table("app_admins").insert({"user_id": uid, "role": activo}).execute()
+
+    from routers.access import invalidar_cache_rol
+    invalidar_cache_rol(uid)
+    try:
+        from tenancy import invalidate_clients_cache
+        invalidate_clients_cache(uid)
+    except Exception:
+        pass
+    return {"ok": True, "roles": sorted(pedidos, key=lambda r: _ROL_ORDEN.get(r, 9))}
 
 
 @router.post("/users/{uid}/plan")

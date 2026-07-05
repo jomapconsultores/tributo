@@ -31,6 +31,10 @@
 
 /* Selector de rol (solo super-admin) */
 .adm-rol-select { margin-top: 4px; font-size: 0.72rem; padding: 2px 4px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; color: #334155; }
+.adm-roles { margin-top: 5px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.adm-roles-lbl { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; color: #94a3b8; }
+.adm-rol-chk { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; color: #334155; cursor: pointer; white-space: nowrap; }
+.adm-rol-chk input { cursor: pointer; }
 
 /* Modal de pago */
 .pago-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 1000; }

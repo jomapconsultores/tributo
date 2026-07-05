@@ -44,13 +44,25 @@ def shared_client_ids(user_id: str) -> list:
 
 def _admin_user_ids() -> set:
     """user_id de los administradores máximos (role='admin'). Lo que crea un
-    administrador solo lo ve otro administrador: ni el socio ni los clientes."""
+    administrador solo lo ve otro administrador: ni el socio ni los clientes.
+
+    Refleja al admin DE RAÍZ, no el rol activo: si un admin cambia su vista a
+    'cliente' (borra su fila de app_admins), sigue contando como admin aquí
+    gracias a user_roles, para que sus contribuyentes NO se filtren a los socios
+    mientras navega con otro rol."""
     supabase = get_supabase_client()
+    ids = set()
     try:
-        rows = supabase.table("app_admins").select("user_id,role").eq("role", "admin").execute().data or []
+        rows = supabase.table("app_admins").select("user_id").eq("role", "admin").execute().data or []
+        ids.update(r["user_id"] for r in rows)
     except Exception:
-        rows = []
-    return {r["user_id"] for r in rows}
+        pass
+    try:
+        rows2 = supabase.table("user_roles").select("user_id").eq("role", "admin").execute().data or []
+        ids.update(r["user_id"] for r in rows2)
+    except Exception:
+        pass
+    return ids
 
 
 import time as _time

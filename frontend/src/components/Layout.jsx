@@ -5,6 +5,7 @@ import NewClientModal from './NewClientModal'
 import AlertaDeclaracion from './AlertaDeclaracion'
 import RecordatorioAplazados from './RecordatorioAplazados'
 import CobrosPendientesModal from './CobrosPendientesModal'
+import RoleSwitcher from './RoleSwitcher'
 import { useAccess } from '../context/AccessContext'
 import './Layout.css'
 
@@ -48,6 +49,7 @@ export default function Layout({ user, onLogout }) {
         <button className="topbar-burger" onClick={() => setSidebarOpen((o) => !o)} aria-label="Menú">☰</button>
         <span className="topbar-title">📑 Gestor SRI</span>
         {user?.email && <span className="topbar-user">👤 {user.email}</span>}
+        {user?.email && <RoleSwitcher />}
       </header>
 
       <div className="layout-overlay" onClick={() => setSidebarOpen(false)} />
@@ -58,6 +60,7 @@ export default function Layout({ user, onLogout }) {
           <div className="user-topbar">
             <span className="user-topbar-ico">👤</span>
             <span className="user-topbar-email">{user.email}</span>
+            <RoleSwitcher />
           </div>
         )}
         <SubBanner />
