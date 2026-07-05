@@ -231,7 +231,10 @@ export default function RetencionesEfectuadas() {
         <label className="ref-field"><span>% IVA</span>
           <select className="ref-in s" value={form.porc_iva} onChange={(e) => setForm({ ...form, porc_iva: e.target.value })}>
             <option value="0">—</option>
+            <option value="10">10% (bienes — contrib. especial)</option>
+            <option value="20">20% (servicios — contrib. especial)</option>
             <option value="30">30%</option>
+            <option value="50">50%</option>
             <option value="70">70%</option>
             <option value="100">100%</option>
           </select></label>
@@ -282,7 +285,7 @@ export default function RetencionesEfectuadas() {
       ) : (
         <div className="ref-table-wrap">
           <div className="ref-hint">{filtered.length} de {rows.length}</div>
-          <BulkBar count={selected.size} onMove={bulkMove} onDelete={bulkDelete} onClear={clearSel} />
+          <BulkBar count={selected.size} onMove={bulkMove} onDelete={bulkDelete} onClear={clearSel} eligibleIdents={idents_agente} />
           <div className="ref-scroll">
             <table className="ref-table">
               <thead>

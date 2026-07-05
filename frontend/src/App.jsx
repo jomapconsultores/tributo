@@ -155,7 +155,7 @@ function App() {
               <Route path="/retenciones-efectuadas" element={<RequireModule modulo="agente_retencion"><RetencionesEfectuadas /></RequireModule>} />
               <Route path="/declaracion-iva" element={<RequireModule modulo="declaraciones"><Declaraciones tipo="IVA" /></RequireModule>} />
               <Route path="/declaracion-ice" element={<RequireModule modulo="declaraciones"><Declaraciones tipo="ICE" /></RequireModule>} />
-              <Route path="/declaracion-103" element={<RequireModule modulo="declaraciones"><Declaraciones tipo="103" /></RequireModule>} />
+              <Route path="/declaracion-103" element={<RequireModule modulo="agente_retencion"><Declaraciones tipo="103" /></RequireModule>} />
               <Route path="/devoluciones-iva/tercera-edad" element={<RequireModule modulo="declaraciones"><DevolucionesIvaTerceraEdad /></RequireModule>} />
               <Route path="/ingresos-iva" element={<RequireModule modulo="ingresos_ice"><IngresosIva /></RequireModule>} />
               <Route path="/calculo-ice" element={<RequireModule modulo="ingresos_ice"><CalculoICE /></RequireModule>} />

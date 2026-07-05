@@ -53,7 +53,11 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     Retenciones de IVA EFECTUADAS como agente de retención (retenciones_iva_agente,
     tabla retenciones_efectuadas): el cliente retuvo IVA a SUS proveedores. Esto es
     una obligación (dinero que debe entregar al SRI), no un crédito — se SUMA al
-    IVA a pagar, no se resta. Se agrupa por porc_iva (30/70/100%).
+    IVA a pagar, no se resta. Se agrupa por porc_iva en los casilleros oficiales
+    de la sección "Agente de retención del IVA" del Formulario 104 (Resolución
+    NAC-DGERCGC20-00000061, reformada por NAC-DGERCGC23-00000026): 721=10%,
+    723=20%, 725=30%, 727=50%, 729=70%, 731=100%; total 799; total a pagar por
+    retención 801; total consolidado 859 (= 699 + 801).
 
     Aplazamiento (Art. 67 LRTI): si diferir_meses > 0, las ventas se reportan
     en el casillero 481 (ventas con cobro diferido > N meses) y el IVA
@@ -142,10 +146,14 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     n_retenciones = sum(1 for r in ret_ok if _f(r.get("ret_iva")) > 0)
 
     # ── IVA retenido a proveedores como AGENTE de retención ──────────────
-    # Obligación a pagar al SRI (no es crédito): se agrupa por porcentaje
-    # (30/70/100%), tal como exige el Formulario 104.
+    # Obligación a pagar al SRI (no es crédito): sección "AGENTE DE RETENCIÓN
+    # DEL IVA" del Formulario 104 (Resolución NAC-DGERCGC20-00000061, reformada
+    # por NAC-DGERCGC23-00000026) — casilleros 721(10%)/723(20%)/725(30%)/
+    # 727(50%)/729(70%)/731(100%), total 799, total a pagar por retención 801.
+    # Se agrupa por porcentaje real de la resolución (no solo 30/70/100).
     ref_ok = [r for r in retenciones_iva_agente if (r.get("estado") or "OK") == "OK" and _f(r.get("ret_iva")) > 0]
-    ref_buckets = {30: [], 70: [], 100: []}
+    RIA_CASILLERO = {10: "721", 20: "723", 30: "725", 50: "727", 70: "729", 100: "731"}
+    ref_buckets = {pct: [] for pct in RIA_CASILLERO}
     for r in ref_ok:
         pct = round(_f(r.get("porc_iva")))
         ref_buckets.setdefault(pct, []).append(r)
@@ -206,7 +214,7 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     usa_ret = min(causado_rest, credito_ret_disp); causado_rest -= usa_ret
     sobra_ret = credito_ret_disp - usa_ret
 
-    iva_a_pagar = round(causado_rest, 2)                 # 619 / 902
+    iva_a_pagar = round(causado_rest, 2)                 # 619 (equivale a 699 si hay agente de retención)
     credito_proximo_adq = round(sobra_adq, 2)            # 695 (próx. mes por adquisiciones)
     credito_proximo_ret = round(sobra_ret, 2)            # 697 (próx. mes por retenciones)
     saldo_a_favor = round(credito_proximo_adq + credito_proximo_ret, 2)
@@ -288,16 +296,18 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     # Obligación adicional (NO es crédito): se suma al total a pagar, no se
     # compensa con el saldo a favor de adquisiciones/retenciones anterior.
     if ref_ok:
-        for pct in (30, 70, 100):
+        for pct, cod in RIA_CASILLERO.items():
             filas_pct = ref_buckets.get(pct) or []
             if not filas_pct:
                 continue
             ret_pct = sum(_f(r.get("ret_iva")) for r in filas_pct)
-            filas.append(fila("RETENCIONES DE IVA EFECTUADAS (AGENTE DE RETENCIÓN)",
-                              f"RIA-{pct}", f"IVA retenido a proveedores {pct}%", ret_pct, len(filas_pct)))
-        filas.append(fila("RETENCIONES DE IVA EFECTUADAS (AGENTE DE RETENCIÓN)", "RIA-T",
-                          "TOTAL retenido a proveedores (por pagar al SRI)", ret_iva_agente_total, len(ref_ok)))
-        filas.append(fila("RESULTADO", "902", "TOTAL A PAGAR (620 + retenciones de IVA efectuadas)", total_a_pagar))
+            filas.append(fila("AGENTE DE RETENCIÓN DEL IVA",
+                              cod, f"Retención del {pct}%", ret_pct, len(filas_pct)))
+        filas.append(fila("AGENTE DE RETENCIÓN DEL IVA", "799",
+                          "TOTAL IMPUESTO RETENIDO (721+723+725+727+729+731)", ret_iva_agente_total, len(ref_ok)))
+        filas.append(fila("AGENTE DE RETENCIÓN DEL IVA", "801",
+                          "TOTAL IMPUESTO A PAGAR POR RETENCIÓN", ret_iva_agente_total, len(ref_ok)))
+        filas.append(fila("RESULTADO", "859", "TOTAL CONSOLIDADO DE IVA (699 + 801)", total_a_pagar))
 
     return {
         "tipo": "IVA",
@@ -534,8 +544,13 @@ def declaracion_103(rows, anio, mes):
     El cliente actúa como AGENTE de retención hacia sus propios proveedores
     (tabla retenciones_efectuadas). Se agrupa por concepto_renta (etiqueta del
     catálogo de conceptos, ver routers/retenciones_efectuadas.py::CONCEPTOS_RENTA)
-    — el contador debe verificar el casillero exacto del SRI antes de presentar,
-    igual que ya se advierte para ICE."""
+    — el contador debe verificar el casillero exacto por concepto (303, 304, 307...)
+    antes de presentar, igual que ya se advierte para ICE, porque el instructivo
+    disponible del SRI es anterior a la reforma de tramos de la Resolución
+    NAC-DGERCGC26-00000009 (vigente desde 1-mar-2026) y no garantiza que el SRI
+    no haya reordenado casilleros por concepto. Los TOTALES estructurales (349,
+    399, 499) sí están verificados contra el instructivo oficial y una
+    declaración F103 real."""
     ok = [r for r in rows if (r.get("estado") or "OK") == "OK" and _f(r.get("ret_renta")) > 0]
 
     por_concepto = {}
@@ -565,8 +580,8 @@ def declaracion_103(rows, anio, mes):
                           f"RF-{i}", f"Base imponible — {concepto}", d["base"], d["n"]))
         filas.append(fila("RETENCIONES EN LA FUENTE DE IMPUESTO A LA RENTA",
                           f"RF-{i}-R", f"Retenido — {concepto}", d["ret"], d["n"]))
-    filas.append(fila("RESULTADO", "899", "TOTAL base imponible retenida", total_base, len(ok)))
-    filas.append(fila("RESULTADO", "999", "TOTAL RETENIDO A PAGAR AL SRI", total_ret, len(ok)))
+    filas.append(fila("RESULTADO", "349", "SUBTOTAL base imponible, operaciones en el país", total_base, len(ok)))
+    filas.append(fila("RESULTADO", "499", "TOTAL DE RETENCIÓN DEL IMPUESTO A LA RENTA (399+498)", total_ret, len(ok)))
 
     return {
         "tipo": "103",

@@ -33,20 +33,31 @@ REF_COLUMNS = (
 # SRI renumera los casilleros del Formulario 103 periódicamente; el contador
 # debe verificar el casillero exacto antes de presentar, igual que ya se
 # advierte para ICE en declaracion.py).
+#
+# Porcentajes vigentes desde el 1-mar-2026 según la Resolución
+# NAC-DGERCGC26-00000009 del SRI (deroga NAC-DGERCGC24-00000008). Esquema de
+# 7 tramos: 0%, 1%, 1.75%, 2%, 3%, 5%, 10% — ya NO existen los tramos 2.75%
+# ni 8% de resoluciones anteriores. Verificar el texto vigente antes de
+# declarar si esta resolución fuera reformada.
 CONCEPTOS_RENTA = [
-    {"key": "honorarios", "label": "Honorarios profesionales y dietas", "porc": 10},
-    {"key": "servicios_intelecto", "label": "Servicios donde predomina el intelecto", "porc": 8},
-    {"key": "servicios_mano_obra", "label": "Servicios donde predomina la mano de obra", "porc": 2},
-    {"key": "bienes_muebles", "label": "Transferencia de bienes muebles de naturaleza corporal", "porc": 1.75},
-    {"key": "arrendamiento", "label": "Arrendamiento de bienes inmuebles", "porc": 8},
-    {"key": "seguros", "label": "Seguros y reaseguros (primas y cesiones)", "porc": 1},
-    {"key": "rendimientos", "label": "Rendimientos financieros / intereses", "porc": 2},
+    {"key": "honorarios", "label": "Honorarios profesionales y dietas (persona natural)", "porc": 10},
+    {"key": "servicios_intelecto", "label": "Servicios donde predomina el intelecto (persona natural)", "porc": 10},
+    {"key": "servicios_profesionales_sociedad", "label": "Servicios profesionales de sociedad con profesional titulado", "porc": 5},
+    {"key": "servicios_mano_obra", "label": "Servicios donde predomina la mano de obra (persona natural)", "porc": 3},
+    {"key": "bienes_muebles", "label": "Transferencia de bienes muebles de naturaleza corporal", "porc": 2},
+    {"key": "arrendamiento", "label": "Arrendamiento de bienes inmuebles", "porc": 10},
+    {"key": "arrendamiento_mercantil", "label": "Arrendamiento mercantil (leasing)", "porc": 2},
+    {"key": "seguros", "label": "Seguros y reaseguros (sobre el valor total de la prima)", "porc": 2},
+    {"key": "rendimientos", "label": "Rendimientos financieros / intereses (caso general: préstamos, depósitos, sociedades o personas naturales)", "porc": 3},
+    {"key": "rendimientos_bancarios", "label": "Intereses pagados a bancos/entidades supervisadas SB-SEPS", "porc": 0},
     {"key": "transporte", "label": "Transporte privado de pasajeros o carga", "porc": 1},
-    {"key": "agropecuario", "label": "Compra de bienes de origen agropecuario", "porc": 1},
+    {"key": "agropecuario_productor", "label": "Compra de bienes agropecuarios directa al productor", "porc": 1},
+    {"key": "agropecuario_comercializador", "label": "Compra de bienes agropecuarios vía comercializador (no productor)", "porc": 1.75},
     {"key": "construccion", "label": "Actividades de construcción", "porc": 2},
     {"key": "otros_1", "label": "Otras retenciones aplicables 1%", "porc": 1},
     {"key": "otros_2", "label": "Otras retenciones aplicables 2%", "porc": 2},
-    {"key": "otros_8", "label": "Otras retenciones aplicables 8%", "porc": 8},
+    {"key": "otros_3", "label": "Otras retenciones aplicables 3% (regla general — pagos sin % específico)", "porc": 3},
+    {"key": "otros_5", "label": "Otras retenciones aplicables 5%", "porc": 5},
     {"key": "otros_10", "label": "Otras retenciones aplicables 10%", "porc": 10},
     {"key": "otro", "label": "Otro concepto (especificar)", "porc": None},
 ]
@@ -92,6 +103,15 @@ def _totales(base_renta, porc_renta, base_iva, porc_iva):
     return ret_renta, ret_iva, round(ret_renta + ret_iva, 2)
 
 
+def _assert_agente_retencion(supabase, client_id):
+    """El SRI designa quién es agente de retención; no todos los contribuyentes
+    lo son. Antes solo se filtraba en el frontend — se valida también aquí para
+    no cargar retenciones efectuadas a un cliente que no está marcado como tal."""
+    c = supabase.table("clients").select("es_agente_retencion").eq("id", client_id).execute().data
+    if not c or not c[0].get("es_agente_retencion"):
+        raise HTTPException(status_code=400, detail="Este cliente no está marcado como agente de retención")
+
+
 @router.get("/conceptos-renta")
 async def conceptos_renta(_: str = Depends(get_current_user)):
     return {"data": CONCEPTOS_RENTA}
@@ -122,6 +142,7 @@ async def create_ref(entry: RefRow, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
         assert_client_owner(entry.client_id, user_id)
+        _assert_agente_retencion(supabase, entry.client_id)
         ret_renta, ret_iva, total = _totales(entry.base_renta, entry.porc_renta, entry.base_iva, entry.porc_iva)
         data = entry.dict()
         client_id = data.pop("client_id")
@@ -174,6 +195,7 @@ async def process_xml(
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
+        _assert_agente_retencion(supabase, client_id)
         pmes, panio = periodo_cliente(supabase, client_id)
         new_count = dup_count = err_count = fp_count = 0
         fuera_periodo = []
@@ -241,6 +263,7 @@ async def bulk_move(payload: BulkMove, user_id: str = Depends(get_current_user))
     try:
         supabase = get_supabase_client()
         assert_client_owner(payload.client_id, user_id)
+        _assert_agente_retencion(supabase, payload.client_id)
         if not payload.ids:
             return {"moved": 0, "skipped": 0}
         ok_ids = filter_ids_by_tenancy(supabase, "retenciones_efectuadas", payload.ids, user_id)

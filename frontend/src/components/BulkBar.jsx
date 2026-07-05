@@ -8,12 +8,17 @@ import './BulkBar.css'
  * Barra de acciones masivas para filas seleccionadas: mover a otro cliente,
  * eliminar en masa o deseleccionar.
  */
-export default function BulkBar({ count, onMove, onDelete, onClear }) {
+export default function BulkBar({ count, onMove, onDelete, onClear, eligibleIdents = null }) {
   const { clients, selectedClientId } = useClients()
   const [moveTo, setMoveTo] = useState('')
   const [showNew, setShowNew] = useState(false)
 
-  const targets = clients.filter((c) => c.id !== selectedClientId)
+  // eligibleIdents (opcional): restringe los destinos a clientes cuya
+  // identificación esté en el Set — p. ej. Retenciones Efectuadas solo puede
+  // mover a clientes marcados como agente de retención.
+  const targets = clients.filter((c) =>
+    c.id !== selectedClientId && (!eligibleIdents || eligibleIdents.has(c.identificacion))
+  )
 
   // Sin selección: pista visible para que se descubra que se pueden reasignar
   if (count === 0) {
