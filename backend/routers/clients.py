@@ -18,6 +18,7 @@ class ClientCreate(BaseModel):
     periodo_anio: int
     tipo_identificacion: Optional[str] = "RUC"
     notas: Optional[str] = None
+    es_agente_retencion: Optional[bool] = False
 
 
 class ClientUpdate(BaseModel):
@@ -28,6 +29,7 @@ class ClientUpdate(BaseModel):
     tipo_identificacion: Optional[str] = None
     notas: Optional[str] = None
     iva_incluido: Optional[bool] = None
+    es_agente_retencion: Optional[bool] = None
 
 
 def _shared_ids(supabase, user_id: str) -> list:
@@ -295,6 +297,7 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
             "periodo_mes": entry.periodo_mes,
             "periodo_anio": entry.periodo_anio,
             "notas": entry.notas,
+            "es_agente_retencion": bool(entry.es_agente_retencion),
         }).execute()
         nuevo = response.data[0] if response.data else None
         invalidate_clients_cache()
@@ -312,7 +315,7 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
 
 # Datos de IDENTIDAD del contribuyente: al editarlos se propagan a TODOS sus
 # períodos (todo el módulo). Los de período (mes/año) solo al registro elegido.
-_CAMPOS_IDENTIDAD = {"identificacion", "nombre", "tipo_identificacion", "notas", "iva_incluido"}
+_CAMPOS_IDENTIDAD = {"identificacion", "nombre", "tipo_identificacion", "notas", "iva_incluido", "es_agente_retencion"}
 
 
 @router.put("/{client_id}")

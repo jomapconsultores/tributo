@@ -20,7 +20,7 @@ const avatarColor = (nombre) => {
   return AVATAR_COLORS[code % AVATAR_COLORS.length]
 }
 
-export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, onNewClient, svcLabel }) {
+export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, onNewClient, svcLabel, hint }) {
   const { clients, selectClient } = useClients()
   const [search, setSearch] = useState('')
 
@@ -50,7 +50,7 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
           <div className="cps-state cps-state--empty">
             <span className="cps-state-ico">🔒</span>
             <p>Ningún cliente tiene habilitado <strong>{svcLabel || 'este servicio'}</strong>.</p>
-            <p className="cps-state-hint">Actívalo en <strong>Credenciales SRI</strong> marcando la casilla correspondiente.</p>
+            <p className="cps-state-hint">{hint || <>Actívalo en <strong>Credenciales SRI</strong> marcando la casilla correspondiente.</>}</p>
           </div>
         ) : (
           <>

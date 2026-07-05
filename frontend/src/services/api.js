@@ -145,6 +145,28 @@ export const retentionsAPI = {
     api.get('/api/retentions/export/excel', { params: { client_id: clientId }, responseType: 'blob' }),
 }
 
+// Retenciones EFECTUADAS: el cliente actúa como agente de retención hacia sus proveedores
+export const retencionesEfectuadasAPI = {
+  conceptosRenta: () => api.get('/api/retenciones-efectuadas/conceptos-renta'),
+  list: (clientId) => api.get('/api/retenciones-efectuadas/', { params: { client_id: clientId } }),
+  create: (row) => api.post('/api/retenciones-efectuadas/', row),
+  update: (id, data) => api.put(`/api/retenciones-efectuadas/${id}`, data),
+  processXml: (clientId, files) => {
+    const formData = new FormData()
+    files.forEach((file) => formData.append('files', file))
+    formData.append('client_id', clientId)
+    return api.post('/api/retenciones-efectuadas/process-xml', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  delete: (id) => api.delete(`/api/retenciones-efectuadas/${id}`),
+  clear: (clientId) => api.delete('/api/retenciones-efectuadas/clear', { params: { client_id: clientId } }),
+  bulkMove: (ids, clientId) => api.post('/api/retenciones-efectuadas/bulk-move', { ids, client_id: clientId }),
+  bulkDelete: (ids) => api.post('/api/retenciones-efectuadas/bulk-delete', { ids }),
+  exportExcel: (clientId) =>
+    api.get('/api/retenciones-efectuadas/export/excel', { params: { client_id: clientId }, responseType: 'blob' }),
+}
+
 // ICE (ventas de licor por cliente)
 export const iceAPI = {
   list: (clientId) => api.get('/api/ice/', { params: { client_id: clientId } }),

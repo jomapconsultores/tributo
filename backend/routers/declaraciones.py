@@ -6,7 +6,7 @@ from typing import Optional
 from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client, fetch_all, fetch_in
-from services.declaracion import declaracion_iva, declaracion_ice
+from services.declaracion import declaracion_iva, declaracion_ice, declaracion_103
 from services.declaracion_oficial import llenar_oficial
 from tenancy import assert_client_owner, visible_client_ids
 from routers.access import es_admin, es_data_admin
@@ -186,11 +186,15 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
                                override_rebaja=override_rebaja, override_exencion=override_exencion,
                                marcar_rebaja=marcar_rebaja, marcar_exencion=marcar_exencion)
         decl["aplazados_vencen"] = aplazados_ice
+    elif tipo.upper() == "103":
+        ref = fetch_all(lambda: supabase.table("retenciones_efectuadas").select("*").eq("client_id", client_id))
+        decl = declaracion_103(ref, anio, mes)
     else:
         invoices = fetch_all(lambda: supabase.table("invoices").select("*").eq("client_id", client_id))
         ventas_ice = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id))
         ventas_iva = fetch_all(lambda: supabase.table("sales_iva").select("*").eq("client_id", client_id))
         retentions = fetch_all(lambda: supabase.table("retentions").select("*").eq("client_id", client_id))
+        retenciones_ref = fetch_all(lambda: supabase.table("retenciones_efectuadas").select("*").eq("client_id", client_id))
 
         # Crédito mes anterior: parte del historial y cada casillero (605/606) se
         # puede sobreescribir de forma INDEPENDIENTE si el usuario lo ingresa.
@@ -223,6 +227,7 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
             override_ventas_5=override_ventas_5,
             override_ventas_0=override_ventas_0,
             factor_prop=factor_prop,
+            retenciones_iva_agente=retenciones_ref,
         )
         decl["aplazados_vencen"] = aplazados
     decl["cliente"] = c

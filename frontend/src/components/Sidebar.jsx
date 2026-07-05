@@ -18,6 +18,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const [ingresosIceOpen, setIngresosIceOpen] = useState(false)
   const [gastosOpen, setGastosOpen] = useState(false)
   const [retencionesOpen, setRetencionesOpen] = useState(false)
+  const [agenteRetOpen, setAgenteRetOpen] = useState(false)
   const [declaracionesOpen, setDeclaracionesOpen] = useState(false)
   const [devolucionesOpen, setDevolucionesOpen] = useState(false)
   const [odooOpen, setOdooOpen] = useState(false)
@@ -81,9 +82,11 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
 
   const path = location.pathname
   const isRetenciones = path === '/retenciones'
+  const isRetEfectuadas = path === '/retenciones-efectuadas'
   const isDeclIva = path === '/declaracion-iva'
   const isDeclIce = path === '/declaracion-ice'
-  const isDeclaraciones = isDeclIva || isDeclIce
+  const isDecl103 = path === '/declaracion-103'
+  const isDeclaraciones = isDeclIva || isDeclIce || isDecl103
   const isDevTerceraEdad = path === '/devoluciones-iva/tercera-edad'
   const isDevoluciones = isDevTerceraEdad
   const isIceXml = path === '/ice'
@@ -99,7 +102,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const isInIngresosIvaMenu = isIngresosIva
   const isInIngresosIceMenu = isIceXml || isCalculo || isAnexo || isCatalogo || isRebajas || isRecursos || isCompradores || isNormativa
   const isIngresos = isInIngresosIvaMenu || isInIngresosIceMenu
-  const isGastos = !isRetenciones && !isIngresos && !isDeclaraciones && !isDevoluciones // todo lo demás pertenece al proceso de Gastos
+  const isGastos = !isRetenciones && !isRetEfectuadas && !isIngresos && !isDeclaraciones && !isDevoluciones // todo lo demás pertenece al proceso de Gastos
   const isDatabase = path === '/'
   const isClassifier = path === '/clasificador'
   const isSaved = path === '/datos'
@@ -300,6 +303,25 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         )}
         </>)}
 
+        {/* Módulo AGENTE DE RETENCIÓN (desplegable) — cliente retiene a SUS proveedores */}
+        {has('agente_retencion') && (<>
+        <button
+          className={`nav-item module-btn retenciones ${isRetEfectuadas ? 'active' : ''}`}
+          onClick={() => setAgenteRetOpen((o) => !o)}
+        >
+          <span className={`caret ${agenteRetOpen ? 'open' : ''}`}>▸</span>
+          <span className="nav-ico">🧷</span>
+          <span>AGENTE DE RETENCIÓN</span>
+        </button>
+        {agenteRetOpen && (
+          <div className="submodule-list">
+            <button className={`nav-item submodule ${isRetEfectuadas ? 'active' : ''}`} onClick={() => navigate('/retenciones-efectuadas')}>
+              <span className="nav-ico">🧷</span><span>Retenciones efectuadas</span>
+            </button>
+          </div>
+        )}
+        </>)}
+
         {/* Módulo DECLARACIONES (desplegable) */}
         {has('declaraciones') && (<>
         <button
@@ -318,6 +340,11 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
             <button className={`nav-item submodule ${isDeclIva ? 'active' : ''}`} onClick={() => navigate('/declaracion-iva')}>
               <span className="nav-ico">🧾</span><span>Declaración IVA</span>
             </button>
+            {has('agente_retencion') && (
+              <button className={`nav-item submodule ${isDecl103 ? 'active' : ''}`} onClick={() => navigate('/declaracion-103')}>
+                <span className="nav-ico">🧷</span><span>Declaración 103 (Renta)</span>
+              </button>
+            )}
           </div>
         )}
         </>)}
@@ -446,8 +473,14 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
                 {has('retenciones') && (
                   <button className={`sqn-chip ${isRetenciones ? 'active' : ''}`} onClick={() => navigate('/retenciones')}>🧾 Retenciones</button>
                 )}
+                {has('agente_retencion') && cl.es_agente_retencion && (
+                  <button className={`sqn-chip ${isRetEfectuadas ? 'active' : ''}`} onClick={() => navigate('/retenciones-efectuadas')}>🧷 Ret. efectuadas</button>
+                )}
                 {has('declaraciones') && (
                   <button className={`sqn-chip ${isDeclIva ? 'active' : ''}`} onClick={() => navigate('/declaracion-iva')}>📋 Decl. IVA</button>
+                )}
+                {has('agente_retencion') && cl.es_agente_retencion && (
+                  <button className={`sqn-chip ${isDecl103 ? 'active' : ''}`} onClick={() => navigate('/declaracion-103')}>🧷 Decl. 103</button>
                 )}
                 {has('declaraciones') && (
                   <button className={`sqn-chip ${isDeclIce ? 'active' : ''}`} onClick={() => navigate('/declaracion-ice')}>🥃 Decl. ICE</button>

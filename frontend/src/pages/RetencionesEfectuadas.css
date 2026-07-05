@@ -1,0 +1,79 @@
+/* ===========================================================
+   Retenciones Efectuadas — el cliente como AGENTE de retención
+   (acento verde-azulado, distinto de Retenciones/ICE)
+   =========================================================== */
+.ref-page { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; min-height: 100vh; max-width: 1280px; }
+
+.ref-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; border-bottom: 2px solid #0d9488; padding-bottom: 10px; }
+.ref-header h1 { margin: 0; font-size: 1.2rem; color: #1a3d6b; font-weight: 700; }
+.ref-subhead { margin: 4px 0 0; color: #64748b; font-size: 0.9rem; }
+
+.ref-periodo-tag {
+  font-size: 0.7rem; font-weight: 700; color: #0f766e; background: #ccfbf1;
+  padding: 3px 10px; border-radius: 20px; vertical-align: middle; letter-spacing: 0.4px; margin-left: 8px;
+}
+
+.ref-btn { border: 1px solid transparent; border-radius: 8px; padding: 9px 16px; font-weight: 600; cursor: pointer; font-size: 0.88rem; }
+.ref-btn.primary { background: #0d9488; color: #fff; }
+.ref-btn.primary:disabled { opacity: 0.55; cursor: not-allowed; }
+.ref-btn.small { background: #fff; color: #334155; border-color: #cbd5e1; padding: 8px 13px; font-size: 0.83rem; }
+.ref-btn.small:hover { background: #f6f8fb; }
+.ref-btn.danger { color: #dc2626; border-color: #fecaca; }
+
+.ref-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.ref-stats .stat-card { background: #fff; border-radius: 10px; padding: 14px 18px; display: flex; flex-direction: column; gap: 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.ref-stats .num { font-size: 1.3rem; font-weight: 700; color: #1e293b; }
+.ref-stats .lbl { font-size: 0.74rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.3px; }
+.ref-stats .total .num { color: #0f766e; }
+
+/* Formulario manual */
+.ref-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; background: #fff; border: 1px solid #e8edf3; border-radius: 10px; padding: 13px 14px; box-shadow: 0 1px 2px rgba(16,40,80,.04); }
+.ref-field { display: flex; flex-direction: column; gap: 3px; }
+.ref-field > span { font-size: 0.66rem; color: #6b7888; font-weight: 700; text-transform: uppercase; letter-spacing: 0.2px; }
+.ref-in { border: 1px solid #cdd8e6; border-radius: 7px; padding: 7px 9px; font-size: 0.83rem; outline: none; }
+.ref-in:focus { border-color: #0d9488; box-shadow: 0 0 0 2px rgba(13,148,136,.15); }
+.ref-field.wide .ref-in { width: 220px; }
+.ref-in.s { width: 100px; }
+.ref-add { align-self: flex-end; }
+
+.ref-preview { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 10px; padding: 10px 14px; font-size: 0.82rem; color: #1f2a3a; }
+.ref-preview-lbl { font-weight: 700; color: #0f766e; }
+.ref-preview b { color: #1f2a3a; }
+.ref-preview .hi { color: #0d9488; }
+
+/* Dropzone XML */
+.ref-dropzone {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 22px;
+  border: 2px dashed #99f6e4; border-radius: 12px; background: #f0fdfa; color: #0f766e;
+  cursor: pointer; text-align: center; transition: background 0.15s, border-color 0.15s;
+}
+.ref-dropzone:hover { border-color: #2dd4bf; background: #ccfbf1; }
+.ref-dropzone.active { border-color: #0d9488; background: #ccfbf1; box-shadow: 0 0 0 3px rgba(13,148,136,0.15); }
+.ref-dropzone .dz-icon { font-size: 1.6rem; }
+.ref-dropzone .dz-text { font-weight: 700; }
+.ref-dropzone .dz-sub { font-size: 0.8rem; color: #64748b; }
+
+.ref-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ref-search { flex: 1; min-width: 200px; max-width: 340px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.85rem; outline: none; }
+.ref-search:focus { border-color: #0d9488; }
+
+.ref-busy { background: #f0fdfa; border: 1px solid #99f6e4; color: #0f766e; padding: 10px 14px; border-radius: 8px; font-size: 0.9rem; }
+.ref-error { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; padding: 10px 14px; border-radius: 8px; font-size: 0.9rem; }
+.ref-empty { background: #fff; border-radius: 10px; padding: 40px; text-align: center; color: #94a3b8; }
+
+.ref-table-wrap { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow: hidden; }
+.ref-hint { padding: 8px 14px; font-size: 0.78rem; color: #94a3b8; border-bottom: 1px solid #eef2f6; }
+.ref-scroll { overflow-x: auto; }
+.ref-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; white-space: nowrap; }
+.ref-table th, .ref-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #f1f5f9; }
+.ref-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.3px; color: #64748b; font-weight: 700; background: #f8fafc; position: sticky; top: 0; }
+.ref-table .r { text-align: right; font-variant-numeric: tabular-nums; }
+.ref-table .prov { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.ref-table .total { font-weight: 700; color: #0f766e; }
+.ref-table tbody tr:hover { background: #f6f8fb; }
+.ref-table .sel-col { width: 34px; text-align: center; }
+.ref-table tr.row-sel { background: #eef2ff; }
+
+.ref-edit { border: none; background: transparent; cursor: pointer; font-size: 0.85rem; padding: 2px 4px; }
+.ref-del { border: none; background: transparent; color: #cbd5e1; cursor: pointer; font-size: 0.9rem; }
+.ref-del:hover { color: #dc2626; }

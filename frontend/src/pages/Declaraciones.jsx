@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Fragment } from 'react'
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
 import useDraft, { clearDraftsByPrefix } from '../hooks/useDraft'
 import { useOutletContext } from 'react-router-dom'
 import { declaracionesAPI, credentialsAPI, downloadBlob } from '../services/api'
@@ -14,7 +14,8 @@ import { fmtMoney as money } from '../utils/format'
 // Casilleros TOTAL (resaltados en dorado, igual que el formulario oficial del SRI)
 const TOTALES_SRI = new Set([
   '409', '419', '429', '499', '509', '519', '529', '620', '699', '859', '999',  // IVA
-  '399', '902',  // ICE
+  '399', '902',  // ICE / IVA-agente
+  '899',  // 103 (Renta retenida como agente)
 ])
 
 // Etiquetas legibles de los servicios contratados (client_services)
@@ -23,10 +24,19 @@ const SERVICIO_LBL = {
   declaracion_renta: 'Declaración Renta', devolucion_iva: 'Devolución IVA',
 }
 
+const FORM_LABEL = { IVA: 'Formulario 104', ICE: 'Formulario 105', '103': 'Formulario 103' }
+
 export default function Declaraciones({ tipo }) {
   const { openNewClient } = useOutletContext()
-  const { clients, selectedClient, selectedClientId, selectClient, identsForSvc } = useClients()
-  const idents_svc = identsForSvc(tipo === 'IVA' ? 'declaracion_iva' : 'declaracion_ice')
+  const { clients, selectedClient, selectedClientId, selectClient, identsForSvc, loading: clientsLoading } = useClients()
+
+  // Formulario 103 (Renta retenida como agente): restringido por el flag
+  // clients.es_agente_retencion, NO por un servicio de client_services.
+  const idents_agente = useMemo(() => {
+    if (clientsLoading) return null
+    return new Set(clients.filter((c) => c.es_agente_retencion).map((c) => c.identificacion))
+  }, [clients, clientsLoading])
+  const idents_svc = tipo === '103' ? idents_agente : identsForSvc(tipo === 'IVA' ? 'declaracion_iva' : 'declaracion_ice')
 
   // Auto-guardado local: los valores que escribes (overrides) se guardan al
   // instante en el navegador, por cliente+tipo. Si se cae el internet o recargas,
@@ -279,7 +289,14 @@ export default function Declaraciones({ tipo }) {
   const icon = tipo === 'ICE' ? '🥃' : '🧾'
 
   if (!selectedClient || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
-    return <ClientPickerScreen icon={icon} title={`Declaración ${tipo}`} subtitle={`Formulario 10${tipo === 'IVA' ? '4' : '5'} — período activo del contribuyente`} idents_svc={idents_svc} onNewClient={openNewClient} svcLabel={`Declaración ${tipo}`} />
+    return (
+      <ClientPickerScreen
+        icon={icon} title={`Declaración ${tipo}`}
+        subtitle={`${FORM_LABEL[tipo] || tipo} — período activo del contribuyente`}
+        idents_svc={idents_svc} onNewClient={openNewClient} svcLabel={`Declaración ${tipo}`}
+        hint={tipo === '103' ? <>Marca <strong>«Es agente de retención»</strong> al crear o editar el cliente.</> : undefined}
+      />
+    )
   }
 
   const resumen = decl?.resumen || {}
@@ -323,10 +340,16 @@ export default function Declaraciones({ tipo }) {
         { icon: '📄', label: 'Declaraciones IVA', current: true },
         { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
       ]
-    : [
+    : tipo === 'ICE'
+    ? [
         { icon: '📚', label: 'Catálogo Productos', path: '/catalogo-productos' },
         { icon: '🧮', label: 'Cálculo previo ICE', path: '/calculo-ice' },
         { icon: '📄', label: 'Declaraciones ICE', current: true },
+        { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
+      ]
+    : [
+        { icon: '🧷', label: 'Retenciones efectuadas', path: '/retenciones-efectuadas' },
+        { icon: '📄', label: 'Declaración 103 (Renta)', current: true },
         { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
       ]
 
@@ -534,7 +557,7 @@ export default function Declaraciones({ tipo }) {
       )}
 
       {/* Rebajas y exenciones ICE — compacto en una sola línea */}
-      {!isIVA && decl && (
+      {tipo === 'ICE' && decl && (
         <div className="dc-card-box dc-credit-box">
           <h2 className="dc-h2">⚖️ Rebajas y exenciones</h2>
           {(resumen.advertencias || []).map((a, i) => (
@@ -642,12 +665,15 @@ export default function Declaraciones({ tipo }) {
           </select>
           <small>
             {!isIVA
-              ? '(aplazamiento aún no disponible para ICE)'
+              ? `(aplazamiento aún no disponible para ${tipo})`
               : !hayMontoAPagar ? '(sin impuesto a pagar este período)' : 'Facilidades de pago: 1 a 3 meses'}
           </small>
         </label>
         <button className="dc-btn small" onClick={exportar} disabled={!decl}>⬇ Excel (código/valor)</button>
-        <button className="dc-btn oficial" onClick={exportarOficial} disabled={!decl}>📄 Formulario oficial SRI</button>
+        <button className="dc-btn oficial" onClick={exportarOficial} disabled={!decl || tipo === '103'}
+          title={tipo === '103' ? 'Aún no hay plantilla oficial del SRI para el Formulario 103' : undefined}>
+          📄 Formulario oficial SRI
+        </button>
       </div>
 
       {/* Vista previa del aplazamiento — cálculo real desde backend (casillero 481/484 SRI) */}
@@ -702,6 +728,8 @@ export default function Declaraciones({ tipo }) {
               Retenciones: <strong>{resumen.num_retenciones_periodo || 0}</strong> ·{' '}
               Total: <strong>{(resumen.num_ventas_ice || 0) + (resumen.num_ventas_iva_solo || 0) + (resumen.num_facturas_ejercicio || 0) + (resumen.num_retenciones_periodo || 0)}</strong>
             </>
+          ) : tipo === '103' ? (
+            <>Comprobantes de retención efectuados: <strong>{resumen.num_comprobantes || 0}</strong></>
           ) : (
             <>Registros ICE: <strong>{resumen.num_registros || 0}</strong></>
           )}

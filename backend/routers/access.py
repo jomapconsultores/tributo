@@ -12,7 +12,7 @@ from database import get_supabase_client
 
 router = APIRouter(prefix="/api/access", tags=["access"])
 
-MODULOS = ["gastos", "retenciones", "ingresos_ice", "declaraciones"]
+MODULOS = ["gastos", "retenciones", "ingresos_ice", "declaraciones", "agente_retencion"]
 
 # ---------------------------------------------------------------------------
 # Caché en memoria para rol y módulos. Evita 1-3 consultas BD por request.

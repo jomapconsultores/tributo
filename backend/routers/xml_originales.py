@@ -14,6 +14,7 @@ router = APIRouter(prefix="/api/xml-originales", tags=["xml-originales"])
 TIPO_LABEL = {
     "gasto": "Gastos", "ingreso_ice": "IngresosICE",
     "ingreso_iva": "IngresosIVA", "retencion": "Retenciones",
+    "retencion_efectuada": "RetencionesEfectuadas",
 }
 
 

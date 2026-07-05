@@ -167,6 +167,7 @@
 .ap-chip-retenciones  { background: #fff7ed; color: #c2410c; border-color: #fed7aa; }
 .ap-chip-ice          { background: #f5f3ff; color: #7c3aed; border-color: #ddd6fe; }
 .ap-chip-decl         { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+.ap-chip-agente-ret   { background: #f0fdfa; color: #0f766e; border-color: #99f6e4; }
 .ap-chip-none { font-size: 0.78rem; color: #cbd5e1; font-style: italic; }
 
 /* Clientes */

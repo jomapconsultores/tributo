@@ -30,9 +30,15 @@ MAP_IVA = {
 }
 
 
+TEMPLATE_POR_TIPO = {"IVA": "iva_form.xlsx", "ICE": "ice_form.xlsx"}
+
+
 def llenar_oficial(tipo, decl):
-    es_ice = str(tipo).upper() == "ICE"
-    fname = "ice_form.xlsx" if es_ice else "iva_form.xlsx"
+    tipo_up = str(tipo).upper()
+    es_ice = tipo_up == "ICE"
+    fname = TEMPLATE_POR_TIPO.get(tipo_up)
+    if fname is None:
+        raise FileNotFoundError(f"No hay plantilla oficial del SRI para el tipo '{tipo}' todavía.")
     path = os.path.join(TEMPLATES, fname)
     if not os.path.exists(path):
         raise FileNotFoundError("No está la plantilla oficial: " + fname)

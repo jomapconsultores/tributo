@@ -15,6 +15,7 @@ const Database                 = lazy(() => import('./pages/Database'))
 const Classifier               = lazy(() => import('./pages/Classifier'))
 const SavedData                = lazy(() => import('./pages/SavedData'))
 const Retenciones              = lazy(() => import('./pages/Retenciones'))
+const RetencionesEfectuadas    = lazy(() => import('./pages/RetencionesEfectuadas'))
 const ICE                      = lazy(() => import('./pages/ICE'))
 const CalculoICE               = lazy(() => import('./pages/CalculoICE'))
 const AnexoPVPICE              = lazy(() => import('./pages/AnexoPVPICE'))
@@ -151,8 +152,10 @@ function App() {
               <Route path="/clasificador" element={<RequireModule modulo="gastos"><Classifier /></RequireModule>} />
               <Route path="/datos" element={<RequireModule modulo="gastos"><SavedData /></RequireModule>} />
               <Route path="/retenciones" element={<RequireModule modulo="retenciones"><Retenciones /></RequireModule>} />
+              <Route path="/retenciones-efectuadas" element={<RequireModule modulo="agente_retencion"><RetencionesEfectuadas /></RequireModule>} />
               <Route path="/declaracion-iva" element={<RequireModule modulo="declaraciones"><Declaraciones tipo="IVA" /></RequireModule>} />
               <Route path="/declaracion-ice" element={<RequireModule modulo="declaraciones"><Declaraciones tipo="ICE" /></RequireModule>} />
+              <Route path="/declaracion-103" element={<RequireModule modulo="declaraciones"><Declaraciones tipo="103" /></RequireModule>} />
               <Route path="/devoluciones-iva/tercera-edad" element={<RequireModule modulo="declaraciones"><DevolucionesIvaTerceraEdad /></RequireModule>} />
               <Route path="/ingresos-iva" element={<RequireModule modulo="ingresos_ice"><IngresosIva /></RequireModule>} />
               <Route path="/calculo-ice" element={<RequireModule modulo="ingresos_ice"><CalculoICE /></RequireModule>} />

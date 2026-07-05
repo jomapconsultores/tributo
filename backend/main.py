@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from config import get_settings
-from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router
+from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router, retenciones_efectuadas
 from routers.access import require_module
 import os
 from dotenv import load_dotenv
@@ -203,10 +203,12 @@ GASTOS = [Depends(require_module("gastos"))]
 RETEN = [Depends(require_module("retenciones"))]
 ICEMOD = [Depends(require_module("ingresos_ice"))]
 DECL = [Depends(require_module("declaraciones"))]
+AGRET = [Depends(require_module("agente_retencion"))]
 
 app.include_router(classification.router, dependencies=GASTOS)
 app.include_router(invoices.router, dependencies=GASTOS)
 app.include_router(retentions.router, dependencies=RETEN)
+app.include_router(retenciones_efectuadas.router, dependencies=AGRET)
 app.include_router(ice.router, dependencies=ICEMOD)
 app.include_router(ice_calc.router, dependencies=ICEMOD)
 app.include_router(sales_iva.router, dependencies=ICEMOD)

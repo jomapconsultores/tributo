@@ -12,6 +12,7 @@ const _per = periodoADeclarar()
 const EMPTY = {
   identificacion: '', nombre: '', tipo_identificacion: 'RUC',
   periodo_mes: _per.mes, periodo_anio: _per.anio,
+  es_agente_retencion: false,
 }
 
 export default function NewClientModal({ open, onClose, editClient = null, selectAfter = true, onCreated }) {
@@ -59,6 +60,7 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
         tipo_identificacion: editClient.tipo_identificacion || 'RUC',
         periodo_mes: editClient.periodo_mes || '',
         periodo_anio: editClient.periodo_anio || '',
+        es_agente_retencion: !!editClient.es_agente_retencion,
       })
     } else {
       const p = periodoADeclarar()
@@ -167,6 +169,15 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
             onChange={(e) => setForm({ ...form, nombre: e.target.value })}
             placeholder="Nombre del contribuyente"
           />
+
+          <label className="modal-checkbox-row">
+            <input
+              type="checkbox"
+              checked={!!form.es_agente_retencion}
+              onChange={(e) => setForm({ ...form, es_agente_retencion: e.target.checked })}
+            />
+            {' '}Es agente de retención (retiene IVA/Renta a sus proveedores)
+          </label>
 
           <label>Período *</label>
           <div className="periodo-row">

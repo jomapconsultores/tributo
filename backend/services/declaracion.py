@@ -34,7 +34,7 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
                     pagos_aplazados_vencen_este_periodo=None,
                     diferir_meses=0,
                     override_ventas_15=None, override_ventas_5=None, override_ventas_0=None,
-                    factor_prop=None):
+                    factor_prop=None, retenciones_iva_agente=None):
     """Formulario 104.
 
     Compras: solo gastos del EJERCICIO (con derecho a crédito). Personales van al IR.
@@ -49,6 +49,11 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
 
     Retenciones del período (609): se computa sumando ret_iva del listado de
     retentions del cliente para el período.
+
+    Retenciones de IVA EFECTUADAS como agente de retención (retenciones_iva_agente,
+    tabla retenciones_efectuadas): el cliente retuvo IVA a SUS proveedores. Esto es
+    una obligación (dinero que debe entregar al SRI), no un crédito — se SUMA al
+    IVA a pagar, no se resta. Se agrupa por porc_iva (30/70/100%).
 
     Aplazamiento (Art. 67 LRTI): si diferir_meses > 0, las ventas se reportan
     en el casillero 481 (ventas con cobro diferido > N meses) y el IVA
@@ -65,6 +70,8 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
         retentions = []
     if pagos_aplazados_vencen_este_periodo is None:
         pagos_aplazados_vencen_este_periodo = []
+    if retenciones_iva_agente is None:
+        retenciones_iva_agente = []
 
     invoices = [i for i in invoices if (i.get("estado") or "OK") == "OK"]
     ejercicio = [i for i in invoices if not _es_personal(i)]
@@ -134,6 +141,16 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     ret_iva_periodo = sum(_f(r.get("ret_iva")) for r in ret_ok)
     n_retenciones = sum(1 for r in ret_ok if _f(r.get("ret_iva")) > 0)
 
+    # ── IVA retenido a proveedores como AGENTE de retención ──────────────
+    # Obligación a pagar al SRI (no es crédito): se agrupa por porcentaje
+    # (30/70/100%), tal como exige el Formulario 104.
+    ref_ok = [r for r in retenciones_iva_agente if (r.get("estado") or "OK") == "OK" and _f(r.get("ret_iva")) > 0]
+    ref_buckets = {30: [], 70: [], 100: []}
+    for r in ref_ok:
+        pct = round(_f(r.get("porc_iva")))
+        ref_buckets.setdefault(pct, []).append(r)
+    ret_iva_agente_total = sum(_f(r.get("ret_iva")) for r in ref_ok)
+
     # ── Factor de proporcionalidad del crédito tributario ────────────────
     # Es la RELACIÓN entre los ingresos con tarifa 15% (que dan derecho a
     # crédito) y el total 15% + 0%. Solo esa proporción del IVA de compras es
@@ -193,7 +210,7 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     credito_proximo_adq = round(sobra_adq, 2)            # 695 (próx. mes por adquisiciones)
     credito_proximo_ret = round(sobra_ret, 2)            # 697 (próx. mes por retenciones)
     saldo_a_favor = round(credito_proximo_adq + credito_proximo_ret, 2)
-    total_a_pagar = iva_a_pagar
+    total_a_pagar = round(iva_a_pagar + ret_iva_agente_total, 2)
     # Compat con el resto del sistema
     impuesto_causado_neto = round(iva_generado_periodo - credito_adq_aplicable, 2)
     credito_total = round(credito_adq_disp + credito_ret_disp, 2)
@@ -267,6 +284,21 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     if credito_proximo_ret > 0:
         filas.append(fila("RESULTADO", "617", "✓ Saldo crédito tributario próximo mes por RETENCIONES", credito_proximo_ret))
 
+    # ── IVA retenido a proveedores como AGENTE de retención ──────────────
+    # Obligación adicional (NO es crédito): se suma al total a pagar, no se
+    # compensa con el saldo a favor de adquisiciones/retenciones anterior.
+    if ref_ok:
+        for pct in (30, 70, 100):
+            filas_pct = ref_buckets.get(pct) or []
+            if not filas_pct:
+                continue
+            ret_pct = sum(_f(r.get("ret_iva")) for r in filas_pct)
+            filas.append(fila("RETENCIONES DE IVA EFECTUADAS (AGENTE DE RETENCIÓN)",
+                              f"RIA-{pct}", f"IVA retenido a proveedores {pct}%", ret_pct, len(filas_pct)))
+        filas.append(fila("RETENCIONES DE IVA EFECTUADAS (AGENTE DE RETENCIÓN)", "RIA-T",
+                          "TOTAL retenido a proveedores (por pagar al SRI)", ret_iva_agente_total, len(ref_ok)))
+        filas.append(fila("RESULTADO", "902", "TOTAL A PAGAR (620 + retenciones de IVA efectuadas)", total_a_pagar))
+
     return {
         "tipo": "IVA",
         "filas": filas,
@@ -297,6 +329,8 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
             "credito_proximo_mes_retenciones": round(credito_proximo_ret, 2),
             "saldo_a_favor_proximo_mes": round(saldo_a_favor, 2),
             "monto_aplazados_vencen": round(monto_aplazados_que_vencen, 2),
+            "ret_iva_agente_total": round(ret_iva_agente_total, 2),
+            "num_retenciones_iva_agente": len(ref_ok),
             "total_a_pagar": round(total_a_pagar, 2),
             "diferir_meses": diferir_meses,
             "iva_diferido_actual": round(iva_diferido_actual, 2),
@@ -490,5 +524,62 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
             "total_a_pagar": round(total_a_pagar, 2),
             "num_aplazados_vencen": len(pagos_aplazados_vencen_este_periodo),
             "num_registros": len([r for r in ice_rows if (r.get("estado") or "OK") == "OK"]),
+        },
+    }
+
+
+def declaracion_103(rows, anio, mes):
+    """Formulario 103 — Retenciones en la Fuente del Impuesto a la Renta.
+
+    El cliente actúa como AGENTE de retención hacia sus propios proveedores
+    (tabla retenciones_efectuadas). Se agrupa por concepto_renta (etiqueta del
+    catálogo de conceptos, ver routers/retenciones_efectuadas.py::CONCEPTOS_RENTA)
+    — el contador debe verificar el casillero exacto del SRI antes de presentar,
+    igual que ya se advierte para ICE."""
+    ok = [r for r in rows if (r.get("estado") or "OK") == "OK" and _f(r.get("ret_renta")) > 0]
+
+    por_concepto = {}
+    orden = []
+    for r in ok:
+        concepto = (r.get("concepto_renta") or "").strip() or "Sin concepto especificado"
+        if concepto not in por_concepto:
+            por_concepto[concepto] = {"base": 0.0, "ret": 0.0, "n": 0}
+            orden.append(concepto)
+        por_concepto[concepto]["base"] += _f(r.get("base_renta"))
+        por_concepto[concepto]["ret"] += _f(r.get("ret_renta"))
+        por_concepto[concepto]["n"] += 1
+
+    total_base = sum(_f(r.get("base_renta")) for r in ok)
+    total_ret = sum(_f(r.get("ret_renta")) for r in ok)
+
+    def fila(seccion, codigo, concepto, valor, n=None):
+        f = {"seccion": seccion, "codigo": codigo, "concepto": concepto, "valor": round(valor, 2)}
+        if n is not None:
+            f["num_comprobantes"] = n
+        return f
+
+    filas = []
+    for i, concepto in enumerate(orden, start=1):
+        d = por_concepto[concepto]
+        filas.append(fila("RETENCIONES EN LA FUENTE DE IMPUESTO A LA RENTA",
+                          f"RF-{i}", f"Base imponible — {concepto}", d["base"], d["n"]))
+        filas.append(fila("RETENCIONES EN LA FUENTE DE IMPUESTO A LA RENTA",
+                          f"RF-{i}-R", f"Retenido — {concepto}", d["ret"], d["n"]))
+    filas.append(fila("RESULTADO", "899", "TOTAL base imponible retenida", total_base, len(ok)))
+    filas.append(fila("RESULTADO", "999", "TOTAL RETENIDO A PAGAR AL SRI", total_ret, len(ok)))
+
+    return {
+        "tipo": "103",
+        "filas": filas,
+        "resumen": {
+            "total_base_renta": round(total_base, 2),
+            "total_ret_renta": round(total_ret, 2),
+            "total_a_pagar": round(total_ret, 2),
+            "num_comprobantes": len(ok),
+            "por_concepto": [
+                {"concepto": c, "base": round(por_concepto[c]["base"], 2),
+                 "retenido": round(por_concepto[c]["ret"], 2), "num_comprobantes": por_concepto[c]["n"]}
+                for c in orden
+            ],
         },
     }

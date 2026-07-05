@@ -64,6 +64,20 @@
   gap: 10px;
 }
 
+.modal-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  text-transform: none;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+}
+
+.modal-checkbox-row input {
+  width: auto;
+}
+
 .periodo-row select {
   flex: 1;
 }

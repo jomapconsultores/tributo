@@ -8,12 +8,14 @@ const MOD_LABEL = {
   retenciones: 'Retenciones',
   ingresos_ice: 'Ingresos / ICE',
   declaraciones: 'Declaraciones',
+  agente_retencion: 'Agente de retención',
 }
 const MOD_CLASS = {
   gastos: 'ap-chip-gastos',
   retenciones: 'ap-chip-retenciones',
   ingresos_ice: 'ap-chip-ice',
   declaraciones: 'ap-chip-decl',
+  agente_retencion: 'ap-chip-agente-ret',
 }
 const ROLE_LABEL = { admin: 'Admin', socio: 'Socio', cliente: 'Cliente' }
 const ROLE_CLASS = { admin: 'ap-role-admin', socio: 'ap-role-socio', cliente: 'ap-role-cliente' }
