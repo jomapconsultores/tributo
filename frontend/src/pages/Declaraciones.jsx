@@ -332,6 +332,12 @@ export default function Declaraciones({ tipo }) {
   const seccionesDisplay = filasDisplay.length
     ? [...new Set(filasDisplay.map((f) => f.seccion))]
     : []
+  // Agrupa una sola vez por sección (O(filas)) en vez de filtrar filasDisplay
+  // completa una vez por cada sección (O(secciones × filas)) al renderizar.
+  const filasPorSeccion = filasDisplay.reduce((acc, f) => {
+    (acc[f.seccion] || (acc[f.seccion] = [])).push(f)
+    return acc
+  }, {})
 
   const dcSteps = tipo === 'IVA'
     ? [
@@ -748,7 +754,7 @@ export default function Declaraciones({ tipo }) {
               {seccionesDisplay.map((sec) => (
                 <Fragment key={sec}>
                   <tr className="dc-sec"><td colSpan={4}>{sec}</td></tr>
-                  {filasDisplay.filter((f) => f.seccion === sec).map((f, i) => {
+                  {(filasPorSeccion[sec] || []).map((f, i) => {
                     const esCasilleroAplazado = ['480', '481', '484', '609.X', '699'].includes(f.codigo)
                     const esTotal = TOTALES_SRI.has(f.codigo)
                     return (

@@ -579,15 +579,13 @@ async def set_acceso_cliente(body: ClientAccessIn, admin_id: str = Depends(requi
         raise HTTPException(status_code=404, detail="Contribuyente no encontrado")
 
     if body.grant:
-        for cid in ids:
-            sb.table("client_access").upsert({
-                "client_id": cid,
-                "granted_to": body.granted_to,
-                "granted_by": admin_id,
-            }, on_conflict="client_id,granted_to").execute()
+        sb.table("client_access").upsert([{
+            "client_id": cid,
+            "granted_to": body.granted_to,
+            "granted_by": admin_id,
+        } for cid in ids], on_conflict="client_id,granted_to").execute()
     else:
-        for cid in ids:
-            sb.table("client_access").delete() \
-                .eq("client_id", cid).eq("granted_to", body.granted_to).execute()
+        sb.table("client_access").delete() \
+            .in_("client_id", ids).eq("granted_to", body.granted_to).execute()
 
     return {"ok": True, "client_ids": ids, "grant": body.grant}
