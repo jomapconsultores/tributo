@@ -1,6 +1,7 @@
 import csv
 import io
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from typing import Optional, List
@@ -580,11 +581,23 @@ async def verificar_todos(
             q = q.eq("producto", producto.strip().upper())
         rucs = sorted({(r.get("ruc_proveedor") or "").strip() for r in (q.execute().data or [])} - {""})
         resultados = []
+        # verificar_ruc() hace 2-4 requests HTTP secuenciales al Ministerio/SRI;
+        # se paraleliza por RUC igual que services/sri_service.descargar_multiples_xmls
+        # para no pagar esa latencia N veces en serie.
+        datos_por_ruc = {}
+        with ThreadPoolExecutor(max_workers=min(8, max(1, len(rucs)))) as ex:
+            future_to_ruc = {ex.submit(verificar_ruc, ruc): ruc for ruc in rucs}
+            for future in as_completed(future_to_ruc):
+                ruc = future_to_ruc[future]
+                try:
+                    datos_por_ruc[ruc] = future.result()
+                except Exception as e:
+                    datos_por_ruc[ruc] = {"error": str(e)}
+
         for ruc in rucs:
-            try:
-                d = verificar_ruc(ruc)
-            except Exception as e:
-                resultados.append({"ruc": ruc, "error": str(e)})
+            d = datos_por_ruc.get(ruc) or {}
+            if "error" in d:
+                resultados.append({"ruc": ruc, "error": d["error"]})
                 continue
             cumple = bool(d.get("cumple"))
             nombre = d.get("razon_social") or ""
