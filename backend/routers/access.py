@@ -15,12 +15,47 @@ router = APIRouter(prefix="/api/access", tags=["access"])
 
 MODULOS = ["gastos", "retenciones", "ingresos_ice", "declaraciones", "agente_retencion"]
 
+# Catálogo de SUBMÓDULOS (pantallas sueltas dentro de cada módulo). El
+# administrador puede restringir a un usuario a un subconjunto de estas
+# pantallas. Regla: si el usuario NO tiene ninguna fila de user_submodules para
+# los submódulos de un módulo, se consideran TODOS permitidos (retrocompatible).
+# Los módulos de una sola pantalla (retenciones) no se listan aquí.
+SUBMODULOS = {
+    "gastos": [
+        {"key": "gastos_facturas", "label": "Gastos y datos guardados"},
+        {"key": "gastos_clasificar", "label": "Clasificador de gastos"},
+    ],
+    "ingresos_ice": [
+        {"key": "ice_calculo", "label": "Cálculo previo ICE"},
+        {"key": "ice_anexo", "label": "Anexo PVP+ICE"},
+        {"key": "ice_xml", "label": "Ingresos ICE (XML)"},
+        {"key": "ice_catalogo", "label": "Catálogo de productos"},
+        {"key": "ice_rebajas", "label": "Rebajas y exenciones"},
+        {"key": "ice_compradores", "label": "Compradores"},
+        {"key": "ice_ingresos_iva", "label": "Ingresos IVA"},
+    ],
+    "declaraciones": [
+        {"key": "decl_iva", "label": "Declaración IVA"},
+        {"key": "decl_ice", "label": "Declaración ICE"},
+        {"key": "decl_devoluciones", "label": "Devoluciones IVA (adultos mayores)"},
+    ],
+    "agente_retencion": [
+        {"key": "agret_retenciones", "label": "Retenciones efectuadas"},
+        {"key": "agret_103", "label": "Declaración 103 (Renta)"},
+    ],
+}
+# key de submódulo → módulo padre
+SUBMODULO_MODULO = {s["key"]: mod for mod, subs in SUBMODULOS.items() for s in subs}
+# módulo → set de todas las keys de sus submódulos
+_SUBS_POR_MODULO = {mod: {s["key"] for s in subs} for mod, subs in SUBMODULOS.items()}
+
 # ---------------------------------------------------------------------------
 # Caché en memoria para rol y módulos. Evita 1-3 consultas BD por request.
 # TTL corto (2 min) para que cambios de rol/suscripción surtan efecto pronto.
 # ---------------------------------------------------------------------------
 _role_cache: dict = {}   # user_id → (role, ts)
 _access_cache: dict = {} # user_id → (sub_dict, modules_list, ts)
+_submod_cache: dict = {} # user_id → (permitidos_dict, ts)
 _TTL = 120               # segundos
 
 
@@ -51,13 +86,15 @@ def rol_de(user_id: str) -> str:
 
 
 def invalidar_cache_rol(user_id: str = None):
-    """Limpia el caché de rol tras cambio administrativo."""
+    """Limpia el caché de rol/módulos/submódulos tras cambio administrativo."""
     if user_id:
         _role_cache.pop(user_id, None)
         _access_cache.pop(user_id, None)
+        _submod_cache.pop(user_id, None)
     else:
         _role_cache.clear()
         _access_cache.clear()
+        _submod_cache.clear()
 
 
 def es_admin(user_id: str) -> bool:
@@ -214,12 +251,74 @@ def require_module(modulo: str):
     return dep
 
 
+# ---------------------------------------------------------------------------
+# Submódulos: pantallas sueltas dentro de un módulo. Default = TODO permitido
+# si el admin no restringió (retrocompatible). La restricción guarda en
+# user_submodules el SUBCONJUNTO permitido de ese módulo.
+# ---------------------------------------------------------------------------
+def submodulos_permitidos(user_id: str) -> dict:
+    """dict módulo → set(keys de submódulo permitidos). Si el usuario no tiene
+    ninguna fila para los submódulos de un módulo, se permiten TODOS. Cacheado."""
+    hit = _submod_cache.get(user_id)
+    if hit and _now() - hit[1] < _TTL:
+        return hit[0]
+    try:
+        rows = get_supabase_client().table("user_submodules").select("submodulo").eq("user_id", user_id).execute().data or []
+    except Exception:
+        rows = []
+    guardados = {r["submodulo"] for r in rows}
+    out = {}
+    for mod, keys in _SUBS_POR_MODULO.items():
+        permitidos_mod = guardados & keys
+        out[mod] = permitidos_mod if permitidos_mod else set(keys)  # sin filas = todos
+    _submod_cache[user_id] = (out, _now())
+    return out
+
+
+def submodulos_de(user_id: str) -> list:
+    """Lista plana de todos los submódulos permitidos para el usuario (solo de
+    los módulos que tiene contratados). Para /me y el frontend."""
+    if es_super_admin(user_id):
+        return list(SUBMODULO_MODULO.keys())
+    mods = set(modulos_de(user_id))
+    perm = submodulos_permitidos(user_id)
+    out = []
+    for mod, keys in perm.items():
+        if mod in mods:
+            out.extend(keys)
+    return out
+
+
+def puede_submodulo(user_id: str, sub: str) -> bool:
+    modulo = SUBMODULO_MODULO.get(sub)
+    if not modulo:
+        return True  # submódulo no catalogado → no se restringe
+    if es_super_admin(user_id):
+        return True
+    return sub in submodulos_permitidos(user_id).get(modulo, set())
+
+
+def require_submodule(sub: str):
+    """Dependencia de router: valida el MÓDULO padre Y el submódulo. Reemplaza a
+    require_module en los routers que corresponden a una sola pantalla."""
+    modulo = SUBMODULO_MODULO.get(sub)
+
+    async def dep(user_id: str = Depends(get_current_user)):
+        if modulo and modulo not in modulos_de(user_id):
+            raise HTTPException(status_code=403, detail=f"Módulo no contratado: {modulo}")
+        if not puede_submodulo(user_id, sub):
+            raise HTTPException(status_code=403, detail=f"Pantalla no habilitada: {sub}")
+        return user_id
+    return dep
+
+
 @router.get("/me")
 async def me(user_id: str = Depends(get_current_user)):
     """Módulos del usuario actual + si es administrador + estado de suscripción."""
     sub, mods = _cargar_acceso(user_id)
     return {
         "modules": mods,
+        "submodules": submodulos_de(user_id),   # pantallas permitidas (default = todas)
         "is_admin": es_admin(user_id),
         "role": rol_de(user_id),
         "roles": roles_asumibles(user_id),   # roles entre los que puede cambiar

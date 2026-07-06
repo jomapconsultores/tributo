@@ -6,7 +6,21 @@ from pydantic import BaseModel
 from typing import Optional, List
 from auth import get_current_user
 from database import get_supabase_client
-from routers.access import es_admin, es_super_admin, rol_de, MODULOS
+from routers.access import es_admin, es_super_admin, rol_de, MODULOS, SUBMODULOS, invalidar_cache_rol
+
+# módulo → set de keys de submódulo (para reconciliar restricciones)
+_SUBS_KEYS = {mod: {s["key"] for s in subs} for mod, subs in SUBMODULOS.items()}
+
+
+def _submodulos_permitidos_de(guardados: set) -> set:
+    """Dado el conjunto de submódulos GUARDADOS (restricción) de un usuario,
+    devuelve la lista plana PERMITIDA: por cada módulo, el subconjunto guardado
+    o TODOS si no hay ninguno (default = todo)."""
+    out = set()
+    for mod, keys in _SUBS_KEYS.items():
+        a = guardados & keys
+        out |= (a if a else keys)
+    return out
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -122,6 +136,11 @@ async def list_users(_: str = Depends(require_admin)):
     roles_set = {}
     for r in role_set_rows:
         roles_set.setdefault(r["user_id"], set()).add(r["role"])
+    # Submódulos permitidos por usuario (restricciones en user_submodules)
+    subrows = sb.table("user_submodules").select("user_id,submodulo").execute().data or []
+    subs_guardados = {}
+    for r in subrows:
+        subs_guardados.setdefault(r["user_id"], set()).add(r["submodulo"])
     subs = {s["user_id"]: s for s in (sb.table("subscriptions").select("user_id,plan,precio_mensual,estado,proximo_pago,iva_incluido").execute().data or [])}
     ip_rows = sb.table("user_ips").select("user_id").execute().data or []
     ip_count = {}
@@ -150,6 +169,7 @@ async def list_users(_: str = Depends(require_admin)):
             "is_admin": uid in admins,
             "role": roles.get(uid, "cliente"),   # rol ACTIVO
             "roles": sorted(roles_set.get(uid) or {roles.get(uid, "cliente")}, key=lambda r: _ROL_ORDEN.get(r, 9)),  # conjunto OTORGADO
+            "submodules": sorted(_submodulos_permitidos_de(subs_guardados.get(uid, set()))),  # pantallas PERMITIDAS
             "modules": by_user.get(uid, {}),
             "subscription": sub,
             "ips": ip_count.get(uid, 0),
@@ -464,6 +484,39 @@ async def set_roles(uid: str, body: RolesIn, admin_id: str = Depends(require_sup
     except Exception:
         pass
     return {"ok": True, "roles": sorted(pedidos, key=lambda r: _ROL_ORDEN.get(r, 9))}
+
+
+class SubmodulesIn(BaseModel):
+    submodules: List[str]   # lista plana de submódulos PERMITIDOS (estado completo)
+
+
+@router.get("/submodulos-catalogo")
+async def submodulos_catalogo(_: str = Depends(require_admin)):
+    """Catálogo de submódulos por módulo (para las casillas del panel)."""
+    return {"catalogo": SUBMODULOS}
+
+
+@router.put("/users/{uid}/submodules")
+async def set_submodules(uid: str, body: SubmodulesIn, _: str = Depends(require_admin)):
+    """Restringe a un usuario a un SUBCONJUNTO de pantallas dentro de cada módulo.
+    Recibe la lista COMPLETA de submódulos permitidos. Regla: por cada módulo, si
+    están TODOS marcados no se guarda restricción (= todo permitido, default); si
+    hay algunos desmarcados se guarda el subconjunto permitido. Para negar TODAS
+    las pantallas de un módulo, quita el módulo (no desmarques todo)."""
+    pedido = set(body.submodules or [])
+    filas = set()
+    for mod, keys in _SUBS_KEYS.items():
+        permitidos_mod = pedido & keys
+        if permitidos_mod and permitidos_mod != keys:
+            filas |= permitidos_mod   # restricción real: guardar el subconjunto
+        # permitidos_mod == keys  → sin restricción (no se guardan filas)
+        # permitidos_mod vacío     → sin filas = todo (para negar todo, quitar el módulo)
+    sb = get_supabase_client()
+    sb.table("user_submodules").delete().eq("user_id", uid).execute()
+    for s in filas:
+        sb.table("user_submodules").insert({"user_id": uid, "submodulo": s}).execute()
+    invalidar_cache_rol(uid)
+    return {"ok": True, "restringidos": sorted(filas)}
 
 
 @router.post("/users/{uid}/plan")

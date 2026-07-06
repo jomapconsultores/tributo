@@ -6,7 +6,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from config import get_settings
 from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router, retenciones_efectuadas
-from routers.access import require_module
+from routers.access import require_module, require_submodule
 import os
 from dotenv import load_dotenv
 
@@ -37,7 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts.split(","))
 
 
 # --- Endurecimiento: cabeceras de seguridad ---
@@ -61,6 +61,14 @@ _RATE_RULES = (
     ("/auth/forgot",  ("POST",), 12, 60),
     ("/auth/reset",   ("POST",), 12, 60),
     ("/api/contacto", ("POST",), 12, 60),   # anti-spam de contacto
+    # Login biométrico (WebAuthn): sin esto, /begin permite fuerza bruta Y
+    # enumerar qué correos tienen biometría activada (responde distinto según
+    # si el correo existe), sin ningún freno — el login con contraseña sí lo tenía.
+    ("/api/webauthn/login", ("POST",), 12, 60),
+    # Revelar TODAS las claves SRI de golpe: debe ser MÁS restrictivo que una
+    # sola (era al revés: no tenía ningún límite). Se chequea antes que la regla
+    # general de "/reveal" porque la primera regla que matchea es la que aplica.
+    ("/api/credentials/", ("GET",), 3, 60, "/reveal-all"),
     # Acceso a credenciales SRI en plano: súper restrictivo (5/min) para detectar
     # exfiltración aún con sesión admin comprometida.
     ("/api/credentials/", ("GET",),  5, 60, "/reveal"),  # GET /api/credentials/{id}/reveal
@@ -81,8 +89,16 @@ async def rate_limit(request: Request, call_next):
             continue
         if suffix_match and not path.endswith(suffix_match):
             continue
+        # OJO: se toma el ULTIMO valor de X-Forwarded-For, no el primero. El
+        # primero es el que el propio visitante puede inventar antes de que la
+        # peticion llegue al proxy real (Coolify); el proxy siempre AGREGA la IP
+        # que el observo al final de la lista, y ese es el unico dato que un
+        # atacante no puede falsificar. Tomar el primero (como estaba antes)
+        # permite esquivar el limite rotando un X-Forwarded-For inventado en
+        # cada intento.
         xff = request.headers.get("x-forwarded-for", "")
-        ip = xff.split(",")[0].strip() or (request.client.host if request.client else "x")
+        partes = [p.strip() for p in xff.split(",") if p.strip()]
+        ip = partes[-1] if partes else (request.client.host if request.client else "x")
         now = time.time()
         key = (ip, prefix, suffix_match or "")
         arr = [t for t in _RATE.get(key, []) if now - t < ventana]
@@ -205,19 +221,24 @@ ICEMOD = [Depends(require_module("ingresos_ice"))]
 DECL = [Depends(require_module("declaraciones"))]
 AGRET = [Depends(require_module("agente_retencion"))]
 
-app.include_router(classification.router, dependencies=GASTOS)
-app.include_router(invoices.router, dependencies=GASTOS)
+# Submódulos: routers de UNA sola pantalla se gatean por submódulo (que a su vez
+# valida el módulo padre). Default = permitido si el admin no restringió.
+def SUB(sub):
+    return [Depends(require_submodule(sub))]
+
+app.include_router(classification.router, dependencies=SUB("gastos_clasificar"))
+app.include_router(invoices.router, dependencies=SUB("gastos_facturas"))
 app.include_router(retentions.router, dependencies=RETEN)
-app.include_router(retenciones_efectuadas.router, dependencies=AGRET)
-app.include_router(ice.router, dependencies=ICEMOD)
-app.include_router(ice_calc.router, dependencies=ICEMOD)
-app.include_router(sales_iva.router, dependencies=ICEMOD)
-app.include_router(products.router, dependencies=ICEMOD)
-app.include_router(rebajas.router, dependencies=ICEMOD)
-app.include_router(anexos.router, dependencies=ICEMOD)
-app.include_router(compradores.router, dependencies=ICEMOD)
-app.include_router(resources.router, dependencies=ICEMOD)
-app.include_router(declaraciones.router, dependencies=DECL)
+app.include_router(retenciones_efectuadas.router, dependencies=SUB("agret_retenciones"))
+app.include_router(ice.router, dependencies=SUB("ice_xml"))
+app.include_router(ice_calc.router, dependencies=SUB("ice_calculo"))
+app.include_router(sales_iva.router, dependencies=SUB("ice_ingresos_iva"))
+app.include_router(products.router, dependencies=SUB("ice_catalogo"))
+app.include_router(rebajas.router, dependencies=SUB("ice_rebajas"))
+app.include_router(anexos.router, dependencies=SUB("ice_anexo"))
+app.include_router(compradores.router, dependencies=SUB("ice_compradores"))
+app.include_router(resources.router, dependencies=ICEMOD)  # referencia compartida: solo módulo
+app.include_router(declaraciones.router, dependencies=DECL)  # submódulo IVA/ICE/103 se valida por tipo en el router
 app.include_router(xml_originales.router)  # descarga de XML originales (gastos/ingresos/retenciones)
 app.include_router(reportes.router)  # REPORTES: honorarios a cobrar por contribuyente/producto
 app.include_router(odoo_factura.router)  # ODOO: facturación directa (solo admin)

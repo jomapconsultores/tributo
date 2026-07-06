@@ -12,7 +12,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const navigate = useNavigate()
   const location = useLocation()
   const { clients, selectedClientId, selectClient, setFocusIdent } = useClients()
-  const { has, isAdmin, isSuperAdmin } = useAccess()
+  const { has, hasSub, isAdmin, isSuperAdmin } = useAccess()
   const [clientsOpen, setClientsOpen] = useState(false)
   const [ingresosIvaOpen, setIngresosIvaOpen] = useState(false)
   const [ingresosIceOpen, setIngresosIceOpen] = useState(false)
@@ -107,7 +107,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const isClassifier = path === '/clasificador'
   const isSaved = path === '/datos'
 
-  const moduleHome = isRetenciones ? '/retenciones' : isCalculo ? '/calculo-ice' : isIceXml ? '/ice' : homeFor(has)
+  const moduleHome = isRetenciones ? '/retenciones' : isCalculo ? '/calculo-ice' : isIceXml ? '/ice' : homeFor(has, hasSub)
 
   return (
     <aside className={`sidebar ${open ? 'is-open' : ''}`}>
@@ -138,6 +138,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         </button>
         {ingresosIvaOpen && (
           <div className="submodule-list">
+            {hasSub('ice_ingresos_iva') && (
             <button
               className={`nav-item submodule ${isIngresosIva ? 'active' : ''}`}
               onClick={() => navigate('/ingresos-iva')}
@@ -145,6 +146,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
               <span className="nav-ico">📈</span>
               <span>Ingresos IVA</span>
             </button>
+            )}
             <a
               ref={setBajadorIngresosHref}
               className="nav-item submodule bajador-item"
@@ -178,6 +180,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         </button>
         {ingresosIceOpen && (
           <div className="submodule-list">
+            {hasSub('ice_calculo') && (
             <button
               className={`nav-item submodule ${isCalculo ? 'active' : ''}`}
               onClick={() => navigate('/calculo-ice')}
@@ -185,6 +188,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
               <span className="nav-ico">🧮</span>
               <span>Cálculo previo ICE</span>
             </button>
+            )}
+            {hasSub('ice_anexo') && (
             <button
               className={`nav-item submodule ${isAnexo ? 'active' : ''}`}
               onClick={() => navigate('/anexo-pvp-ice')}
@@ -192,6 +197,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
               <span className="nav-ico">📄</span>
               <span>Anexo PVP+ICE</span>
             </button>
+            )}
+            {hasSub('ice_xml') && (
             <button
               className={`nav-item submodule ${isIceXml ? 'active' : ''}`}
               onClick={() => navigate('/ice')}
@@ -199,6 +206,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
               <span className="nav-ico">🥃</span>
               <span>Ingresos ICE - XML</span>
             </button>
+            )}
+            {hasSub('ice_catalogo') && (
             <button
               className={`nav-item submodule ${isCatalogo ? 'active' : ''}`}
               onClick={() => navigate('/catalogo-productos')}
@@ -206,6 +215,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
               <span className="nav-ico">📚</span>
               <span>Catálogo de productos</span>
             </button>
+            )}
+            {hasSub('ice_rebajas') && (
             <button
               className={`nav-item submodule ${isRebajas ? 'active' : ''}`}
               onClick={() => navigate('/rebajas-exenciones')}
@@ -213,6 +224,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
               <span className="nav-ico">⚖️</span>
               <span>Rebajas y exenciones</span>
             </button>
+            )}
 
             {/* Información útil (menú pequeño) */}
             <div className="info-title">Información útil</div>
@@ -255,15 +267,21 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         </button>
         {gastosOpen && (
           <div className="submodule-list">
+            {hasSub('gastos_facturas') && (
             <button className={`nav-item submodule ${isDatabase ? 'active' : ''}`} onClick={() => navigate('/')}>
               <span className="nav-ico">💸</span><span>Gastos</span>
             </button>
+            )}
+            {hasSub('gastos_clasificar') && (
             <button className={`nav-item submodule ${isClassifier ? 'active' : ''}`} onClick={() => navigate('/clasificador')}>
               <span className="nav-ico">🏷️</span><span>Clasificador de Gastos</span>
             </button>
+            )}
+            {hasSub('gastos_facturas') && (
             <button className={`nav-item submodule ${isSaved ? 'active' : ''}`} onClick={() => navigate('/datos')}>
               <span className="nav-ico">📊</span><span>Datos guardados</span>
             </button>
+            )}
             <a
               ref={setBajadorHref}
               className="nav-item submodule bajador-item"
@@ -315,9 +333,11 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         </button>
         {agenteRetOpen && (
           <div className="submodule-list">
+            {hasSub('agret_retenciones') && (
             <button className={`nav-item submodule ${isRetEfectuadas ? 'active' : ''}`} onClick={() => navigate('/retenciones-efectuadas')}>
               <span className="nav-ico">🧷</span><span>Retenciones efectuadas</span>
             </button>
+            )}
           </div>
         )}
         </>)}
@@ -334,13 +354,17 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         </button>
         {declaracionesOpen && (
           <div className="submodule-list">
+            {hasSub('decl_ice') && (
             <button className={`nav-item submodule ${isDeclIce ? 'active' : ''}`} onClick={() => navigate('/declaracion-ice')}>
               <span className="nav-ico">🥃</span><span>Declaración ICE</span>
             </button>
+            )}
+            {hasSub('decl_iva') && (
             <button className={`nav-item submodule ${isDeclIva ? 'active' : ''}`} onClick={() => navigate('/declaracion-iva')}>
               <span className="nav-ico">🧾</span><span>Declaración IVA</span>
             </button>
-            {has('agente_retencion') && (
+            )}
+            {has('agente_retencion') && hasSub('agret_103') && (
               <button className={`nav-item submodule ${isDecl103 ? 'active' : ''}`} onClick={() => navigate('/declaracion-103')}>
                 <span className="nav-ico">🧷</span><span>Declaración 103 (Renta)</span>
               </button>
@@ -350,7 +374,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         </>)}
 
         {/* Módulo DEVOLUCIONES IVA (desplegable) */}
-        {has('declaraciones') && (<>
+        {has('declaraciones') && hasSub('decl_devoluciones') && (<>
         <button
           className={`nav-item module-btn devoluciones ${isDevoluciones ? 'active' : ''}`}
           onClick={() => setDevolucionesOpen((o) => !o)}
@@ -467,25 +491,25 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
             <div className="sidebar-quick-nav">
               <div className="sqn-title">📌 {cl.nombre}</div>
               <div className="sqn-chips">
-                {has('gastos') && (
+                {has('gastos') && hasSub('gastos_facturas') && (
                   <button className={`sqn-chip ${isGastos ? 'active' : ''}`} onClick={() => navigate('/')}>💸 Gastos</button>
                 )}
                 {has('retenciones') && (
                   <button className={`sqn-chip ${isRetenciones ? 'active' : ''}`} onClick={() => navigate('/retenciones')}>🧾 Retenciones</button>
                 )}
-                {has('agente_retencion') && cl.es_agente_retencion && (
+                {has('agente_retencion') && hasSub('agret_retenciones') && cl.es_agente_retencion && (
                   <button className={`sqn-chip ${isRetEfectuadas ? 'active' : ''}`} onClick={() => navigate('/retenciones-efectuadas')}>🧷 Ret. efectuadas</button>
                 )}
-                {has('declaraciones') && (
+                {has('declaraciones') && hasSub('decl_iva') && (
                   <button className={`sqn-chip ${isDeclIva ? 'active' : ''}`} onClick={() => navigate('/declaracion-iva')}>📋 Decl. IVA</button>
                 )}
-                {has('agente_retencion') && cl.es_agente_retencion && (
+                {has('agente_retencion') && hasSub('agret_103') && cl.es_agente_retencion && (
                   <button className={`sqn-chip ${isDecl103 ? 'active' : ''}`} onClick={() => navigate('/declaracion-103')}>🧷 Decl. 103</button>
                 )}
-                {has('declaraciones') && (
+                {has('declaraciones') && hasSub('decl_ice') && (
                   <button className={`sqn-chip ${isDeclIce ? 'active' : ''}`} onClick={() => navigate('/declaracion-ice')}>🥃 Decl. ICE</button>
                 )}
-                {has('ingresos_ice') && (
+                {has('ingresos_ice') && hasSub('ice_calculo') && (
                   <button className={`sqn-chip ${isCalculo ? 'active' : ''}`} onClick={() => navigate('/calculo-ice')}>🧮 Cálculo previo ICE</button>
                 )}
               </div>
@@ -553,7 +577,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         )}
 
         {/* Compradores: clientes importados de las facturas de ventas */}
-        {has('ingresos_ice') && (
+        {has('ingresos_ice') && hasSub('ice_compradores') && (
           <button
             className={`nav-item clients-toggle ${isCompradores ? 'active' : ''}`}
             onClick={() => navigate('/compradores')}

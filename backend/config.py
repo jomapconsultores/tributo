@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     jwt_secret: str
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
     frontend_url: str = "http://localhost:5173"
+    # Dominios propios del BACKEND (no el frontend/CORS) que TrustedHostMiddleware
+    # debe aceptar. "*" acepta cualquier Host y equivale a no tener la protección
+    # — en producción hay que ponerle el dominio real del backend en Coolify.
+    allowed_hosts: str = "*"
     environment: str = "development"
     max_ips_por_usuario: int = 3
 

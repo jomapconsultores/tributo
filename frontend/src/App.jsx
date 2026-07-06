@@ -40,9 +40,19 @@ const AdminPermisos            = lazy(() => import('./pages/AdminPermisos'))
 const PageLoader = () => <div className="loading">Cargando…</div>
 
 function RequireModule({ modulo, children }) {
-  const { has, loading } = useAccess()
+  const { has, hasSub, loading } = useAccess()
   if (loading) return <PageLoader />
-  if (!has(modulo)) return <Navigate to={homeFor(has)} replace />
+  if (!has(modulo)) return <Navigate to={homeFor(has, hasSub)} replace />
+  return children
+}
+
+// Igual que RequireModule pero además exige el SUBMÓDULO (pantalla). El módulo
+// padre se infiere: si no tiene el módulo o la pantalla, redirige a un destino
+// que sí puede ver.
+function RequireSubmodule({ modulo, sub, children }) {
+  const { has, hasSub, loading } = useAccess()
+  if (loading) return <PageLoader />
+  if (!has(modulo) || !hasSub(sub)) return <Navigate to={homeFor(has, hasSub)} replace />
   return children
 }
 
@@ -56,22 +66,22 @@ function SinAcceso() {
 }
 
 function HomeRedirect() {
-  const { has, loading } = useAccess()
+  const { has, hasSub, loading } = useAccess()
   if (loading) return <PageLoader />
-  return <Navigate to={homeFor(has)} replace />
+  return <Navigate to={homeFor(has, hasSub)} replace />
 }
 
 function RequireAdmin({ children }) {
-  const { isAdmin, loading, has } = useAccess()
+  const { isAdmin, loading, has, hasSub } = useAccess()
   if (loading) return <PageLoader />
-  if (!isAdmin) return <Navigate to={homeFor(has)} replace />
+  if (!isAdmin) return <Navigate to={homeFor(has, hasSub)} replace />
   return children
 }
 
 function RequireSuperAdmin({ children }) {
-  const { isSuperAdmin, loading, has } = useAccess()
+  const { isSuperAdmin, loading, has, hasSub } = useAccess()
   if (loading) return <PageLoader />
-  if (!isSuperAdmin) return <Navigate to={homeFor(has)} replace />
+  if (!isSuperAdmin) return <Navigate to={homeFor(has, hasSub)} replace />
   return children
 }
 
@@ -148,23 +158,23 @@ function App() {
                 </AccessProvider>
               }
             >
-              <Route path="/" element={<RequireModule modulo="gastos"><Database /></RequireModule>} />
-              <Route path="/clasificador" element={<RequireModule modulo="gastos"><Classifier /></RequireModule>} />
-              <Route path="/datos" element={<RequireModule modulo="gastos"><SavedData /></RequireModule>} />
+              <Route path="/" element={<RequireSubmodule modulo="gastos" sub="gastos_facturas"><Database /></RequireSubmodule>} />
+              <Route path="/clasificador" element={<RequireSubmodule modulo="gastos" sub="gastos_clasificar"><Classifier /></RequireSubmodule>} />
+              <Route path="/datos" element={<RequireSubmodule modulo="gastos" sub="gastos_facturas"><SavedData /></RequireSubmodule>} />
               <Route path="/retenciones" element={<RequireModule modulo="retenciones"><Retenciones /></RequireModule>} />
-              <Route path="/retenciones-efectuadas" element={<RequireModule modulo="agente_retencion"><RetencionesEfectuadas /></RequireModule>} />
-              <Route path="/declaracion-iva" element={<RequireModule modulo="declaraciones"><Declaraciones tipo="IVA" /></RequireModule>} />
-              <Route path="/declaracion-ice" element={<RequireModule modulo="declaraciones"><Declaraciones tipo="ICE" /></RequireModule>} />
-              <Route path="/declaracion-103" element={<RequireModule modulo="agente_retencion"><Declaraciones tipo="103" /></RequireModule>} />
-              <Route path="/devoluciones-iva/tercera-edad" element={<RequireModule modulo="declaraciones"><DevolucionesIvaTerceraEdad /></RequireModule>} />
-              <Route path="/ingresos-iva" element={<RequireModule modulo="ingresos_ice"><IngresosIva /></RequireModule>} />
-              <Route path="/calculo-ice" element={<RequireModule modulo="ingresos_ice"><CalculoICE /></RequireModule>} />
-              <Route path="/anexo-pvp-ice" element={<RequireModule modulo="ingresos_ice"><AnexoPVPICE /></RequireModule>} />
+              <Route path="/retenciones-efectuadas" element={<RequireSubmodule modulo="agente_retencion" sub="agret_retenciones"><RetencionesEfectuadas /></RequireSubmodule>} />
+              <Route path="/declaracion-iva" element={<RequireSubmodule modulo="declaraciones" sub="decl_iva"><Declaraciones tipo="IVA" /></RequireSubmodule>} />
+              <Route path="/declaracion-ice" element={<RequireSubmodule modulo="declaraciones" sub="decl_ice"><Declaraciones tipo="ICE" /></RequireSubmodule>} />
+              <Route path="/declaracion-103" element={<RequireSubmodule modulo="agente_retencion" sub="agret_103"><Declaraciones tipo="103" /></RequireSubmodule>} />
+              <Route path="/devoluciones-iva/tercera-edad" element={<RequireSubmodule modulo="declaraciones" sub="decl_devoluciones"><DevolucionesIvaTerceraEdad /></RequireSubmodule>} />
+              <Route path="/ingresos-iva" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_ingresos_iva"><IngresosIva /></RequireSubmodule>} />
+              <Route path="/calculo-ice" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_calculo"><CalculoICE /></RequireSubmodule>} />
+              <Route path="/anexo-pvp-ice" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_anexo"><AnexoPVPICE /></RequireSubmodule>} />
               <Route path="/recursos-ice" element={<RequireModule modulo="ingresos_ice"><RecursosICE /></RequireModule>} />
-              <Route path="/ice" element={<RequireModule modulo="ingresos_ice"><ICE /></RequireModule>} />
-              <Route path="/catalogo-productos" element={<RequireModule modulo="ingresos_ice"><CatalogoProductos /></RequireModule>} />
-              <Route path="/compradores" element={<RequireModule modulo="ingresos_ice"><Compradores /></RequireModule>} />
-              <Route path="/rebajas-exenciones" element={<RequireModule modulo="ingresos_ice"><RebajasExenciones /></RequireModule>} />
+              <Route path="/ice" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_xml"><ICE /></RequireSubmodule>} />
+              <Route path="/catalogo-productos" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_catalogo"><CatalogoProductos /></RequireSubmodule>} />
+              <Route path="/compradores" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_compradores"><Compradores /></RequireSubmodule>} />
+              <Route path="/rebajas-exenciones" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_rebajas"><RebajasExenciones /></RequireSubmodule>} />
               <Route path="/normativa" element={<Normativa />} />
               <Route path="/reportes" element={<Reportes modo="faltantes" />} />
               <Route path="/reportes/faltantes" element={<Reportes modo="faltantes" />} />
