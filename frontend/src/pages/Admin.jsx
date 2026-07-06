@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { adminAPI } from '../services/api'
 import { useAccess } from '../context/AccessContext'
+import { clearAll as clearApiCache } from '../services/cache'
 import './Admin.css'
 
 const ROL_LBL = { admin: '👑 Administrador', socio: '🤝 Socio', cliente: '👤 Cliente' }
+const MI_UID = localStorage.getItem('userId')  // para refrescar el acceso si me edito a mí mismo
 
 const MODS = [
   { key: 'gastos', label: 'Gastos' },
@@ -40,7 +42,12 @@ export default function Admin() {
 
   const guardarSubmodulos = async (uid, keys) => {
     setBusy(true)
-    try { await adminAPI.setSubmodules(uid, keys); setSubModal(null); await load() }
+    try {
+      await adminAPI.setSubmodules(uid, keys)
+      setSubModal(null)
+      if (uid === MI_UID) { clearApiCache(); window.location.reload(); return }
+      await load()
+    }
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
     finally { setBusy(false) }
   }
@@ -69,6 +76,14 @@ export default function Admin() {
   }
   useEffect(load, [])
 
+  // Si el admin se edita a SÍ MISMO (roles/pantallas), su propio acceso cambia:
+  // hay que refrescar /me (cacheado) para que el selector de rol arriba a la
+  // derecha aparezca/cambie al instante. La forma segura es limpiar caché y recargar.
+  const refrescarSiSoyYo = (uid) => {
+    if (uid === MI_UID) { clearApiCache(); window.location.reload(); return true }
+    return false
+  }
+
   // Otorga el CONJUNTO de roles del usuario (puede tener varios y cambiar entre ellos).
   const toggleRol = async (uid, actuales, r) => {
     const s = new Set(actuales)
@@ -76,7 +91,11 @@ export default function Admin() {
     const nuevos = [...s]
     if (nuevos.length === 0) { alert('El usuario debe tener al menos un rol.'); return }
     setBusy(true)
-    try { await adminAPI.setRoles(uid, nuevos); await load() }
+    try {
+      await adminAPI.setRoles(uid, nuevos)
+      if (refrescarSiSoyYo(uid)) return   // recarga la app; no sigue
+      await load()
+    }
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
     finally { setBusy(false) }
   }
