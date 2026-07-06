@@ -169,7 +169,8 @@ def modulos_de(user_id: str):
 # user_roles) y cambiar entre ellos. app_admins guarda el rol ACTIVO (lo que
 # lee rol_de); user_roles guarda el CONJUNTO otorgado por el administrador.
 # ---------------------------------------------------------------------------
-_ROL_ORDEN = {"admin": 0, "socio": 1, "cliente": 2}
+_ROL_ORDEN = {"admin": 0, "socio": 1, "trabajador": 2, "cliente": 3}
+_ROLES_VALIDOS = ("admin", "socio", "trabajador", "cliente")
 
 
 def roles_otorgados(user_id: str) -> set:
@@ -196,8 +197,8 @@ def cambiar_rol_activo(user_id: str, target: str) -> str:
     """Cambia el rol ACTIVO del usuario re-apuntando app_admins. Solo permite
     roles que ya le fueron otorgados (self-service, no escala privilegios)."""
     target = (target or "").strip().lower()
-    if target not in ("admin", "socio", "cliente"):
-        raise HTTPException(status_code=400, detail="Rol inválido (admin | socio | cliente)")
+    if target not in _ROLES_VALIDOS:
+        raise HTTPException(status_code=400, detail="Rol inválido (admin | socio | trabajador | cliente)")
     # Validación ESTRICTA contra el conjunto que fijó el administrador (user_roles),
     # no contra la unión con el rol activo: así una divergencia futura
     # app_admins/user_roles nunca queda auto-conmutable (defensa en profundidad).

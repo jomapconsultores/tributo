@@ -5,10 +5,11 @@ import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import './AdminClientAccess.css'
 
 const MODULOS = [
-  { key: 'gastos',        label: 'Gastos',          color: 'blue' },
-  { key: 'retenciones',   label: 'Retenciones',     color: 'orange' },
-  { key: 'ingresos_ice',  label: 'Ingresos ICE',    color: 'purple' },
-  { key: 'declaraciones', label: 'Declaraciones',   color: 'green' },
+  { key: 'gastos',           label: 'Gastos',            color: 'blue' },
+  { key: 'retenciones',      label: 'Retenciones',       color: 'orange' },
+  { key: 'ingresos_ice',     label: 'Ingresos ICE',      color: 'purple' },
+  { key: 'declaraciones',    label: 'Declaraciones',     color: 'green' },
+  { key: 'agente_retencion', label: 'Agente de retención', color: 'teal' },
 ]
 
 export default function AdminClientAccess() {

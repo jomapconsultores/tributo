@@ -59,7 +59,8 @@ class RolesIn(BaseModel):
     roles: List[str]   # conjunto otorgado, p.ej. ['admin', 'cliente']
 
 
-_ROL_ORDEN = {"admin": 0, "socio": 1, "cliente": 2}
+_ROL_ORDEN = {"admin": 0, "socio": 1, "trabajador": 2, "cliente": 3}
+_ROLES_VALIDOS = {"admin", "socio", "trabajador", "cliente"}
 
 
 class ClientAccessIn(BaseModel):
@@ -129,8 +130,10 @@ async def list_users(_: str = Depends(require_admin)):
 
     mods = sb.table("user_modules").select("user_id,modulo,activo,valid_until").execute().data or []
     admin_rows = sb.table("app_admins").select("user_id,role").execute().data or []
-    roles = {a["user_id"]: (a.get("role") or "admin") for a in admin_rows}
-    admins = set(roles.keys())
+    roles = {a["user_id"]: (a.get("role") or "socio") for a in admin_rows}
+    # is_admin = acceso OPERATIVO (admin o socio). 'trabajador' también vive en
+    # app_admins pero NO es admin: sus permisos SÍ se editan en el panel.
+    admins = {uid for uid, r in roles.items() if r in ("admin", "socio")}
     # Conjunto de roles OTORGADOS por usuario (para las casillas del panel)
     role_set_rows = sb.table("user_roles").select("user_id,role").execute().data or []
     roles_set = {}
@@ -277,7 +280,7 @@ async def resumen_permisos(_: str = Depends(require_admin)):
         raise HTTPException(status_code=500, detail=f"No se pudo listar usuarios: {e}")
 
     admin_rows = sb.table("app_admins").select("user_id,role").execute().data or []
-    roles = {a["user_id"]: (a.get("role") or "admin") for a in admin_rows}
+    roles = {a["user_id"]: (a.get("role") or "socio") for a in admin_rows}
 
     mods_rows = sb.table("user_modules").select("user_id,modulo,activo").execute().data or []
     mods_by_user: dict = {}
@@ -422,8 +425,8 @@ async def set_role(uid: str, body: RoleIn, admin_id: str = Depends(require_super
     """Asigna el rol de un usuario. 'admin'/'socio' lo registran en app_admins;
     'cliente' lo quita. Solo el administrador máximo puede hacerlo."""
     role = (body.role or "").strip().lower()
-    if role not in ("admin", "socio", "cliente"):
-        raise HTTPException(status_code=400, detail="Rol inválido (admin | socio | cliente)")
+    if role not in _ROLES_VALIDOS:
+        raise HTTPException(status_code=400, detail="Rol inválido (admin | socio | trabajador | cliente)")
     sb = get_supabase_client()
     if uid == admin_id and role != "admin":
         raise HTTPException(status_code=400, detail="No puedes quitarte tu propio rol de administrador")
@@ -443,14 +446,61 @@ async def set_role(uid: str, body: RoleIn, admin_id: str = Depends(require_super
     return {"ok": True, "role": role}
 
 
+# Filas por-usuario que se limpian al ELIMINAR un usuario. NO se tocan sus
+# contribuyentes/datos tributarios (clients y tablas de datos) ni la bitácora
+# de auditoría (activity_log) — eso es historial que debe conservarse.
+_TABLAS_USER_ID = ["app_admins", "user_roles", "user_modules", "user_submodules",
+                   "subscriptions", "pagos", "user_ips"]
+
+
+@router.delete("/users/{uid}")
+async def delete_user(uid: str, admin_id: str = Depends(require_super_admin)):
+    """Elimina la CUENTA de un usuario y sus filas de permisos/asignaciones.
+    Salvaguardas: no puedes eliminarte a ti mismo ni a otro administrador
+    (cámbiale el rol antes). No borra los contribuyentes que hubiera creado ni
+    la bitácora de movimientos."""
+    if uid == admin_id:
+        raise HTTPException(status_code=400, detail="No puedes eliminar tu propia cuenta")
+    sb = get_supabase_client()
+    # Proteger administradores DE RAÍZ: bloquear si 'admin' está en el rol ACTIVO
+    # o en el CONJUNTO otorgado (user_roles) — un admin que cambió su vista a
+    # socio/trabajador/cliente sigue siendo admin y no debe poder eliminarse.
+    activo = sb.table("app_admins").select("role").eq("user_id", uid).execute().data
+    otorgados = sb.table("user_roles").select("role").eq("user_id", uid).execute().data or []
+    if (activo and activo[0].get("role") == "admin") or any(r.get("role") == "admin" for r in otorgados):
+        raise HTTPException(status_code=400, detail="No puedes eliminar a un administrador. Quítale el rol admin primero.")
+    # 1) Eliminar la cuenta de autenticación. Si falla, no tocamos nada más.
+    try:
+        sb.auth.admin.delete_user(uid)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No se pudo eliminar la cuenta: {e}")
+    # 2) Limpiar filas de permisos/asignaciones/suscripción.
+    for t in _TABLAS_USER_ID:
+        try:
+            sb.table(t).delete().eq("user_id", uid).execute()
+        except Exception:
+            pass
+    for tabla, col in (("client_access", "granted_to"), ("activity_seen", "admin_user_id")):
+        try:
+            sb.table(tabla).delete().eq(col, uid).execute()
+        except Exception:
+            pass
+    invalidar_cache_rol(uid)
+    try:
+        from tenancy import invalidate_clients_cache
+        invalidate_clients_cache(uid)
+    except Exception:
+        pass
+    return {"ok": True}
+
+
 @router.put("/users/{uid}/roles")
 async def set_roles(uid: str, body: RolesIn, admin_id: str = Depends(require_super_admin)):
     """Otorga el CONJUNTO de roles de un usuario (tabla user_roles), entre los
     que luego podrá cambiar con el selector. El rol ACTIVO (app_admins) se
     mantiene si sigue permitido; si no, baja/sube al de mayor privilegio del
     conjunto. Solo el administrador máximo puede otorgar roles."""
-    validos = {"admin", "socio", "cliente"}
-    pedidos = {(r or "").strip().lower() for r in (body.roles or [])} & validos
+    pedidos = {(r or "").strip().lower() for r in (body.roles or [])} & _ROLES_VALIDOS
     if not pedidos:
         pedidos = {"cliente"}
     if uid == admin_id and "admin" not in pedidos:

@@ -25,6 +25,8 @@
 .adm-precio { width: 70px; }
 .adm-acts { white-space: nowrap; display: flex; gap: 6px; }
 .adm-btn.pay { background: #16a34a; color: #fff; border-color: #16a34a; }
+.adm-btn.danger { color: #dc2626; border-color: #fecaca; }
+.adm-btn.danger:hover:not(:disabled) { background: #fef2f2; }
 .adm-table tr.vencida td { background: #fef2f2; }
 .adm-contactos { margin-top: 24px; }
 .adm-contactos h2 { font-size: 1.1rem; color: #1e293b; margin: 0 0 10px; }

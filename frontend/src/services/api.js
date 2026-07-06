@@ -46,6 +46,7 @@ export const adminAPI = {
   setClientAccess: (body) => api.put('/api/admin/client-access', body),
   listUsers: () => api.get('/api/admin/users'),
   createUser: (data) => api.post('/api/admin/users', data),
+  deleteUser: (uid) => api.delete(`/api/admin/users/${uid}`),
   setModules: (uid, modules, valid_until = null) => api.put(`/api/admin/users/${uid}/modules`, { modules, valid_until }),
   setRole: (uid, role) => api.put(`/api/admin/users/${uid}/role`, { role }),
   setRoles: (uid, roles) => api.put(`/api/admin/users/${uid}/roles`, { roles }),

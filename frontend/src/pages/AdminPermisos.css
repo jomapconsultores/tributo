@@ -101,6 +101,7 @@
 }
 .ap-role-admin  { background: #dbeafe; color: #1d4ed8; }
 .ap-role-socio  { background: #ede9fe; color: #6d28d9; }
+.ap-role-trabajador { background: #fef3c7; color: #92400e; }
 .ap-role-cliente{ background: #f1f5f9; color: #475569; }
 
 /* Sub-info: plan y vencimiento */

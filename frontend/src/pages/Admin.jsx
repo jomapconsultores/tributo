@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { adminAPI } from '../services/api'
 import { useAccess } from '../context/AccessContext'
 import { clearAll as clearApiCache } from '../services/cache'
 import './Admin.css'
 
-const ROL_LBL = { admin: '👑 Administrador', socio: '🤝 Socio', cliente: '👤 Cliente' }
+const ROL_LBL = { admin: '👑 Administrador', socio: '🤝 Socio', trabajador: '👷 Trabajador', cliente: '👤 Cliente' }
+const ROLES_ASIGNABLES = ['cliente', 'trabajador', 'socio', 'admin']
 const MI_UID = localStorage.getItem('userId')  // para refrescar el acceso si me edito a mí mismo
 
 const MODS = [
@@ -23,6 +25,7 @@ const ESTADOS = ['prueba', 'activo', 'suspendido']
 
 export default function Admin() {
   const { isSuperAdmin } = useAccess()
+  const navigate = useNavigate()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState({})
@@ -146,6 +149,19 @@ export default function Admin() {
     try { await adminAPI.resetIps(uid); await load(); alert('✔ IPs restablecidas.') }
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy(false) }
   }
+  const eliminarUsuario = async (u) => {
+    if (!window.confirm(
+      `¿ELIMINAR la cuenta de ${u.email}?\n\n` +
+      `Se borra su acceso, roles, módulos, pantallas y asignación de clientes.\n` +
+      `NO se borran los contribuyentes que haya creado ni la bitácora.\n\n` +
+      `Esta acción no se puede deshacer.`
+    )) return
+    setBusy(true)
+    try { await adminAPI.deleteUser(u.user_id); await load(); alert('✔ Usuario eliminado.') }
+    catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
+    finally { setBusy(false) }
+  }
+
   const crear = async () => {
     if (!nuevo.email.trim() || nuevo.password.length < 6) { alert('Email válido y contraseña de 6+ caracteres.'); return }
     setBusy(true)
@@ -216,7 +232,7 @@ export default function Admin() {
                       {isSuperAdmin && (
                         <div className="adm-roles" title="Roles otorgados: si tiene más de uno, el usuario puede cambiar entre ellos con el selector de arriba a la derecha.">
                           <span className="adm-roles-lbl">Roles:</span>
-                          {['cliente', 'socio', 'admin'].map((r) => {
+                          {ROLES_ASIGNABLES.map((r) => {
                             const otorgados = u.roles || [u.role || 'cliente']
                             return (
                               <label key={r} className="adm-rol-chk">
@@ -232,30 +248,32 @@ export default function Admin() {
                     </td>
                     {MODS.map((m) => (
                       <td key={m.key} className="c">
-                        <input type="checkbox" disabled={u.is_admin} checked={u.is_admin || e.mods.has(m.key)} onChange={() => toggle(u.user_id, m.key)} />
+                        <input type="checkbox" disabled={u.role === 'admin'} checked={u.role === 'admin' || e.mods.has(m.key)} onChange={() => toggle(u.user_id, m.key)} />
                       </td>
                     ))}
                     <td>
-                      <select disabled={u.is_admin} value={e.estado} onChange={(ev) => upd(u.user_id, { estado: ev.target.value })}>
+                      <select disabled={u.role === 'admin'} value={e.estado} onChange={(ev) => upd(u.user_id, { estado: ev.target.value })}>
                         {ESTADOS.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </td>
-                    <td><input className="adm-precio" type="number" step="0.01" disabled={u.is_admin} value={e.precio} onChange={(ev) => upd(u.user_id, { precio: ev.target.value })} /></td>
+                    <td><input className="adm-precio" type="number" step="0.01" disabled={u.role === 'admin'} value={e.precio} onChange={(ev) => upd(u.user_id, { precio: ev.target.value })} /></td>
                     <td className="c" title="¿Los valores de este cliente ya incluyen IVA?">
-                      <input type="checkbox" disabled={u.is_admin} checked={e.iva_incluido || false} onChange={(ev) => upd(u.user_id, { iva_incluido: ev.target.checked })} />
+                      <input type="checkbox" disabled={u.role === 'admin'} checked={e.iva_incluido || false} onChange={(ev) => upd(u.user_id, { iva_incluido: ev.target.checked })} />
                     </td>
-                    <td><input type="date" disabled={u.is_admin} value={e.proximo_pago || ''} onChange={(ev) => upd(u.user_id, { proximo_pago: ev.target.value })} /></td>
+                    <td><input type="date" disabled={u.role === 'admin'} value={e.proximo_pago || ''} onChange={(ev) => upd(u.user_id, { proximo_pago: ev.target.value })} /></td>
                     <td>
-                      <select disabled={u.is_admin} defaultValue="" onChange={(ev) => { aplicarPlan(u.user_id, ev.target.value); ev.target.value = '' }}>
+                      <select disabled={u.role === 'admin'} defaultValue="" onChange={(ev) => { aplicarPlan(u.user_id, ev.target.value); ev.target.value = '' }}>
                         <option value="">Plan…</option>
                         {PLANES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
                       </select>
                     </td>
                     <td className="adm-acts">
-                      <button className="adm-btn" disabled={busy || u.is_admin} onClick={() => guardar(u.user_id)}>💾</button>
-                      <button className="adm-btn" disabled={busy || u.is_admin} title="Elegir qué pantallas ve dentro de cada módulo" onClick={() => setSubModal({ uid: u.user_id, email: u.email, modules: u.modules, submodules: u.submodules })}>🖥 Pantallas</button>
-                      <button className="adm-btn pay" disabled={busy || u.is_admin} onClick={() => registrarPago(u.user_id)}>💵 Pago</button>
-                      <button className="adm-btn" disabled={busy || u.is_admin} title="Restablecer IPs" onClick={() => resetIps(u.user_id)}>🔓 IPs</button>
+                      <button className="adm-btn" disabled={busy || u.role === 'admin'} onClick={() => guardar(u.user_id)}>💾</button>
+                      <button className="adm-btn" disabled={busy || u.role === 'admin'} title="Elegir qué pantallas ve dentro de cada módulo" onClick={() => setSubModal({ uid: u.user_id, email: u.email, modules: u.modules, submodules: u.submodules })}>🖥 Pantallas</button>
+                      <button className="adm-btn" disabled={u.role === 'admin'} title="Asignar qué contribuyentes puede ver/trabajar" onClick={() => navigate(`/admin/acceso-clientes?uid=${u.user_id}`)}>🔑 Clientes</button>
+                      <button className="adm-btn pay" disabled={busy || u.role === 'admin'} onClick={() => registrarPago(u.user_id)}>💵 Pago</button>
+                      <button className="adm-btn" disabled={busy || u.role === 'admin'} title="Restablecer IPs" onClick={() => resetIps(u.user_id)}>🔓 IPs</button>
+                      <button className="adm-btn danger" disabled={busy || u.role === 'admin' || u.user_id === MI_UID} title="Eliminar usuario" onClick={() => eliminarUsuario(u)}>🗑</button>
                     </td>
                   </tr>
                 )
