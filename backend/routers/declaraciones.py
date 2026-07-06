@@ -9,7 +9,17 @@ from database import get_supabase_client, fetch_all, fetch_in
 from services.declaracion import declaracion_iva, declaracion_ice, declaracion_103
 from services.declaracion_oficial import llenar_oficial
 from tenancy import assert_client_owner, visible_client_ids
-from routers.access import es_admin, es_data_admin, modulos_de
+from routers.access import es_admin, es_data_admin, modulos_de, puede_submodulo
+
+# Cada tipo de declaración es un submódulo distinto (el admin puede habilitar
+# solo IVA sin ICE, etc.). Default = permitido si no hay restricción.
+_SUBMODULO_POR_TIPO = {"IVA": "decl_iva", "ICE": "decl_ice", "103": "agret_103"}
+
+
+def _verificar_submodulo(user_id: str, tipo: str):
+    sub = _SUBMODULO_POR_TIPO.get((tipo or "").upper())
+    if sub and not puede_submodulo(user_id, sub):
+        raise HTTPException(status_code=403, detail=f"Pantalla no habilitada: {sub}")
 from services.activity import registrar
 
 router = APIRouter(prefix="/api/declaraciones", tags=["declaraciones"])
@@ -177,6 +187,7 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
     mes = c.get("periodo_mes") or 1
     # Para clientes compartidos: usar user_id del dueño del cliente para queries históricos
     owner_uid = c.get("user_id") or user_id
+    _verificar_submodulo(user_id, tipo)
     if tipo.upper() == "ICE":
         ice = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id))
         aplazados_ice = _pagos_aplazados_vencen(supabase, client_id, mes, anio, "ICE")
@@ -389,6 +400,7 @@ async def guardar(entry: SaveDecl, user_id: str = Depends(get_current_user)):
         anio = c.get("periodo_anio")
         mes = c.get("periodo_mes")
         tipo = entry.tipo.upper()
+        _verificar_submodulo(user_id, tipo)
 
         # Validar aplazamiento (facilidades de pago: 1 a 3 meses, solo IVA por
         # ahora — declaracion_ice no resta el monto diferido del casillero

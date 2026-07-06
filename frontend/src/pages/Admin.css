@@ -36,6 +36,15 @@
 .adm-rol-chk { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; color: #334155; cursor: pointer; white-space: nowrap; }
 .adm-rol-chk input { cursor: pointer; }
 
+/* Modal de pantallas (submódulos) */
+.submod-group { border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+.submod-group-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 0.85rem; color: #1e293b; }
+.submod-actions { display: flex; gap: 6px; }
+.submod-mini { font-size: 0.68rem; padding: 2px 8px; border: 1px solid #cbd5e1; border-radius: 12px; background: #f8fafc; color: #475569; cursor: pointer; }
+.submod-mini:hover { background: #eef2f7; }
+.submod-item { display: flex; align-items: center; gap: 7px; font-size: 0.82rem; color: #334155; padding: 3px 0; cursor: pointer; }
+.submod-item input { cursor: pointer; }
+
 /* Modal de pago */
 .pago-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .pago-modal { background: #fff; border-radius: 14px; padding: 28px 32px; min-width: 320px; max-width: 400px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,0.18); }

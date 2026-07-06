@@ -28,12 +28,22 @@ export default function Admin() {
   const [busy, setBusy] = useState(false)
   const [contactos, setContactos] = useState([])
   const [pagoModal, setPagoModal] = useState(null) // { uid, email, precio }
+  const [subModal, setSubModal] = useState(null)   // { uid, email, modules, submodules }
+  const [catalogoSub, setCatalogoSub] = useState({}) // { modulo: [{key,label}] }
   // Traído del backend (mismo dict que usa /api/admin/precio) para no mantener
   // una copia local que podría desincronizarse.
   const [descuentos, setDescuentos] = useState({ 1: 0, 3: 0.05, 6: 0.10, 12: 0.25 })
 
   useEffect(() => { adminAPI.contactos().then((r) => setContactos(r.data?.data || [])).catch(() => {}) }, [])
   useEffect(() => { adminAPI.descuentos().then((r) => setDescuentos(r.data?.descuentos || {})).catch(() => {}) }, [])
+  useEffect(() => { adminAPI.submodulosCatalogo().then((r) => setCatalogoSub(r.data?.catalogo || {})).catch(() => {}) }, [])
+
+  const guardarSubmodulos = async (uid, keys) => {
+    setBusy(true)
+    try { await adminAPI.setSubmodules(uid, keys); setSubModal(null); await load() }
+    catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
+    finally { setBusy(false) }
+  }
 
   const load = () => {
     setLoading(true)
@@ -141,6 +151,16 @@ export default function Admin() {
           busy={busy}
         />
       )}
+      {subModal && (
+        <SubmodulosModal
+          user={subModal}
+          catalogo={catalogoSub}
+          modLabels={Object.fromEntries(MODS.map((m) => [m.key, m.label]))}
+          onSave={(keys) => guardarSubmodulos(subModal.uid, keys)}
+          onCancel={() => setSubModal(null)}
+          busy={busy}
+        />
+      )}
       <header className="adm-header">
         <h1>🛠️ Administración de usuarios y cobros</h1>
         <p className="adm-sub">Crea cuentas, asigna módulos contratados y gestiona la suscripción mensual.</p>
@@ -214,6 +234,7 @@ export default function Admin() {
                     </td>
                     <td className="adm-acts">
                       <button className="adm-btn" disabled={busy || u.is_admin} onClick={() => guardar(u.user_id)}>💾</button>
+                      <button className="adm-btn" disabled={busy || u.is_admin} title="Elegir qué pantallas ve dentro de cada módulo" onClick={() => setSubModal({ uid: u.user_id, email: u.email, modules: u.modules, submodules: u.submodules })}>🖥 Pantallas</button>
                       <button className="adm-btn pay" disabled={busy || u.is_admin} onClick={() => registrarPago(u.user_id)}>💵 Pago</button>
                       <button className="adm-btn" disabled={busy || u.is_admin} title="Restablecer IPs" onClick={() => resetIps(u.user_id)}>🔓 IPs</button>
                     </td>
@@ -247,6 +268,67 @@ export default function Admin() {
             </table>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function SubmodulosModal({ user, catalogo, modLabels, onSave, onCancel, busy }) {
+  // Solo los módulos que el usuario tiene activos Y que tienen submódulos.
+  const activos = new Set(Object.entries(user.modules || {}).filter(([, v]) => v.activo).map(([k]) => k))
+  const mods = Object.keys(catalogo).filter((m) => activos.has(m))
+  const [checked, setChecked] = useState(() => new Set(user.submodules || []))
+
+  const toggle = (k) => setChecked((prev) => { const s = new Set(prev); s.has(k) ? s.delete(k) : s.add(k); return s })
+  const toggleMod = (m, on) => setChecked((prev) => {
+    const s = new Set(prev); (catalogo[m] || []).forEach((x) => { on ? s.add(x.key) : s.delete(x.key) }); return s
+  })
+
+  const save = () => {
+    const keys = []
+    for (const m of mods) {
+      const marcadas = (catalogo[m] || []).filter((x) => checked.has(x.key))
+      if (marcadas.length === 0) {
+        alert(`El módulo "${modLabels[m] || m}" quedó sin ninguna pantalla. Si no quieres que vea nada de ese módulo, quítale el módulo en la fila. Marca al menos una pantalla aquí.`)
+        return
+      }
+      marcadas.forEach((x) => keys.push(x.key))
+    }
+    onSave(keys)
+  }
+
+  return (
+    <div className="pago-overlay">
+      <div className="pago-modal" style={{ maxWidth: 480 }}>
+        <h3 className="pago-title">🖥 Pantallas permitidas</h3>
+        <p className="pago-email">{user.email}</p>
+        <p className="adm-note" style={{ marginTop: 0 }}>
+          Desmarca las pantallas que este usuario NO debe ver dentro de cada módulo.
+          Con todas marcadas ve el módulo completo (comportamiento normal).
+        </p>
+        {mods.length === 0 ? (
+          <p className="adm-note">Este usuario no tiene módulos con pantallas configurables.</p>
+        ) : mods.map((m) => (
+          <div key={m} className="submod-group">
+            <div className="submod-group-head">
+              <strong>{modLabels[m] || m}</strong>
+              <span className="submod-actions">
+                <button type="button" className="submod-mini" onClick={() => toggleMod(m, true)}>Todas</button>
+                <button type="button" className="submod-mini" onClick={() => toggleMod(m, false)}>Ninguna</button>
+              </span>
+            </div>
+            {(catalogo[m] || []).map((x) => (
+              <label key={x.key} className="submod-item">
+                <input type="checkbox" checked={checked.has(x.key)} onChange={() => toggle(x.key)} />
+                {x.label}
+              </label>
+            ))}
+          </div>
+        ))}
+        <div className="pago-actions">
+          <button type="button" className="adm-btn" onClick={onCancel} disabled={busy}>Cancelar</button>
+          <button type="button" className="adm-btn primary" onClick={save} disabled={busy || mods.length === 0}>✔ Guardar pantallas</button>
+        </div>
       </div>
     </div>
   )
