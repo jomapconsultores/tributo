@@ -44,6 +44,7 @@ export const adminAPI = {
   // acceso a clientes compartidos
   clientAccess: (uid) => api.get('/api/admin/client-access', { params: { uid } }),
   setClientAccess: (body) => api.put('/api/admin/client-access', body),
+  setClientAccessBulk: (granted_to, identificaciones, grant) => api.put('/api/admin/client-access/bulk', { granted_to, identificaciones, grant }),
   listUsers: () => api.get('/api/admin/users'),
   createUser: (data) => api.post('/api/admin/users', data),
   deleteUser: (uid) => api.delete(`/api/admin/users/${uid}`),

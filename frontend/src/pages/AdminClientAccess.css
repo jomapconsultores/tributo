@@ -71,6 +71,41 @@
   letter-spacing: 0;
 }
 
+/* Número de paso (1/2/3) */
+.aca-step {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #4f46e5; color: #fff; font-size: 0.72rem; font-weight: 700;
+  flex-shrink: 0;
+}
+.aca-hint { font-size: 0.78rem; color: #64748b; margin: -6px 0 12px; }
+
+/* Submódulos por módulo */
+.aca-subgroup { border: 1px solid #e8edf3; border-radius: 9px; padding: 10px 12px; margin-bottom: 10px; }
+.aca-subgroup-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.aca-subgroup-head strong { font-size: 0.85rem; color: #1e3a6e; }
+.aca-subgroup-actions { display: flex; align-items: center; gap: 6px; }
+.aca-subcount { font-size: 0.7rem; color: #94a3b8; font-weight: 600; }
+.aca-mini { font-size: 0.68rem; padding: 3px 9px; border: 1px solid #cbd5e1; border-radius: 12px; background: #f8fafc; color: #475569; cursor: pointer; white-space: nowrap; }
+.aca-mini:hover:not(:disabled) { background: #eef2f7; }
+.aca-mini:disabled { opacity: 0.5; cursor: default; }
+.aca-mini.strong { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+.aca-subgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
+.aca-sub-item { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: #475569; padding: 5px 8px; border-radius: 7px; cursor: pointer; border: 1px solid transparent; }
+.aca-sub-item:hover { background: #f8fafc; }
+.aca-sub-item.on { background: #eef2ff; color: #3730a3; }
+.aca-sub-item.busy { opacity: 0.6; pointer-events: none; }
+.aca-sub-item input { width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; }
+
+/* Toolbar de contribuyentes */
+.aca-cli-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.aca-cli-toolbar .aca-search { flex: 1; min-width: 200px; margin-bottom: 0; }
+
+/* Color teal (agente de retención) */
+.aca-mod-item.on.mod-teal { background: #f0fdfa; border-color: #99f6e4; }
+.aca-mod-item.on.mod-teal .aca-mod-label { color: #0f766e; }
+.aca-mod-item.on.mod-teal input { accent-color: #0d9488; }
+
 /* ── Checklist de módulos ── */
 .aca-mods-grid {
   display: grid;

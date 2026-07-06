@@ -269,8 +269,7 @@ export default function Admin() {
                     </td>
                     <td className="adm-acts">
                       <button className="adm-btn" disabled={busy || u.role === 'admin'} onClick={() => guardar(u.user_id)}>💾</button>
-                      <button className="adm-btn" disabled={busy || u.role === 'admin'} title="Elegir qué pantallas ve dentro de cada módulo" onClick={() => setSubModal({ uid: u.user_id, email: u.email, modules: u.modules, submodules: u.submodules })}>🖥 Pantallas</button>
-                      <button className="adm-btn" disabled={u.role === 'admin'} title="Asignar qué contribuyentes puede ver/trabajar" onClick={() => navigate(`/admin/acceso-clientes?uid=${u.user_id}`)}>🔑 Clientes</button>
+                      <button className="adm-btn" disabled={u.role === 'admin'} title="Módulos, pantallas y contribuyentes que puede ver/trabajar" onClick={() => navigate(`/admin/acceso-clientes?uid=${u.user_id}`)}>🔐 Permisos</button>
                       <button className="adm-btn pay" disabled={busy || u.role === 'admin'} onClick={() => registrarPago(u.user_id)}>💵 Pago</button>
                       <button className="adm-btn" disabled={busy || u.role === 'admin'} title="Restablecer IPs" onClick={() => resetIps(u.user_id)}>🔓 IPs</button>
                       <button className="adm-btn danger" disabled={busy || u.role === 'admin' || u.user_id === MI_UID} title="Eliminar usuario" onClick={() => eliminarUsuario(u)}>🗑</button>

@@ -117,6 +117,10 @@ def _aplicar_modulos(uid: str, modules: List[str], valid_until: Optional[str]):
             sb.table("user_modules").update(data).eq("id", existing[0]["id"]).execute()
         else:
             sb.table("user_modules").insert({"user_id": uid, "modulo": m, **data}).execute()
+    # Sin esto, el cache de acceso (_access_cache, TTL 120s) sigue devolviendo los
+    # módulos viejos hasta 2 min: un módulo recién revocado seguiría entrando (200)
+    # y uno recién otorgado seguiría bloqueado (403). Cubre set_modules/set_plan/create_user.
+    invalidar_cache_rol(uid)
 
 
 @router.get("/users")
@@ -640,4 +644,39 @@ async def set_acceso_cliente(body: ClientAccessIn, admin_id: str = Depends(requi
             sb.table("client_access").delete() \
                 .eq("client_id", cid).eq("granted_to", body.granted_to).execute()
 
+    try:
+        from tenancy import invalidate_clients_cache
+        invalidate_clients_cache(body.granted_to)
+    except Exception:
+        pass
     return {"ok": True, "client_ids": ids, "grant": body.grant}
+
+
+class ClientAccessBulkIn(BaseModel):
+    granted_to: str
+    identificaciones: List[str]
+    grant: bool
+
+
+@router.put("/client-access/bulk")
+async def set_acceso_cliente_bulk(body: ClientAccessBulkIn, admin_id: str = Depends(require_admin)):
+    """Otorga o revoca acceso a VARIOS contribuyentes (por RUC) de una sola vez,
+    para el botón 'Marcar todos / Ninguno' de la pantalla de permisos."""
+    sb = get_supabase_client()
+    idents = [i for i in (body.identificaciones or []) if i]
+    if not idents:
+        return {"ok": True, "count": 0, "grant": body.grant}
+    clients = sb.table("clients").select("id,identificacion").in_("identificacion", idents).execute().data or []
+    for c in clients:
+        if body.grant:
+            sb.table("client_access").upsert({
+                "client_id": c["id"], "granted_to": body.granted_to, "granted_by": admin_id,
+            }, on_conflict="client_id,granted_to").execute()
+        else:
+            sb.table("client_access").delete().eq("client_id", c["id"]).eq("granted_to", body.granted_to).execute()
+    try:
+        from tenancy import invalidate_clients_cache
+        invalidate_clients_cache(body.granted_to)
+    except Exception:
+        pass
+    return {"ok": True, "count": len(set(idents)), "grant": body.grant}
