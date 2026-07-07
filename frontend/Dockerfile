@@ -7,11 +7,7 @@ WORKDIR /app
 # IMPORTANTE: las variables VITE_* se incrustan en el bundle en build-time.
 # En Coolify hay que declararlas como "Build Variable" para que lleguen a estos ARG.
 ARG VITE_API_URL
-ARG VITE_SUPABASE_URL
-ARG VITE_SUPABASE_ANON_KEY
-ENV VITE_API_URL=${VITE_API_URL} \
-    VITE_SUPABASE_URL=${VITE_SUPABASE_URL} \
-    VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+ENV VITE_API_URL=${VITE_API_URL}
 
 COPY package*.json ./
 RUN npm ci

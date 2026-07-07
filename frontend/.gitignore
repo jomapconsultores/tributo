@@ -1,0 +1,19 @@
+node_modules
+dist
+dist-ssr
+*.local
+.env.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Residuos temporales de Vite
+vite.config.js.timestamp-*.mjs
+vite.config.*.timestamp-*.mjs
+
+# Editor
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
