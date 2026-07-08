@@ -8,9 +8,21 @@ from config import get_settings
 from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router, retenciones_efectuadas
 from routers.access import require_module, require_submodule
 import os
+import sentry_sdk
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# --- Observabilidad (Sentry) — se activa SOLO si SENTRY_DSN está definido; si no, NO-OP total.
+# Debe iniciarse ANTES de crear la app FastAPI para auto-instrumentar Starlette/FastAPI.
+_sentry_dsn = os.environ.get("SENTRY_DSN", "")
+if _sentry_dsn:
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        environment=os.environ.get("ENVIRONMENT", "production"),
+        traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0")),
+        send_default_pii=False,  # no enviar datos personales/credenciales
+    )
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
