@@ -3,6 +3,7 @@ IVA = Formulario 104; ICE = Formulario ICE. Los mapeos de código son los
 campos estándar del SRI; el contador debe verificarlos antes de presentar."""
 from services.ice_calc import resumen_general as ice_audit_general, resumen_por_producto as ice_por_producto, audit_detail as ice_audit_detail
 from services.ice_data import tax_params
+import unicodedata
 from services.xml_parser import GASTOS_PERSONALES
 
 
@@ -13,8 +14,20 @@ def _f(v):
         return 0.0
 
 
+def _norm_cat(s):
+    """Categoría en MAYÚSCULAS y SIN tildes, igual que el frontend
+    (utils/categorias.js) y export_service. La categoría se guarda como texto
+    libre con solo .upper() (routers/classification.py, invoices.py), así que
+    'EDUCACION' sin tilde debe reconocerse igual que 'EDUCACIÓN'."""
+    s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode("ascii")
+    return s.upper()
+
+
+_GASTOS_PERSONALES_NORM = {_norm_cat(c) for c in GASTOS_PERSONALES}
+
+
 def _es_personal(inv):
-    return (inv.get("clasificacion") or "").upper() in GASTOS_PERSONALES
+    return _norm_cat(inv.get("clasificacion")) in _GASTOS_PERSONALES_NORM
 
 
 def _agg(invoices, key):
