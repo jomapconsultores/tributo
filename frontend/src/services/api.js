@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { clearAll } from './cache'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -17,6 +18,32 @@ api.interceptors.request.use((config) => {
   }
   return config
 }, (error) => Promise.reject(error))
+
+// Interceptor de respuesta: si el token EXPIRA o es inválido (401), cerrar sesión
+// de forma limpia y enviar a /login, en vez de dejar la app sin datos —lo que se
+// veía erróneamente como "Sin módulos contratados"—. Se excluyen los endpoints de
+// auth (un 401 al iniciar sesión con credenciales malas lo maneja el formulario).
+let _authRedireccionando = false
+const _esEndpointAuth = (url = '') => /\/auth\/(login|signup|reset|forgot)/.test(url)
+
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    const status = error?.response?.status
+    if (status === 401 && !_esEndpointAuth(error?.config?.url) && localStorage.getItem('token')) {
+      // Sesión vencida: limpiar credenciales y caché para no arrastrar estado.
+      localStorage.removeItem('token')
+      localStorage.removeItem('userId')
+      localStorage.removeItem('email')
+      try { clearAll() } catch { /* noop */ }
+      if (!_authRedireccionando && !window.location.pathname.startsWith('/login')) {
+        _authRedireccionando = true
+        window.location.assign('/login?expired=1')
+      }
+    }
+    return Promise.reject(error)
+  },
+)
 
 // Auth
 export const authAPI = {
