@@ -37,6 +37,10 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         navigateFallback: '/index.html',
+        // No aplicar el fallback SPA a archivos estáticos servidos por nginx: sin
+        // esto, abrir /recursos/ICE-presentacion.pdf (o cualquier ruta con
+        // extensión de archivo) devolvía index.html en vez del archivo real.
+        navigateFallbackDenylist: [/^\/recursos\//, /\.[^/]+$/],
         skipWaiting: true,          // el SW nuevo se activa de inmediato
         clientsClaim: true,         // toma control de las pestañas abiertas
         cleanupOutdatedCaches: true, // borra cachés viejos (evita servir bundles obsoletos)
