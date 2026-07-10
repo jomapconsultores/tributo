@@ -300,7 +300,14 @@ async def credenciales_cliente(client_id: str = Query(...), user_id: str = Depen
             return {"servicios": [], "es_admin": admin, "credencial": None}
         ident = cl[0]["identificacion"]
         owner_uid = cl[0]["user_id"]
-        hermanos = supabase.table("clients").select("id").eq("identificacion", ident).eq("user_id", owner_uid).execute().data or []
+        # El ADMINISTRADOR (data_admin) ve la clave SRI de CUALQUIER contribuyente
+        # sin restricción de dueño: se recogen todos los períodos con esa
+        # identificación, aunque estén bajo otro user_id (p.ej. datos del despacho
+        # bajo otra cuenta). Socio/cliente siguen limitados a su propio dueño.
+        hq = supabase.table("clients").select("id").eq("identificacion", ident)
+        if not data_admin:
+            hq = hq.eq("user_id", owner_uid)
+        hermanos = hq.execute().data or []
         ids = [h["id"] for h in hermanos] or [client_id]
         servicios = supabase.table("client_services").select("service,active").in_("client_id", ids).eq("active", True).execute().data or []
         servicios = sorted({s["service"] for s in servicios})

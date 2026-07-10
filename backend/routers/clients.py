@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client, fetch_all
 from services.sri_ruc import consultar_ruc
+from services.periodo import periodo_a_declarar, periodo_anterior
 from tenancy import visible_clients, assert_client_owner, invalidate_clients_cache, can_access_identificacion
 from services.activity import registrar
 
@@ -309,6 +310,82 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
         return nuevo
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/abrir-periodo-vencido")
+async def abrir_periodo_vencido(user_id: str = Depends(get_current_user)):
+    """Declaración mes vencido — apertura automática de período.
+
+    Abre el período a declarar (el mes ANTERIOR al calendario, hora Ecuador; en
+    julio → junio) para los contribuyentes propios que YA tienen el período
+    inmediatamente anterior a ese (los que se trabajaron el ciclo pasado). Los
+    contribuyentes viejos/inactivos no se arrastran.
+
+    Idempotente: los que ya tienen el período destino se omiten, así que se puede
+    llamar en cada inicio de sesión sin duplicar. NO copia datos (facturas, ventas,
+    retenciones): deja el período listo para cargar. Los meses anteriores quedan
+    archivados intactos y siguen consultables."""
+    try:
+        supabase = get_supabase_client()
+        tgt_mes, tgt_anio = periodo_a_declarar()                  # p.ej. julio → junio
+        src_mes, src_anio = periodo_anterior(tgt_mes, tgt_anio)   # mes previo al destino (mayo)
+        periodo = {"mes": tgt_mes, "anio": tgt_anio}
+
+        # Contribuyentes VISIBLES para el usuario según su rol (admin: todos;
+        # socio/cliente: los suyos + compartidos). No se filtra por el user_id del
+        # actor: los datos suelen pertenecer a otra cuenta (el despacho) y aún así
+        # el actor debe poder abrir su período.
+        visibles = visible_clients(user_id, "*")
+
+        # Fuente: los visibles cuyo período es el inmediatamente anterior al destino.
+        fuente = [c for c in visibles
+                  if c.get("periodo_mes") == src_mes and c.get("periodo_anio") == src_anio]
+        if not fuente:
+            return {"creados": 0, "periodo": periodo, "detalle": []}
+
+        # Los que YA tienen el período destino → no se duplican. La unicidad es por
+        # (dueño, identificación), porque dos dueños pueden tener el mismo RUC.
+        ya = {(c.get("user_id"), c.get("identificacion")) for c in visibles
+              if c.get("periodo_mes") == tgt_mes and c.get("periodo_anio") == tgt_anio}
+
+        # Cada contribuyente-dueño aparece una sola vez aunque la fuente traiga varias filas.
+        por_clave = {}
+        for c in fuente:
+            por_clave.setdefault((c.get("user_id"), c.get("identificacion")), c)
+
+        nuevos = []
+        for (owner, ident), c in por_clave.items():
+            if (owner, ident) in ya:
+                continue
+            fila = {
+                "user_id": owner,   # se preserva el DUEÑO del contribuyente, no el actor
+                "identificacion": ident,
+                "nombre": c.get("nombre"),
+                "tipo_identificacion": c.get("tipo_identificacion") or "RUC",
+                "periodo_mes": tgt_mes,
+                "periodo_anio": tgt_anio,
+                "es_agente_retencion": bool(c.get("es_agente_retencion")),
+            }
+            # Campos opcionales: solo se copian si tienen valor, para respetar los
+            # defaults de la columna (igual que create_client, que no los fija).
+            if c.get("notas") is not None:
+                fila["notas"] = c.get("notas")
+            if c.get("iva_incluido") is not None:
+                fila["iva_incluido"] = c.get("iva_incluido")
+            nuevos.append(fila)
+
+        if not nuevos:
+            return {"creados": 0, "periodo": periodo, "detalle": []}
+
+        supabase.table("clients").insert(nuevos).execute()
+        invalidate_clients_cache()
+        registrar(actor_user_id=user_id, action="create", module="clientes",
+                  entity="Apertura período mes vencido", cantidad=len(nuevos),
+                  metadata={"periodo": f"{tgt_mes:02d}/{tgt_anio}", "creados": len(nuevos)})
+        return {"creados": len(nuevos), "periodo": periodo,
+                "detalle": [{"identificacion": n["identificacion"], "nombre": n["nombre"]} for n in nuevos]}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

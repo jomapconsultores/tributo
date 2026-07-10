@@ -5,6 +5,27 @@ Las que tienen otra fecha NO se toman en cuenta y se informan al usuario.
 La fecha de los comprobantes viene en formato 'dd/mm/yyyy' (fechaEmision del SRI);
 también se tolera 'yyyy-mm-dd'."""
 import re
+from datetime import datetime, timezone, timedelta
+
+# Ecuador (UTC-5, sin horario de verano). Igual criterio que routers/reportes.py.
+EC_TZ = timezone(timedelta(hours=-5))
+
+
+def periodo_anterior(mes, anio):
+    """(mes, anio) del mes inmediatamente anterior. Enero → diciembre del año previo."""
+    mes = int(mes)
+    anio = int(anio)
+    if mes <= 1:
+        return 12, anio - 1
+    return mes - 1, anio
+
+
+def periodo_a_declarar(hoy=None):
+    """Período (mes, anio) que se debe declarar AHORA: en Ecuador se declara el mes
+    ANTERIOR (declaración mes vencido). En julio → junio. Hora Ecuador (UTC-5).
+    Espejo de utils/declaracionSRI.js::periodoADeclarar en el frontend."""
+    now = hoy or datetime.now(EC_TZ)
+    return periodo_anterior(now.month, now.year)
 
 
 def mes_anio_de_fecha(fecha):

@@ -125,6 +125,9 @@ export const clientsAPI = {
   byService: (service) => api.get('/api/clients/by-service', { params: { service } }),
   servicesMap: () => api.get('/api/clients/services-map'),
   consultaRuc: (ruc) => api.get('/api/clients/consulta-ruc', { params: { ruc } }),
+  // Declaración mes vencido: abre el período a declarar (mes anterior) para los
+  // contribuyentes trabajados el ciclo previo. Idempotente.
+  abrirPeriodoVencido: () => api.post('/api/clients/abrir-periodo-vencido'),
 }
 
 // Invoices (por cliente)

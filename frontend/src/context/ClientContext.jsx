@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { clientsAPI } from '../services/api'
+import { periodoADeclarar } from '../utils/declaracionSRI'
 import useCachedResource from '../hooks/useCachedResource'
 
 const ClientContext = createContext(null)
@@ -41,6 +42,22 @@ export function ClientProvider({ children }) {
         setSvcMap({})
       })
   }, [])
+
+  // Declaración mes vencido: al entrar (cambio de mes), abrir automáticamente el
+  // período a declarar (el mes anterior) para los contribuyentes trabajados el
+  // ciclo previo. El backend es idempotente; el gate por período en localStorage
+  // evita repetir la llamada en cada carga. Solo se marca hecho si tuvo éxito.
+  useEffect(() => {
+    const per = periodoADeclarar()
+    const gateKey = `abrirPeriodoVencido:${per.anio}-${String(per.mes).padStart(2, '0')}`
+    if (localStorage.getItem(gateKey)) return
+    clientsAPI.abrirPeriodoVencido()
+      .then((r) => {
+        localStorage.setItem(gateKey, '1')
+        if ((r.data?.creados || 0) > 0) refreshClients(true)
+      })
+      .catch(() => { /* silencioso: no bloquea la app; reintenta en la próxima carga */ })
+  }, [refreshClients])
 
   const identsForSvc = useCallback((service) => {
     if (svcMap === null) return null // todavía cargando
