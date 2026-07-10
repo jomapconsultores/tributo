@@ -312,13 +312,16 @@ async def credenciales_cliente(client_id: str = Query(...), user_id: str = Depen
         servicios = supabase.table("client_services").select("service,active").in_("client_id", ids).eq("active", True).execute().data or []
         servicios = sorted({s["service"] for s in servicios})
         credencial = None
-        if data_admin:
+        # Admin Y socio ven la clave SRI. El admin sin restricción de dueño (arriba);
+        # el socio, limitado a los contribuyentes que puede ver (assert_client_owner
+        # ya se aplicó). El rol 'cliente' no ve credenciales.
+        if admin:
             cred = supabase.table("service_credentials").select("id,service,username").in_(
                 "client_id", ids).eq("service", "sri_portal").execute().data
             if cred:
                 c = cred[0]
                 credencial = {"id": c["id"], "service": c["service"], "username": c.get("username")}
-        return {"servicios": servicios, "es_admin": data_admin, "credencial": credencial}
+        return {"servicios": servicios, "es_admin": admin, "credencial": credencial}
     except HTTPException:
         raise
     except Exception as e:

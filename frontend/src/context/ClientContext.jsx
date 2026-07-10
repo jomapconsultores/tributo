@@ -20,6 +20,9 @@ export function ClientProvider({ children }) {
   const [focusIdent, setFocusIdent] = useState(null)
   const [svcMap, setSvcMap] = useState(null) // null = cargando; {} = sin servicios
   const [servicesError, setServicesError] = useState('') // mensaje de error real al cargar servicesMap (distinto de "sin servicios")
+  // Resultado de la apertura automática del período mes vencido (para avisar al
+  // usuario). null = nada que avisar; { creados, periodo:{mes,anio} } si abrió.
+  const [aperturaVencido, setAperturaVencido] = useState(null)
 
   // force=true invalida el caché y fuerza un re-fetch (tras mutaciones).
   // force=false (defecto, reload() sin args) reutiliza la respuesta cacheada
@@ -54,7 +57,11 @@ export function ClientProvider({ children }) {
     clientsAPI.abrirPeriodoVencido()
       .then((r) => {
         localStorage.setItem(gateKey, '1')
-        if ((r.data?.creados || 0) > 0) refreshClients(true)
+        const creados = r.data?.creados || 0
+        if (creados > 0) {
+          refreshClients(true)
+          setAperturaVencido({ creados, periodo: r.data?.periodo || per })
+        }
       })
       .catch(() => { /* silencioso: no bloquea la app; reintenta en la próxima carga */ })
   }, [refreshClients])
@@ -111,6 +118,8 @@ export function ClientProvider({ children }) {
     focusIdent,
     setFocusIdent,
     identsForSvc,
+    aperturaVencido,
+    dismissAperturaVencido: () => setAperturaVencido(null),
   }), [
     clients,
     selectedClientId,
@@ -126,6 +135,7 @@ export function ClientProvider({ children }) {
     focusIdent,
     setFocusIdent,
     identsForSvc,
+    aperturaVencido,
   ])
 
   return (

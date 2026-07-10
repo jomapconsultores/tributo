@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import NewClientModal from './NewClientModal'
 import AlertaDeclaracion from './AlertaDeclaracion'
+import AvisoAperturaVencido from './AvisoAperturaVencido'
 import RecordatorioAplazados from './RecordatorioAplazados'
 import CobrosPendientesModal from './CobrosPendientesModal'
 import RoleSwitcher from './RoleSwitcher'
@@ -64,6 +65,7 @@ export default function Layout({ user, onLogout }) {
           </div>
         )}
         <SubBanner />
+        <AvisoAperturaVencido />
         <AlertaDeclaracion />
         <RecordatorioAplazados />
         <Outlet context={{ openNewClient }} />

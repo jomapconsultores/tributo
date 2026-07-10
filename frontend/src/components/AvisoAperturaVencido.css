@@ -1,0 +1,12 @@
+.aviso-apertura {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px; font-size: 0.84rem;
+  background: #eff6ff; color: #1e40af; border-bottom: 1px solid #bfdbfe;
+}
+.aviso-apertura-ico { font-size: 1rem; }
+.aviso-apertura-txt { flex: 1; }
+.aviso-apertura-x {
+  margin-left: auto; border: none; background: transparent; cursor: pointer;
+  color: #1e40af; font-size: 0.95rem; font-weight: 700; line-height: 1; padding: 4px 6px; border-radius: 6px;
+}
+.aviso-apertura-x:hover { background: #dbeafe; }

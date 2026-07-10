@@ -9,9 +9,26 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from database import get_supabase_client, fetch_all, fetch_in, es_error_duplicado
 from routers.admin import require_admin
+from auth import get_current_user
+from routers.access import es_admin, es_data_admin
+from tenancy import assert_client_owner
 from services.credentials_crypto import encrypt, decrypt, can_decrypt
 
 router = APIRouter(prefix="/api/credentials", tags=["credentials"])
+
+
+def _autorizar_ver_credencial(user_id: str, client_id: str):
+    """Autoriza VER/REVELAR la clave SRI de un contribuyente:
+      - admin (data_admin): cualquier credencial, sin restricción de dueño.
+      - socio: solo la de contribuyentes que puede ver (assert_client_owner).
+      - cliente: no autorizado.
+    Devuelve el rol efectivo ('admin' | 'socio') o lanza 403/404."""
+    if es_data_admin(user_id):
+        return "admin"
+    if es_admin(user_id):  # socio
+        assert_client_owner(client_id, user_id)  # 404 si no puede acceder
+        return "socio"
+    raise HTTPException(status_code=403, detail="Solo administrador o socio pueden ver las claves SRI")
 
 SERVICIOS = {"sri_portal"}
 
@@ -208,17 +225,20 @@ async def revelar_todos(req: Request, admin_id: str = Depends(require_admin)):
 
 
 @router.get("/{cred_id}/reveal")
-async def revelar(cred_id: int, req: Request, admin_id: str = Depends(require_admin)):
-    """Devuelve la contraseña en plano. Acción auditada."""
+async def revelar(cred_id: int, req: Request, user_id: str = Depends(get_current_user)):
+    """Devuelve la contraseña en plano. Acción auditada.
+    Admin: cualquier credencial. Socio: solo la de contribuyentes que puede ver."""
     sb = get_supabase_client()
     rows = sb.table("service_credentials").select("*").eq("id", cred_id).execute().data
     if not rows:
         raise HTTPException(status_code=404, detail="Credencial no encontrada")
     row = rows[0]
+    rol = _autorizar_ver_credencial(user_id, row.get("client_id"))
+    admin_id = user_id
     try:
         password = decrypt(row["ciphertext"], row["key_version"])
     except Exception as e:
-        _log(credential_id=cred_id, admin_user_id=admin_id, action="reveal", req=req, metadata={"error": str(e)})
+        _log(credential_id=cred_id, admin_user_id=admin_id, action="reveal", req=req, metadata={"error": str(e), "rol": rol})
         # Caso típico: la credencial se cifró con una llave maestra anterior.
         # Damos un mensaje accionable (409) en vez de un error técnico.
         raise HTTPException(
@@ -226,7 +246,7 @@ async def revelar(cred_id: int, req: Request, admin_id: str = Depends(require_ad
             detail="Esta credencial fue guardada con una llave anterior y no se puede descifrar. "
                    "Vuelve a ingresar la contraseña (botón Editar) para guardarla con la llave actual.",
         )
-    _log(credential_id=cred_id, admin_user_id=admin_id, action="reveal", req=req)
+    _log(credential_id=cred_id, admin_user_id=admin_id, action="reveal", req=req, metadata={"rol": rol})
     return {"id": cred_id, "service": row["service"], "username": row.get("username"), "password": password}
 
 
