@@ -8,6 +8,10 @@ WORKDIR /app
 # En Coolify hay que declararlas como "Build Variable" para que lleguen a estos ARG.
 ARG VITE_API_URL
 ENV VITE_API_URL=${VITE_API_URL}
+# URL del Sistema MAP (contabilidad) para el botón de enlace cruzado / SSO.
+# Opcional: si no se define, el botón "Sistema MAP" no aparece.
+ARG VITE_MAP_URL
+ENV VITE_MAP_URL=${VITE_MAP_URL}
 
 COPY package*.json ./
 RUN npm ci

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 from database import get_supabase_client_anon, get_supabase_client
 from config import get_settings
+from auth import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 settings = get_settings()
@@ -146,3 +147,17 @@ async def reset(request: ResetRequest):
 @router.post("/logout")
 async def logout():
     return {"message": "Logged out successfully"}
+
+
+@router.get("/whoami")
+async def whoami(user_id: str = Depends(get_current_user)):
+    """Identidad del portador del token (Supabase o biométrico). Lo usa el
+    Sistema MAP para el login único (SSO): valida el token contra tributos-web
+    —única fuente de auth— y obtiene el email para mapear al usuario en su padrón."""
+    email = ""
+    try:
+        from services.activity import _email_de
+        email = _email_de(user_id) or ""
+    except Exception:
+        email = ""
+    return {"user_id": user_id, "email": email}

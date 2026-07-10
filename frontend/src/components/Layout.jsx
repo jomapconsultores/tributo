@@ -7,6 +7,7 @@ import AvisoAperturaVencido from './AvisoAperturaVencido'
 import RecordatorioAplazados from './RecordatorioAplazados'
 import CobrosPendientesModal from './CobrosPendientesModal'
 import RoleSwitcher from './RoleSwitcher'
+import AbrirSistemaMAP from './AbrirSistemaMAP'
 import { useAccess } from '../context/AccessContext'
 import './Layout.css'
 
@@ -62,6 +63,7 @@ export default function Layout({ user, onLogout }) {
             <span className="user-topbar-ico">👤</span>
             <span className="user-topbar-email">{user.email}</span>
             <RoleSwitcher />
+            <AbrirSistemaMAP />
           </div>
         )}
         <SubBanner />
