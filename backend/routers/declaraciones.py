@@ -409,6 +409,63 @@ async def guardar_overrides(entry: OverridesIn, user_id: str = Depends(get_curre
         raise HTTPException(status_code=400, detail=str(e))
 
 
+class BorradorIn(BaseModel):
+    client_id: str
+    tipo: Optional[str] = "IVA"
+    datos: dict
+
+
+@router.get("/borrador")
+async def get_borrador(client_id: str = Query(...), tipo: str = Query("IVA"), user_id: str = Depends(get_current_user)):
+    """Borrador automático (server-side) de la declaración de ese período+tipo:
+    el estado de los campos editables para recuperarlo al reabrir desde cualquier
+    dispositivo. NO es la declaración oficial (esa se guarda con POST /)."""
+    try:
+        supabase = get_supabase_client()
+        assert_client_owner(client_id, user_id)
+        r = supabase.table("declaracion_borradores").select("datos,updated_at").eq(
+            "client_id", client_id).eq("tipo", (tipo or "IVA").upper()).limit(1).execute().data
+        return {"datos": (r[0]["datos"] if r else None), "updated_at": (r[0]["updated_at"] if r else None)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/borrador")
+async def put_borrador(entry: BorradorIn, user_id: str = Depends(get_current_user)):
+    """Guarda/actualiza (upsert) el borrador automático del período+tipo. Un solo
+    registro por (client_id, tipo): se sobrescribe. No marca Reportes ni crea aplazados."""
+    try:
+        supabase = get_supabase_client()
+        assert_client_owner(entry.client_id, user_id)
+        supabase.table("declaracion_borradores").upsert({
+            "client_id": entry.client_id, "user_id": user_id,
+            "tipo": (entry.tipo or "IVA").upper(),
+            "datos": entry.datos or {}, "updated_at": "now()",
+        }, on_conflict="client_id,tipo").execute()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/borrador")
+async def del_borrador(client_id: str = Query(...), tipo: str = Query("IVA"), user_id: str = Depends(get_current_user)):
+    """Elimina el borrador automático (p.ej. cuando ya se guardó la declaración oficial)."""
+    try:
+        supabase = get_supabase_client()
+        assert_client_owner(client_id, user_id)
+        supabase.table("declaracion_borradores").delete().eq(
+            "client_id", client_id).eq("tipo", (tipo or "IVA").upper()).execute()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 def _sumar_periodo(mes, anio, n_meses):
     """Devuelve (mes, anio) al sumar n_meses al período dado."""
     total = (mes - 1) + n_meses
@@ -443,6 +500,14 @@ async def guardar(entry: SaveDecl, user_id: str = Depends(get_current_user)):
             "anio": anio, "mes": mes, "datos": entry.datos,
         }).execute()
         decl_record = res.data[0] if res.data else None
+
+        # Ya se guardó la declaración oficial: el borrador automático deja de tener
+        # sentido para este período+tipo, se limpia (no bloquea si falla).
+        try:
+            supabase.table("declaracion_borradores").delete().eq(
+                "client_id", entry.client_id).eq("tipo", tipo).execute()
+        except Exception:
+            pass
 
         # Si difirió pago, crear registro en pagos_aplazados
         if diferir > 0 and decl_record:

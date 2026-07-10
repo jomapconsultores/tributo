@@ -392,6 +392,10 @@ export const declaracionesAPI = {
   list: (clientId, tipo) => api.get('/api/declaraciones/', { params: { client_id: clientId, tipo } }),
   // Historial completo del contribuyente (todos sus períodos/meses), por identificación.
   historial: (identificacion, tipo) => api.get('/api/declaraciones/', { params: { identificacion, tipo } }),
+  // Borrador automático (server-side) del período+tipo — recuperable en cualquier dispositivo.
+  getBorrador: (clientId, tipo) => api.get('/api/declaraciones/borrador', { params: { client_id: clientId, tipo } }),
+  putBorrador: (clientId, tipo, datos) => api.put('/api/declaraciones/borrador', { client_id: clientId, tipo, datos }),
+  delBorrador: (clientId, tipo) => api.delete('/api/declaraciones/borrador', { params: { client_id: clientId, tipo } }),
   // Servicios contratados + credencial SRI (admin). reveal=true descifra en un viaje.
   credenciales: (clientId, reveal = false) => api.get('/api/declaraciones/credenciales', { params: { client_id: clientId, reveal: reveal || undefined } }),
   // diferir_pago_meses: 0/1/2/3 (IVA), 0/1 (ICE)

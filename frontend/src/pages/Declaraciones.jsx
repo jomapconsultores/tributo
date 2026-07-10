@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import useDraft, { clearDraftsByPrefix } from '../hooks/useDraft'
 import { useOutletContext } from 'react-router-dom'
 import { declaracionesAPI, credentialsAPI, downloadBlob } from '../services/api'
@@ -164,6 +164,55 @@ export default function Declaraciones({ tipo }) {
     setMarcaReb(false); setMarcaExe(false)
     setDiferirMeses(0)
   }, [selectedClientId, tipo, selectedClient?.periodo_mes, selectedClient?.periodo_anio])
+
+  // ── Borrador automático en el SERVIDOR ───────────────────────────────────
+  // Todo lo editable (ventas, crédito 605/606, factor, rebajas/exención ICE,
+  // casillas y aplazamiento) se guarda solo (debounced) por período+tipo y se
+  // recupera al reabrir desde cualquier dispositivo. NO es la declaración
+  // oficial (esa sigue siendo el botón "Guardar declaración").
+  const draftBundle = useMemo(() => ({
+    credAdq, credRet, ventas15, ventas5, ventas0, factorProp,
+    rebajaIce, exencionIce, marcaReb, marcaExe, diferirMeses,
+  }), [credAdq, credRet, ventas15, ventas5, ventas0, factorProp, rebajaIce, exencionIce, marcaReb, marcaExe, diferirMeses])
+
+  // draftLoadingRef bloquea el auto-guardado mientras se trae el borrador, para
+  // que el reset (que deja todo en null al cambiar de período) no lo pise.
+  const draftLoadingRef = useRef(false)
+
+  useEffect(() => {
+    if (!selectedClientId) return
+    draftLoadingRef.current = true
+    let cancelled = false
+    declaracionesAPI.getBorrador(selectedClientId, tipo)
+      .then((r) => {
+        if (cancelled) return
+        const d = r.data?.datos
+        if (d && typeof d === 'object') {
+          if ('credAdq' in d) setCredAdq(d.credAdq)
+          if ('credRet' in d) setCredRet(d.credRet)
+          if ('ventas15' in d) setVentas15(d.ventas15)
+          if ('ventas5' in d) setVentas5(d.ventas5)
+          if ('ventas0' in d) setVentas0(d.ventas0)
+          if ('factorProp' in d) setFactorProp(d.factorProp)
+          if ('rebajaIce' in d) setRebajaIce(d.rebajaIce)
+          if ('exencionIce' in d) setExencionIce(d.exencionIce)
+          if ('marcaReb' in d) setMarcaReb(!!d.marcaReb)
+          if ('marcaExe' in d) setMarcaExe(!!d.marcaExe)
+          if ('diferirMeses' in d) setDiferirMeses(d.diferirMeses || 0)
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) draftLoadingRef.current = false })
+    return () => { cancelled = true }
+  }, [selectedClientId, tipo, selectedClient?.periodo_mes, selectedClient?.periodo_anio])
+
+  useEffect(() => {
+    if (!selectedClientId || draftLoadingRef.current) return
+    const t = setTimeout(() => {
+      declaracionesAPI.putBorrador(selectedClientId, tipo, draftBundle).catch(() => {})
+    }, 1000)
+    return () => clearTimeout(t)
+  }, [draftBundle, selectedClientId, tipo])
 
   // El aplazamiento de pago (diferir_meses) todavía no está implementado para
   // ICE en el backend (declaracion_ice no lo resta del casillero 902/899);
