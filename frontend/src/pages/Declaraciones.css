@@ -71,6 +71,10 @@
 .dc-saved li { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid #f1f5f9; font-size: 0.84rem; color: #1f2a3a; }
 .dc-del { border: none; background: transparent; cursor: pointer; opacity: .7; }
 .dc-del:hover { opacity: 1; }
+.dc-saved li > span:first-child { flex: 1; }
+.dc-hist-anio { margin-top: 6px; }
+.dc-hist-anio-lbl { font-weight: 700; font-size: 0.8rem; color: #64748b; margin-top: 8px; }
+.dc-hist-actual { color: #059669; font-weight: 600; }
 
 /* Tarjetas de datos editables (crédito, factor, ventas, rebajas) — sólidas, sin raya (heredan .dc-card-box) */
 .dc-credit-help { margin: 0 0 11px; color: #6b7888; font-size: 0.79rem; line-height: 1.4; }

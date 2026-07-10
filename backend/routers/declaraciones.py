@@ -8,7 +8,7 @@ from auth import get_current_user
 from database import get_supabase_client, fetch_all, fetch_in
 from services.declaracion import declaracion_iva, declaracion_ice, declaracion_103
 from services.declaracion_oficial import llenar_oficial
-from tenancy import assert_client_owner, visible_client_ids
+from tenancy import assert_client_owner, visible_client_ids, visible_clients
 from routers.access import es_admin, es_data_admin, modulos_de, puede_submodulo
 
 # Cada tipo de declaración es un submódulo distinto (el admin puede habilitar
@@ -329,7 +329,9 @@ async def credenciales_cliente(client_id: str = Query(...), user_id: str = Depen
 
 
 @router.get("/")
-async def listar(client_id: Optional[str] = Query(None), tipo: Optional[str] = Query(None), user_id: str = Depends(get_current_user)):
+async def listar(client_id: Optional[str] = Query(None), tipo: Optional[str] = Query(None),
+                 identificacion: Optional[str] = Query(None, description="Todas las declaraciones guardadas del contribuyente (todos sus períodos/meses)"),
+                 user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
         if client_id:
@@ -338,6 +340,20 @@ async def listar(client_id: Optional[str] = Query(None), tipo: Optional[str] = Q
             if tipo:
                 q = q.eq("tipo", tipo.upper())
             data = q.order("created_at", desc=True).execute().data or []
+        elif identificacion:
+            # Historial del contribuyente: todos los períodos (client_id) VISIBLES con
+            # esa identificación → sus declaraciones guardadas, mes a mes.
+            ident = identificacion.strip()
+            cids = [c["id"] for c in visible_clients(user_id, "id,identificacion")
+                    if c.get("identificacion") == ident]
+            if not cids:
+                data = []
+            else:
+                def _q():
+                    b = supabase.table("declaraciones").select("*")
+                    return b.eq("tipo", tipo.upper()) if tipo else b
+                data = fetch_in(_q, cids, "client_id")
+                data.sort(key=lambda x: (x.get("anio") or 0, x.get("mes") or 0, x.get("created_at") or ""), reverse=True)
         else:
             def _base():
                 b = supabase.table("declaraciones").select("*")

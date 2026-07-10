@@ -45,7 +45,7 @@ export default function Declaraciones({ tipo }) {
   const dk = (name) => (draftKey ? `${draftKey}:${name}` : null)
 
   const [decl, setDecl] = useState(null)
-  const [saved, setSaved] = useState([])
+  const [historial, setHistorial] = useState([])   // declaraciones guardadas de TODOS los períodos del contribuyente
   const [aplazados, setAplazados] = useState([])
   const [loading, setLoading] = useState(false)
   const [clientSearch, setClientSearch] = useState('')
@@ -119,13 +119,9 @@ export default function Declaraciones({ tipo }) {
   }, [selectedClientId, tipo, credAdq, credRet, rebajaIce, exencionIce, marcaReb, marcaExe, ventas15, ventas5, ventas0, factorProp, diferirMeses])
 
   const cargarGuardados = useCallback(async () => {
-    if (!selectedClientId) { setSaved([]); setAplazados([]); return }
+    if (!selectedClientId) { setAplazados([]); return }
     try {
-      const [s, a] = await Promise.all([
-        declaracionesAPI.list(selectedClientId, tipo),
-        declaracionesAPI.listAplazados(selectedClientId).catch(() => ({ data: { data: [] } })),
-      ])
-      setSaved(s.data?.data || [])
+      const a = await declaracionesAPI.listAplazados(selectedClientId).catch(() => ({ data: { data: [] } }))
       // Filtrar aplazados por tipo de declaración (IVA o ICE)
       const allAplazados = a.data?.data || []
       setAplazados(allAplazados.filter((x) => (x.tipo || '').toUpperCase() === tipo))
@@ -134,14 +130,27 @@ export default function Declaraciones({ tipo }) {
     }
   }, [selectedClientId, tipo])
 
-  // load() = recarga completa (cálculo + guardados + aplazados), para usar
-  // tras guardar/borrar/marcar-pagado, donde ambos de verdad cambian.
+  // Historial completo del contribuyente: todas las declaraciones guardadas de
+  // TODOS sus períodos (meses anteriores incluidos), recuperables cuando se
+  // necesiten. Se lee por identificación, no por el período seleccionado.
+  const cargarHistorial = useCallback(async () => {
+    const ident = selectedClient?.identificacion
+    if (!ident) { setHistorial([]); return }
+    try {
+      const r = await declaracionesAPI.historial(ident, tipo)
+      setHistorial(r.data?.data || [])
+    } catch { setHistorial([]) }
+  }, [selectedClient?.identificacion, tipo])
+
+  // load() = recarga completa (cálculo + aplazados + historial), para usar
+  // tras guardar/borrar/marcar-pagado, donde de verdad cambian.
   const load = useCallback(async () => {
-    await Promise.all([calcular(), cargarGuardados()])
-  }, [calcular, cargarGuardados])
+    await Promise.all([calcular(), cargarGuardados(), cargarHistorial()])
+  }, [calcular, cargarGuardados, cargarHistorial])
 
   useEffect(() => { calcular() }, [calcular])
   useEffect(() => { cargarGuardados() }, [cargarGuardados])
+  useEffect(() => { cargarHistorial() }, [cargarHistorial])
 
   // Al cambiar de contribuyente, tipo o PERÍODO, limpiar TODOS los overrides
   // manuales (crédito/factor, ventas, rebaja/exención ICE, aplazamiento). La
@@ -326,6 +335,15 @@ export default function Declaraciones({ tipo }) {
       aPagar: parseFloat(resumen.iva_a_pagar || 0),
       venceMes, venceAnio,
     }
+  })()
+
+  // Historial agrupado por año (desc), meses desc dentro de cada año.
+  const historialPorAnio = (() => {
+    const map = {}
+    for (const d of historial) { (map[d.anio] = map[d.anio] || []).push(d) }
+    return Object.keys(map)
+      .sort((a, b) => b - a)
+      .map((anio) => ({ anio, items: map[anio].sort((a, b) => (b.mes || 0) - (a.mes || 0)) }))
   })()
 
   const filasDisplay = decl?.filas || []
@@ -784,17 +802,37 @@ export default function Declaraciones({ tipo }) {
         </div>
       )}
 
-      {saved.length > 0 && (
+      {historial.length > 0 && (
         <div className="dc-card-box">
-          <h2 className="dc-h2">Declaraciones guardadas</h2>
-          <ul className="dc-saved">
-            {saved.map((s) => (
-              <li key={s.id}>
-                <span>{nombreMes(s.mes)} {s.anio} · {s.tipo}</span>
-                <button className="dc-del" onClick={() => borrar(s.id)}>🗑</button>
-              </li>
-            ))}
-          </ul>
+          <h2 className="dc-h2">🗂 Historial de declaraciones {tipo} — {selectedClient.nombre}</h2>
+          <p className="dc-note" style={{ marginTop: 0 }}>
+            Todas las declaraciones guardadas de este contribuyente, mes a mes. Se conservan y podés
+            recuperarlas cuando las necesites. Tocá «abrir» para cargar ese período (y descargarlo).
+          </p>
+          {historialPorAnio.map(({ anio, items }) => (
+            <div key={anio} className="dc-hist-anio">
+              <div className="dc-hist-anio-lbl">{anio}</div>
+              <ul className="dc-saved">
+                {items.map((s) => {
+                  const esActual = s.client_id === selectedClientId
+                  return (
+                    <li key={s.id}>
+                      <span>
+                        {nombreMes(s.mes)} {s.anio} · {s.tipo}
+                        {esActual && <span className="dc-hist-actual"> · período actual</span>}
+                      </span>
+                      {!esActual && (
+                        <button className="dc-btn-mini" onClick={() => selectClient(s.client_id)} title="Abrir este período">
+                          abrir
+                        </button>
+                      )}
+                      <button className="dc-del" onClick={() => borrar(s.id)}>🗑</button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          ))}
         </div>
       )}
     </div>
