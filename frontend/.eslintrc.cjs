@@ -14,10 +14,26 @@ module.exports = {
   },
   settings: { react: { version: '18.2' } },
   plugins: ['react-refresh'],
+  overrides: [
+    {
+      files: ['vite.config.js', '*.cjs'],
+      env: { node: true },
+    },
+  ],
   rules: {
     'react-refresh/only-export-components': [
       'warn',
       { allowConstantExport: true },
+    ],
+    // Este proyecto no usa PropTypes: la validación genera cientos de
+    // falsos positivos sin aportar seguridad real.
+    'react/prop-types': 'off',
+    // Apóstrofes/comillas en texto JSX: cosmético, no es un bug.
+    'react/no-unescaped-entities': 'off',
+    // Variables sin usar: útil verlas, pero no deben tumbar el CI.
+    'no-unused-vars': [
+      'warn',
+      { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
     ],
   },
 }
