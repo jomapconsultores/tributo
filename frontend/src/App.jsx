@@ -56,11 +56,27 @@ function RequireSubmodule({ modulo, sub, children }) {
   return children
 }
 
-function SinAcceso() {
+function SinAcceso({ onLogout }) {
+  // Cierra la sesión actual y vuelve al login (evita quedar atrapado en esta
+  // pantalla sin salida cuando la cuenta no tiene módulos habilitados).
+  const volverALogin = () => {
+    onLogout?.()
+    window.location.assign('/login')
+  }
   return (
     <div style={{ padding: 40, textAlign: 'center', color: '#475569' }}>
       <h2>Sin módulos contratados</h2>
       <p>Tu cuenta aún no tiene módulos habilitados. Contacta al administrador para activar tu plan.</p>
+      <button
+        onClick={volverALogin}
+        style={{
+          marginTop: 20, background: '#1a3d6b', color: '#fff', border: 'none',
+          borderRadius: 8, padding: '10px 22px', fontWeight: 700, cursor: 'pointer',
+          fontSize: '0.9rem',
+        }}
+      >
+        Volver a iniciar sesión
+      </button>
     </div>
   )
 }
@@ -190,7 +206,7 @@ function App() {
               <Route path="/admin/acceso-clientes" element={<RequireSuperAdmin><AdminClientAccess /></RequireSuperAdmin>} />
               <Route path="/admin/permisos" element={<RequireSuperAdmin><AdminPermisos /></RequireSuperAdmin>} />
               <Route path="/movimientos" element={<RequireSuperAdmin><Movimientos /></RequireSuperAdmin>} />
-              <Route path="/sin-acceso" element={<SinAcceso />} />
+              <Route path="/sin-acceso" element={<SinAcceso onLogout={handleLogout} />} />
               <Route path="*" element={<HomeRedirect />} />
             </Route>
           ) : (
