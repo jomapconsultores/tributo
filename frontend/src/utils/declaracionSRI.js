@@ -9,8 +9,10 @@
 //     4 -> 16      9 -> 26
 //     5 -> 18      0 -> 28
 //
-// Nota: si el día cae en fin de semana o feriado, el SRI lo traslada al
-// siguiente día hábil. Aquí se devuelve la fecha base según el dígito.
+// Nota: si el día cae en fin de semana, el SRI lo traslada al siguiente día
+// hábil (sábado/domingo -> lunes). Aquí se aplica ese traslado a la fecha
+// concreta; `dia`/`diaDeclaracion` conservan el día base del 9no dígito
+// (10-28) para agrupar/filtrar contribuyentes.
 
 import { nombreMes } from './periodo'
 
@@ -21,6 +23,19 @@ const DIA_POR_DIGITO = {
 
 // nombre de mes en minúscula (para insertar en frases: "10 de mayo de 2026")
 const nombreMesMin = (mes) => nombreMes(mes).toLowerCase()
+
+// Traslada una fecha al siguiente día hábil si cae en fin de semana.
+// getDay(): 0 = domingo, 6 = sábado. Devuelve una nueva Date (no muta la original).
+export function siguienteDiaHabil(fecha) {
+  const d = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate())
+  const dow = d.getDay()
+  if (dow === 6) d.setDate(d.getDate() + 2)      // sábado -> lunes
+  else if (dow === 0) d.setDate(d.getDate() + 1) // domingo -> lunes
+  return d
+}
+
+// Texto "10 de mayo de 2026" a partir de una Date.
+const fechaTextoLargo = (d) => `${d.getDate()} de ${nombreMesMin(d.getMonth() + 1)} de ${d.getFullYear()}`
 
 // Noveno dígito del RUC (índice 8). Devuelve null si el RUC no es válido.
 export function novenoDigito(ruc) {
@@ -37,17 +52,21 @@ export function diaDeclaracion(ruc) {
   return DIA_POR_DIGITO[d] ?? null
 }
 
-// Próxima fecha concreta de declaración a partir de `hoy` (Date). null si inválido.
+// Próxima fecha concreta de declaración a partir de `hoy` (Date), ya trasladada
+// al siguiente día hábil si el día base cae en fin de semana. null si inválido.
 export function proximaFechaDeclaracion(ruc, hoy = new Date()) {
   const dia = diaDeclaracion(ruc)
   if (dia === null) return null
   let anio = hoy.getFullYear()
   let mes = hoy.getMonth() // 0-11
-  if (hoy.getDate() > dia) {
+  let limite = siguienteDiaHabil(new Date(anio, mes, dia))
+  const base = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
+  if (base > limite) { // la fecha (hábil) de este mes ya pasó -> mes siguiente
     mes += 1
     if (mes > 11) { mes = 0; anio += 1 }
+    limite = siguienteDiaHabil(new Date(anio, mes, dia))
   }
-  return new Date(anio, mes, dia)
+  return limite
 }
 
 // Período que se debe declarar AHORA: en Ecuador se declara el mes ANTERIOR.
@@ -66,7 +85,8 @@ export function estadoDeclaracion(ruc, hoy = new Date()) {
   const dia = diaDeclaracion(ruc)
   if (dia === null) return { valido: false }
   const per = periodoADeclarar(hoy)
-  const limite = new Date(hoy.getFullYear(), hoy.getMonth(), dia)
+  // Día base del 9no dígito, trasladado al siguiente día hábil si cae en fin de semana.
+  const limite = siguienteDiaHabil(new Date(hoy.getFullYear(), hoy.getMonth(), dia))
   const base = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
   const dias = Math.round((limite - base) / 86400000)
   let nivel, mensaje
@@ -77,7 +97,7 @@ export function estadoDeclaracion(ruc, hoy = new Date()) {
   return {
     valido: true, dia, nivel, mensaje, dias, limite,
     mesADeclarar: per.mes, anioADeclarar: per.anio, nombreMes: per.nombre,
-    limiteTexto: `${dia} de ${nombreMesMin(hoy.getMonth() + 1)} de ${hoy.getFullYear()}`,
+    limiteTexto: fechaTextoLargo(limite),
   }
 }
 
@@ -94,6 +114,6 @@ export function infoDeclaracion(ruc, hoy = new Date()) {
     digito,
     dia,
     proximaFecha: f,
-    proximaFechaTexto: `${f.getDate()} de ${nombreMesMin(f.getMonth() + 1)} de ${f.getFullYear()}`,
+    proximaFechaTexto: fechaTextoLargo(f),
   }
 }
