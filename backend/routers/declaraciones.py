@@ -49,49 +49,60 @@ def _cliente(supabase, client_id):
     return c.data[0] if c.data else {}
 
 
-def _cargar_credito_mes_anterior(supabase, user_id, identificacion, mes, anio):
-    """Saldo remanente que se arrastra al período (mes, anio): 695 → 605
-    (adquisiciones) y 697 → 606 (retenciones).
-
-    Cada `client_id` es UN período; los meses de un mismo contribuyente son
-    `client_id` distintos con la misma identificación. Por eso se busca entre TODAS
-    las declaraciones IVA guardadas del contribuyente (todos sus períodos visibles,
-    igual que el historial) la MÁS RECIENTE ANTERIOR a (anio, mes) — NO en el mismo
-    `client_id` (que solo tiene su propio período, por lo que el arrastre daba 0), y
-    NO solo el mes inmediato anterior (un mes saltado no rompe la cadena). El
-    remanente es un stock que se arrastra SIN cambiar hasta que una declaración lo
-    consume; el de la última declaración previa es el crédito aún pendiente. Si no
-    hay ninguna previa, devuelve ceros. Los overrides manuales del período tienen
-    prioridad sobre este arrastre."""
-    if not mes or not anio or not identificacion:
-        return 0.0, 0.0
-    ident = str(identificacion).strip()
-    # Todos los períodos (client_id) visibles del MISMO contribuyente.
-    cids = [c["id"] for c in visible_clients(user_id, "id,identificacion")
-            if c.get("identificacion") == ident]
-    if not cids:
-        return 0.0, 0.0
-    rows = fetch_in(
-        lambda: supabase.table("declaraciones").select("mes,anio,datos,created_at").eq("tipo", "IVA"),
-        cids, "client_id")
-    # Declaraciones de períodos estrictamente anteriores, de la más reciente a la más vieja.
-    prev = sorted(
-        (r for r in rows
-         if r.get("anio") is not None and r.get("mes") is not None
-         and (r["anio"], r["mes"]) < (anio, mes)),
-        key=lambda r: (r["anio"], r["mes"], r.get("created_at") or ""),
-        reverse=True)
-    if not prev:
-        return 0.0, 0.0
-    datos = prev[0].get("datos") or {}
-    # Arrastre SEPARADO: 695 (adquisiciones) → 605, 697 (retenciones) → 606. Compat:
-    # si la declaración previa solo tiene saldo_a_favor_proximo_mes, va a adquisiciones.
-    resumen = datos.get("resumen") or {}
+def _remanente_de_resumen(datos):
+    """Remanente a favor a arrastrar (695 → 605 adquisiciones, 697 → 606 retenciones)
+    del `resumen` de una declaración —guardada o recién calculada—. Compat: si solo
+    trae saldo_a_favor_proximo_mes, va todo a adquisiciones."""
+    resumen = (datos or {}).get("resumen") or {}
     adq = resumen.get("credito_proximo_mes_adquisiciones")
     ret = resumen.get("credito_proximo_mes_retenciones")
     if adq is None and ret is None:
         return float(resumen.get("saldo_a_favor_proximo_mes") or 0), 0.0
     return float(adq or 0), float(ret or 0)
+
+
+def _cargar_credito_mes_anterior(supabase, user_id, identificacion, mes, anio, _depth=0):
+    """Saldo remanente que se arrastra al período (mes, anio): 695 → 605
+    (adquisiciones) y 697 → 606 (retenciones).
+
+    Cada `client_id` es UN período; los meses de un mismo contribuyente son
+    `client_id` distintos con la misma identificación. Se toma el período (client
+    row) MÁS RECIENTE ANTERIOR a (anio, mes) del contribuyente:
+      · si tiene declaración IVA GUARDADA, se usa su remanente (respeta ajustes
+        manuales que el usuario haya guardado en ese período);
+      · si NO está guardada, se CALCULA al vuelo desde sus comprobantes —así el
+        arrastre NO depende del botón Guardar— y su propio arrastre se resuelve
+        recursivamente hacia atrás (con tope de profundidad para cadenas largas).
+    Un mes saltado (sin client row) no rompe la cadena: se toma el período previo
+    que sí exista. Los overrides manuales del período tienen prioridad sobre este
+    arrastre. Si no hay período previo, devuelve ceros."""
+    if not mes or not anio or not identificacion:
+        return 0.0, 0.0
+    ident = str(identificacion).strip()
+    # Períodos (client rows) visibles del MISMO contribuyente, estrictamente anteriores.
+    previos = sorted(
+        (c for c in visible_clients(user_id, "id,identificacion,periodo_mes,periodo_anio")
+         if c.get("identificacion") == ident
+         and c.get("periodo_anio") is not None and c.get("periodo_mes") is not None
+         and (c["periodo_anio"], c["periodo_mes"]) < (anio, mes)),
+        key=lambda c: (c["periodo_anio"], c["periodo_mes"]),
+        reverse=True)
+    if not previos:
+        return 0.0, 0.0
+    prev_cid = previos[0]["id"]
+    # 1) Declaración IVA GUARDADA de ese período → su remanente manda.
+    saved = supabase.table("declaraciones").select("datos").eq(
+        "client_id", prev_cid).eq("tipo", "IVA").order(
+        "created_at", desc=True).limit(1).execute().data
+    if saved:
+        return _remanente_de_resumen(saved[0].get("datos"))
+    # 2) No guardada: calcular ese período al vuelo (recursivo, con tope de profundidad).
+    if _depth >= 24:
+        return 0.0, 0.0
+    try:
+        return _remanente_de_resumen(_calcular(supabase, prev_cid, "IVA", user_id, _depth=_depth + 1))
+    except Exception:
+        return 0.0, 0.0
 
 
 def _cargar_overrides(supabase, client_id, tipo, mes, anio):
@@ -193,7 +204,7 @@ def _pagos_aplazados_vencen(supabase, client_id, mes, anio, tipo):
 
 def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, override_credito_ret=None, diferir_meses=0,
               override_rebaja=None, override_exencion=None, marcar_rebaja=False, marcar_exencion=False,
-              override_ventas_15=None, override_ventas_5=None, override_ventas_0=None, factor_prop=None):
+              override_ventas_15=None, override_ventas_5=None, override_ventas_0=None, factor_prop=None, _depth=0):
     c = _cliente(supabase, client_id)
     anio = c.get("periodo_anio") or date.today().year
     mes = c.get("periodo_mes") or 1
@@ -228,7 +239,7 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
 
         # Crédito mes anterior: parte del historial y cada casillero (605/606) se
         # puede sobreescribir de forma INDEPENDIENTE si el usuario lo ingresa.
-        cred_adq_prev, cred_ret_prev = _cargar_credito_mes_anterior(supabase, user_id, c.get("identificacion"), mes, anio)
+        cred_adq_prev, cred_ret_prev = _cargar_credito_mes_anterior(supabase, user_id, c.get("identificacion"), mes, anio, _depth=_depth)
         # Overrides persistidos del período (manual): tienen prioridad sobre el arrastre.
         ov_pers = _cargar_overrides(supabase, client_id, "IVA", mes, anio)
         if ov_pers.get("credito_adq") is not None:
