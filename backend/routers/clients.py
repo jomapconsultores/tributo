@@ -7,7 +7,7 @@ from database import get_supabase_client, fetch_all
 from services.sri_ruc import consultar_ruc
 from services.periodo import periodo_a_declarar, periodo_anterior
 from tenancy import visible_clients, assert_client_owner, invalidate_clients_cache, can_access_identificacion
-from services.activity import registrar
+from services.activity import registrar, _email_de
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
@@ -20,6 +20,7 @@ class ClientCreate(BaseModel):
     tipo_identificacion: Optional[str] = "RUC"
     notas: Optional[str] = None
     es_agente_retencion: Optional[bool] = False
+    forzar: bool = False   # crear aunque OTRO usuario del equipo ya tenga este contribuyente+período
 
 
 class ClientUpdate(BaseModel):
@@ -289,6 +290,26 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
             .execute()
         if existing.data:
             return existing.data[0]
+
+        # Anti-duplicado de EQUIPO: si OTRO usuario ya registró este contribuyente en
+        # este período, no crear un duplicado en silencio — avisar (409) para que se
+        # use el existente. El usuario decide: abrir el existente o forzar la creación.
+        if not entry.forzar:
+            ajeno = supabase.table("clients").select("id,nombre,user_id")\
+                .eq("identificacion", identificacion)\
+                .eq("periodo_mes", entry.periodo_mes)\
+                .eq("periodo_anio", entry.periodo_anio)\
+                .neq("user_id", user_id)\
+                .limit(1).execute().data
+            if ajeno:
+                a = ajeno[0]
+                raise HTTPException(status_code=409, detail={
+                    "existe_en_equipo": True,
+                    "client_id": a["id"],
+                    "nombre": a.get("nombre"),
+                    "creado_por": _email_de(a.get("user_id")),
+                    "periodo": f"{entry.periodo_mes:02d}/{entry.periodo_anio}",
+                })
 
         response = supabase.table("clients").insert({
             "user_id": user_id,

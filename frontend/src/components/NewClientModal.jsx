@@ -16,10 +16,11 @@ const EMPTY = {
 }
 
 export default function NewClientModal({ open, onClose, editClient = null, selectAfter = true, onCreated }) {
-  const { createClient, updateClient } = useClients()
+  const { createClient, updateClient, clients, selectClient } = useClients()
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [dup, setDup] = useState(null)   // aviso de duplicado en el equipo (409)
   const [sri, setSri] = useState(null)        // datos básicos del SRI
   const [consultando, setConsultando] = useState(false)
 
@@ -68,6 +69,7 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
     }
     setError('')
     setSri(null)
+    setDup(null)
   }, [editClient, open])
 
   if (!open) return null
@@ -77,6 +79,34 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
   const pareceFirmaSRI = (nombre) => {
     const w = (nombre || '').trim().split(/\s+/)
     return w.length >= 3 && w.every((p) => p === p.toUpperCase() && /^[A-ZÁÉÍÓÚÑ]+$/.test(p))
+  }
+
+  const buildPayload = (extra = {}) => ({
+    ...form,
+    periodo_mes: parseInt(form.periodo_mes, 10),
+    periodo_anio: parseInt(form.periodo_anio, 10),
+    ...extra,
+  })
+
+  // Crea el cliente. Con forzar=true crea aunque OTRO usuario del equipo ya tenga
+  // ese contribuyente+período (tras el aviso de duplicado).
+  const submitCreate = async (forzar = false) => {
+    setSaving(true); setError(''); setDup(null)
+    try {
+      const created = await createClient(buildPayload(forzar ? { forzar: true } : {}), { select: selectAfter })
+      onClose()
+      if (created) onCreated?.(created)
+    } catch (err) {
+      const st = err.response?.status
+      const det = err.response?.data?.detail
+      if (st === 409 && det && typeof det === 'object' && det.existe_en_equipo) {
+        setDup(det)   // duplicado en el equipo → mostrar aviso con opciones
+      } else {
+        setError(typeof det === 'string' ? det : (err.message || 'No se pudo crear el cliente'))
+      }
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleSubmit = async (e) => {
@@ -97,27 +127,20 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
       )
       if (!ok) return
     }
-    setSaving(true)
-    setError('')
-    try {
-      const payload = {
-        ...form,
-        periodo_mes: parseInt(form.periodo_mes, 10),
-        periodo_anio: parseInt(form.periodo_anio, 10),
-      }
-      if (editClient) {
-        await updateClient(editClient.id, payload)
+    if (editClient) {
+      setSaving(true); setError('')
+      try {
+        await updateClient(editClient.id, buildPayload())
         onClose()
-      } else {
-        const created = await createClient(payload, { select: selectAfter })
-        onClose()
-        if (created) onCreated?.(created)
+      } catch (err) {
+        const det = err.response?.data?.detail
+        setError(typeof det === 'string' ? det : (err.message || 'No se pudo guardar'))
+      } finally {
+        setSaving(false)
       }
-    } catch (err) {
-      setError(err.response?.data?.detail || err.message)
-    } finally {
-      setSaving(false)
+      return
     }
+    await submitCreate(false)
   }
 
   return (
@@ -200,6 +223,23 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
               ))}
             </select>
           </div>
+
+          {dup && (
+            <div className="modal-error" role="alert">
+              ⚠ Ya existe <b>{dup.nombre}</b> para <b>{dup.periodo}</b>
+              {dup.creado_por ? ` (creado por ${dup.creado_por})` : ''}. Probablemente sea un duplicado.
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                {clients.some((c) => c.id === dup.client_id) && (
+                  <button type="button" className="btn-primary" onClick={() => { selectClient(dup.client_id); onClose() }}>
+                    Abrir el existente
+                  </button>
+                )}
+                <button type="button" className="btn-ghost" onClick={() => submitCreate(true)} disabled={saving}>
+                  Crear otro de todos modos
+                </button>
+              </div>
+            </div>
+          )}
 
           {error && <div className="modal-error">⚠ {error}</div>}
 
