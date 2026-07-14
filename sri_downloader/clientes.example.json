@@ -1,4 +1,9 @@
 {
+  "api": {
+    "base_url": "http://localhost:8000",
+    "email": "tu_usuario@ejemplo.com",
+    "password": "TU_CLAVE_DEL_TRIBUTOS_WEB"
+  },
   "clientes": [
     {
       "ruc": "1791234567001",

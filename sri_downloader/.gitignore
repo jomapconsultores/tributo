@@ -1,4 +1,5 @@
 clientes.local.json
 descargas/
 playwright_state/
+debug/
 .env.local

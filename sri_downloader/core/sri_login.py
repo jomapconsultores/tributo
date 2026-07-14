@@ -122,25 +122,35 @@ def login(
     try:
         page.goto(PERFIL_URL, wait_until="domcontentloaded")
 
-        # Si ya hay sesión válida cargada del storage_state, no aparece el form.
-        if PERFIL_URL_HOST in page.url and "auth/realms" not in page.url:
-            try:
-                page.wait_for_selector("text=Perfil", timeout=5_000)
+        # ¿Sesión válida reusada del storage_state? Entonces el SRI NO redirige a
+        # Keycloak. Damos un margen corto para ver si aparece el realm; si no
+        # aparece, ya estamos dentro y no hay que re-loguear. (Antes se exigía el
+        # texto "Perfil" en <5s, que el SPA Angular no siempre renderiza a tiempo,
+        # y caía a esperar un form de Keycloak que con sesión válida nunca llega.)
+        try:
+            page.wait_for_url("**/auth/realms/**", timeout=8_000)
+        except PWTimeoutError:
+            if PERFIL_URL_HOST in page.url and "auth/realms" not in page.url:
+                try:
+                    page.wait_for_load_state("networkidle", timeout=10_000)
+                except PWTimeoutError:
+                    pass
                 _save_state(context, state_file)
                 return browser, context, page
-            except PWTimeoutError:
-                pass
-
-        # Esperar a que Keycloak nos sirva el form de login.
-        page.wait_for_url("**/auth/realms/**", timeout=15_000)
+            # Ni en el realm ni en srienlinea: dar un margen extra al form de login.
+            page.wait_for_url("**/auth/realms/**", timeout=15_000)
 
         _fill_first(page, USERNAME_SELECTORS, ruc)
         _fill_first(page, PASSWORD_SELECTORS, clave)
         _click_first(page, SUBMIT_SELECTORS)
 
-        # Esperar redirect de vuelta a srienlinea.
+        # Esperar redirect de vuelta a srienlinea. El perfil es un SPA Angular con
+        # OIDC (response_mode=fragment) y el redirect del SRI a veces tarda >30s;
+        # damos margen y, si el wait vence, comprobamos si IGUAL ya aterrizamos en
+        # srienlinea (redirect lento) antes de darlo por fallido — si no, recién ahí
+        # es error real (clave, captcha o SRI caído).
         try:
-            page.wait_for_url(f"**{PERFIL_URL_HOST}/**", timeout=30_000)
+            page.wait_for_url(f"**{PERFIL_URL_HOST}/**", timeout=60_000)
         except PWTimeoutError:
             # Detectar error de clave: Keycloak muestra "Credenciales inválidas".
             body = page.content().lower()
@@ -150,13 +160,19 @@ def login(
                         "Credenciales rechazadas por el SRI. "
                         "Verificá RUC/clave en clientes.local.json."
                     )
-            raise LoginError(
-                "Timeout esperando regreso a srienlinea tras submit. "
-                "¿Captcha, 2FA inesperado, o SRI caído?"
-            )
+            # ¿Terminamos igual en srienlinea (fuera del realm de Keycloak)? Éxito lento.
+            if PERFIL_URL_HOST not in page.url or "auth/realms" in page.url:
+                raise LoginError(
+                    "Timeout esperando regreso a srienlinea tras submit. "
+                    "¿Captcha, 2FA inesperado, o SRI caído?"
+                )
 
-        # Confirmar que la sesión está activa.
-        page.wait_for_load_state("networkidle", timeout=15_000)
+        # Confirmar que la sesión está activa. El SPA puede mantener conexiones
+        # abiertas (networkidle nunca dispara); no es fatal si vence.
+        try:
+            page.wait_for_load_state("networkidle", timeout=15_000)
+        except PWTimeoutError:
+            pass
         _save_state(context, state_file)
         return browser, context, page
 
