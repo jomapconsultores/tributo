@@ -49,31 +49,41 @@ def _cliente(supabase, client_id):
     return c.data[0] if c.data else {}
 
 
-def _periodo_anterior(mes, anio):
-    """Devuelve (mes_anterior, anio_anterior) para buscar la declaración previa."""
-    if not mes:
-        return None, None
-    if mes == 1:
-        return 12, (anio or 2026) - 1
-    return mes - 1, anio
-
-
 def _cargar_credito_mes_anterior(supabase, client_id, mes, anio):
-    """Si existe una declaración IVA guardada del mes anterior, devuelve sus saldos
-    remanentes (605 = adquisiciones, 606 = retenciones). Si no, devuelve ceros."""
-    mes_ant, anio_ant = _periodo_anterior(mes, anio)
-    if mes_ant is None:
+    """Saldo remanente que se arrastra al período (mes, anio): 695 → 605
+    (adquisiciones) y 697 → 606 (retenciones).
+
+    Toma la declaración IVA guardada MÁS RECIENTE ANTERIOR a ese período —NO solo la
+    del mes inmediato anterior— para que el crédito a favor NO se pierda si algún mes
+    intermedio no se declaró en el sistema (antes un mes saltado rompía la cadena y
+    devolvía 0). El remanente es un saldo que se arrastra SIN cambiar hasta que una
+    declaración lo consume, así que el de la última declaración previa es el crédito
+    aún pendiente. Si el usuario luego declara ese mes intermedio, la cadena se
+    recompone sola. Si no hay ninguna declaración previa, devuelve ceros.
+    (Los overrides manuales del período tienen prioridad sobre este arrastre.)"""
+    if not mes or not anio:
         return 0.0, 0.0
+    # Períodos IVA guardados del cliente, del más nuevo al más viejo.
+    periodos = supabase.table("declaraciones").select("mes,anio").eq(
+        "client_id", client_id).eq("tipo", "IVA").order(
+        "anio", desc=True).order("mes", desc=True).execute().data or []
+    # Primer período (el más reciente) estrictamente anterior a (anio, mes).
+    prev = next(((p["anio"], p["mes"]) for p in periodos
+                 if p.get("anio") is not None and p.get("mes") is not None
+                 and (p["anio"], p["mes"]) < (anio, mes)), None)
+    if prev is None:
+        return 0.0, 0.0
+    p_anio, p_mes = prev
     res = supabase.table("declaraciones").select("datos").eq(
         "client_id", client_id).eq("tipo", "IVA").eq(
-        "mes", mes_ant).eq("anio", anio_ant).order(
+        "mes", p_mes).eq("anio", p_anio).order(
         "created_at", desc=True).limit(1).execute()
     if not res.data:
         return 0.0, 0.0
     datos = res.data[0].get("datos") or {}
-    # El crédito del mes anterior se arrastra SEPARADO: 695 (adquisiciones) → 605,
-    # 697 (retenciones) → 607. Compat: si la declaración previa es vieja y solo
-    # tiene saldo_a_favor_proximo_mes, se carga todo como adquisiciones.
+    # Arrastre SEPARADO: 695 (adquisiciones) → 605, 697 (retenciones) → 606. Compat:
+    # si la declaración previa es vieja y solo tiene saldo_a_favor_proximo_mes, se
+    # carga todo como adquisiciones.
     resumen = datos.get("resumen") or {}
     adq = resumen.get("credito_proximo_mes_adquisiciones")
     ret = resumen.get("credito_proximo_mes_retenciones")
