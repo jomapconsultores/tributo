@@ -15,6 +15,10 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Chromium + dependencias de sistema para el scraping del portal SRI (Playwright).
+# Pesa ~500 MB; necesario para el login/descarga server-side de comprobantes.
+RUN python -m playwright install --with-deps chromium
+
 COPY . .
 
 EXPOSE 8000
