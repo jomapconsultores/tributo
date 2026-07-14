@@ -137,3 +137,82 @@
   font-size: 0.88rem;
   color: #64748b;
 }
+
+/* --- Módulo funcional: toolbar, resumen, tabla, historial --- */
+.dv-msg {
+  margin: 12px 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+.dv-msg.ok { background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; }
+.dv-msg.err { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
+
+.dv-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin: 14px 0 10px;
+  font-size: 0.9rem;
+  color: #334155;
+}
+.dv-toolbar select, .dv-toolbar input {
+  padding: 5px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+}
+.dv-tope { color: #64748b; font-size: 0.85rem; }
+
+.dv-resumen {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.dv-res-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 130px;
+}
+.dv-res-card span { color: #64748b; font-size: 0.75rem; }
+.dv-res-card strong { color: #1e293b; font-size: 1.05rem; }
+.dv-res-card.destacado { border-color: #b45309; background: #fffbeb; }
+.dv-res-card.destacado strong { color: #b45309; }
+.dv-res-card.alerta em { color: #b91c1c; font-size: 0.72rem; font-style: normal; }
+
+.dv-cargando { color: #64748b; padding: 20px 0; }
+
+.dv-tabla-wrap { overflow-x: auto; }
+.dv-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  font-size: 0.85rem;
+}
+.dv-tabla th {
+  background: #1a3d6b;
+  color: #fff;
+  padding: 8px 10px;
+  text-align: left;
+  position: sticky;
+  top: 0;
+}
+.dv-tabla td { padding: 7px 10px; border-bottom: 1px solid #e2e8f0; color: #334155; }
+.dv-tabla th.num, .dv-tabla td.num { text-align: right; }
+.dv-tabla tbody tr { cursor: pointer; }
+.dv-tabla tbody tr:hover { background: #f1f5f9; }
+.dv-tabla tbody tr.sel { background: #fef9ec; }
+.dv-tabla tbody tr.sel:hover { background: #fdf3d8; }
+
+.dv-historial { margin-top: 28px; }
+.dv-historial h2 { color: #1a3d6b; font-size: 1rem; margin-bottom: 10px; }
+.dv-historial select { padding: 4px 6px; border: 1px solid #cbd5e1; border-radius: 6px; }
+.dv-acciones { display: flex; gap: 6px; }
+.dv-acciones .dv-btn { padding: 4px 10px; font-size: 0.8rem; }

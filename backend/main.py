@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from config import get_settings
-from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router, retenciones_efectuadas
+from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router, retenciones_efectuadas, devoluciones_iva
 from routers.access import require_module, require_submodule
 import os
 import sentry_sdk
@@ -147,6 +147,7 @@ _AUDIT_CATEGORIES = {
     "compradores":    ("Compradores", "ingresos_ice"),
     "retentions":     ("Retenciones", "retenciones"),
     "declaraciones":  ("Declaración", "declaraciones"),
+    "devoluciones-iva": ("Devolución IVA", "declaraciones"),
     "anexos":         ("Anexo", "anexos"),
     "clients":        ("Cliente", "clientes"),
     "reportes":       ("Honorarios / reportes", "facturacion"),
@@ -160,7 +161,8 @@ def _audit_ya_registrado(method: str, path: str) -> bool:
     if path.endswith("/process-xml") or path.endswith("/process-txt"):
         return True
     if method == "POST" and path.rstrip("/") in (
-        "/api/declaraciones", "/api/anexos", "/api/clients", "/api/odoo/facturar"):
+        "/api/declaraciones", "/api/anexos", "/api/clients", "/api/odoo/facturar",
+        "/api/devoluciones-iva/solicitudes"):
         return True
     return False
 
@@ -251,6 +253,7 @@ app.include_router(anexos.router, dependencies=SUB("ice_anexo"))
 app.include_router(compradores.router, dependencies=SUB("ice_compradores"))
 app.include_router(resources.router, dependencies=ICEMOD)  # referencia compartida: solo módulo
 app.include_router(declaraciones.router, dependencies=DECL)  # submódulo IVA/ICE/103 se valida por tipo en el router
+app.include_router(devoluciones_iva.router, dependencies=SUB("decl_devoluciones"))  # devolución IVA adultos mayores/discapacidad
 app.include_router(xml_originales.router)  # descarga de XML originales (gastos/ingresos/retenciones)
 app.include_router(reportes.router)  # REPORTES: honorarios a cobrar por contribuyente/producto
 app.include_router(odoo_factura.router)  # ODOO: facturación directa (solo admin)
