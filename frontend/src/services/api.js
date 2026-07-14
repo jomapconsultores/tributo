@@ -413,6 +413,23 @@ export const declaracionesAPI = {
   marcarAplazado: (id, estado) => api.put(`/api/declaraciones/aplazados/${id}`, { estado }),
 }
 
+// Devolución de IVA (adultos mayores / personas con discapacidad)
+export const devolucionesIvaAPI = {
+  // Comprobantes del período del cliente + solicitud guardada (si hay)
+  comprobantes: (clientId) => api.get('/api/devoluciones-iva/comprobantes', { params: { client_id: clientId } }),
+  // Historial de solicitudes del contribuyente (todos sus períodos)
+  solicitudes: (clientId) => api.get('/api/devoluciones-iva/solicitudes', { params: { client_id: clientId } }),
+  // Tope mensual y parámetros vigentes. porcentaje solo aplica a discapacidad.
+  parametros: (anio, tipo = 'tercera_edad', porcentaje = null) =>
+    api.get('/api/devoluciones-iva/parametros', { params: { anio, tipo, porcentaje: porcentaje ?? undefined } }),
+  // Crea/reemplaza la solicitud del período (queda en borrador)
+  guardar: (body) => api.post('/api/devoluciones-iva/solicitudes', body),
+  // Cambia el estado (borrador/presentada/aprobada/rechazada)
+  cambiarEstado: (id, estado) => api.put(`/api/devoluciones-iva/solicitudes/${id}`, { estado }),
+  eliminar: (id) => api.delete(`/api/devoluciones-iva/solicitudes/${id}`),
+  exportExcel: (id) => api.get(`/api/devoluciones-iva/solicitudes/${id}/export/excel`, { responseType: 'blob' }),
+}
+
 // Recursos (Códigos ICE reemplazable)
 export const resourcesAPI = {
   codigosInfo: () => api.get('/api/resources/codigos-ice/info'),
