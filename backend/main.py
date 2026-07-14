@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from config import get_settings
-from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router, retenciones_efectuadas, devoluciones_iva
+from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router, retenciones_efectuadas, devoluciones_iva, diagnostico
 from routers.access import require_module, require_submodule
 import os
 import sentry_sdk
@@ -254,6 +254,7 @@ app.include_router(compradores.router, dependencies=SUB("ice_compradores"))
 app.include_router(resources.router, dependencies=ICEMOD)  # referencia compartida: solo módulo
 app.include_router(declaraciones.router, dependencies=DECL)  # submódulo IVA/ICE/103 se valida por tipo en el router
 app.include_router(devoluciones_iva.router, dependencies=SUB("decl_devoluciones"))  # devolución IVA adultos mayores/discapacidad
+app.include_router(diagnostico.router)  # Fase 0: chequeo de conectividad al portal SRI (temporal)
 app.include_router(xml_originales.router)  # descarga de XML originales (gastos/ingresos/retenciones)
 app.include_router(reportes.router)  # REPORTES: honorarios a cobrar por contribuyente/producto
 app.include_router(odoo_factura.router)  # ODOO: facturación directa (solo admin)
