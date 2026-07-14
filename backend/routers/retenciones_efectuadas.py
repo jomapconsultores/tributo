@@ -103,6 +103,31 @@ def _totales(base_renta, porc_renta, base_iva, porc_iva):
     return ret_renta, ret_iva, round(ret_renta + ret_iva, 2)
 
 
+def _store_retencion_efectuada(supabase, client_id: str, user_id: str, parsed: dict) -> str:
+    """Inserta una retención EFECTUADA a partir del XML ya parseado. Devuelve
+    'new' | 'duplicate' | 'error'. La contraparte que se guarda es el sujeto
+    retenido (ruc_sujeto), no el emisor: acá el cliente ES el agente."""
+    row = {
+        "unique_id": parsed["unique_id"],
+        "estado": parsed["estado"],
+        "fecha": parsed["fecha"],
+        "ruc_proveedor": parsed.get("ruc_sujeto"),
+        "nro_comprobante": parsed["nro_comprobante"],
+        "periodo_fiscal": parsed["periodo_fiscal"],
+        "base_renta": parsed["base_renta"], "porc_renta": parsed["porc_renta"], "ret_renta": parsed["ret_renta"],
+        "base_iva": parsed["base_iva"], "porc_iva": parsed["porc_iva"], "ret_iva": parsed["ret_iva"],
+        "ret_isd": parsed["ret_isd"], "total_retenido": parsed["total_retenido"],
+    }
+    try:
+        supabase.table("retenciones_efectuadas").insert({"client_id": client_id, "user_id": user_id, **row}).execute()
+        return "new"
+    except Exception as e:
+        if es_error_duplicado(e):
+            return "duplicate"
+        print(f"Error insertando retención efectuada {row.get('unique_id')}: {e}")
+        return "error"
+
+
 def _assert_agente_retencion(supabase, client_id):
     """El SRI designa quién es agente de retención; no todos los contribuyentes
     lo son. Antes solo se filtraba en el frontend — se valida también aquí para
@@ -210,26 +235,13 @@ async def process_xml(
                 fuera_periodo.append({"archivo": file.filename, "factura": parsed.get("nro_comprobante"), "fecha": parsed.get("fecha")})
                 continue
             guardar_xml_original(supabase, user_id, client_id, "retencion_efectuada", xml_content)
-            row = {
-                "unique_id": parsed["unique_id"],
-                "estado": parsed["estado"],
-                "fecha": parsed["fecha"],
-                "ruc_proveedor": parsed.get("ruc_sujeto"),
-                "nro_comprobante": parsed["nro_comprobante"],
-                "periodo_fiscal": parsed["periodo_fiscal"],
-                "base_renta": parsed["base_renta"], "porc_renta": parsed["porc_renta"], "ret_renta": parsed["ret_renta"],
-                "base_iva": parsed["base_iva"], "porc_iva": parsed["porc_iva"], "ret_iva": parsed["ret_iva"],
-                "ret_isd": parsed["ret_isd"], "total_retenido": parsed["total_retenido"],
-            }
-            try:
-                supabase.table("retenciones_efectuadas").insert({"client_id": client_id, "user_id": user_id, **row}).execute()
+            result = _store_retencion_efectuada(supabase, client_id, user_id, parsed)
+            if result == "new":
                 new_count += 1
-            except Exception as e:
-                if es_error_duplicado(e):
-                    dup_count += 1
-                else:
-                    print(f"Error insertando retención efectuada {row.get('unique_id')}: {e}")
-                    err_count += 1
+            elif result == "duplicate":
+                dup_count += 1
+            else:
+                err_count += 1
         if new_count:
             registrar(actor_user_id=user_id, action="upload", module="agente_retencion",
                       entity="Retenciones efectuadas", client_id=client_id, cantidad=new_count)

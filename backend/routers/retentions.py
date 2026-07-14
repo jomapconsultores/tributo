@@ -6,6 +6,7 @@ from auth import get_current_user
 from database import get_supabase_client
 from services.retention_parser import parse_retention_xml
 from services.retention_export import generate_retention_excel
+from services.sri_service import extract_claves_from_txt, descargar_multiples_xmls
 from services.xml_store import guardar_xml_original
 from services.periodo import periodo_cliente, es_de_otro_periodo, etiqueta_periodo
 from database import fetch_all, fetch_in, es_error_duplicado
@@ -98,6 +99,63 @@ async def process_xml(
         return {"new": new_count, "duplicates": dup_count, "errors": err_count,
                 "fuera_de_periodo": fp_count, "fuera_periodo": fuera_periodo,
                 "periodo": etiqueta_periodo(pmes, panio)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/process-txt")
+async def process_txt(
+    file: UploadFile = File(...),
+    client_id: str = Form(...),
+    user_id: str = Depends(get_current_user),
+):
+    """Sube el listado TXT del SRI (Comprobantes Recibidos, tipo=retención) que
+    baja el scraper: extrae las claves de acceso de 49 dígitos, descarga los XML
+    por SOAP y los guarda reusando el mismo parser/guardado que /process-xml.
+
+    Estas son retenciones RECIBIDAS (terceros retienen al cliente), igual que la
+    carga manual de XML — por eso NO exige es_agente_retencion. Espejo de
+    /api/invoices/process-txt (gastos) pero para retenciones."""
+    try:
+        supabase = get_supabase_client()
+        assert_client_owner(client_id, user_id)
+        txt_content = (await file.read()).decode("utf-8", errors="ignore")
+        claves = extract_claves_from_txt(txt_content)
+        if not claves:
+            raise HTTPException(status_code=400, detail="No se encontraron claves de acceso (49 dígitos) en el archivo.")
+        # Reintenta en varias rondas las claves que el SRI falle, para bajar
+        # TODOS los comprobantes y no solo una parte (igual que gastos).
+        xmls, no_descargadas = descargar_multiples_xmls(list(claves), max_workers=8, max_rondas=3)
+
+        pmes, panio = periodo_cliente(supabase, client_id)
+        new_count = dup_count = err_count = fp_count = 0
+        fuera_periodo = []
+        for xml_content in xmls:
+            ret = parse_retention_xml(xml_content)
+            if not ret:
+                err_count += 1
+                continue
+            if es_de_otro_periodo(ret.get("fecha"), pmes, panio):
+                fp_count += 1
+                fuera_periodo.append({"archivo": "(XML del SRI)", "factura": ret.get("nro_comprobante"), "fecha": ret.get("fecha")})
+                continue
+            guardar_xml_original(supabase, user_id, client_id, "retencion", xml_content)
+            result = _store_retention(supabase, client_id, user_id, ret)
+            if result == "new":
+                new_count += 1
+            elif result == "duplicate":
+                dup_count += 1
+            else:
+                err_count += 1
+        if new_count:
+            registrar(actor_user_id=user_id, action="upload", module="retenciones",
+                      entity="Retenciones", client_id=client_id, cantidad=new_count)
+        return {"new": new_count, "duplicates": dup_count, "errors": err_count,
+                "total_claves": len(claves), "descargadas": len(xmls), "no_descargadas": no_descargadas,
+                "fuera_de_periodo": fp_count, "fuera_periodo": fuera_periodo,
+                "periodo": etiqueta_periodo(pmes, panio)}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
