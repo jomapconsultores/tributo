@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { credentialsAPI, clientsAPI } from '../services/api'
 import { infoDeclaracion } from '../utils/declaracionSRI'
 import { filterBySearch } from '../utils/search'
+import BadgeVencimiento from '../components/BadgeVencimiento'
 import './AdminCredentials.css'
 
 const SERVICIOS = [{ key: 'sri_portal', label: 'Portal SRI' }]
@@ -310,13 +311,9 @@ export default function AdminCredentials() {
                     </span>
                   </td>
                   <td className="adm-cred-decl-cell">
-                    {(() => {
-                      const d = infoDeclaracion(c.ruc)
-                      if (!d.valido) return <span className="adm-cred-dim">—</span>
-                      const f = d.proximaFecha
-                      const fecha = `${String(f.getDate()).padStart(2, '0')}/${String(f.getMonth() + 1).padStart(2, '0')}/${f.getFullYear()}`
-                      return <span title={d.proximaFechaTexto}><strong>día {d.dia}</strong> · {fecha}</span>
-                    })()}
+                    {infoDeclaracion(c.ruc).valido
+                      ? <BadgeVencimiento ruc={c.ruc} />
+                      : <span className="adm-cred-dim">—</span>}
                   </td>
                   <td>{c.username || <span className="adm-cred-dim">{c._sinClave ? '(sin clave)' : '(usa el RUC)'}</span>}</td>
                   {CLIENT_SERVICES.map((s) => {

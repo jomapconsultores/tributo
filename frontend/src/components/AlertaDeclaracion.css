@@ -8,6 +8,29 @@
 .alerta-decl.nivel-hoy { background: #fef2f2; color: #991b1b; border-color: #fecaca; font-weight: 600; }
 .alerta-decl.nivel-vencido { background: #fef2f2; color: #991b1b; border-color: #fca5a5; font-weight: 600; }
 
+/* "Bombeo": el ícono late cuando el plazo está por vencer (≤3 días / hoy / vencido)
+   para que el contribuyente en riesgo salte a la vista. */
+.alerta-decl.nivel-pronto .alerta-decl-ico,
+.alerta-decl.nivel-hoy .alerta-decl-ico,
+.alerta-decl.nivel-vencido .alerta-decl-ico {
+  display: inline-block;
+  animation: alerta-ico-pulse 1.3s ease-in-out infinite;
+}
+@keyframes alerta-ico-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.35); }
+}
+/* Además el banner resplandece cuando es HOY o ya venció (máxima urgencia). */
+.alerta-decl.nivel-hoy,
+.alerta-decl.nivel-vencido { animation: alerta-banner-pulse 1.5s ease-in-out infinite; }
+@keyframes alerta-banner-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+  50%      { box-shadow: 0 0 9px 0 rgba(220, 38, 38, 0.35); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .alerta-decl, .alerta-decl-ico { animation: none !important; }
+}
+
 /* Recordatorio de pagos aplazados (estilo SRI) */
 .recordatorio-aplazado { align-items:center; gap:10px; }
 .recordatorio-btn { margin-left:auto; white-space:nowrap; padding:5px 12px; border:none; border-radius:8px; background:#1e293b; color:#fff; font-weight:600; font-size:.85rem; cursor:pointer; }

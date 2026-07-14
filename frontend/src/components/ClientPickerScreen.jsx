@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo } from '../utils/periodo'
 import { filtrarClientesPorTexto } from '../utils/clientSearch'
+import BadgeVencimiento from './BadgeVencimiento'
 import './ClientPickerScreen.css'
 
 const initials = (nombre) => {
@@ -100,6 +101,7 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
                       <span className="cps-item-meta">
                         <span>{c.tipo_identificacion || 'RUC'}: {c.identificacion}</span>
                         <span className="cps-period">{periodoLargo(c)}</span>
+                        <BadgeVencimiento ruc={c.identificacion} />
                       </span>
                     </span>
                     <span className="cps-item-arrow">›</span>

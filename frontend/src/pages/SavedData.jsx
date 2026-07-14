@@ -4,6 +4,7 @@ import { useClients } from '../context/ClientContext'
 import { nombreMes } from '../utils/periodo'
 import { infoDeclaracion } from '../utils/declaracionSRI'
 import { filtrarClientesPorTexto } from '../utils/clientSearch'
+import BadgeVencimiento from '../components/BadgeVencimiento'
 import WorkflowGuide from '../components/WorkflowGuide'
 import './SavedData.css'
 
@@ -17,7 +18,6 @@ const SD_STEPS = [
   { icon: '📄', label: 'Declaraciones IVA / ICE', path: '/declaracion-iva' },
   { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
 ]
-const fechaCorta = (f) => `${String(f.getDate()).padStart(2, '0')}/${String(f.getMonth() + 1).padStart(2, '0')}/${f.getFullYear()}`
 
 export default function SavedData() {
   const { clients } = useClients()
@@ -148,7 +148,6 @@ export default function SavedData() {
           <div className="sd-list-scroll">
             {filtered.length === 0 && <div className="sd-empty">Sin contribuyentes.</div>}
             {filtered.map((c) => {
-              const d = infoDeclaracion(c.identificacion)
               return (
                 <button
                   key={c.identificacion}
@@ -159,11 +158,7 @@ export default function SavedData() {
                   <span className="sd-li-meta">
                     {c.identificacion} · {c.periodos} período(s) · {c.num_facturas} fact.
                   </span>
-                  {d.valido && (
-                    <span className="sd-li-decl" title={`Fecha máxima de declaración · ${d.proximaFechaTexto}`}>
-                      📅 día {d.dia} · {fechaCorta(d.proximaFecha)}
-                    </span>
-                  )}
+                  <span className="sd-li-decl"><BadgeVencimiento ruc={c.identificacion} /></span>
                 </button>
               )
             })}
