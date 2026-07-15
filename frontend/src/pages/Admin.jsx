@@ -5,7 +5,7 @@ import { useAccess } from '../context/AccessContext'
 import { clearAll as clearApiCache } from '../services/cache'
 import './Admin.css'
 
-const ROL_LBL = { admin: '👑 Administrador', socio: '🤝 Socio', trabajador: '👷 Trabajador', cliente: '👤 Cliente' }
+const ROL_LBL = { admin: '👑 Administrador', socio: '🤝 Socio', trabajador: '👷 Funcionario', cliente: '👤 Cliente' }
 const ROLES_ASIGNABLES = ['cliente', 'trabajador', 'socio', 'admin']
 const MI_UID = localStorage.getItem('userId')  // para refrescar el acceso si me edito a mí mismo
 

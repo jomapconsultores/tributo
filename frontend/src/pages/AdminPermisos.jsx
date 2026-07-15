@@ -17,7 +17,7 @@ const MOD_CLASS = {
   declaraciones: 'ap-chip-decl',
   agente_retencion: 'ap-chip-agente-ret',
 }
-const ROLE_LABEL = { admin: 'Admin', socio: 'Socio', trabajador: 'Trabajador', cliente: 'Cliente' }
+const ROLE_LABEL = { admin: 'Admin', socio: 'Socio', trabajador: 'Funcionario', cliente: 'Cliente' }
 const ROLE_CLASS = { admin: 'ap-role-admin', socio: 'ap-role-socio', trabajador: 'ap-role-trabajador', cliente: 'ap-role-cliente' }
 
 function initials(email = '') {

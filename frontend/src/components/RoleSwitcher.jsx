@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useAccess } from '../context/AccessContext'
 import './RoleSwitcher.css'
 
-const ROL_LBL = { admin: '👑 Administrador', socio: '🤝 Socio', trabajador: '👷 Trabajador', cliente: '👤 Cliente' }
+const ROL_LBL = { admin: '👑 Administrador', socio: '🤝 Socio', trabajador: '👷 Funcionario', cliente: '👤 Cliente' }
 
 // Selector de rol (arriba a la derecha). Solo aparece como MENÚ si el usuario
 // tiene más de un rol otorgado por el administrador; con un solo rol muestra
