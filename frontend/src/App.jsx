@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AccessProvider, useAccess, homeFor } from './context/AccessContext'
 import { ClientProvider, SELECTED_CLIENT_KEY } from './context/ClientContext'
 import { clearAll as clearApiCache } from './services/cache'
+import { useInactivityLogout } from './hooks/useInactivityLogout'
 import Layout from './components/Layout'
 import './App.css'
 
@@ -153,6 +154,9 @@ function App() {
     localStorage.removeItem(SELECTED_CLIENT_KEY)
     setUser(null)
   }
+
+  // Cierra la sesión tras 20 minutos de inactividad (solo si hay sesión activa).
+  useInactivityLogout(handleLogout, !!user)
 
   if (loading) return <PageLoader />
 
