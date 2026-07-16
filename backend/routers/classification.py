@@ -56,6 +56,40 @@ def _propagate_classification(supabase, ruc: str, categoria: str, user_id: str) 
             print(f"Error propagando clasificación {ruc}: {e}")
     return cambiadas
 
+def _mejor_por_ruc(filas, prefer_user_id=None):
+    """Una sola fila por RUC cuando el clasificador está repartido entre varios
+    usuarios del equipo. Preferencia (de mayor a menor):
+      1) fila CON categoría sobre una vacía,
+      2) la más reciente (updated_at, o created_at si falta),
+      3) en empate, la del propio usuario.
+    Así una edición reciente del admin no queda 'tapada' por una fila antigua de
+    otro usuario con el mismo RUC (causaba que las categorías 'se revirtieran')."""
+    def _rank(r):
+        has_cat = 1 if (r.get("categoria") or "").strip() else 0
+        ts = r.get("updated_at") or r.get("created_at") or ""
+        own = 1 if prefer_user_id and r.get("user_id") == prefer_user_id else 0
+        return (has_cat, ts, own)
+    best = {}
+    for r in filas:
+        k = (r.get("ruc") or "").strip()
+        if not k:
+            continue
+        cur = best.get(k)
+        if cur is None or _rank(r) > _rank(cur):
+            best[k] = r
+    return best
+
+
+def _admin_ids(supabase):
+    """user_ids con rol 'admin': dueños del catálogo GENERAL (compartido con todo
+    el equipo). Los demás usuarios solo tienen OVERRIDES personales."""
+    try:
+        rows = supabase.table("app_admins").select("user_id").eq("role", "admin").execute().data or []
+        return [r["user_id"] for r in rows]
+    except Exception:
+        return []
+
+
 def _prov_map(supabase, user_id, is_admin):
     """Mapa RUC -> datos del catálogo de proveedores calificados (Rebajas/Exenciones):
     calificado, categoría (tipo de calificación), vigencia (inicio–fin) y actividad SRI."""
@@ -146,20 +180,48 @@ async def list_classifications(user_id: str = Depends(get_current_user)):
         supabase = get_supabase_client()
         is_admin = rol_de(user_id) == "admin"
         _incluir_proveedores_calificados(supabase, user_id, is_admin)
+
+        # Catálogo GENERAL (compartido con todo el equipo) = filas de los admin.
+        # Cada usuario puede tener OVERRIDES personales (sus propias filas) que solo
+        # le afectan a él. Distintivo: es_propio (mío) / override_users (para admin).
+        admin_set = set(_admin_ids(supabase))
+        filas = fetch_all(lambda: supabase.table("classification_map").select("*").order("nombre_proveedor"))
+        general_by_ruc = _mejor_por_ruc([r for r in filas if r.get("user_id") in admin_set])
+
         if is_admin:
-            # El admin ve TODO el clasificador del equipo (cualquier usuario),
-            # deduplicado por RUC (una clasificación por RUC).
-            filas = fetch_all(lambda: supabase.table("classification_map").select("*").order("nombre_proveedor"))
-            vistos = {}
+            # Para el admin: el catálogo general + cuántos usuarios personalizaron
+            # cada RUC (distintivo para decidir si adopta el cambio al general).
+            ov = {}
             for r in filas:
-                k = (r.get("ruc") or "").strip()
-                if not k:
+                if r.get("user_id") in admin_set:
                     continue
-                if k not in vistos or (not (vistos[k].get("categoria") or "").strip() and (r.get("categoria") or "").strip()):
-                    vistos[k] = r
-            rows = sorted(vistos.values(), key=lambda r: (r.get("nombre_proveedor") or ""))
+                if (r.get("categoria") or "").strip():
+                    ov.setdefault((r.get("ruc") or "").strip(), set()).add(r.get("user_id"))
+            rows = []
+            for r in general_by_ruc.values():
+                r["es_propio"] = True       # el admin edita directamente el general
+                r["es_general"] = True
+                r["override_users"] = len(ov.get((r.get("ruc") or "").strip(), ()))
+                rows.append(r)
         else:
-            rows = supabase.table("classification_map").select("*").eq("user_id", user_id).order("nombre_proveedor").execute().data or []
+            # Usuario normal: general como base + sus overrides personales. Un
+            # override vacío no tapa el general; un RUC exclusivo suyo sí se muestra.
+            propios = {}
+            for p in filas:
+                if p.get("user_id") != user_id:
+                    continue
+                k = (p.get("ruc") or "").strip()
+                if k:
+                    propios[k] = p
+            resultado = {}
+            for k, g in general_by_ruc.items():
+                resultado[k] = {**g, "es_propio": False, "es_general": True}
+            for k, p in propios.items():
+                if (p.get("categoria") or "").strip() or k not in resultado:
+                    resultado[k] = {**p, "es_propio": True, "es_general": k in general_by_ruc}
+            rows = list(resultado.values())
+
+        rows.sort(key=lambda r: (r.get("nombre_proveedor") or ""))
         pmap = _prov_map(supabase, user_id, is_admin)
         for r in rows:
             k = (r.get("ruc") or "").strip()
@@ -250,22 +312,27 @@ async def por_contribuyente(identificacion: str = Query(...), user_id: str = Dep
                 prov[ruc] = (r.get("nombre_proveedor") or "").strip()
         if not prov:
             return []
-        # Clasificación existente por RUC (admin: de todo el equipo; otros: propias), dedup
-        if is_admin:
-            todas = fetch_all(lambda: supabase.table("classification_map").select("*"))
-        else:
-            todas = supabase.table("classification_map").select("*").eq("user_id", user_id).execute().data or []
-        porruc = {}
-        for x in todas:
-            k = (x.get("ruc") or "").strip()
-            if not k:
-                continue
-            if k not in porruc or (not (porruc[k].get("categoria") or "").strip() and (x.get("categoria") or "").strip()):
-                porruc[k] = x
+        # Resolución general + override: cada RUC toma la categoría del override
+        # personal del usuario si la tiene; si no, la del catálogo general (admin).
+        admin_set = set(_admin_ids(supabase))
+        todas = fetch_all(lambda: supabase.table("classification_map").select("*"))
+        general_by_ruc = _mejor_por_ruc([r for r in todas if r.get("user_id") in admin_set])
+        propios = {}
+        for p in todas:
+            if p.get("user_id") == user_id:
+                k = (p.get("ruc") or "").strip()
+                if k:
+                    propios[k] = p
         rows = []
         for ruc, nombre in prov.items():
-            if ruc in porruc:
-                rows.append(porruc[ruc])
+            p = propios.get(ruc)
+            g = general_by_ruc.get(ruc)
+            if p and (p.get("categoria") or "").strip():
+                rows.append({**p, "es_propio": True, "es_general": ruc in general_by_ruc})
+            elif g:
+                rows.append({**g, "es_propio": False, "es_general": True})
+            elif p:
+                rows.append({**p, "es_propio": True, "es_general": False})
             else:
                 try:
                     ins = supabase.table("classification_map").insert({
@@ -273,7 +340,7 @@ async def por_contribuyente(identificacion: str = Query(...), user_id: str = Dep
                         "nombre_proveedor": (nombre or "").upper(), "categoria": "",
                     }).execute()
                     if ins.data:
-                        rows.append(ins.data[0])
+                        rows.append({**ins.data[0], "es_propio": True, "es_general": False})
                 except Exception:
                     pass
         pmap = _prov_map(supabase, user_id, is_admin)
@@ -360,31 +427,34 @@ async def update_classification_by_id(
     entry: ClassificationEntry,
     user_id: str = Depends(get_current_user)
 ):
-    """Actualiza un registro por id, permitiendo cambiar el RUC. El admin puede
-    editar registros de cualquier usuario (la reclasificación afecta al dueño)."""
+    """Editar SIEMPRE escribe en el clasificador del que edita: el admin edita el
+    catálogo GENERAL (compartido); cualquier otro usuario crea/actualiza su
+    OVERRIDE personal (solo le afecta a él, con distintivo). Nunca modifica la fila
+    de otro usuario. El id recibido solo sirve para detectar un renombre de RUC."""
     try:
         from routers.access import rol_de
         supabase = get_supabase_client()
-        cur = supabase.table("classification_map").select("user_id").eq("id", entry_id).execute().data
-        if not cur:
-            raise HTTPException(status_code=404, detail="Registro no encontrado")
-        owner = cur[0]["user_id"]
-        if owner != user_id and rol_de(user_id) != "admin":
-            raise HTTPException(status_code=404, detail="Registro no encontrado")
+        is_admin = rol_de(user_id) == "admin"
         new_ruc = entry.ruc.strip().replace("'", "")
-        upd = supabase.table("classification_map").update({
+        cur = supabase.table("classification_map").select("id,ruc,user_id").eq("id", entry_id).execute().data
+        old = cur[0] if cur else None
+        # Upsert por (user_id, ruc): el que edita es el dueño de la fila resultante.
+        supabase.table("classification_map").upsert({
+            "user_id": user_id,
             "ruc": new_ruc,
             "nombre_proveedor": entry.nombre_proveedor.upper(),
             "categoria": entry.categoria.upper(),
-            "updated_at": "now()"
-        }).eq("id", entry_id)
-        if owner == user_id:
-            upd = upd.eq("user_id", user_id)
-        response = upd.execute()
-        reclasificadas = _propagate_classification(supabase, new_ruc, entry.categoria, owner)
-        _fill_actividad(supabase, new_ruc, owner)  # actividad SRI automática
-        result = response.data[0] if response.data else {}
-        return {**result, "reclasificadas": reclasificadas}
+            "updated_at": "now()",
+        }, on_conflict="user_id,ruc").execute()
+        # Si el usuario RENOMBRÓ el RUC de SU PROPIA fila, borra la vieja (no deja huérfana).
+        if old and old.get("user_id") == user_id and (old.get("ruc") or "").strip() != new_ruc:
+            supabase.table("classification_map").delete().eq("id", entry_id).execute()
+        # La reclasificación de facturas solo afecta al que edita (su propio dato).
+        reclasificadas = _propagate_classification(supabase, new_ruc, entry.categoria, user_id)
+        _fill_actividad(supabase, new_ruc, user_id)  # actividad SRI automática
+        return {"ruc": new_ruc, "nombre_proveedor": entry.nombre_proveedor.upper(),
+                "categoria": entry.categoria.upper(), "reclasificadas": reclasificadas,
+                "es_propio": not is_admin, "es_general": is_admin}
     except HTTPException:
         raise
     except Exception as e:
@@ -393,17 +463,21 @@ async def update_classification_by_id(
 
 @router.delete("/by-id/{entry_id}")
 async def delete_classification_by_id(entry_id: str, user_id: str = Depends(get_current_user)):
-    """Elimina por id. El admin puede eliminar registros de cualquier usuario."""
+    """El admin borra del catálogo GENERAL (afecta a todo el equipo). Un usuario
+    normal solo puede quitar SU override personal de ese RUC (vuelve a ver el
+    general); nunca borra el catálogo general."""
     try:
         from routers.access import rol_de
         supabase = get_supabase_client()
-        cur = supabase.table("classification_map").select("user_id").eq("id", entry_id).execute().data
+        cur = supabase.table("classification_map").select("ruc,user_id").eq("id", entry_id).execute().data
         if not cur:
             return {"message": "Deleted"}
-        owner = cur[0]["user_id"]
-        if owner != user_id and rol_de(user_id) != "admin":
-            raise HTTPException(status_code=404, detail="Registro no encontrado")
-        supabase.table("classification_map").delete().eq("id", entry_id).execute()
+        ruc = (cur[0].get("ruc") or "").strip()
+        if rol_de(user_id) == "admin":
+            for aid in _admin_ids(supabase):
+                supabase.table("classification_map").delete().eq("user_id", aid).eq("ruc", ruc).execute()
+        else:
+            supabase.table("classification_map").delete().eq("user_id", user_id).eq("ruc", ruc).execute()
         return {"message": "Deleted"}
     except HTTPException:
         raise

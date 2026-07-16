@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { classificationAPI, downloadBlob } from '../services/api'
+import { useAccess } from '../context/AccessContext'
 import ClassifierTable from '../components/ClassifierTable'
 import WorkflowGuide from '../components/WorkflowGuide'
 import './Classifier.css'
@@ -12,6 +13,7 @@ const CL_STEPS = [
 ]
 
 export default function Classifier() {
+  const { isSuperAdmin } = useAccess()
   const [classifications, setClassifications] = useState([])
   // loading = primera carga (sí muestra spinner). refreshing = reload tras edición
   // (mantiene la tabla visible para que el usuario no pierda el contexto).
@@ -162,7 +164,13 @@ export default function Classifier() {
       <header className="classifier-header">
         <div>
           <h1>🏷️ Clasificador de Gastos {refreshing && <span className="classifier-refresh-indic">↻ actualizando…</span>}</h1>
-          <p className="classifier-sub">{classifications.length} RUCs · clic en cualquier celda (incluido el RUC) para editar</p>
+          <p className="classifier-sub">
+            {classifications.length} RUCs · clic en cualquier celda (incluido el RUC) para editar
+            {' · '}
+            {isSuperAdmin
+              ? <>editas el <strong>catálogo general</strong> (lo ve todo el equipo); <span className="cl-badge override">👤 N</span> = personalizado por usuarios</>
+              : <>hay un <strong>catálogo general</strong> del equipo; si cambias una categoría queda solo para ti (<span className="cl-badge propio">✎ Tuyo</span>)</>}
+          </p>
         </div>
       </header>
 
@@ -249,6 +257,7 @@ export default function Classifier() {
           onRowChange={onRowChange}
           onRowDelete={onRowDelete}
           opcionesCategoria={opc.cat}
+          isAdmin={isSuperAdmin}
         />
       )}
     </div>

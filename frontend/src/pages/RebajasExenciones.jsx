@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { rebajasAPI, productsAPI, classificationAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
+import { useAccess } from '../context/AccessContext'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import ClassifierTable from '../components/ClassifierTable'
@@ -72,6 +73,7 @@ const estaVencido = (d) => !!d && String(d) < hoyISO()
 
 export default function RebajasExenciones() {
   const { openNewClient } = useOutletContext()
+  const { isSuperAdmin } = useAccess()
   const { clients, selectedClient, selectClient, identsForSvc } = useClients()
   const ident = selectedClient?.identificacion
   const idents_svc = identsForSvc('declaracion_ice')
@@ -614,7 +616,7 @@ export default function RebajasExenciones() {
             <span className="cl-count">{gastosFiltrados.length} de {gastosRows.length}</span>
           </div>
           <ClassifierTable classifications={gastosFiltrados} onClassificationsChange={loadGastos}
-            onRowChange={onGastoRowChange} onRowDelete={onGastoRowDelete} opcionesCategoria={gOpc('categoria')} />
+            onRowChange={onGastoRowChange} onRowDelete={onGastoRowDelete} opcionesCategoria={gOpc('categoria')} isAdmin={isSuperAdmin} />
         </div>
       </details>
 

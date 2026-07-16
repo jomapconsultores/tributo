@@ -5,7 +5,7 @@ import './ClassifierTable.css'
 
 const PAGE_SIZE = 50
 
-export default function ClassifierTable({ classifications, onClassificationsChange, onRowChange = null, onRowDelete = null, opcionesCategoria = null }) {
+export default function ClassifierTable({ classifications, onClassificationsChange, onRowChange = null, onRowDelete = null, opcionesCategoria = null, isAdmin = false }) {
   // Opciones existentes para desplegar al editar (clasificación ágil)
   const cats = useMemo(() => (opcionesCategoria
     || [...new Set((classifications || []).map((c) => String(c.categoria || '').trim()).filter(Boolean))]).sort(),
@@ -32,8 +32,10 @@ export default function ClassifierTable({ classifications, onClassificationsChan
     try {
       const res = await classificationAPI.updateById(item.id, ruc, nombre, categoria)
       cancel()
-      // Solo actualiza ESA fila en pantalla (no recarga toda la tabla → mucho más rápido)
-      if (onRowChange) onRowChange(item.id, { ruc, nombre_proveedor: nombre, categoria })
+      // Solo actualiza ESA fila en pantalla (no recarga toda la tabla → mucho más rápido).
+      // Si NO es admin, la edición pasa a ser un override personal → marca el distintivo.
+      const marca = isAdmin ? {} : { es_propio: true, es_general: false }
+      if (onRowChange) onRowChange(item.id, { ruc, nombre_proveedor: nombre, categoria, ...marca })
       else onClassificationsChange()
       const n = res?.data?.reclasificadas
       if (n > 0) alert(`✔ ${n} factura(s) SIN CLASIFICAR de este RUC se actualizaron a "${categoria.toUpperCase()}"`)
@@ -52,6 +54,20 @@ export default function ClassifierTable({ classifications, onClassificationsChan
     } catch (error) {
       alert('Error al eliminar: ' + (error.response?.data?.detail || error.message))
     }
+  }
+
+  // Distintivo del clasificador general vs override personal:
+  //  - usuario normal: '✎ Tuyo' cuando la categoría es un override suyo
+  //  - admin: '👤 N' cuando N usuarios personalizaron ese RUC (para decidir adoptarlo)
+  const distintivo = (item) => {
+    if (isAdmin) {
+      return item.override_users > 0
+        ? <span className="cl-badge override" title={`${item.override_users} usuario(s) personalizaron este RUC`}>👤 {item.override_users}</span>
+        : null
+    }
+    return item.es_propio
+      ? <span className="cl-badge propio" title="Clasificación tuya: solo te afecta a ti (el resto ve la general)">✎ Tuyo</span>
+      : null
   }
 
   const cell = (item, field, extraClass = '', placeholder = '-') => {
@@ -107,7 +123,7 @@ export default function ClassifierTable({ classifications, onClassificationsChan
                     onClick={() => setActOpen(actOpen === item.id ? null : item.id)}>
                   {item.actividad || '—'}
                 </td>
-                <td>{cell(item, 'categoria', '', 'SIN CLASIFICAR')}</td>
+                <td>{cell(item, 'categoria', '', 'SIN CLASIFICAR')}{distintivo(item)}</td>
                 <td>
                   {item.calificado ? (
                     <button

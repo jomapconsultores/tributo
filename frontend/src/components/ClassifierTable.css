@@ -137,3 +137,9 @@ button.calif-badge.ok:hover { filter:brightness(.96); }
 .cl-pager button:hover:not(:disabled) { background:#eef6ff; border-color:#93c5fd; }
 .cl-pager button:disabled { opacity:.45; cursor:default; }
 .cl-pager span { color:#475569; font-size:.82rem; padding:0 6px; }
+
+/* Distintivo: override personal ('Tuyo') vs personalizado por usuarios (admin) */
+.cl-badge { display:inline-flex; align-items:center; gap:3px; margin-left:6px; padding:1px 7px;
+  border-radius:999px; font-size:.68rem; font-weight:700; vertical-align:middle; white-space:nowrap; }
+.cl-badge.propio { background:#dcfce7; color:#15803d; border:1px solid #86efac; }
+.cl-badge.override { background:#fef3c7; color:#b45309; border:1px solid #fcd34d; }
