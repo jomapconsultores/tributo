@@ -25,9 +25,23 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
   const { clients, selectClient } = useClients()
   const [search, setSearch] = useState('')
 
+  // Un contribuyente puede tener varias filas (una por período). Aquí mostramos
+  // UNA tarjeta por identificación: el representante es el período más reciente y
+  // es el que se selecciona al hacer clic. 'periodos' cuenta cuántos tiene.
   const visible = useMemo(() => {
     const base = idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : []
-    return filtrarClientesPorTexto(base, search)
+    const filtered = filtrarClientesPorTexto(base, search)
+    const rank = (c) => (c.periodo_anio || 0) * 100 + (c.periodo_mes || 0)
+    const grupos = new Map()
+    for (const c of filtered) {
+      const g = grupos.get(c.identificacion)
+      if (!g) grupos.set(c.identificacion, { rep: c, periodos: 1 })
+      else {
+        g.periodos += 1
+        if (rank(c) > rank(g.rep)) g.rep = c
+      }
+    }
+    return [...grupos.values()]
   }, [clients, idents_svc, search])
 
   return (
@@ -84,9 +98,9 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
               </div>
             ) : (
               <div className="cps-list">
-                {visible.map((c) => (
+                {visible.map(({ rep: c, periodos }) => (
                   <button
-                    key={c.id}
+                    key={c.identificacion}
                     className="cps-item"
                     onClick={() => selectClient(c.id)}
                   >
@@ -101,6 +115,7 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
                       <span className="cps-item-meta">
                         <span>{c.tipo_identificacion || 'RUC'}: {c.identificacion}</span>
                         <span className="cps-period">{periodoLargo(c)}</span>
+                        {periodos > 1 && <span className="cps-period">· {periodos} períodos</span>}
                         <BadgeVencimiento ruc={c.identificacion} />
                       </span>
                     </span>
