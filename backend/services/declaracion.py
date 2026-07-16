@@ -116,6 +116,10 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
         for v in v_ice_solo_ok
         if _f(v.get("base_iva")) > 0 or _f(v.get("valor_iva")) > 0
     })
+    # Total de facturas ICE (comprobantes distintos) SIN el filtro de valor > 0.
+    n_ventas_ice_total = len({
+        str(v.get("unique_id") or "").rsplit("-", 1)[0] for v in v_ice_solo_ok
+    })
 
     # ── Ventas sin ICE (tabla sales_iva) ─────────────────────────────────
     v_iva_solo_ok = [v for v in ventas_iva if (v.get("estado") or "OK") == "OK"]
@@ -360,8 +364,14 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
             "ventas_diferidas_monto": round(ventas_diferidas_monto, 2),
             "num_facturas_ejercicio": len(ejercicio),
             "num_facturas_personales_excluidas": personales_excluidos,
+            # TOTAL de compras cargadas del período (incluye las personales excluidas
+            # del ejercicio). El "parcial" (num_facturas_ejercicio) son las que entran
+            # a la declaración; este total es todo lo cargado (estado OK).
+            "num_facturas_compras_total": len(invoices),
             "num_ventas_ice": n_ventas_ice,
             "num_ventas_iva_solo": len(v_iva_solo_ok),
+            # TOTAL de ventas/ingresos cargados (ICE con y sin valor + IVA sin ICE).
+            "num_ventas_total": n_ventas_ice_total + len(v_iva_solo_ok),
             "num_retenciones_periodo": n_retenciones,
             "num_aplazados_vencen": len(pagos_aplazados_vencen_este_periodo),
         },

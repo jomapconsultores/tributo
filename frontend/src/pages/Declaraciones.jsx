@@ -788,14 +788,26 @@ export default function Declaraciones({ tipo }) {
       {decl && (
         <div className="dc-conteos">
           🧾 Comprobantes del período —{' '}
-          {isIVA ? (
-            <>
-              Ventas: <strong>{(resumen.num_ventas_ice || 0) + (resumen.num_ventas_iva_solo || 0)}</strong> ·{' '}
-              Compras: <strong>{resumen.num_facturas_ejercicio || 0}</strong> ·{' '}
-              Retenciones: <strong>{resumen.num_retenciones_periodo || 0}</strong> ·{' '}
-              Total: <strong>{(resumen.num_ventas_ice || 0) + (resumen.num_ventas_iva_solo || 0) + (resumen.num_facturas_ejercicio || 0) + (resumen.num_retenciones_periodo || 0)}</strong>
-            </>
-          ) : tipo === '103' ? (
+          {isIVA ? (() => {
+            const ventasParcial = (resumen.num_ventas_ice || 0) + (resumen.num_ventas_iva_solo || 0)
+            const ventasTotal = resumen.num_ventas_total != null ? resumen.num_ventas_total : ventasParcial
+            const comprasParcial = resumen.num_facturas_ejercicio || 0
+            const comprasTotal = resumen.num_facturas_compras_total != null ? resumen.num_facturas_compras_total : comprasParcial
+            const personales = resumen.num_facturas_personales_excluidas || 0
+            const rets = resumen.num_retenciones_periodo || 0
+            return (
+              <>
+                Ventas: <strong>{ventasParcial}</strong>
+                {ventasTotal > ventasParcial && <span className="dc-conteo-total"> de {ventasTotal} cargadas</span>} ·{' '}
+                Compras: <strong>{comprasParcial}</strong>
+                {comprasTotal > comprasParcial && (
+                  <span className="dc-conteo-total" title={`${personales} factura(s) de gasto personal excluidas de la declaración`}> de {comprasTotal} cargadas</span>
+                )} ·{' '}
+                Retenciones: <strong>{rets}</strong> ·{' '}
+                Total en declaración: <strong>{ventasParcial + comprasParcial + rets}</strong>
+              </>
+            )
+          })() : tipo === '103' ? (
             <>Comprobantes de retención efectuados: <strong>{resumen.num_comprobantes || 0}</strong></>
           ) : (
             <>Registros ICE: <strong>{resumen.num_registros || 0}</strong></>

@@ -145,3 +145,4 @@
 /* Barra de conteo de comprobantes */
 .dc-conteos { background: #f6f9fd; border: 1px solid #d9e4f1; border-radius: 8px; padding: 8px 14px; font-size: .82rem; color: #1a3d6b; }
 .dc-conteos strong { color: #003399; }
+.dc-conteo-total { color: #5b7aa5; font-weight: 600; }
