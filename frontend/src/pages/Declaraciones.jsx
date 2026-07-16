@@ -798,11 +798,9 @@ export default function Declaraciones({ tipo }) {
             return (
               <>
                 Ventas: <strong>{ventasParcial}</strong>
-                {ventasTotal > ventasParcial && <span className="dc-conteo-total"> de {ventasTotal} cargadas</span>} ·{' '}
+                <span className="dc-conteo-total"> de {ventasTotal} cargadas</span> ·{' '}
                 Compras: <strong>{comprasParcial}</strong>
-                {comprasTotal > comprasParcial && (
-                  <span className="dc-conteo-total" title={`${personales} factura(s) de gasto personal excluidas de la declaración`}> de {comprasTotal} cargadas</span>
-                )} ·{' '}
+                <span className="dc-conteo-total" title={personales ? `${personales} factura(s) de gasto personal excluidas de la declaración` : undefined}> de {comprasTotal} cargadas</span> ·{' '}
                 Retenciones: <strong>{rets}</strong> ·{' '}
                 Total en declaración: <strong>{ventasParcial + comprasParcial + rets}</strong>
               </>
