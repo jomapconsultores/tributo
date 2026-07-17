@@ -93,14 +93,19 @@
 .calif-badge.no { background:#f1f5f9; color:#64748b; }
 
 /* Actividad económica (SRI) y vigencia de la calificación */
-.actividad-cell { max-width:280px; font-size:.82rem; color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* Muestra hasta 3 renglones con letra pequeña (antes se truncaba a 1 línea);
+   clic en la celda expande el texto completo (.full). */
+.actividad-cell { max-width:280px; font-size:.72rem; line-height:1.2; color:#334155;
+  display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; line-clamp:3;
+  overflow:hidden; white-space:normal; word-break:break-word; }
 button.calif-badge { border:none; cursor:pointer; font:inherit; }
 button.calif-badge.ok:hover { filter:brightness(.96); }
 .calif-vig { margin-top:4px; font-size:.74rem; color:#166534; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:2px 6px; display:inline-block; white-space:nowrap; }
 
-/* Actividad: clic para ver completa */
+/* Actividad: clic para ver completa (quita el límite de 3 renglones) */
 .actividad-cell { cursor:pointer; }
-.actividad-cell.full { max-width:none; white-space:normal; overflow:visible; word-break:break-word; background:#f8fafc; }
+.actividad-cell.full { max-width:none; display:block; -webkit-line-clamp:unset; line-clamp:unset;
+  white-space:normal; overflow:visible; word-break:break-word; background:#f8fafc; }
 
 /* Copiar al clic / feedback */
 .editable { cursor:pointer; }
@@ -136,7 +141,8 @@ button.calif-badge.ok:hover { filter:brightness(.96); }
 .classifier-table .delete-btn { background:transparent; border:none; cursor:pointer; opacity:.45; font-size:.95rem;
   transition:opacity .12s, transform .12s; }
 .classifier-table .delete-btn:hover { opacity:1; transform:scale(1.15); }
-.classifier-table .actividad-cell { color:#475569; font-size:.8rem; line-height:1.25; }
+.classifier-table .actividad-cell { color:#475569; font-size:.72rem; line-height:1.2; }
+.classifier-table .actividad-cell.full { font-size:.72rem; }
 .calif-badge { display:inline-flex; align-items:center; gap:4px; }
 
 /* Paginación */
