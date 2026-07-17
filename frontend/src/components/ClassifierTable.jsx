@@ -24,25 +24,29 @@ export default function ClassifierTable({ classifications, onClassificationsChan
   const [actOpen, setActOpen] = useState(null) // id cuya actividad se ve completa
   const { copiedKey: copied, copy: copiar } = useCopyFeedback()
 
-  const handleSave = async (item) => {
+  const handleSave = (item) => {
     const { field } = edit
     const ruc = field === 'ruc' ? value.trim() : item.ruc
     const nombre = field === 'nombre_proveedor' ? value : item.nombre_proveedor
     const categoria = field === 'categoria' ? value : item.categoria
-    try {
-      const res = await classificationAPI.updateById(item.id, ruc, nombre, categoria)
-      cancel()
-      // Solo actualiza ESA fila en pantalla (no recarga toda la tabla → mucho más rápido).
-      // Si NO es admin, la edición pasa a ser un override personal → marca el distintivo.
-      const marca = isAdmin ? {} : { es_propio: true, es_general: false }
-      if (onRowChange) onRowChange(item.id, { ruc, nombre_proveedor: nombre, categoria, ...marca })
-      else onClassificationsChange()
-      const n = res?.data?.reclasificadas
-      if (n > 0) alert(`✔ ${n} factura(s) SIN CLASIFICAR de este RUC se actualizaron a "${categoria.toUpperCase()}"`)
-    } catch (error) {
-      alert('Error al guardar: ' + (error.response?.data?.detail || error.message))
-      onClassificationsChange() // si falló, recargar para volver al estado real (se mantiene en edición con lo escrito)
-    }
+    // GUARDADO OPTIMISTA: al dar Enter cerramos el editor y actualizamos ESA fila
+    // de inmediato (cambio instantáneo, sin esperar al backend). El guardado va en
+    // segundo plano; si falla, recargamos para volver al estado real. Antes se
+    // esperaba (await) la respuesta —que además consultaba el SRI—, por eso el
+    // cambio se sentía lento.
+    cancel()
+    const marca = isAdmin ? {} : { es_propio: true, es_general: false }
+    if (onRowChange) onRowChange(item.id, { ruc, nombre_proveedor: nombre, categoria, ...marca })
+    classificationAPI.updateById(item.id, ruc, nombre, categoria)
+      .then((res) => {
+        if (!onRowChange) onClassificationsChange()
+        const n = res?.data?.reclasificadas
+        if (n > 0) alert(`✔ ${n} factura(s) del RUC ${ruc} se reclasificaron a "${categoria.toUpperCase()}".`)
+      })
+      .catch((error) => {
+        alert('Error al guardar: ' + (error.response?.data?.detail || error.message))
+        onClassificationsChange() // recargar para volver al estado real si falló
+      })
   }
 
   const handleDelete = async (item) => {

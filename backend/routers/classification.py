@@ -475,7 +475,9 @@ async def create_classification(
                 "categoria": entry.categoria.upper()
             }).execute()
         reclasificadas = _propagate_classification(supabase, ruc, entry.categoria, user_id)
-        _fill_actividad(supabase, ruc, user_id)  # actividad SRI automática
+        # La actividad económica (SRI) NO se consulta aquí: era una llamada HTTP
+        # síncrona al SRI (hasta 8s) que hacía lento el guardado. El frontend la
+        # rellena aparte en lote (enriquecer-actividades) al cargar el clasificador.
         result = response.data[0] if response.data else {}
         return {**result, "reclasificadas": reclasificadas}
     except Exception as e:
@@ -511,7 +513,8 @@ async def update_classification_by_id(
             supabase.table("classification_map").delete().eq("id", entry_id).execute()
         # La reclasificación de facturas solo afecta al que edita (su propio dato).
         reclasificadas = _propagate_classification(supabase, new_ruc, entry.categoria, user_id)
-        _fill_actividad(supabase, new_ruc, user_id)  # actividad SRI automática
+        # Sin consulta síncrona al SRI aquí (hacía lento el guardado): la actividad
+        # se rellena aparte en lote desde el frontend al cargar el clasificador.
         return {"ruc": new_ruc, "nombre_proveedor": entry.nombre_proveedor.upper(),
                 "categoria": entry.categoria.upper(), "reclasificadas": reclasificadas,
                 "es_propio": not is_admin, "es_general": is_admin}

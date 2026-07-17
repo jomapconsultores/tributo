@@ -354,11 +354,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         </button>
         {declaracionesOpen && (
           <div className="submodule-list">
-            {hasSub('decl_ice') && (
-            <button className={`nav-item submodule ${isDeclIce ? 'active' : ''}`} onClick={() => navigate('/declaracion-ice')}>
-              <span className="nav-ico">🥃</span><span>Declaración ICE</span>
-            </button>
-            )}
+            {/* Orden: IVA → 103 (Renta) → ICE */}
             {hasSub('decl_iva') && (
             <button className={`nav-item submodule ${isDeclIva ? 'active' : ''}`} onClick={() => navigate('/declaracion-iva')}>
               <span className="nav-ico">🧾</span><span>Declaración IVA</span>
@@ -368,6 +364,11 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
               <button className={`nav-item submodule ${isDecl103 ? 'active' : ''}`} onClick={() => navigate('/declaracion-103')}>
                 <span className="nav-ico">🧷</span><span>Declaración 103 (Renta)</span>
               </button>
+            )}
+            {hasSub('decl_ice') && (
+            <button className={`nav-item submodule ${isDeclIce ? 'active' : ''}`} onClick={() => navigate('/declaracion-ice')}>
+              <span className="nav-ico">🥃</span><span>Declaración ICE</span>
+            </button>
             )}
           </div>
         )}
