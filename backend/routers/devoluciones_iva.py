@@ -74,8 +74,10 @@ def _num(v) -> float:
 
 def _resumen_comprobante(inv: dict) -> dict:
     """Base gravada e IVA del comprobante (solo lo que genera crédito a devolver)."""
-    base = _num(inv.get("base_15")) + _num(inv.get("base_5"))
-    iva = _num(inv.get("iva_15")) + _num(inv.get("iva_5"))
+    # Incluye la tarifa 8% (base_8/iva_8): es IVA efectivamente pagado y también
+    # genera crédito a devolver (antes el 8% venía plegado en base_15/iva_15).
+    base = _num(inv.get("base_15")) + _num(inv.get("base_8")) + _num(inv.get("base_5"))
+    iva = _num(inv.get("iva_15")) + _num(inv.get("iva_8")) + _num(inv.get("iva_5"))
     return {
         "id": inv.get("id"),
         "unique_id": inv.get("unique_id"),
@@ -134,7 +136,7 @@ async def comprobantes(
 
     invs = fetch_all(lambda: sb.table("invoices").select(
         "id,unique_id,estado,fecha,ruc_proveedor,nombre_proveedor,clasificacion,"
-        "base_0,base_15,iva_15,base_5,iva_5,total"
+        "base_0,base_15,iva_15,base_8,iva_8,base_5,iva_5,total"
     ).eq("client_id", client_id).order("fecha", desc=True))
     comps = [_resumen_comprobante(i) for i in invs if (i.get("estado") or "OK") == "OK"]
 
@@ -184,7 +186,7 @@ async def guardar_solicitud(body: SolicitudIn, user_id: str = Depends(get_curren
 
     invs = fetch_all(lambda: sb.table("invoices").select(
         "id,unique_id,fecha,ruc_proveedor,nombre_proveedor,clasificacion,"
-        "base_15,iva_15,base_5,iva_5,total"
+        "base_15,iva_15,base_8,iva_8,base_5,iva_5,total"
     ).eq("client_id", body.client_id).in_("id", body.invoice_ids))
     if not invs:
         raise HTTPException(status_code=400, detail="Los comprobantes marcados no existen en este cliente.")

@@ -11,7 +11,7 @@ import ClaveHeader from '../components/ClaveHeader'
 import WorkflowGuide from '../components/WorkflowGuide'
 import './IngresosIva.css'
 
-import { fmtMoney as money, msgFueraPeriodo } from '../utils/format'
+import { fmtMoney as money, msgFueraPeriodo, msgIdentAjena } from '../utils/format'
 import { periodoLargo } from '../utils/periodo'
 
 const ING_STEPS = [
@@ -39,7 +39,7 @@ export default function IngresosIva() {
   const xmlInputRef = useRef(null)
   const txtInputRef = useRef(null)
 
-  const NUM_FIELDS = ['no_objeto_iva', 'exento_iva', 'base_0', 'base_15', 'iva_15', 'base_5', 'iva_5']
+  const NUM_FIELDS = ['no_objeto_iva', 'exento_iva', 'base_0', 'base_15', 'iva_15', 'base_8', 'iva_8', 'base_5', 'iva_5']
 
   const startEdit = (r) => {
     setEditId(r.id)
@@ -47,7 +47,8 @@ export default function IngresosIva() {
       fecha: r.fecha || '', factura_numero: r.factura_numero || '',
       razon_social_cliente: r.razon_social_cliente || '', id_cliente: r.id_cliente || '',
       no_objeto_iva: r.no_objeto_iva ?? 0, exento_iva: r.exento_iva ?? 0, base_0: r.base_0 ?? 0,
-      base_15: r.base_15 ?? 0, iva_15: r.iva_15 ?? 0, base_5: r.base_5 ?? 0, iva_5: r.iva_5 ?? 0,
+      base_15: r.base_15 ?? 0, iva_15: r.iva_15 ?? 0, base_8: r.base_8 ?? 0, iva_8: r.iva_8 ?? 0,
+      base_5: r.base_5 ?? 0, iva_5: r.iva_5 ?? 0,
     })
   }
   const cancelEdit = () => { setEditId(null); setEditData({}) }
@@ -86,7 +87,7 @@ export default function IngresosIva() {
         if (rechazadas.length > 5) msg += `\n  …y ${rechazadas.length - 5} más`
         msg += `\n\nSubilas en el módulo "ICE - XML".`
       }
-      msg += msgFueraPeriodo(res.data)
+      msg += msgFueraPeriodo(res.data) + msgIdentAjena(res.data)
       alert(msg)
       await load()
     } catch (err) {
@@ -109,7 +110,7 @@ export default function IngresosIva() {
       if (d.rechazadas_por_ice > 0) msg += `\n⚠ ${d.rechazadas_por_ice} con ICE (van en "ICE - XML")`
       if (faltan > 0) msg += `\n\n⚠ ${faltan} no se bajaron (SRI saturado). Vuelve a subir el mismo TXT: reintenta solo las que faltan.`
       else msg += `\n\n✔ Se bajaron todas.`
-      msg += msgFueraPeriodo(d)
+      msg += msgFueraPeriodo(d) + msgIdentAjena(d)
       alert(msg)
       await load()
     } catch (err) {
@@ -151,7 +152,7 @@ export default function IngresosIva() {
   const totales = useMemo(() => {
     const acc = {
       no_objeto_iva: 0, exento_iva: 0, base_0: 0,
-      base_15: 0, iva_15: 0, base_5: 0, iva_5: 0,
+      base_15: 0, iva_15: 0, base_8: 0, iva_8: 0, base_5: 0, iva_5: 0,
       importe_total: 0,
     }
     for (const r of filtered) {
@@ -252,6 +253,8 @@ export default function IngresosIva() {
                 <th className="r">Base 0%</th>
                 <th className="r">Base 15%</th>
                 <th className="r">IVA 15%</th>
+                <th className="r">Base 8%</th>
+                <th className="r">IVA 8%</th>
                 <th className="r">Base 5%</th>
                 <th className="r">IVA 5%</th>
                 <th className="r">Total</th>
@@ -293,6 +296,8 @@ export default function IngresosIva() {
                     <td className="r">{money(r.base_0)}</td>
                     <td className="r">{money(r.base_15)}</td>
                     <td className="r">{money(r.iva_15)}</td>
+                    <td className="r">{money(r.base_8)}</td>
+                    <td className="r">{money(r.iva_8)}</td>
                     <td className="r">{money(r.base_5)}</td>
                     <td className="r">{money(r.iva_5)}</td>
                     <td className="r total">{money(r.importe_total)}</td>
@@ -312,6 +317,8 @@ export default function IngresosIva() {
                 <td className="r">{money(totales.base_0)}</td>
                 <td className="r">{money(totales.base_15)}</td>
                 <td className="r">{money(totales.iva_15)}</td>
+                <td className="r">{money(totales.base_8)}</td>
+                <td className="r">{money(totales.iva_8)}</td>
                 <td className="r">{money(totales.base_5)}</td>
                 <td className="r">{money(totales.iva_5)}</td>
                 <td className="r total">{money(totales.importe_total)}</td>

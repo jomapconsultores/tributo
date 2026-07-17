@@ -107,6 +107,14 @@ button.calif-badge.ok:hover { filter:brightness(.96); }
 .editable.copied { background:#dcfce7; border-radius:4px; }
 .copied-tag { margin-left:6px; font-size:.72rem; color:#166534; font-weight:600; }
 
+/* Celda editable con botón de copiar explícito (clic simple = editar) */
+.cl-cell { display:inline-flex; align-items:center; gap:4px; }
+.cl-cell.copied .cl-copy-btn { background:#dcfce7; color:#166534; }
+.cl-copy-btn { border:none; background:transparent; cursor:pointer; opacity:.35; font-size:.8rem;
+  line-height:1; padding:2px 4px; border-radius:4px; transition:opacity .12s, background .12s; }
+.cl-cell:hover .cl-copy-btn { opacity:.7; }
+.cl-copy-btn:hover { opacity:1; background:#e0edff; }
+
 /* Categoría sin clasificar (proveedores calificados recién incluidos) */
 .editable.sin-clasif { color:#b45309; font-style:italic; background:#fff7ed; border-radius:4px; padding:0 4px; }
 

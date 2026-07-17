@@ -16,6 +16,8 @@ const VALOR_OPCIONES = [
   { key: 'base_0', label: 'Base 0%' },
   { key: 'base_15', label: 'Base 15%' },
   { key: 'iva_15', label: 'IVA 15%' },
+  { key: 'base_8', label: 'Base 8%' },
+  { key: 'iva_8', label: 'IVA 8%' },
   { key: 'base_5', label: 'Base 5%' },
   { key: 'iva_5', label: 'IVA 5%' },
 ]
@@ -74,6 +76,13 @@ export default function InvoiceTable({ invoices, onInvoicesChange, catalog = [] 
     invoices.forEach((i) => { if (i.forma_pago) set.add(i.forma_pago) })
     return Array.from(set).sort()
   }, [invoices])
+
+  // Columnas 8% (tarifa especial): solo se muestran si alguna factura las usa,
+  // para no ensuciar la tabla en el caso normal (todo 15%/5%/0%).
+  const hay8 = useMemo(
+    () => invoices.some((i) => (parseFloat(i.base_8) || 0) > 0 || (parseFloat(i.iva_8) || 0) > 0),
+    [invoices]
+  )
 
   const hayFiltros = search.trim() || fClasif || fForma || fValor
 
@@ -227,7 +236,7 @@ export default function InvoiceTable({ invoices, onInvoicesChange, catalog = [] 
       <div className="it-toolbar">
         <input
           className="it-search"
-          placeholder="🔍 Proveedor, RUC, concepto…"
+          placeholder="🔍 Proveedor, RUC, clasificación, concepto…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -272,6 +281,8 @@ export default function InvoiceTable({ invoices, onInvoicesChange, catalog = [] 
               <th className="r">Base 0%</th>
               <th className="r">Base 15%</th>
               <th className="r">IVA 15%</th>
+              {hay8 && <th className="r">Base 8%</th>}
+              {hay8 && <th className="r">IVA 8%</th>}
               <th className="r">Base 5%</th>
               <th className="r">IVA 5%</th>
               <th className="r">Desc.Info</th>
@@ -327,6 +338,8 @@ export default function InvoiceTable({ invoices, onInvoicesChange, catalog = [] 
                 <td className="r">{money(inv.base_0)}</td>
                 <td className="r">{money(inv.base_15)}</td>
                 <td className="r">{money(inv.iva_15)}</td>
+                {hay8 && <td className="r">{money(inv.base_8)}</td>}
+                {hay8 && <td className="r">{money(inv.iva_8)}</td>}
                 <td className="r">{money(inv.base_5)}</td>
                 <td className="r">{money(inv.iva_5)}</td>
                 <td className="r desc">{money(inv.desc_info)}</td>

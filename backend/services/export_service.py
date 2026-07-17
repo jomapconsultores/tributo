@@ -29,6 +29,8 @@ DATOS_COLS = [
     ("Base 0%", "base_0"),
     ("Base 15%", "base_15"),
     ("IVA 15%", "iva_15"),
+    ("Base 8%", "base_8"),
+    ("IVA 8%", "iva_8"),
     ("Base 5%", "base_5"),
     ("IVA 5%", "iva_5"),
     ("Desc. Info", "desc_info"),
@@ -39,7 +41,7 @@ DATOS_COLS = [
 
 NUMERIC_KEYS = {
     "no_objeto_iva", "exento_iva", "base_0", "base_15", "iva_15",
-    "base_5", "iva_5", "desc_info", "desc_manual", "total"
+    "base_8", "iva_8", "base_5", "iva_5", "desc_info", "desc_manual", "total"
 }
 
 

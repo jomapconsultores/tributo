@@ -8,7 +8,8 @@ from services.sri_service import extract_claves_from_txt, descargar_multiples_xm
 from services.xml_parser import parse_xml_invoice
 from services.export_service import generate_excel, generate_pdf
 from services.xml_store import guardar_xml_original
-from services.periodo import periodo_cliente, es_de_otro_periodo, etiqueta_periodo
+from services.periodo import (periodo_cliente, es_de_otro_periodo, etiqueta_periodo,
+                              identificacion_cliente, identificacion_no_coincide)
 from database import fetch_all
 from tenancy import assert_client_owner, visible_client_ids, filter_ids_by_tenancy
 from services.activity import registrar
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/api/invoices", tags=["invoices"])
 INVOICE_COLUMNS = (
     "id,client_id,unique_id,estado,fecha,ruc_proveedor,factura_numero,nombre_proveedor,"
     "clasificacion,concepto,forma_pago,tarjeta_credito,no_objeto_iva,exento_iva,"
-    "base_0,base_15,iva_15,base_5,iva_5,desc_info,desc_manual,total,"
+    "base_0,base_15,iva_15,base_8,iva_8,base_5,iva_5,desc_info,desc_manual,total,"
     "base_15_original,total_original,es_yanbal,destinatario,ruc_comprador"
 )
 
@@ -46,15 +47,15 @@ class BulkIds(BaseModel):
 
 def _load_maps(supabase, user_id: str = None):
     """Mapas de clasificación/tarjeta usados para auto-completar una factura al
-    subirla. Se limitan al usuario de sesión (mismo criterio que usa el propio
-    clasificador en classification.py) en vez de cargar classification_map y
-    card_memory COMPLETAS de todos los usuarios de la app en cada subida."""
-    class_q = supabase.table("classification_map").select("ruc, categoria")
+    subirla. La clasificación usa el catálogo de EQUIPO (catálogo general de los
+    admin + overrides del propio usuario), no solo las filas del usuario, para que
+    un no-admin también aplique las reglas del equipo y las cargas nuevas no entren
+    SIN CLASIFICAR. La memoria de tarjeta sí es personal (por user_id)."""
+    from routers.classification import resolve_team_classification
+    classification_map = resolve_team_classification(supabase, user_id) if user_id else {}
     mem_q = supabase.table("card_memory").select("mem_key, tarjeta_credito")
     if user_id:
-        class_q = class_q.eq("user_id", user_id)
         mem_q = mem_q.eq("user_id", user_id)
-    classification_map = {row['ruc']: row['categoria'] for row in (class_q.execute().data or [])}
     card_memory = {row['mem_key']: row['tarjeta_credito'] for row in (mem_q.execute().data or [])}
     return classification_map, card_memory
 
@@ -148,9 +149,11 @@ async def process_txt(
 
         classification_map, card_memory = _load_maps(supabase, user_id)
         pmes, panio = periodo_cliente(supabase, client_id)
+        cli_ident = identificacion_cliente(supabase, client_id)
 
         new_count = dup_count = err_count = fp_count = 0
         fuera_periodo = []
+        comprador_ajeno = []  # compras cuyo COMPRADOR no es el contribuyente
         for xml_content in xmls:
             invoice = parse_xml_invoice(xml_content, classification_map, card_memory)
             if not invoice:
@@ -160,6 +163,9 @@ async def process_txt(
                 fp_count += 1
                 fuera_periodo.append({"archivo": "(XML del SRI)", "factura": invoice.get("factura_numero"), "fecha": invoice.get("fecha")})
                 continue
+            if identificacion_no_coincide(invoice.get("ruc_comprador"), cli_ident):
+                comprador_ajeno.append({"archivo": "(XML del SRI)", "factura": invoice.get("factura_numero"),
+                                        "ruc_comprador": invoice.get("ruc_comprador")})
             guardar_xml_original(supabase, user_id, client_id, "gasto", xml_content)
             result = _store_invoice(supabase, client_id, user_id, invoice)
             if result == "new":
@@ -182,6 +188,7 @@ async def process_txt(
             "no_descargadas": no_descargadas,
             "fuera_de_periodo": fp_count,
             "fuera_periodo": fuera_periodo,
+            "comprador_ajeno": comprador_ajeno,
             "periodo": etiqueta_periodo(pmes, panio),
         }
     except HTTPException:
@@ -202,9 +209,11 @@ async def process_xml(
         assert_client_owner(client_id, user_id)
         classification_map, card_memory = _load_maps(supabase, user_id)
         pmes, panio = periodo_cliente(supabase, client_id)
+        cli_ident = identificacion_cliente(supabase, client_id)
 
         new_count = dup_count = err_count = fp_count = 0
         fuera_periodo = []
+        comprador_ajeno = []
         for file in files:
             xml_content = (await file.read()).decode('utf-8', errors='ignore')
             invoice = parse_xml_invoice(xml_content, classification_map, card_memory)
@@ -215,6 +224,9 @@ async def process_xml(
                 fp_count += 1
                 fuera_periodo.append({"archivo": file.filename, "factura": invoice.get("factura_numero"), "fecha": invoice.get("fecha")})
                 continue
+            if identificacion_no_coincide(invoice.get("ruc_comprador"), cli_ident):
+                comprador_ajeno.append({"archivo": file.filename, "factura": invoice.get("factura_numero"),
+                                        "ruc_comprador": invoice.get("ruc_comprador")})
             guardar_xml_original(supabase, user_id, client_id, "gasto", xml_content)
             result = _store_invoice(supabase, client_id, user_id, invoice)
             if result == "new":
@@ -229,6 +241,7 @@ async def process_xml(
                       entity="Facturas de gastos", client_id=client_id, cantidad=new_count)
         return {"new": new_count, "duplicates": dup_count, "errors": err_count,
                 "fuera_de_periodo": fp_count, "fuera_periodo": fuera_periodo,
+                "comprador_ajeno": comprador_ajeno,
                 "periodo": etiqueta_periodo(pmes, panio)}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -309,7 +322,7 @@ async def update_invoice(
         # Si cambia el descuento manual, recalcular Base 15%, IVA 15% y Total
         if "desc_manual" in update_data:
             current = supabase.table("invoices").select(
-                "base_15_original,base_0,base_5,iva_5,exento_iva,no_objeto_iva"
+                "base_15_original,base_0,base_5,iva_5,base_8,iva_8,exento_iva,no_objeto_iva"
             ).eq("id", invoice_id).execute()
             if current.data:
                 row = current.data[0]
@@ -319,7 +332,8 @@ async def update_invoice(
                 new_iva_15 = round(new_base_15 * 0.15, 2)
                 total = round(
                     float(row.get("base_0") or 0) + float(row.get("base_5") or 0)
-                    + float(row.get("iva_5") or 0) + float(row.get("exento_iva") or 0)
+                    + float(row.get("iva_5") or 0) + float(row.get("base_8") or 0)
+                    + float(row.get("iva_8") or 0) + float(row.get("exento_iva") or 0)
                     + float(row.get("no_objeto_iva") or 0) + new_base_15 + new_iva_15,
                     2
                 )

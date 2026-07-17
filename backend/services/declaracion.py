@@ -97,12 +97,14 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     # ── Compras del EJERCICIO (con derecho a crédito) ────────────────────
     c_base_15, c_n_base_15 = _agg(ejercicio, "base_15")
     c_iva_15, _            = _agg(ejercicio, "iva_15")
+    c_base_8, c_n_base_8   = _agg(ejercicio, "base_8")
+    c_iva_8, _             = _agg(ejercicio, "iva_8")
     c_base_5, c_n_base_5   = _agg(ejercicio, "base_5")
     c_iva_5, _             = _agg(ejercicio, "iva_5")
     c_base_0, c_n_base_0   = _agg(ejercicio, "base_0")
     c_no_obj, c_n_no_obj   = _agg(ejercicio, "no_objeto_iva")
     c_exento, c_n_exento   = _agg(ejercicio, "exento_iva")
-    iva_compras = c_iva_15 + c_iva_5  # crédito tributario del período actual
+    iva_compras = c_iva_15 + c_iva_5 + c_iva_8  # crédito tributario del período actual
 
     # ── Ventas con ICE (tabla ice_sales) ─────────────────────────────────
     v_ice_solo_ok = [v for v in ventas_ice if (v.get("estado") or "OK") == "OK"]
@@ -125,6 +127,8 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     v_iva_solo_ok = [v for v in ventas_iva if (v.get("estado") or "OK") == "OK"]
     v_base_15, v_n_base_15 = _agg(v_iva_solo_ok, "base_15")
     v_iva_15,  _           = _agg(v_iva_solo_ok, "iva_15")
+    v_base_8,  v_n_base_8  = _agg(v_iva_solo_ok, "base_8")
+    v_iva_8,   _           = _agg(v_iva_solo_ok, "iva_8")
     v_base_5,  v_n_base_5  = _agg(v_iva_solo_ok, "base_5")
     v_iva_5,   _           = _agg(v_iva_solo_ok, "iva_5")
     v_base_0,  v_n_base_0  = _agg(v_iva_solo_ok, "base_0")
@@ -134,12 +138,14 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     # ── Totales de ventas ────────────────────────────────────────────────
     t_base_15 = v_ice_base_15 + v_base_15      # 411
     t_iva_15  = v_ice_iva_15 + v_iva_15        # 421
+    t_base_8  = v_base_8                       # tarifa especial 8%
+    t_iva_8   = v_iva_8
     t_base_5  = v_base_5                       # 412
     t_iva_5   = v_iva_5                        # 422
     t_base_0  = v_base_0                       # 413
     t_exento  = v_exento                       # 414
     t_no_obj  = v_no_obj                       # 415
-    iva_ventas = t_iva_15 + t_iva_5
+    iva_ventas = t_iva_15 + t_iva_5 + t_iva_8
 
     # ── Override manual de ventas (cuando no se tienen los XML) ───────────
     # Si el usuario ingresa la base de ventas a mano, esta REEMPLAZA el valor
@@ -154,7 +160,7 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
         t_iva_5 = round(t_base_5 * 0.05, 2)
     if override_ventas_0 is not None:
         t_base_0 = _f(override_ventas_0)
-    iva_ventas = t_iva_15 + t_iva_5
+    iva_ventas = t_iva_15 + t_iva_5 + t_iva_8
 
     # ── Retenciones del período (609) ────────────────────────────────────
     # Suma de ret_iva de la tabla retentions del cliente en el período.
@@ -184,7 +190,7 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     # SIN VENTAS en el período: el factor es 0 → NO se genera crédito tributario
     # (el IVA de compras va al gasto). Si en un caso se requiere el crédito, el
     # usuario puede fijar el factor a mano (override factor_prop).
-    ventas_gravadas = t_base_15 + t_base_5          # tarifa distinta de cero (dan derecho)
+    ventas_gravadas = t_base_15 + t_base_5 + t_base_8   # tarifa distinta de cero (dan derecho)
     ventas_factor_total = ventas_gravadas + t_base_0  # gravadas + tarifa 0%
     if factor_prop is not None:
         factor = max(0.0, min(1.0, _f(factor_prop)))
@@ -255,17 +261,21 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
         # ── VENTAS ──
         fila("VENTAS", "411", "Ventas locales gravadas 15% (valor neto, ICE+IVA incluido)", t_base_15, n411),
         fila("VENTAS", "412", "Ventas locales gravadas 5% (valor neto)", t_base_5, n412),
+        *([fila("VENTAS", "411-8", "Ventas locales gravadas 8% — tarifa especial (verificar casillero oficial)", t_base_8, v_n_base_8)] if (t_base_8 or t_iva_8) else []),
         fila("VENTAS", "413", "Ventas locales con tarifa 0%", t_base_0, n413),
         fila("VENTAS", "414", "Ventas exentas de IVA", t_exento, v_n_exento),
         fila("VENTAS", "415", "Ventas no objeto del IVA", t_no_obj, v_n_no_obj),
         fila("VENTAS", "421", "IVA generado en ventas 15%", t_iva_15),
         fila("VENTAS", "422", "IVA generado en ventas 5%", t_iva_5),
+        *([fila("VENTAS", "421-8", "IVA generado en ventas 8% (tarifa especial)", t_iva_8)] if (t_base_8 or t_iva_8) else []),
 
         # ── ADQUISICIONES ──
         fila("ADQUISICIONES", "510", "Adquisiciones gravadas 15% con derecho a crédito (valor neto)", c_base_15, c_n_base_15),
         fila("ADQUISICIONES", "520", "IVA en adquisiciones 15%", c_iva_15),
         fila("ADQUISICIONES", "550", "Adquisiciones gravadas 5% con derecho a crédito (valor neto)", c_base_5, c_n_base_5),
         fila("ADQUISICIONES", "560", "IVA en adquisiciones 5%", c_iva_5),
+        *([fila("ADQUISICIONES", "510-8", "Adquisiciones gravadas 8% — tarifa especial (verificar casillero oficial)", c_base_8, c_n_base_8)] if (c_base_8 or c_iva_8) else []),
+        *([fila("ADQUISICIONES", "520-8", "IVA en adquisiciones 8%", c_iva_8)] if (c_base_8 or c_iva_8) else []),
         fila("ADQUISICIONES", "517", "Adquisiciones y pagos gravados tarifa 0%", c_base_0, c_n_base_0),
         fila("ADQUISICIONES", "518", "Adquisiciones no objeto del IVA", c_no_obj, c_n_no_obj),
         fila("ADQUISICIONES", "519", "Adquisiciones exentas de IVA", c_exento, c_n_exento),
@@ -335,8 +345,10 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
             "ventas_15": round(t_base_15, 2),
             "ventas_5": round(t_base_5, 2),
             "ventas_0": round(t_base_0, 2),
+            "ventas_8": round(t_base_8, 2),
             "iva_ventas_15": round(t_iva_15, 2),
             "iva_ventas_5": round(t_iva_5, 2),
+            "iva_ventas_8": round(t_iva_8, 2),
             "ventas_manual": ventas_manual,
             "iva_compras": round(iva_compras, 2),
             # Factor de proporcionalidad y crédito acreditable

@@ -338,6 +338,12 @@ export default function AnexoPVPICE() {
         const periodos = clients.filter((c) => c.identificacion === contrib.identificacion)
         const per = periodos.find((c) => String(c.periodo_anio) === anioXml &&
           String(c.periodo_mes).padStart(2, '0') === mesXml) || periodos[0]
+        // Al ligar el anexo a su cliente cambiamos clientSel, lo que dispararía el
+        // efecto de reset (limpia header/rows/savedId) y BORRARÍA las filas que
+        // acabamos de leer del XML — por eso había que cargarlo dos veces para
+        // verlo. Sincronizamos la ref ANTES de setClientSel para que ese efecto
+        // NO considere esto un cambio manual de cliente y conserve lo cargado.
+        prevClientSelRef.current = per?.id || ''
         setClientSel(per?.id || '')
       } else if (rucXml || razonXml) {
         alert('ℹ El RUC/razón social del XML no coincide con ningún contribuyente guardado. '

@@ -36,3 +36,24 @@ export function msgFueraPeriodo(d) {
   return `\n\n📅 ${n} comprobante(s) NO se tomaron en cuenta porque están con otra fecha ` +
          `(no pertenecen al período${per}):\n${lista}${mas}`
 }
+
+// Advertencias de identificación: ventas cuyo EMISOR no es el contribuyente que
+// declara, y compras cuyo COMPRADOR no es este contribuyente. No bloquean la
+// carga (los comprobantes sí se guardan), solo avisan para que se revise.
+export function msgIdentAjena(d) {
+  const fmt = (arr, campo) => arr.slice(0, 6)
+    .map((r) => `  • ${r.factura || r.archivo || '—'} — ${campo} ${r[campo === 'emisor' ? 'ruc_emisor' : 'ruc_comprador'] || '—'}`)
+    .join('\n') + (arr.length > 6 ? `\n  …y ${arr.length - 6} más` : '')
+  const parts = []
+  const emi = d?.emisor_ajeno || []
+  const comp = d?.comprador_ajeno || []
+  if (emi.length) {
+    parts.push(`\n\n⚠ ${emi.length} venta(s) cuyo EMISOR (RUC) NO es el contribuyente que declara — ` +
+               `verifica que correspondan a este RUC:\n${fmt(emi, 'emisor')}`)
+  }
+  if (comp.length) {
+    parts.push(`\n\n⚠ ${comp.length} compra(s) cuyo COMPRADOR NO es este contribuyente — ` +
+               `verifica que la compra le corresponda:\n${fmt(comp, 'comprador')}`)
+  }
+  return parts.join('')
+}

@@ -12,7 +12,8 @@ from database import get_supabase_client, es_error_duplicado
 from services.xml_parser_ventas import parse_venta_xml
 from services.pdf_parser_ventas import parse_venta_pdf
 from services.xml_store import guardar_xml_original
-from services.periodo import periodo_cliente, es_de_otro_periodo, etiqueta_periodo
+from services.periodo import (periodo_cliente, es_de_otro_periodo, etiqueta_periodo,
+                              identificacion_cliente, identificacion_no_coincide)
 from services.sri_service import extract_claves_from_txt, descargar_multiples_xmls
 from services.activity import registrar
 from database import fetch_all, fetch_in
@@ -22,7 +23,7 @@ router = APIRouter(prefix="/api/sales-iva", tags=["sales_iva"])
 
 COLUMNS = (
     "id,client_id,unique_id,estado,fecha,tipo_id_cliente,id_cliente,razon_social_cliente,"
-    "factura_numero,no_objeto_iva,exento_iva,base_0,base_15,iva_15,base_5,iva_5,"
+    "factura_numero,no_objeto_iva,exento_iva,base_0,base_15,iva_15,base_8,iva_8,base_5,iva_5,"
     "importe_total,notas,created_at"
 )
 
@@ -49,6 +50,8 @@ class SaleUpdate(BaseModel):
     base_0: Optional[float] = None
     base_15: Optional[float] = None
     iva_15: Optional[float] = None
+    base_8: Optional[float] = None
+    iva_8: Optional[float] = None
     base_5: Optional[float] = None
     iva_5: Optional[float] = None
     importe_total: Optional[float] = None
@@ -79,9 +82,11 @@ async def process_xml(
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
         pmes, panio = periodo_cliente(supabase, client_id)
+        cli_ident = identificacion_cliente(supabase, client_id)
         new_count = dup_count = err_count = rej_count = fp_count = 0
         rechazadas = []  # facturas con ICE
         fuera_periodo = []  # facturas con fecha de otro mes
+        emisor_ajeno = []  # ventas cuyo EMISOR no es el contribuyente que declara
         for file in files:
             raw = await file.read()
             es_pdf = (file.filename or "").lower().endswith(".pdf") or raw[:5] == b"%PDF-"
@@ -112,6 +117,15 @@ async def process_xml(
                     "fecha": parsed.get("fecha"),
                 })
                 continue
+            # El emisor de una VENTA debe ser el propio contribuyente que declara.
+            # ruc_emisor no es columna de sales_iva: se extrae del dict antes de insertar.
+            emisor = parsed.pop("ruc_emisor", "")
+            if identificacion_no_coincide(emisor, cli_ident):
+                emisor_ajeno.append({
+                    "archivo": file.filename,
+                    "factura": parsed.get("factura_numero"),
+                    "ruc_emisor": emisor,
+                })
             if xml_content:
                 guardar_xml_original(supabase, user_id, client_id, "ingreso_iva", xml_content)
             try:
@@ -145,9 +159,12 @@ async def process_xml(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _guardar_venta(supabase, client_id, user_id, xml_content, pmes=None, panio=None):
-    """Parsea un XML de venta y lo guarda en sales_iva. Devuelve uno de:
-    'new' | 'dup' | 'err' | 'con_ice' | 'fuera'. (Reutilizado por process-xml y process-txt)."""
+def _guardar_venta(supabase, client_id, user_id, xml_content, pmes=None, panio=None, cli_ident=""):
+    """Parsea un XML de venta y lo guarda en sales_iva. Devuelve (estado, info):
+    estado ∈ 'new' | 'dup' | 'err' | 'con_ice' | 'fuera'. En 'new'/'dup', info es
+    None salvo que el EMISOR no sea el contribuyente que declara (cli_ident): en
+    ese caso info = {'factura', 'ruc_emisor'} para advertir. (Reutilizado por
+    process-txt.)"""
     parsed = parse_venta_xml(xml_content)
     if parsed is None:
         return "err", None
@@ -155,10 +172,15 @@ def _guardar_venta(supabase, client_id, user_id, xml_content, pmes=None, panio=N
         return "con_ice", parsed.get("factura_numero")
     if es_de_otro_periodo(parsed.get("fecha"), pmes, panio):
         return "fuera", {"factura": parsed.get("factura_numero"), "fecha": parsed.get("fecha")}
+    # ruc_emisor no es columna: se extrae antes de insertar y sirve para validar
+    # que la venta la emita el propio contribuyente.
+    emisor = parsed.pop("ruc_emisor", "")
+    ajeno = {"factura": parsed.get("factura_numero"), "ruc_emisor": emisor} \
+        if identificacion_no_coincide(emisor, cli_ident) else None
     guardar_xml_original(supabase, user_id, client_id, "ingreso_iva", xml_content)
     try:
         supabase.table("sales_iva").insert({"client_id": client_id, "user_id": user_id, **parsed}).execute()
-        return "new", None
+        return "new", ajeno
     except Exception as e:
         if es_error_duplicado(e):
             return "dup", None
@@ -185,13 +207,17 @@ async def process_txt(
         xmls, no_descargadas = descargar_multiples_xmls(list(claves), max_workers=8, max_rondas=3)
 
         pmes, panio = periodo_cliente(supabase, client_id)
+        cli_ident = identificacion_cliente(supabase, client_id)
         new_count = dup_count = err_count = rej_count = fp_count = 0
         rechazadas = []
         fuera_periodo = []
+        emisor_ajeno = []
         for xml_content in xmls:
-            estado, info = _guardar_venta(supabase, client_id, user_id, xml_content, pmes, panio)
+            estado, info = _guardar_venta(supabase, client_id, user_id, xml_content, pmes, panio, cli_ident)
             if estado == "new":
                 new_count += 1
+                if info:  # emisor no es el contribuyente
+                    emisor_ajeno.append({"archivo": "(XML del SRI)", **info})
             elif estado == "dup":
                 dup_count += 1
             elif estado == "con_ice":
@@ -217,6 +243,7 @@ async def process_txt(
             "rechazadas": rechazadas,
             "fuera_de_periodo": fp_count,
             "fuera_periodo": fuera_periodo,
+            "emisor_ajeno": emisor_ajeno,
             "periodo": etiqueta_periodo(pmes, panio),
         }
     except HTTPException:
@@ -272,7 +299,8 @@ async def update_sale(sale_id: str, body: SaleUpdate, user_id: str = Depends(get
         if "importe_total" not in cambios:
             cambios["importe_total"] = round(
                 float(row.get("base_0") or 0) + float(row.get("base_15") or 0)
-                + float(row.get("iva_15") or 0) + float(row.get("base_5") or 0)
+                + float(row.get("iva_15") or 0) + float(row.get("base_8") or 0)
+                + float(row.get("iva_8") or 0) + float(row.get("base_5") or 0)
                 + float(row.get("iva_5") or 0) + float(row.get("no_objeto_iva") or 0)
                 + float(row.get("exento_iva") or 0), 2)
         supabase.table("sales_iva").update(cambios).eq("id", sale_id).execute()

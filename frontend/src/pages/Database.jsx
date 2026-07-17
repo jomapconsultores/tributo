@@ -11,7 +11,7 @@ import ClientNavigator from '../components/ClientNavigator'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClaveHeader from '../components/ClaveHeader'
 import { periodoLargo } from '../utils/periodo'
-import { fmtMoney, msgFueraPeriodo } from '../utils/format'
+import { fmtMoney, msgFueraPeriodo, msgIdentAjena } from '../utils/format'
 import './Database.css'
 
 export default function Database() {
@@ -70,7 +70,7 @@ export default function Database() {
       } else {
         msg += `\n\n✔ Se bajaron TODAS las facturas.`
       }
-      msg += msgFueraPeriodo(d)
+      msg += msgFueraPeriodo(d) + msgIdentAjena(d)
       alert(msg)
       await afterImport()
     } catch (err) {
@@ -85,7 +85,7 @@ export default function Database() {
     setBusy(`Procesando ${files.length} archivo(s) XML…`)
     try {
       const res = await invoicesAPI.processXml(selectedClientId, files)
-      alert(`Nuevas: ${res.data.new} | Duplicadas: ${res.data.duplicates} | Errores: ${res.data.errors}` + msgFueraPeriodo(res.data))
+      alert(`Nuevas: ${res.data.new} | Duplicadas: ${res.data.duplicates} | Errores: ${res.data.errors}` + msgFueraPeriodo(res.data) + msgIdentAjena(res.data))
       await afterImport()
     } catch (err) {
       alert('Error: ' + (err.response?.data?.detail || err.message))

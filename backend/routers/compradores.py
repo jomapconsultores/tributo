@@ -27,23 +27,29 @@ def _compradores_visibles(supabase, user_id, identificacion):
 
 
 def _mapas_enriquecimiento(supabase, user_id):
-    """Mapas RUC -> categoría (clasificador) y RUC -> datos de proveedor calificado."""
+    """Mapas RUC -> categoría (clasificador) y RUC -> datos de proveedor calificado.
+    La clasificación usa el catálogo de EQUIPO (general de admins + overrides del
+    usuario), igual que las cargas de gastos, para que ventas y gastos clasifiquen
+    de forma consistente (antes un no-admin solo veía su propio classification_map)."""
     from routers.access import rol_de
+    from routers.classification import _admin_ids, _mejor_por_ruc
     is_admin = rol_de(user_id) == "admin"
     try:
+        todas = fetch_all(lambda: supabase.table("classification_map")
+                          .select("ruc,categoria,actividad,user_id,updated_at,created_at"))
         if is_admin:
-            cl = fetch_all(lambda: supabase.table("classification_map").select("ruc,categoria,actividad"))
             pr = fetch_all(lambda: supabase.table("rebajas_proveedores").select("ruc,calificado,categoria,vigencia_inicio,vigente_hasta,actividad"))
         else:
-            cl = supabase.table("classification_map").select("ruc,categoria,actividad").eq("user_id", user_id).execute().data or []
             pr = supabase.table("rebajas_proveedores").select("ruc,calificado,categoria,vigencia_inicio,vigente_hasta,actividad").eq("user_id", user_id).execute().data or []
     except Exception:
-        cl, pr = [], []
-    cmap = {}
-    for c in cl:
-        k = (c.get("ruc") or "").strip()
-        if k and k not in cmap:
-            cmap[k] = c
+        todas, pr = [], []
+    admin_set = set(_admin_ids(supabase))
+    cmap = {ruc: g for ruc, g in _mejor_por_ruc([r for r in todas if r.get("user_id") in admin_set]).items()}
+    for r in todas:  # override del usuario gana si tiene categoría
+        if r.get("user_id") == user_id and (r.get("categoria") or "").strip():
+            k = (r.get("ruc") or "").strip()
+            if k:
+                cmap[k] = r
     pmap = {}
     for p in pr:
         k = (p.get("ruc") or "").strip()

@@ -89,7 +89,17 @@ def parse_venta_pdf(pdf_bytes: bytes) -> Optional[Dict]:
             if nombre:
                 razon_cliente = nombre
 
-    unique_id = clave or (f"{id_cliente}-{factura_numero}" if factura_numero else None)
+    # RUC del EMISOR (el propio contribuyente): primera aparición de "R.U.C.: 13
+    # dígitos" en el RIDE (cabecera del emisor). El unique_id de fallback (cuando
+    # la factura no trae claveAcceso) debe ser IDÉNTICO al de xml_parser_ventas
+    # (ruc_emisor-factura); si acá se usara el id del COMPRADOR, el mismo
+    # comprobante subido por XML y por PDF generaría dos unique_id distintos y se
+    # contaría dos veces. Si no se logra leer el RUC emisor, se conserva el
+    # comportamiento anterior (id del comprador) como último recurso.
+    memisor = re.search(r"R\.?\s*U\.?\s*C\.?\s*:?\s*(\d{13})", t)
+    ruc_emisor = memisor.group(1) if memisor else ""
+    fallback_id = ruc_emisor or id_cliente
+    unique_id = clave or (f"{fallback_id}-{factura_numero}" if factura_numero else None)
     if not unique_id:
         return None
 
@@ -105,11 +115,13 @@ def parse_venta_pdf(pdf_bytes: bytes) -> Optional[Dict]:
 
     # ── Totales por tarifa (etiquetas del RIDE) ──────────────────────────
     base_15 = _num_antes(t, "SUBTOTAL 15%")
+    base_8 = _num_antes(t, "SUBTOTAL 8%")
     base_5 = _num_antes(t, "SUBTOTAL 5%")
     base_0 = _num_antes(t, "SUBTOTAL 0%")
     no_objeto = _num_antes(t, "SUBTOTAL NO OBJETO DE IVA")
     exento = _num_antes(t, "SUBTOTAL EXENTO DE IVA")
     iva_15 = _num_antes(t, "IVA 15%")
+    iva_8 = _num_antes(t, "IVA 8%")
     iva_5 = _num_antes(t, "IVA 5%")
     importe_total = round(_num_antes(t, "VALOR TOTAL"), 2)
 
@@ -140,6 +152,8 @@ def parse_venta_pdf(pdf_bytes: bytes) -> Optional[Dict]:
         "base_0": round(base_0, 2),
         "base_15": round(base_15, 2),
         "iva_15": round(iva_15, 2),
+        "base_8": round(base_8, 2),
+        "iva_8": round(iva_8, 2),
         "base_5": round(base_5, 2),
         "iva_5": round(iva_5, 2),
         "importe_total": importe_total,

@@ -24,16 +24,16 @@ def balance_components_to_total(components: dict, total: float, tolerance: float
     (iva = base × tasa). Se ajusta el componente NO-tasable más grande entre:
     base_0, base_15, exento_iva, no_objeto_iva, base_5 (en ese orden de prioridad).
     """
-    keys = ("no_objeto_iva", "exento_iva", "base_0", "base_15", "iva_15", "base_5", "iva_5")
+    keys = ("no_objeto_iva", "exento_iva", "base_0", "base_15", "iva_15", "base_8", "iva_8", "base_5", "iva_5")
     comp = {k: round(float(components.get(k, 0) or 0), 2) for k in keys}
     suma = round(sum(comp.values()), 2)
     diff = round(float(total) - suma, 2)
     if diff == 0 or abs(diff) > tolerance:
         return comp
     # Elegir el componente NO-tasable más grande para absorber el centavo.
-    # Orden de prioridad: base_15, base_0, base_5, exento, no_objeto.
-    # (Evitamos iva_15 e iva_5 para no romper la relación iva = base × tasa.)
-    ajustables = ["base_15", "base_0", "base_5", "exento_iva", "no_objeto_iva"]
+    # Orden de prioridad: base_15, base_0, base_8, base_5, exento, no_objeto.
+    # (Evitamos los iva_* para no romper la relación iva = base × tasa.)
+    ajustables = ["base_15", "base_0", "base_8", "base_5", "exento_iva", "no_objeto_iva"]
     elegido = max(ajustables, key=lambda k: comp[k])
     comp[elegido] = round(comp[elegido] + diff, 2)
     return comp
@@ -171,17 +171,15 @@ def parse_xml_invoice(
                         base_15 += base_imponible
                         iva_15 += valor_impuesto
                     elif cod_porc == '8':
-                        # 8% (feriados fiscales): tarifa realmente distinta al
-                        # 15%. El modelo de datos (columnas base_15/iva_15) no
-                        # tiene una casilla propia para el 8% — agregarla
-                        # requeriría una migración de esquema, así que por ahora
-                        # se sigue sumando a la tarifa general (no se pierde el
-                        # valor de IVA) pero queda una advertencia en logs para
-                        # que el contador verifique el casillero manualmente.
+                        # 8% (tarifa especial, ej. feriados/turismo): tarifa
+                        # realmente distinta al 15%. Va a su PROPIA casilla
+                        # (base_8/iva_8), NO al bucket 15%: mezclarla rompía la
+                        # identidad base_15 × 15% = iva_15 en el resumen y la
+                        # declaración (una factura al 8% inflaba la base 15% con
+                        # un IVA que no es el 15%). Su IVA sí se cuenta en el
+                        # crédito/total (ver services/declaracion.py).
                         base_8 += base_imponible
                         iva_8 += valor_impuesto
-                        base_15 += base_imponible
-                        iva_15 += valor_impuesto
                     elif cod_porc == '5':
                         base_5 += base_imponible
                         iva_5 += valor_impuesto
@@ -206,14 +204,14 @@ def parse_xml_invoice(
             base_15 = max(0.0, base_15_original - total_descuento_xml)
             iva_15 = round(base_15 * 0.15, 2)
             total = round(
-                base_0 + base_5 + iva_5 + base_exento + base_no_objeto + base_15 + iva_15,
+                base_0 + base_5 + iva_5 + base_8 + iva_8 + base_exento + base_no_objeto + base_15 + iva_15,
                 2
             )
 
         if base_8 > 0:
             print(f"[xml_parser] Aviso: factura {factura_numero or unique_id} de {nombre} tiene "
-                  f"${base_8:.2f} gravados al 8%% (IVA ${iva_8:.2f}) — se agrupó con la tarifa "
-                  f"general (15%%) por falta de casillero propio; verificar manualmente.")
+                  f"${base_8:.2f} gravados al 8%% (IVA ${iva_8:.2f}) — se registró en la casilla "
+                  f"propia 8%% (base_8/iva_8); verificar el casillero oficial antes de declarar.")
 
         # Memoria de tarjeta
         mem_key = f"{nombre}|{total_original:.2f}"
@@ -225,6 +223,7 @@ def parse_xml_invoice(
         bal = balance_components_to_total({
             "no_objeto_iva": base_no_objeto, "exento_iva": base_exento,
             "base_0": base_0, "base_15": base_15, "iva_15": iva_15,
+            "base_8": base_8, "iva_8": iva_8,
             "base_5": base_5, "iva_5": iva_5,
         }, total_round)
 
@@ -244,6 +243,8 @@ def parse_xml_invoice(
             "base_0": bal["base_0"],
             "base_15": bal["base_15"],
             "iva_15": bal["iva_15"],
+            "base_8": bal["base_8"],
+            "iva_8": bal["iva_8"],
             "base_5": bal["base_5"],
             "iva_5": bal["iva_5"],
             "desc_info": round(total_descuento_xml, 2),

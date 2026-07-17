@@ -22,8 +22,8 @@ from .xml_parser import find_text_ignore_ns, find_node_ignore_ns, balance_compon
 #   5    → 5%
 #   6    → no objeto de IVA
 #   7    → exento de IVA
-#   8    → 8% (tarifa especial feriados): se agrupa con las gravadas con IVA
-TARIFA_15 = {'2', '3', '4', '8', '10'}
+#   8    → 8% (tarifa especial): va a su PROPIA casilla (base_8/iva_8), NO al 15%
+TARIFA_15 = {'2', '3', '4', '10'}
 
 
 def parse_venta_xml(xml_content: str) -> Optional[Dict]:
@@ -103,6 +103,7 @@ def parse_venta_xml(xml_content: str) -> Optional[Dict]:
 
         # ── Desglose por tarifa IVA ─────────────────────────────────────
         base_0 = base_15 = iva_15 = base_5 = iva_5 = 0.0
+        base_8 = iva_8 = 0.0
         no_objeto = exento = 0.0
 
         if total_con_imp is not None:
@@ -122,16 +123,12 @@ def parse_venta_xml(xml_content: str) -> Optional[Dict]:
 
                 if cod_porc == '0':
                     base_0 += base
+                elif cod_porc == '8':
+                    # 8% (tarifa especial): a su PROPIA casilla base_8/iva_8, NO
+                    # al bucket 15% (mezclarla rompía base_15 × 15% = iva_15).
+                    base_8 += base
+                    iva_8 += valor
                 elif cod_porc in TARIFA_15:
-                    if cod_porc == '8':
-                        # 8% (feriados fiscales): tarifa distinta al 15%. El
-                        # modelo (columnas base_15/iva_15) no tiene casilla
-                        # propia para el 8% — se agrupa con la tarifa general
-                        # (no se pierde el IVA) pero se avisa para que el
-                        # contador verifique el casillero manualmente.
-                        print(f"[xml_parser_ventas] Aviso: factura {factura_numero or unique_id} "
-                              f"tiene ${base:.2f} gravados al 8%% (IVA ${valor:.2f}) — se agrupó "
-                              f"con la tarifa general (15%%); verificar manualmente.")
                     base_15 += base
                     iva_15 += valor
                 elif cod_porc == '5':
@@ -153,6 +150,7 @@ def parse_venta_xml(xml_content: str) -> Optional[Dict]:
         bal = balance_components_to_total({
             'no_objeto_iva': no_objeto, 'exento_iva': exento,
             'base_0': base_0, 'base_15': base_15, 'iva_15': iva_15,
+            'base_8': base_8, 'iva_8': iva_8,
             'base_5': base_5, 'iva_5': iva_5,
         }, total_round)
 
@@ -160,6 +158,7 @@ def parse_venta_xml(xml_content: str) -> Optional[Dict]:
             'unique_id': unique_id,
             'estado': 'OK',
             'fecha': fecha,
+            'ruc_emisor': ruc_emisor,  # para validar que el emisor sea el contribuyente
             'tipo_id_cliente': tipo_id_cliente,
             'id_cliente': id_cliente,
             'razon_social_cliente': razon_cliente,
@@ -169,6 +168,8 @@ def parse_venta_xml(xml_content: str) -> Optional[Dict]:
             'base_0': bal['base_0'],
             'base_15': bal['base_15'],
             'iva_15': bal['iva_15'],
+            'base_8': bal['base_8'],
+            'iva_8': bal['iva_8'],
             'base_5': bal['base_5'],
             'iva_5': bal['iva_5'],
             'importe_total': total_round,

@@ -55,6 +55,44 @@ def periodo_cliente(supabase, client_id):
     return None, None
 
 
+def solo_digitos(s):
+    """Solo los dígitos de un identificador (RUC/cédula), para comparar sin
+    ceros/espacios/guiones."""
+    return re.sub(r"\D", "", str(s or ""))
+
+
+def identificacion_cliente(supabase, client_id):
+    """Identificación (RUC/cédula) del contribuyente del cliente, o '' si no se
+    pudo leer. Se usa para validar que las ventas las emita el propio
+    contribuyente y que las compras las haga él (identificacionComprador)."""
+    try:
+        c = supabase.table("clients").select("identificacion").eq("id", client_id).limit(1).execute()
+        if c.data:
+            return (c.data[0].get("identificacion") or "").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def identificacion_no_coincide(id_comprobante, id_cliente) -> bool:
+    """True si el identificador del comprobante (emisor en ventas / comprador en
+    compras) NO coincide con el del contribuyente. Compara solo dígitos; si falta
+    alguno de los dos, NO advierte (no hay con qué comparar)."""
+    a = solo_digitos(id_comprobante)
+    b = solo_digitos(id_cliente)
+    if not a or not b:
+        return False
+    # Un lado puede ser RUC (13) y el otro cédula (10): coincide si el RUC empieza
+    # con la cédula (persona natural con RUC = cédula + '001').
+    if a == b:
+        return False
+    if len(a) == 13 and len(b) == 10 and a.startswith(b):
+        return False
+    if len(b) == 13 and len(a) == 10 and b.startswith(a):
+        return False
+    return True
+
+
 def es_de_otro_periodo(fecha, periodo_mes, periodo_anio) -> bool:
     """True si la fecha del comprobante NO pertenece al período (mes/año) del
     cliente. Si el cliente no tiene período fijado, o la fecha no es legible,

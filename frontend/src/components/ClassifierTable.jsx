@@ -83,14 +83,29 @@ export default function ClassifierTable({ classifications, onClassificationsChan
     }
     const clave = `${item.id}:${field}`
     const vacio = !String(item[field] || '').trim()
+    // Clic simple = EDITAR (igual que la tabla de gastos, InvoiceTable). Antes el
+    // clic simple sobre una celda con valor COPIABA y solo el doble clic editaba,
+    // lo que daba la sensación de que "solo deja copiar, no cambiar". Copiar sigue
+    // disponible en un botón explícito por celda.
     return (
-      <span
-        className={`editable ${extraClass} ${copied === clave ? 'copied' : ''} ${vacio && placeholder !== '-' ? 'sin-clasif' : ''}`}
-        title={vacio ? 'Doble clic para clasificar' : 'Clic: copiar · Doble clic: editar'}
-        onClick={() => (vacio ? startEdit(item.id, field, '') : copiar(item[field], clave))}
-        onDoubleClick={() => startEdit(item.id, field, item[field])}
-      >
-        {item[field] || placeholder}{copied === clave && <span className="copied-tag">✓ copiado</span>}
+      <span className={`cl-cell ${copied === clave ? 'copied' : ''}`}>
+        <span
+          className={`editable ${extraClass} ${vacio && placeholder !== '-' ? 'sin-clasif' : ''}`}
+          title={vacio ? 'Clic para clasificar' : 'Clic para editar'}
+          onClick={() => startEdit(item.id, field, item[field] || '')}
+        >
+          {item[field] || placeholder}
+        </span>
+        {!vacio && (
+          <button
+            type="button"
+            className="cl-copy-btn"
+            title="Copiar al portapapeles"
+            onClick={(e) => { e.stopPropagation(); copiar(item[field], clave) }}
+          >
+            {copied === clave ? '✓' : '⧉'}
+          </button>
+        )}
       </span>
     )
   }

@@ -25,19 +25,51 @@ class ClassificationEntry(BaseModel):
     categoria: str
 
 
-def _propagate_classification(supabase, ruc: str, categoria: str, user_id: str) -> int:
-    """Aplica la categoría a TODAS las facturas de ese RUC del usuario: las que
-    están SIN CLASIFICAR y también las que ya tenían OTRA categoría. Así, al
-    cambiar la clasificación de un RUC, se reclasifican todos sus comprobantes
-    (una clasificación por RUC, consistente). Devuelve cuántas facturas cambiaron
-    de categoría (no cuenta las que ya tenían esa misma categoría)."""
+def _client_ids_del_equipo(supabase, user_id):
+    """client_id de TODOS los contribuyentes que el usuario puede ver (según su
+    rol), o None si es admin (ve todos → sin filtro). La clasificación es un
+    catálogo de EQUIPO: al clasificar un RUC hay que reclasificar sus facturas en
+    todos esos contribuyentes, no solo las que subió este usuario."""
+    from tenancy import visible_client_ids
+    try:
+        return visible_client_ids(user_id)  # None = admin (todos)
+    except Exception as e:
+        print(f"Error resolviendo clientes visibles de {user_id}: {e}")
+        return set()
+
+
+def _propagate_classification(supabase, ruc: str, categoria: str, user_id: str,
+                              client_ids="__auto__") -> int:
+    """Aplica la categoría a TODAS las facturas de ese RUC en los contribuyentes
+    que el usuario puede ver (no solo las que subió él): las que están SIN
+    CLASIFICAR y también las que ya tenían OTRA categoría. Así, al cambiar la
+    clasificación de un RUC, se reclasifican todos sus comprobantes de todo el
+    EQUIPO (una clasificación por RUC, consistente). Devuelve cuántas facturas
+    cambiaron de categoría (no cuenta las que ya tenían esa misma categoría).
+
+    client_ids: conjunto de client_id a los que limitar la propagación. Por
+    defecto ('__auto__') se resuelven los contribuyentes visibles del usuario;
+    None = admin (todas las facturas del RUC, sin filtro por contribuyente)."""
     ruc = (ruc or "").strip()
     categoria = (categoria or "").strip().upper()
     if not ruc or not categoria:
         return 0
+    if client_ids == "__auto__":
+        client_ids = _client_ids_del_equipo(supabase, user_id)
     try:
-        rows = supabase.table("invoices").select("id,clasificacion")\
-            .eq("ruc_proveedor", ruc).eq("user_id", user_id).execute().data or []
+        if client_ids is None:  # admin: todas las facturas del RUC
+            rows = supabase.table("invoices").select("id,clasificacion")\
+                .eq("ruc_proveedor", ruc).execute().data or []
+        else:
+            client_ids = list(client_ids)
+            if not client_ids:
+                return 0
+            rows = []
+            for i in range(0, len(client_ids), 100):  # .in_ por lotes de client_id
+                lote = client_ids[i:i + 100]
+                r = supabase.table("invoices").select("id,clasificacion")\
+                    .eq("ruc_proveedor", ruc).in_("client_id", lote).execute().data or []
+                rows.extend(r)
     except Exception as e:
         print(f"Error leyendo facturas del RUC {ruc}: {e}")
         return 0
@@ -55,6 +87,34 @@ def _propagate_classification(supabase, ruc: str, categoria: str, user_id: str) 
         except Exception as e:
             print(f"Error propagando clasificación {ruc}: {e}")
     return cambiadas
+
+
+def resolve_team_classification(supabase, user_id: str) -> dict:
+    """{ruc: categoria} del catálogo EFECTIVO del equipo para auto-clasificar al
+    subir comprobantes: catálogo GENERAL (filas de los admin) como base + los
+    OVERRIDES personales del usuario (el override con categoría gana). Antes cada
+    carga solo miraba las filas del propio usuario, así que un no-admin subía todo
+    SIN CLASIFICAR aunque el catálogo general del equipo ya tuviera la regla."""
+    try:
+        todas = fetch_all(lambda: supabase.table("classification_map")
+                          .select("ruc,categoria,user_id,updated_at,created_at"))
+    except Exception as e:
+        print(f"Error cargando catálogo de equipo: {e}")
+        return {}
+    admin_set = set(_admin_ids(supabase))
+    general = _mejor_por_ruc([r for r in todas if r.get("user_id") in admin_set])
+    m = {}
+    for ruc, g in general.items():
+        cat = (g.get("categoria") or "").strip().upper()
+        if cat:
+            m[ruc] = cat
+    for r in todas:  # overrides del usuario ganan sobre el general
+        if r.get("user_id") == user_id:
+            ruc = (r.get("ruc") or "").strip()
+            cat = (r.get("categoria") or "").strip().upper()
+            if ruc and cat:
+                m[ruc] = cat
+    return m
 
 def _mejor_por_ruc(filas, prefer_user_id=None):
     """Una sola fila por RUC cuando el clasificador está repartido entre varios
@@ -520,12 +580,27 @@ def _propagate_classifications_bulk(supabase, filas: dict, user_id: str) -> int:
     rucs = list(filas.keys())
     if not rucs:
         return 0
+    # Alcance de EQUIPO: reclasifica en todos los contribuyentes visibles del
+    # usuario (no solo lo que subió él), igual que _propagate_classification.
+    client_ids = _client_ids_del_equipo(supabase, user_id)
     invoices = []
-    for i in range(0, len(rucs), 200):
-        lote = rucs[i:i + 200]
-        rows = supabase.table("invoices").select("id,ruc_proveedor,clasificacion")\
-            .eq("user_id", user_id).in_("ruc_proveedor", lote).execute().data or []
-        invoices.extend(rows)
+    if client_ids is None:  # admin: por RUC en toda la base
+        for i in range(0, len(rucs), 200):
+            lote = rucs[i:i + 200]
+            rows = supabase.table("invoices").select("id,ruc_proveedor,clasificacion")\
+                .in_("ruc_proveedor", lote).execute().data or []
+            invoices.extend(rows)
+    else:
+        client_ids = list(client_ids)
+        if not client_ids:
+            return 0
+        for i in range(0, len(rucs), 200):
+            lote_ruc = rucs[i:i + 200]
+            for j in range(0, len(client_ids), 100):
+                lote_cli = client_ids[j:j + 100]
+                rows = supabase.table("invoices").select("id,ruc_proveedor,clasificacion")\
+                    .in_("ruc_proveedor", lote_ruc).in_("client_id", lote_cli).execute().data or []
+                invoices.extend(rows)
 
     por_categoria = {}  # categoria destino -> [ids a cambiar]
     for inv in invoices:
