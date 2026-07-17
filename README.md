@@ -42,4 +42,14 @@ npm run dev
 
 ## Deployment
 
-Conectar repositorio GitHub a Coolify para deploy automático (build por Dockerfile o buildpack según el servicio).
+Repositorio GitHub conectado a Coolify (dos apps: `tributo` = frontend, `tributos-api` = backend), rama `main`.
+
+- **Auto-deploy:** al hacer push a `main`, Coolify debería reconstruir ambas apps
+  automáticamente. Si un push no dispara el deploy, verificar en GitHub → Settings →
+  GitHub Apps → Coolify → Advanced → *Recent Deliveries* (entregas del webhook) y que
+  la opción *Automatic Deployment* esté activa en cada app de Coolify.
+- **Deploy manual (respaldo):** se puede gatillar por la API de Coolify
+  (`GET /api/v1/deploy?uuid=<backend>,<frontend>`) y verificar en vivo que el backend
+  responde y que `/openapi.json` refleja el código nuevo.
+- **Migraciones Supabase:** aplicar las de `supabase/migrations/` ANTES de desplegar el
+  código que las usa, para no dejar columnas sin leer entre migración y despliegue.
