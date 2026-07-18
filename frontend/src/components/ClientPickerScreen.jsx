@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useClients } from '../context/ClientContext'
-import { periodoLargo } from '../utils/periodo'
+import { periodoLargo, periodoCorto } from '../utils/periodo'
 import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import BadgeVencimiento from './BadgeVencimiento'
 import './ClientPickerScreen.css'
@@ -24,6 +24,13 @@ const avatarColor = (nombre) => {
 export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, onNewClient, svcLabel, hint }) {
   const { clients, selectClient } = useClients()
   const [search, setSearch] = useState('')
+  const [expanded, setExpanded] = useState({}) // identificacion -> mostrar sus períodos
+
+  // Períodos de un contribuyente (más reciente primero) para desplegarlos y poder
+  // entrar directo a un período concreto (no solo al más reciente).
+  const periodosDe = (identificacion) => clients
+    .filter((c) => c.identificacion === identificacion)
+    .sort((a, b) => (b.periodo_anio - a.periodo_anio) || (b.periodo_mes - a.periodo_mes))
 
   // Un contribuyente puede tener varias filas (una por período). Aquí mostramos
   // UNA tarjeta por identificación: el representante es el período más reciente y
@@ -98,30 +105,48 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
               </div>
             ) : (
               <div className="cps-list">
-                {visible.map(({ rep: c, periodos }) => (
-                  <button
-                    key={c.identificacion}
-                    className="cps-item"
-                    onClick={() => selectClient(c.id)}
-                  >
-                    <span
-                      className="cps-avatar"
-                      style={{ background: avatarColor(c.nombre) }}
-                    >
-                      {initials(c.nombre)}
-                    </span>
-                    <span className="cps-item-body">
-                      <span className="cps-item-name">{c.nombre}</span>
-                      <span className="cps-item-meta">
-                        <span>{c.tipo_identificacion || 'RUC'}: {c.identificacion}</span>
-                        <span className="cps-period">{periodoLargo(c)}</span>
-                        {periodos > 1 && <span className="cps-period">· {periodos} períodos</span>}
-                        <BadgeVencimiento ruc={c.identificacion} />
-                      </span>
-                    </span>
-                    <span className="cps-item-arrow">›</span>
-                  </button>
-                ))}
+                {visible.map(({ rep: c, periodos }) => {
+                  const isExp = !!expanded[c.identificacion]
+                  return (
+                    <div key={c.identificacion} className="cps-item-wrap">
+                      <div className="cps-item-row">
+                        <button className="cps-item" onClick={() => selectClient(c.id)}>
+                          <span className="cps-avatar" style={{ background: avatarColor(c.nombre) }}>
+                            {initials(c.nombre)}
+                          </span>
+                          <span className="cps-item-body">
+                            <span className="cps-item-name">{c.nombre}</span>
+                            <span className="cps-item-meta">
+                              <span>{c.tipo_identificacion || 'RUC'}: {c.identificacion}</span>
+                              <span className="cps-period">{periodoLargo(c)}</span>
+                              {periodos > 1 && <span className="cps-period">· {periodos} períodos</span>}
+                              <BadgeVencimiento ruc={c.identificacion} />
+                            </span>
+                          </span>
+                          <span className="cps-item-arrow">›</span>
+                        </button>
+                        {periodos > 1 && (
+                          <button
+                            className="cps-item-exp"
+                            title={isExp ? 'Ocultar períodos' : 'Ver períodos'}
+                            onClick={() => setExpanded((o) => ({ ...o, [c.identificacion]: !o[c.identificacion] }))}
+                          >
+                            <span className={`cps-exp-caret ${isExp ? 'open' : ''}`}>▾</span>
+                          </button>
+                        )}
+                      </div>
+                      {isExp && periodos > 1 && (
+                        <div className="cps-periods">
+                          {periodosDe(c.identificacion).map((p) => (
+                            <button key={p.id} className="cps-period-chip" onClick={() => selectClient(p.id)}>
+                              {periodoCorto(p)}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </>

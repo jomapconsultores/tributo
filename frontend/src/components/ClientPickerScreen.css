@@ -98,6 +98,9 @@
 /* ── Lista de clientes ── */
 .cps-list { display: flex; flex-direction: column; }
 
+.cps-item-wrap { border-bottom: 1px solid #f1f5f9; }
+.cps-item-wrap:last-child { border-bottom: none; }
+.cps-item-row { display: flex; align-items: stretch; }
 .cps-item {
   display: flex;
   align-items: center;
@@ -105,15 +108,25 @@
   padding: 0.85rem 1rem;
   background: none;
   border: none;
-  border-bottom: 1px solid #f1f5f9;
   cursor: pointer;
   text-align: left;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   transition: background 0.12s;
 }
-.cps-item:last-child { border-bottom: none; }
 .cps-item:hover { background: #f8faff; }
 .cps-item:active { background: #eff6ff; }
+/* Botón para desplegar los períodos del contribuyente */
+.cps-item-exp { border: none; background: none; cursor: pointer; padding: 0 12px; color: #94a3b8;
+  display: flex; align-items: center; }
+.cps-item-exp:hover { background: #f8faff; color: #3b82f6; }
+.cps-exp-caret { display: inline-block; transition: transform .15s; font-size: .8rem; }
+.cps-exp-caret.open { transform: rotate(180deg); }
+/* Períodos anidados bajo el contribuyente */
+.cps-periods { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 1rem 0.7rem calc(1rem + 44px); background: #fafbff; }
+.cps-period-chip { border: 1px solid #dbe4f0; background: #fff; border-radius: 7px; cursor: pointer;
+  font-size: .78rem; color: #334155; padding: 4px 10px; transition: background .12s, border-color .12s; }
+.cps-period-chip:hover { background: #eef2ff; border-color: #93c5fd; }
 
 /* Avatar */
 .cps-avatar {
