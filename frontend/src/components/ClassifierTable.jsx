@@ -24,6 +24,32 @@ export default function ClassifierTable({ classifications, onClassificationsChan
   const [actOpen, setActOpen] = useState(null) // id cuya actividad se ve completa
   const { copiedKey: copied, copy: copiar } = useCopyFeedback()
 
+  // Ancho de columnas ajustable arrastrando el borde del encabezado. Se guarda en
+  // el navegador para que el ancho elegido se conserve entre sesiones.
+  const COLS = ['ruc', 'nombre', 'actividad', 'categoria', 'calif', 'acciones']
+  const DEFAULT_W = { ruc: 150, nombre: 220, actividad: 300, categoria: 170, calif: 130, acciones: 70 }
+  const [colW, setColW] = useState(() => {
+    try { return { ...DEFAULT_W, ...JSON.parse(localStorage.getItem('cl_colw') || '{}') } }
+    catch { return { ...DEFAULT_W } }
+  })
+  const totalW = COLS.reduce((s, k) => s + (colW[k] || DEFAULT_W[k]), 0)
+  const startColResize = (key) => (e) => {
+    e.preventDefault(); e.stopPropagation()
+    const startX = e.clientX
+    const startW = colW[key] || DEFAULT_W[key]
+    const onMove = (ev) => setColW((prev) => ({ ...prev, [key]: Math.max(60, startW + (ev.clientX - startX)) }))
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      document.body.classList.remove('cl-col-resizing')
+      setColW((prev) => { try { localStorage.setItem('cl_colw', JSON.stringify(prev)) } catch { /* */ } return prev })
+    }
+    document.body.classList.add('cl-col-resizing')
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+  const resetColW = () => { setColW({ ...DEFAULT_W }); try { localStorage.removeItem('cl_colw') } catch { /* */ } }
+
   const handleSave = (item) => {
     const { field } = edit
     const ruc = field === 'ruc' ? value.trim() : item.ruc
@@ -116,15 +142,18 @@ export default function ClassifierTable({ classifications, onClassificationsChan
 
   return (
     <div className="table-container">
-      <table className="classifier-table">
+      <table className="classifier-table cl-resizable" style={{ width: totalW + 'px', tableLayout: 'fixed' }}>
+        <colgroup>
+          {COLS.map((k) => <col key={k} style={{ width: (colW[k] || DEFAULT_W[k]) + 'px' }} />)}
+        </colgroup>
         <thead>
           <tr>
-            <th>RUC</th>
-            <th>Nombre Proveedor</th>
-            <th>Actividad económica (SRI)</th>
-            <th>Categoría</th>
-            <th>Calificación</th>
-            <th>Acciones</th>
+            <th>RUC<span className="col-resizer" title="Arrastra para ampliar la columna" onMouseDown={startColResize('ruc')} /></th>
+            <th>Nombre Proveedor<span className="col-resizer" title="Arrastra para ampliar la columna" onMouseDown={startColResize('nombre')} /></th>
+            <th>Actividad económica (SRI)<span className="col-resizer" title="Arrastra para ampliar la columna" onMouseDown={startColResize('actividad')} /></th>
+            <th>Categoría<span className="col-resizer" title="Arrastra para ampliar la columna" onMouseDown={startColResize('categoria')} /></th>
+            <th>Calificación<span className="col-resizer" title="Arrastra para ampliar la columna" onMouseDown={startColResize('calif')} /></th>
+            <th>Acciones<button type="button" className="cl-col-reset" title="Restablecer ancho de columnas" onClick={resetColW}>⤢</button></th>
           </tr>
         </thead>
         <tbody>

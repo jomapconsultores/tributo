@@ -165,7 +165,7 @@ export default function Classifier() {
         <div>
           <h1>🏷️ Clasificador de Gastos {refreshing && <span className="classifier-refresh-indic">↻ actualizando…</span>}</h1>
           <p className="classifier-sub">
-            {classifications.length} RUCs · clic en cualquier celda (incluido el RUC) para editar
+            {classifications.length} RUCs · clic en cualquier celda (incluido el RUC) para editar · arrastra el borde de cada columna para ampliarla
             {' · '}
             {isSuperAdmin
               ? <>editas el <strong>catálogo general</strong> (lo ve todo el equipo); <span className="cl-badge override">👤 N</span> = personalizado por usuarios</>

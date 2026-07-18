@@ -145,6 +145,21 @@ button.calif-badge.ok:hover { filter:brightness(.96); }
 .classifier-table .actividad-cell.full { font-size:.72rem; }
 .calif-badge { display:inline-flex; align-items:center; gap:4px; }
 
+/* ===== Columnas redimensionables (arrastrar el borde del encabezado) ===== */
+.table-container { overflow-x:auto; }               /* la tabla puede exceder el ancho y aparece scroll horizontal */
+.classifier-table.cl-resizable td { overflow:hidden; }  /* con table-layout:fixed, recorta lo que exceda la celda */
+.classifier-table.cl-resizable thead th { overflow:hidden; text-overflow:ellipsis; }
+/* Nombre y categoría envuelven en varias líneas cuando la columna se angosta */
+.classifier-table.cl-resizable tbody td:nth-child(2) .editable,
+.classifier-table.cl-resizable tbody td:nth-child(4) .cl-cell,
+.classifier-table.cl-resizable tbody td:nth-child(4) .editable { white-space:normal; word-break:break-word; }
+.classifier-table thead th .col-resizer { position:absolute; top:0; right:0; width:8px; height:100%;
+  cursor:col-resize; user-select:none; touch-action:none; }
+.classifier-table thead th .col-resizer:hover { background:rgba(147,197,253,.6); }
+body.cl-col-resizing { cursor:col-resize; user-select:none; }
+.cl-col-reset { margin-left:6px; border:none; background:transparent; color:#93c5fd; cursor:pointer; font-size:.85rem; padding:0 2px; }
+.cl-col-reset:hover { color:#e2e8f0; }
+
 /* Paginación */
 .cl-pager { display:flex; align-items:center; gap:8px; justify-content:center; margin:12px 0 4px; flex-wrap:wrap; }
 .cl-pager button { padding:6px 12px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; cursor:pointer; font-size:.84rem; font-weight:600; color:#0f172a; }
