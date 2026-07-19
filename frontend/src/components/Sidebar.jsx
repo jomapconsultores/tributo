@@ -12,7 +12,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const navigate = useNavigate()
   const location = useLocation()
   const { clients, selectedClientId, selectClient, setFocusIdent } = useClients()
-  const { has, hasSub, isAdmin, isSuperAdmin } = useAccess()
+  const { has, hasSub, isAdmin, isSuperAdmin, role } = useAccess()
   const [clientsOpen, setClientsOpen] = useState(false)
   const [ingresosIvaOpen, setIngresosIvaOpen] = useState(false)
   const [ingresosIceOpen, setIngresosIceOpen] = useState(false)
@@ -497,6 +497,19 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
             <span>PERMISOS</span>
           </button>
         </>)}
+
+        {/* Socio/trabajador: acceso a Credenciales en modo LIMITADO (solo marcar
+            qué declaraciones hace cada contribuyente; sin ver claves). El admin
+            ya la tiene arriba con acceso completo. */}
+        {!isSuperAdmin && (role === 'socio' || role === 'trabajador') && (
+          <button
+            className={`nav-item module-btn ${path === '/admin/credenciales' ? 'active' : ''}`}
+            onClick={() => navigate('/admin/credenciales')}
+          >
+            <span className="nav-ico">🔐</span>
+            <span>CREDENCIALES SRI</span>
+          </button>
+        )}
 
         {/* Acceso rápido a módulos cuando hay un cliente seleccionado */}
         {selectedClientId && (() => {

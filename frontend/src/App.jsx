@@ -68,6 +68,15 @@ function RequireAnyModule({ modulos, children }) {
   return children
 }
 
+// Menú Credenciales: el admin ve todo (claves incluidas); socio y trabajador
+// acceden a la vista LIMITADA (solo marcar qué declaraciones hace cada cliente).
+function RequireCredenciales({ children }) {
+  const { role, loading, has, hasSub } = useAccess()
+  if (loading) return <PageLoader />
+  if (!['admin', 'socio', 'trabajador'].includes(role)) return <Navigate to={homeFor(has, hasSub)} replace />
+  return children
+}
+
 function SinAcceso({ onLogout }) {
   // Cierra la sesión actual y vuelve al login (evita quedar atrapado en esta
   // pantalla sin salida cuando la cuenta no tiene módulos habilitados).
@@ -213,7 +222,7 @@ function App() {
               <Route path="/reportes/realizados" element={<Reportes modo="realizados" />} />
               <Route path="/capacitaciones" element={<Capacitaciones />} />
               <Route path="/admin" element={<RequireSuperAdmin><Admin /></RequireSuperAdmin>} />
-              <Route path="/admin/credenciales" element={<RequireSuperAdmin><AdminCredentials /></RequireSuperAdmin>} />
+              <Route path="/admin/credenciales" element={<RequireCredenciales><AdminCredentials /></RequireCredenciales>} />
               <Route path="/odoo-facturacion" element={<RequireAdmin><OdooFacturacion /></RequireAdmin>} />
               {/* Sin guard a propósito: es de solo lectura y /api/odoo/facturas ya
                   filtra server-side por RUC autorizado para el rol 'cliente' (a

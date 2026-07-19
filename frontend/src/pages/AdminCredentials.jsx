@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { credentialsAPI, clientsAPI } from '../services/api'
+import { useAccess } from '../context/AccessContext'
 import { infoDeclaracion } from '../utils/declaracionSRI'
 import { filterBySearch } from '../utils/search'
 import BadgeVencimiento from '../components/BadgeVencimiento'
@@ -29,6 +30,9 @@ function dedupContribuyentes(clients) {
 }
 
 export default function AdminCredentials() {
+  // El admin (super) ve TODO (claves, revelar, editar). Socio/trabajador acceden
+  // a la vista LIMITADA: solo marcar qué declaraciones hace cada contribuyente.
+  const { isSuperAdmin } = useAccess()
   const [creds, setCreds] = useState([])
   const [contribs, setContribs] = useState([])
   // Servicios contratados por RUC (compartidos por todo el contribuyente). Maneja
@@ -60,20 +64,39 @@ export default function AdminCredentials() {
   const load = async () => {
     setLoading(true)
     try {
-      const [credsRes, contribsRes] = await Promise.all([
-        credentialsAPI.list(),
-        clientsAPI.list(),
-      ])
-      setCreds(credsRes.data?.data || [])
-      setServicesByRuc(credsRes.data?.services_by_ruc || {})
-      setContribs(dedupContribuyentes(contribsRes.data || []))
+      if (isSuperAdmin) {
+        const [credsRes, contribsRes] = await Promise.all([
+          credentialsAPI.list(),
+          clientsAPI.list(),
+        ])
+        setCreds(credsRes.data?.data || [])
+        setServicesByRuc(credsRes.data?.services_by_ruc || {})
+        setContribs(dedupContribuyentes(contribsRes.data || []))
+      } else {
+        // Socio/trabajador: sin credenciales. Solo contribuyentes visibles + el
+        // mapa de servicios (declaraciones marcadas) para poder marcarlas.
+        const [contribsRes, svcRes] = await Promise.all([
+          clientsAPI.list(),
+          clientsAPI.servicesMap(),
+        ])
+        const byRuc = {}
+        for (const [svc, idents] of Object.entries(svcRes.data || {})) {
+          for (const id of (idents || [])) {
+            if (!byRuc[id]) byRuc[id] = []
+            if (!byRuc[id].includes(svc)) byRuc[id].push(svc)
+          }
+        }
+        setCreds([])
+        setServicesByRuc(byRuc)
+        setContribs(dedupContribuyentes(contribsRes.data || []))
+      }
     } catch (e) {
-      alert('Error cargando credenciales: ' + (e.response?.data?.detail || e.message))
+      alert('Error cargando: ' + (e.response?.data?.detail || e.message))
     } finally {
       setLoading(false)
     }
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [isSuperAdmin])
 
   // Una fila por contribuyente (RUC): si ya tiene credencial se muestra tal cual;
   // si NO la tiene (p.ej. cliente recién creado), aparece igual con opción de
@@ -198,15 +221,23 @@ export default function AdminCredentials() {
     <div className="adm-cred">
       <header className="adm-cred-head">
         <div>
-          <h2>🔐 Credenciales de servicios externos</h2>
+          <h2>{isSuperAdmin ? '🔐 Credenciales de servicios externos' : '🗂️ Declaraciones por contribuyente'}</h2>
           <p className="adm-cred-sub">
-            Acceso exclusivo del administrador. Las contraseñas están cifradas en base de datos
-            (AES + HMAC con llave fuera del repo). Cada revelado queda registrado en auditoría.
+            {isSuperAdmin ? (
+              <>Acceso exclusivo del administrador. Las contraseñas están cifradas en base de datos
+              (AES + HMAC con llave fuera del repo). Cada revelado queda registrado en auditoría.</>
+            ) : (
+              <>Marca qué declaraciones hace cada contribuyente. Las que estén marcadas y aún no
+              subidas al SRI aparecen en <strong>Clientes pendientes</strong>; al desmarcarlas, se
+              quitan de ese menú. (No se muestran las claves del portal SRI.)</>
+            )}
           </p>
         </div>
-        <button className="adm-cred-add" onClick={() => setEditor({ mode: 'create' })} disabled={busy}>
-          + Nueva credencial
-        </button>
+        {isSuperAdmin && (
+          <button className="adm-cred-add" onClick={() => setEditor({ mode: 'create' })} disabled={busy}>
+            + Nueva credencial
+          </button>
+        )}
       </header>
 
       <div className="adm-cred-toolbar">
@@ -286,12 +317,12 @@ export default function AdminCredentials() {
                 <th>Cliente</th>
                 <th>RUC</th>
                 <th>Próxima declaración</th>
-                <th>Usuario</th>
+                {isSuperAdmin && <th>Usuario</th>}
                 {CLIENT_SERVICES.map((s) => (
                   <th key={s.key} className="adm-cred-svc-th" title={s.title}>{s.label}</th>
                 ))}
-                <th>Modificada</th>
-                <th>Acciones</th>
+                {isSuperAdmin && <th>Modificada</th>}
+                {isSuperAdmin && <th>Acciones</th>}
               </tr>
             </thead>
             <tbody>
@@ -315,7 +346,7 @@ export default function AdminCredentials() {
                       ? <BadgeVencimiento ruc={c.ruc} />
                       : <span className="adm-cred-dim">—</span>}
                   </td>
-                  <td>{c.username || <span className="adm-cred-dim">{c._sinClave ? '(sin clave)' : '(usa el RUC)'}</span>}</td>
+                  {isSuperAdmin && <td>{c.username || <span className="adm-cred-dim">{c._sinClave ? '(sin clave)' : '(usa el RUC)'}</span>}</td>}
                   {CLIENT_SERVICES.map((s) => {
                     const checked = c.client_services?.includes(s.key) || false
                     return (
@@ -329,7 +360,8 @@ export default function AdminCredentials() {
                       </td>
                     )
                   })}
-                  <td className="adm-cred-dim">{(c.updated_at || '').slice(0, 16).replace('T', ' ')}</td>
+                  {isSuperAdmin && <td className="adm-cred-dim">{(c.updated_at || '').slice(0, 16).replace('T', ' ')}</td>}
+                  {isSuperAdmin && (
                   <td className="adm-cred-actions">
                     {c._sinClave ? (
                       <button className="btn-add-clave" title="Agregar la clave del portal SRI de este contribuyente"
@@ -342,11 +374,12 @@ export default function AdminCredentials() {
                       </>
                     )}
                   </td>
+                  )}
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="adm-cred-empty-row">
+                  <td colSpan={isSuperAdmin ? 10 : 7} className="adm-cred-empty-row">
                     Ningún cliente coincide con el filtro seleccionado.
                   </td>
                 </tr>

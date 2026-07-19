@@ -10,9 +10,12 @@ from pydantic import BaseModel, Field
 from database import get_supabase_client, fetch_all, fetch_in, es_error_duplicado
 from routers.admin import require_admin
 from auth import get_current_user
-from routers.access import es_admin, es_data_admin
-from tenancy import assert_client_owner
+from routers.access import es_admin, es_data_admin, rol_de
+from tenancy import assert_client_owner, visible_client_ids
 from services.credentials_crypto import encrypt, decrypt, can_decrypt
+
+# Roles que pueden MARCAR qué declaraciones hace cada contribuyente (sin ver claves).
+ROLES_MARCADO = {"admin", "socio", "trabajador"}
 
 router = APIRouter(prefix="/api/credentials", tags=["credentials"])
 
@@ -145,12 +148,20 @@ async def toggle_servicio(
     client_id: str,
     service: str,
     req: Request,
-    admin_id: str = Depends(require_admin),
+    user_id: str = Depends(get_current_user),
 ):
-    """Activa o desactiva un servicio contratable para un cliente.
+    """Marca/desmarca qué declaración hace un contribuyente. Accesible a admin,
+    socio y trabajador (funcionario). El admin no tiene restricción de dueño; el
+    socio/trabajador solo sobre contribuyentes VISIBLES para su rol.
     Body opcional con {"active": true/false}; por defecto invierte el estado actual."""
     if service not in CLIENT_SERVICES:
         raise HTTPException(status_code=400, detail=f"Servicio inválido. Permitidos: {sorted(CLIENT_SERVICES)}")
+    if rol_de(user_id) not in ROLES_MARCADO:
+        raise HTTPException(status_code=403, detail="No autorizado para marcar declaraciones")
+    admin_id = user_id
+    data_admin = es_data_admin(user_id)
+    if not data_admin:
+        assert_client_owner(client_id, user_id)  # 404 si no puede acceder a este contribuyente
     sb = get_supabase_client()
 
     # Body opcional con estado deseado
@@ -171,6 +182,10 @@ async def toggle_servicio(
     # (todos los client_id que comparten la identificación), no solo a uno.
     hermanos = sb.table("clients").select("id").eq("identificacion", ident).execute().data if ident else None
     ids = [h["id"] for h in (hermanos or [])] or [client_id]
+    # Socio/trabajador: no tocar períodos que no le son visibles (aunque compartan RUC).
+    if not data_admin:
+        vis = visible_client_ids(user_id) or set()
+        ids = [i for i in ids if i in vis] or [client_id]
 
     existing = sb.table("client_services").select("id, client_id, active").in_(
         "client_id", ids).eq("service", service).execute().data or []
