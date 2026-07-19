@@ -314,10 +314,9 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
         response = supabase.table("clients").insert({
             "user_id": user_id,
             "identificacion": identificacion,
-            # Se respeta el nombre TAL COMO se escribe (mayúsculas/minúsculas): no
-            # se fuerza a mayúsculas. Antes se guardaba con .upper() y "corregía"
-            # nombres propios como "Vanessa Alejandra Sánchez Morocho".
-            "nombre": entry.nombre.strip(),
+            # El nombre del contribuyente se guarda SIEMPRE en MAYÚSCULAS
+            # (requisito: debe verse todo en mayúsculas, como en el SRI).
+            "nombre": entry.nombre.strip().upper(),
             "tipo_identificacion": entry.tipo_identificacion or "RUC",
             "periodo_mes": entry.periodo_mes,
             "periodo_anio": entry.periodo_anio,
@@ -329,7 +328,7 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
         if nuevo:
             registrar(actor_user_id=user_id, action="create", module="clientes",
                       entity="Nuevo cliente", client_id=nuevo.get("id"),
-                      identificacion=identificacion, contribuyente=entry.nombre.strip(),
+                      identificacion=identificacion, contribuyente=entry.nombre.strip().upper(),
                       metadata={"periodo": f"{entry.periodo_mes:02d}/{entry.periodo_anio}"})
         return nuevo
     except HTTPException:
@@ -386,7 +385,7 @@ async def abrir_periodo_vencido(user_id: str = Depends(get_current_user)):
             fila = {
                 "user_id": owner,   # se preserva el DUEÑO del contribuyente, no el actor
                 "identificacion": ident,
-                "nombre": c.get("nombre"),
+                "nombre": (c.get("nombre") or "").strip().upper(),  # siempre en MAYÚSCULAS
                 "tipo_identificacion": c.get("tipo_identificacion") or "RUC",
                 "periodo_mes": tgt_mes,
                 "periodo_anio": tgt_anio,
@@ -430,8 +429,8 @@ async def update_client(client_id: str, entry: ClientUpdate, user_id: str = Depe
         if "identificacion" in data:
             data["identificacion"] = data["identificacion"].strip().replace("'", "")
         if "nombre" in data:
-            # Respetar el nombre tal como se escribe (no forzar mayúsculas).
-            data["nombre"] = data["nombre"].strip()
+            # Siempre en MAYÚSCULAS (requisito: el nombre se ve todo en mayúsculas).
+            data["nombre"] = data["nombre"].strip().upper()
         data["updated_at"] = "now()"
         # Identificación y dueño actuales (para ubicar todos los períodos del
         # MISMO contribuyente, sin tocar los de otros usuarios/despachos que
