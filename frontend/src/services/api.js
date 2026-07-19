@@ -408,6 +408,9 @@ export const declaracionesAPI = {
   delete: (id) => api.delete(`/api/declaraciones/${id}`),
   // Marca/revierte que la declaración ya se subió al portal del SRI (deja de estar pendiente).
   marcarPresentada: (id, presentada = true) => api.put(`/api/declaraciones/${id}/presentada`, { presentada }),
+  // Igual pero desde Clientes pendientes (por client_id+tipo): crea el registro si no existía.
+  marcarPresentadaDirecta: (client_id, tipo, presentada = true) =>
+    api.put('/api/declaraciones/presentada-directa', { client_id, tipo, presentada }),
   exportExcel: (clientId, tipo, ov = {}) => api.get('/api/declaraciones/export/excel', { params: { client_id: clientId, tipo, ...ov }, responseType: 'blob' }),
   exportOficial: (clientId, tipo, ov = {}) => api.get('/api/declaraciones/export/oficial', { params: { client_id: clientId, tipo, ...ov }, responseType: 'blob' }),
   // Pagos aplazados

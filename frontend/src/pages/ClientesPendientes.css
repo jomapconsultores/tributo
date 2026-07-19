@@ -162,12 +162,19 @@
 
 .cp-card-tipos {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
 }
-.cp-tipo {
-  border: 1px solid transparent;
+/* Cada tipo pendiente: chip para abrir la declaración + botón para marcar hecho */
+.cp-tipo-group {
+  display: inline-flex;
+  align-items: stretch;
   border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+.cp-tipo {
+  border: none;
   padding: 6px 14px;
   font-weight: 700;
   font-size: 0.82rem;
@@ -179,6 +186,20 @@
 .cp-tipo-iva { background: #1a5276; }
 .cp-tipo-ice { background: #7d3c98; }
 .cp-tipo-103 { background: #b9770e; }
+/* Botón "marcar subida al SRI" pegado al chip */
+.cp-marcar {
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.35);
+  background: #16a34a;
+  color: #fff;
+  padding: 6px 12px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+.cp-marcar:hover { filter: brightness(0.92); }
+.cp-marcar:disabled { opacity: 0.6; cursor: default; }
 
 @media (max-width: 560px) {
   .cp-page { padding: 16px 14px 40px; }

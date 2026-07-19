@@ -740,6 +740,63 @@ async def marcar_presentada(decl_id: str, body: PresentadaIn, user_id: str = Dep
         raise HTTPException(status_code=400, detail=str(e))
 
 
+class PresentadaDirectaIn(BaseModel):
+    client_id: str
+    tipo: str
+    presentada: bool = True
+
+
+@router.put("/presentada-directa")
+async def marcar_presentada_directa(entry: PresentadaDirectaIn, user_id: str = Depends(get_current_user)):
+    """Marca/revierte 'subida al SRI' DESDE Clientes pendientes, sin abrir la
+    pantalla de declaración. Si ya hay declaración guardada del período+tipo,
+    actualiza su bandera; si no hay ninguna (se hizo directo en el SRI sin usar
+    el cálculo), crea un registro-marcador para dejar constancia y sacarla de
+    pendientes. Al revertir, ese marcador vacío se elimina."""
+    try:
+        supabase = get_supabase_client()
+        assert_client_owner(entry.client_id, user_id)
+        tipo = (entry.tipo or "").upper()
+        _verificar_submodulo(user_id, tipo)  # respeta permisos por tipo (IVA/ICE/103)
+        c = _cliente(supabase, entry.client_id)
+        anio = c.get("periodo_anio")
+        mes = c.get("periodo_mes")
+        existing = supabase.table("declaraciones").select("id,datos").eq(
+            "client_id", entry.client_id).eq("tipo", tipo).order("created_at", desc=True).execute().data or []
+        if entry.presentada:
+            if existing:
+                supabase.table("declaraciones").update({
+                    "presentada_sri": True, "presentada_sri_at": "now()",
+                }).eq("id", existing[0]["id"]).execute()
+            else:
+                supabase.table("declaraciones").insert({
+                    "client_id": entry.client_id, "user_id": user_id, "tipo": tipo,
+                    "anio": anio, "mes": mes,
+                    "datos": {"marcada_directa": True, "resumen": {}},
+                    "presentada_sri": True, "presentada_sri_at": "now()",
+                }).execute()
+        else:
+            for d in existing:
+                datos = d.get("datos") or {}
+                if isinstance(datos, dict) and datos.get("marcada_directa") and not datos.get("filas"):
+                    supabase.table("declaraciones").delete().eq("id", d["id"]).execute()
+                else:
+                    supabase.table("declaraciones").update({
+                        "presentada_sri": False, "presentada_sri_at": None,
+                    }).eq("id", d["id"]).execute()
+        registrar(actor_user_id=user_id,
+                  action="presentada_sri" if entry.presentada else "revertir_presentada_sri",
+                  module="declaraciones", entity=f"Declaración {tipo}",
+                  client_id=entry.client_id, identificacion=c.get("identificacion"),
+                  contribuyente=c.get("nombre"),
+                  metadata={"mes": mes, "anio": anio, "directo": True, "presentada": entry.presentada})
+        return {"ok": True, "presentada": entry.presentada}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.delete("/{decl_id}")
 async def eliminar(decl_id: str, user_id: str = Depends(get_current_user)):
     try:

@@ -21,6 +21,7 @@ export default function ClientesPendientes() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
+  const [marcando, setMarcando] = useState('')  // 'client_id|tipo' que se está marcando
 
   const cargar = useCallback(async () => {
     setLoading(true); setError('')
@@ -49,6 +50,23 @@ export default function ClientesPendientes() {
     selectClient(row.client_id)
     navigate(RUTA_TIPO[tipo] || '/declaracion-iva')
   }
+  // Marcar directo, sin abrir la declaración, que ya está grabada/subida al SRI.
+  // La quita de pendientes (crea el registro si no existía).
+  const marcarSubidaSri = async (row, tipo) => {
+    if (!window.confirm(
+      `¿Marcar la declaración ${tipo} de ${row.nombre} como grabada / subida al SRI?\n\n` +
+      'Se quitará de Clientes pendientes.'
+    )) return
+    const key = row.client_id + '|' + tipo
+    setMarcando(key)
+    try {
+      await declaracionesAPI.marcarPresentadaDirecta(row.client_id, tipo, true)
+      await cargar()
+    } catch (e) {
+      alert('No se pudo marcar: ' + (e.response?.data?.detail || e.message))
+    } finally { setMarcando('') }
+  }
+
   // Acceder a los datos del cliente: si tiene el módulo de Gastos, abre su base
   // de datos (datos completos del contribuyente); si no, lo lleva a la primera
   // declaración pendiente —siempre accesible según sus permisos—.
@@ -125,16 +143,28 @@ export default function ClientesPendientes() {
                   </span>
                 </button>
                 <div className="cp-card-tipos">
-                  {row.pendientes.map((tipo) => (
-                    <button
-                      key={tipo}
-                      className={`cp-tipo cp-tipo-${tipo.toLowerCase()}`}
-                      onClick={() => abrirDeclaracion(row, tipo)}
-                      title={`Ir a ${LABEL_TIPO[tipo] || tipo}`}
-                    >
-                      {ICONO_TIPO[tipo] || '📄'} {tipo}
-                    </button>
-                  ))}
+                  {row.pendientes.map((tipo) => {
+                    const key = row.client_id + '|' + tipo
+                    return (
+                      <span key={tipo} className="cp-tipo-group">
+                        <button
+                          className={`cp-tipo cp-tipo-${tipo.toLowerCase()}`}
+                          onClick={() => abrirDeclaracion(row, tipo)}
+                          title={`Abrir ${LABEL_TIPO[tipo] || tipo}`}
+                        >
+                          {ICONO_TIPO[tipo] || '📄'} {tipo}
+                        </button>
+                        <button
+                          className="cp-marcar"
+                          disabled={marcando === key}
+                          onClick={() => marcarSubidaSri(row, tipo)}
+                          title={`Marcar ${tipo} como grabada / subida al SRI (la quita de pendientes)`}
+                        >
+                          {marcando === key ? '…' : '☁️ ✓'}
+                        </button>
+                      </span>
+                    )
+                  })}
                 </div>
               </li>
             )
