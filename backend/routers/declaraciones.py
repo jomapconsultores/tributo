@@ -453,12 +453,15 @@ async def pendientes_declaracion(user_id: str = Depends(get_current_user)):
             if ident:
                 svc_by_ident.setdefault(ident, set()).add(r.get("service"))
 
-        # Declaraciones ya GUARDADAS en el período más reciente de cada contribuyente.
+        # Declaraciones ya SUBIDAS AL SRI en el período más reciente. Guardar la
+        # declaración NO basta: sigue pendiente hasta confirmar que se presentó
+        # al SRI (presentada_sri). Así "pendiente" = falta subirla al portal.
         latest_ids = [c["id"] for c in latest.values()]
         saved_rows = fetch_in(
-            lambda: supabase.table("declaraciones").select("client_id,tipo"),
+            lambda: supabase.table("declaraciones").select("client_id,tipo,presentada_sri"),
             latest_ids, "client_id")
-        saved = {(r.get("client_id"), (r.get("tipo") or "").upper()) for r in saved_rows}
+        presentadas = {(r.get("client_id"), (r.get("tipo") or "").upper())
+                       for r in saved_rows if r.get("presentada_sri")}
 
         out = []
         for ident, c in latest.items():
@@ -470,7 +473,7 @@ async def pendientes_declaracion(user_id: str = Depends(get_current_user)):
                 tipos.append("103")
             if puede_ice and "declaracion_ice" in svcs:
                 tipos.append("ICE")
-            pendientes = [t for t in tipos if (c["id"], t) not in saved]
+            pendientes = [t for t in tipos if (c["id"], t) not in presentadas]
             if pendientes:
                 out.append({
                     "client_id": c["id"],
@@ -702,6 +705,39 @@ async def marcar_aplazado(aplazado_id: str, body: MarcarPagado, user_id: str = D
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class PresentadaIn(BaseModel):
+    presentada: bool = True
+
+
+@router.put("/{decl_id}/presentada")
+async def marcar_presentada(decl_id: str, body: PresentadaIn, user_id: str = Depends(get_current_user)):
+    """Confirma (o revierte) que la declaración ya se SUBIÓ al portal del SRI.
+    Al marcarla presentada deja de figurar en Clientes pendientes."""
+    try:
+        supabase = get_supabase_client()
+        row = supabase.table("declaraciones").select("client_id,tipo,anio,mes").eq("id", decl_id).execute().data
+        if not row:
+            raise HTTPException(status_code=404, detail="No encontrada")
+        assert_client_owner(row[0]["client_id"], user_id)
+        supabase.table("declaraciones").update({
+            "presentada_sri": bool(body.presentada),
+            "presentada_sri_at": "now()" if body.presentada else None,
+        }).eq("id", decl_id).execute()
+        c = _cliente(supabase, row[0]["client_id"])
+        registrar(actor_user_id=user_id,
+                  action="presentada_sri" if body.presentada else "revertir_presentada_sri",
+                  module="declaraciones", entity=f"Declaración {row[0].get('tipo')}",
+                  client_id=row[0]["client_id"], identificacion=c.get("identificacion"),
+                  contribuyente=c.get("nombre"),
+                  metadata={"mes": row[0].get("mes"), "anio": row[0].get("anio"),
+                            "presentada": bool(body.presentada)})
+        return {"ok": True, "presentada_sri": bool(body.presentada)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/{decl_id}")

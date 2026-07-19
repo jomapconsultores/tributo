@@ -146,3 +146,20 @@
 .dc-conteos { background: #f6f9fd; border: 1px solid #d9e4f1; border-radius: 8px; padding: 8px 14px; font-size: .82rem; color: #1a3d6b; }
 .dc-conteos strong { color: #003399; }
 .dc-conteo-total { color: #5b7aa5; font-weight: 600; }
+
+/* Estado «subida al SRI»: aparece cuando la declaración ya está guardada */
+.dc-sri-estado {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  background: #fff8e6; border: 1px solid #f5d98b; border-radius: 10px;
+  padding: 12px 16px; margin-top: 12px;
+}
+.dc-sri-estado.presentada { background: #eafaf1; border-color: #a7e0c0; }
+.dc-sri-msg { font-size: .9rem; color: #475569; }
+.dc-sri-msg strong { color: #1a3d6b; }
+/* Insignia/toggle en el historial de declaraciones */
+.dc-sri-badge {
+  background: #16a34a; color: #fff; border: none; border-radius: 12px;
+  padding: 2px 10px; font-size: .72rem; font-weight: 700; cursor: pointer;
+}
+.dc-sri-badge:hover { filter: brightness(.93); }
+.dc-sri-badge:disabled { opacity: .6; cursor: default; }

@@ -287,6 +287,18 @@ export default function Declaraciones({ tipo }) {
     try { await declaracionesAPI.delete(id); await load() }
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
+  const [marcandoSri, setMarcandoSri] = useState(false)
+  // Confirma/revierte que la declaración ya se subió al portal del SRI. Al
+  // marcarla, el contribuyente deja de figurar en «Clientes pendientes».
+  const togglePresentada = async (id, presentada) => {
+    setMarcandoSri(true)
+    try {
+      await declaracionesAPI.marcarPresentada(id, presentada)
+      await cargarHistorial()
+    } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
+    finally { setMarcandoSri(false) }
+  }
+
   const marcarPagado = async (apId) => {
     if (!window.confirm('¿Marcar este pago aplazado como pagado?')) return
     try { await declaracionesAPI.marcarAplazado(apId, 'pagado'); await load() }
@@ -394,6 +406,10 @@ export default function Declaraciones({ tipo }) {
       .sort((a, b) => b - a)
       .map((anio) => ({ anio, items: map[anio].sort((a, b) => (b.mes || 0) - (a.mes || 0)) }))
   })()
+
+  // Declaración GUARDADA del período actual (si existe): habilita el control de
+  // «subida al SRI». historial ya viene filtrado por identificación + tipo.
+  const declActual = historial.find((s) => s.client_id === selectedClientId) || null
 
   const filasDisplay = decl?.filas || []
   const seccionesDisplay = filasDisplay.length
@@ -743,6 +759,40 @@ export default function Declaraciones({ tipo }) {
         </button>
       </div>
 
+      {/* Confirmación de subida al SRI: aparece en cuanto la declaración está
+          GUARDADA. Al marcarla, el contribuyente deja de figurar en Clientes
+          pendientes. */}
+      {declActual && (
+        <div className={`dc-sri-estado ${declActual.presentada_sri ? 'presentada' : ''}`}>
+          {declActual.presentada_sri ? (
+            <>
+              <span className="dc-sri-msg">
+                ☁️ Declaración <strong>subida al SRI</strong>
+                {declActual.presentada_sri_at && (
+                  <> · {new Date(declActual.presentada_sri_at).toLocaleDateString('es-EC')}</>
+                )}
+                . Ya no figura como pendiente.
+              </span>
+              <button className="dc-btn small" disabled={marcandoSri}
+                onClick={() => togglePresentada(declActual.id, false)}>
+                Deshacer
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="dc-sri-msg">
+                💾 Declaración guardada. Cuando la hayas <strong>subido al portal del SRI</strong>,
+                confírmalo aquí para quitarla de <strong>Clientes pendientes</strong>.
+              </span>
+              <button className="dc-btn primary" disabled={marcandoSri}
+                onClick={() => togglePresentada(declActual.id, true)}>
+                ☁️ Marcar subida al SRI
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Vista previa del aplazamiento — cálculo real desde backend (casillero 481/484 SRI) */}
       {previewAplazamiento && (
         <div className="dc-aplazar-preview">
@@ -880,6 +930,18 @@ export default function Declaraciones({ tipo }) {
                         {nombreMes(s.mes)} {s.anio} · {s.tipo}
                         {esActual && <span className="dc-hist-actual"> · período actual</span>}
                       </span>
+                      {s.presentada_sri ? (
+                        <button className="dc-sri-badge" disabled={marcandoSri}
+                          onClick={() => togglePresentada(s.id, false)}
+                          title={`Subida al SRI${s.presentada_sri_at ? ' · ' + new Date(s.presentada_sri_at).toLocaleDateString('es-EC') : ''} — clic para deshacer`}>
+                          ☁️ SRI ✓
+                        </button>
+                      ) : (
+                        <button className="dc-btn-mini" disabled={marcandoSri}
+                          onClick={() => togglePresentada(s.id, true)} title="Marcar subida al SRI">
+                          ☁️ subir al SRI
+                        </button>
+                      )}
                       {!esActual && (
                         <button className="dc-btn-mini" onClick={() => selectClient(s.client_id)} title="Abrir este período">
                           abrir
