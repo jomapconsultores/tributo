@@ -23,6 +23,7 @@ const AnexoPVPICE              = lazy(() => import('./pages/AnexoPVPICE'))
 const IngresosIva              = lazy(() => import('./pages/IngresosIva'))
 const RecursosICE              = lazy(() => import('./pages/RecursosICE'))
 const Declaraciones            = lazy(() => import('./pages/Declaraciones'))
+const ClientesPendientes       = lazy(() => import('./pages/ClientesPendientes'))
 const DevolucionesIvaTerceraEdad = lazy(() => import('./pages/DevolucionesIvaTerceraEdad'))
 const CatalogoProductos        = lazy(() => import('./pages/CatalogoProductos'))
 const Compradores              = lazy(() => import('./pages/Compradores'))
@@ -54,6 +55,16 @@ function RequireSubmodule({ modulo, sub, children }) {
   const { has, hasSub, loading } = useAccess()
   if (loading) return <PageLoader />
   if (!has(modulo) || !hasSub(sub)) return <Navigate to={homeFor(has, hasSub)} replace />
+  return children
+}
+
+// Accesible si el usuario tiene CUALQUIERA de los módulos indicados (p.ej.
+// Clientes pendientes: declaraciones o agente de retención). Redirige a un
+// destino accesible si no tiene ninguno.
+function RequireAnyModule({ modulos, children }) {
+  const { has, hasSub, loading } = useAccess()
+  if (loading) return <PageLoader />
+  if (!modulos.some((m) => has(m))) return <Navigate to={homeFor(has, hasSub)} replace />
   return children
 }
 
@@ -187,6 +198,7 @@ function App() {
               <Route path="/declaracion-ice" element={<RequireSubmodule modulo="declaraciones" sub="decl_ice"><Declaraciones tipo="ICE" /></RequireSubmodule>} />
               <Route path="/declaracion-103" element={<RequireSubmodule modulo="agente_retencion" sub="agret_103"><Declaraciones tipo="103" /></RequireSubmodule>} />
               <Route path="/devoluciones-iva/tercera-edad" element={<RequireSubmodule modulo="declaraciones" sub="decl_devoluciones"><DevolucionesIvaTerceraEdad /></RequireSubmodule>} />
+              <Route path="/clientes-pendientes" element={<RequireAnyModule modulos={['declaraciones', 'agente_retencion']}><ClientesPendientes /></RequireAnyModule>} />
               <Route path="/ingresos-iva" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_ingresos_iva"><IngresosIva /></RequireSubmodule>} />
               <Route path="/calculo-ice" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_calculo"><CalculoICE /></RequireSubmodule>} />
               <Route path="/anexo-pvp-ice" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_anexo"><AnexoPVPICE /></RequireSubmodule>} />

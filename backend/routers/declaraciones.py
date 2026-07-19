@@ -399,6 +399,94 @@ async def listar(client_id: Optional[str] = Query(None), tipo: Optional[str] = Q
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/pendientes")
+async def pendientes_declaracion(user_id: str = Depends(get_current_user)):
+    """Contribuyentes con al menos una declaración PENDIENTE en su período más
+    reciente. Respeta los permisos concedidos:
+      · rol → contribuyentes VISIBLES (admin: todos; socio/cliente: propios+compartidos);
+      · submódulos → tipos que el usuario puede ver (decl_iva, decl_ice, agret_103).
+
+    Un tipo se considera CONTRATADO si el servicio está activo en cualquier
+    período del contribuyente (declaracion_iva / declaracion_ice), o —para el 103—
+    si el contribuyente está marcado como agente de retención. Se considera
+    PENDIENTE si ese tipo NO tiene una declaración guardada en el período más
+    reciente. Ordenados alfabéticamente por nombre."""
+    try:
+        supabase = get_supabase_client()
+
+        # Tipos que el usuario puede ver, según módulos + submódulos concedidos.
+        mods = set(modulos_de(user_id))
+        puede_iva = "declaraciones" in mods and puede_submodulo(user_id, "decl_iva")
+        puede_ice = "declaraciones" in mods and puede_submodulo(user_id, "decl_ice")
+        puede_103 = "agente_retencion" in mods and puede_submodulo(user_id, "agret_103")
+        if not (puede_iva or puede_ice or puede_103):
+            return {"data": []}
+
+        clientes = visible_clients(
+            user_id, "id,identificacion,nombre,periodo_mes,periodo_anio,es_agente_retencion")
+        if not clientes:
+            return {"data": []}
+
+        # Período MÁS RECIENTE (año, mes) por contribuyente (identificación).
+        latest = {}
+        agente = {}          # identificación → es agente de retención (en cualquier período)
+        for c in clientes:
+            ident = (c.get("identificacion") or "").strip()
+            if not ident or c.get("periodo_mes") is None or c.get("periodo_anio") is None:
+                continue
+            if c.get("es_agente_retencion"):
+                agente[ident] = True
+            clave = (c["periodo_anio"], c["periodo_mes"])
+            cur = latest.get(ident)
+            if cur is None or clave > (cur["periodo_anio"], cur["periodo_mes"]):
+                latest[ident] = c
+
+        # Servicios contratados por contribuyente (agregados sobre todos sus períodos:
+        # al abrir un período nuevo no se copian, pueden quedar en un período viejo).
+        id_to_ident = {c["id"]: (c.get("identificacion") or "").strip() for c in clientes}
+        svc_rows = fetch_in(
+            lambda: supabase.table("client_services").select("client_id,service").eq("active", True),
+            list(id_to_ident.keys()), "client_id")
+        svc_by_ident = {}
+        for r in svc_rows:
+            ident = id_to_ident.get(r.get("client_id"))
+            if ident:
+                svc_by_ident.setdefault(ident, set()).add(r.get("service"))
+
+        # Declaraciones ya GUARDADAS en el período más reciente de cada contribuyente.
+        latest_ids = [c["id"] for c in latest.values()]
+        saved_rows = fetch_in(
+            lambda: supabase.table("declaraciones").select("client_id,tipo"),
+            latest_ids, "client_id")
+        saved = {(r.get("client_id"), (r.get("tipo") or "").upper()) for r in saved_rows}
+
+        out = []
+        for ident, c in latest.items():
+            svcs = svc_by_ident.get(ident, set())
+            tipos = []
+            if puede_iva and "declaracion_iva" in svcs:
+                tipos.append("IVA")
+            if puede_103 and agente.get(ident):
+                tipos.append("103")
+            if puede_ice and "declaracion_ice" in svcs:
+                tipos.append("ICE")
+            pendientes = [t for t in tipos if (c["id"], t) not in saved]
+            if pendientes:
+                out.append({
+                    "client_id": c["id"],
+                    "identificacion": ident,
+                    "nombre": c.get("nombre") or "",
+                    "periodo_mes": c.get("periodo_mes"),
+                    "periodo_anio": c.get("periodo_anio"),
+                    "pendientes": pendientes,
+                })
+
+        out.sort(key=lambda x: (x["nombre"] or "").upper())
+        return {"data": out}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class OverridesIn(BaseModel):
     client_id: str
     tipo: Optional[str] = "IVA"

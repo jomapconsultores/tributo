@@ -86,7 +86,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const isDeclIva = path === '/declaracion-iva'
   const isDeclIce = path === '/declaracion-ice'
   const isDecl103 = path === '/declaracion-103'
-  const isDeclaraciones = isDeclIva || isDeclIce || isDecl103
+  const isClientesPend = path === '/clientes-pendientes'
+  const isDeclaraciones = isDeclIva || isDeclIce || isDecl103 || isClientesPend
   const isDevTerceraEdad = path === '/devoluciones-iva/tercera-edad'
   const isDevoluciones = isDevTerceraEdad
   const isIceXml = path === '/ice'
@@ -370,6 +371,9 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
               <span className="nav-ico">🥃</span><span>Declaración ICE</span>
             </button>
             )}
+            <button className={`nav-item submodule ${isClientesPend ? 'active' : ''}`} onClick={() => navigate('/clientes-pendientes')}>
+              <span className="nav-ico">⏳</span><span>Clientes pendientes</span>
+            </button>
           </div>
         )}
         </>)}
