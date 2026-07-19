@@ -237,7 +237,7 @@ def parse_xml_invoice(filepath, memory, classification_map):
 class InvoiceApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Gestor SRI Pro 3.8 - Turbo Speed & Fix")
+        self.root.title("Gestor Tributario Pro 3.8 - Turbo Speed & Fix")
         self.root.geometry("1550x750")
 
         self.memory = load_memory()
