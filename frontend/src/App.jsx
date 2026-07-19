@@ -175,7 +175,7 @@ function App() {
     setUser(null)
   }
 
-  // Cierra la sesión tras 20 minutos de inactividad (solo si hay sesión activa).
+  // Cierra la sesión tras 30 minutos de inactividad (solo si hay sesión activa).
   useInactivityLogout(handleLogout, !!user)
 
   if (loading) return <PageLoader />

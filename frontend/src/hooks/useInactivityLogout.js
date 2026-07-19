@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react'
 
-// Cierre de sesión automático tras 20 minutos de inactividad.
+// Cierre de sesión automático tras 30 minutos de inactividad.
 // El contador se reinicia con cualquier actividad del usuario y se
 // sincroniza entre pestañas abiertas (localStorage 'storage').
-const IDLE_MS = 20 * 60 * 1000
+const IDLE_MS = 30 * 60 * 1000
 const SYNC_KEY = '__idle_last_activity'
 const EVENTS = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click', 'wheel']
 
