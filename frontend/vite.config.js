@@ -9,8 +9,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['capsa.png', 'capsa-emblema.png', 'icon-192.png', 'icon-512.png'],
       manifest: {
-        name: 'Gestor SRI',
-        short_name: 'Gestor SRI',
+        name: 'Gestor Tributario',
+        short_name: 'Gestor Tributario',
         description: 'Plataforma para gestionar facturas del SRI de Ecuador',
         theme_color: '#1a56db',
         background_color: '#ffffff',

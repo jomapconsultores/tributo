@@ -160,7 +160,7 @@ async def actualizar(cap_id: int, body: CapacitacionUpdate, user_id: str = Depen
                     "¡Buenas noticias! Tu solicitud de Capacitación y acompañamiento fue confirmada.\n\n"
                     f"Fecha/hora: {cuando}\n"
                     f"{('Nota: ' + upd['nota_admin']) if upd.get('nota_admin') else ''}\n\n"
-                    "Gracias por confiar en Gestor SRI."
+                    "Gracias por confiar en Gestor Tributario."
                 )
             else:
                 asunto = "Sobre tu solicitud de capacitación"

@@ -165,7 +165,7 @@ export default function Login({ onLogin }) {
   return (
     <div className="login-container">
       <div className="login-box">
-        <h1>Gestor SRI</h1>
+        <h1>Gestor Tributario</h1>
         <p className="subtitle">Procesa y clasifica tus facturas</p>
 
         {/* Botón biométrico (si ya está registrado en este dispositivo) */}

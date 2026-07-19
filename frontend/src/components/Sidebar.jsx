@@ -115,7 +115,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
       <div className="sidebar-brand">
         <span className="brand-icon">📑</span>
         <div>
-          <div className="brand-title">Gestor SRI</div>
+          <div className="brand-title">Gestor Tributario</div>
           <div className="brand-sub">Gastos · Retenciones · Tributos</div>
         </div>
       </div>

@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     print("Shutting down Tributos API")
 
 app = FastAPI(
-    title="Gestor SRI Web API",
+    title="Gestor Tributario Web API",
     description="API para procesar y clasificar facturas SRI",
     version="1.0.0",
     lifespan=lifespan
@@ -263,7 +263,7 @@ app.include_router(webauthn_router.router)  # WEBAUTHN: biometría (huella/rostr
 
 @app.get("/")
 async def root():
-    return {"message": "Gestor SRI Web API", "version": "1.0.0"}
+    return {"message": "Gestor Tributario Web API", "version": "1.0.0"}
 
 @app.get("/health")
 async def health_check():

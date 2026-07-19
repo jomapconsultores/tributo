@@ -1,4 +1,4 @@
-# Gestor SRI Web
+# Gestor Tributario Web
 
 Plataforma web para procesar, clasificar y exportar facturas del SRI (Servicio de Rentas Internas) de Ecuador.
 

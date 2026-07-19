@@ -55,9 +55,9 @@ def _activar_prueba(uid: str) -> str:
 def _avisar_admin(uid: str, email: str, fin: str):
     """Avisa al administrador del nuevo registro: correo + bitácora Movimientos."""
     # 1) Correo al administrador
-    asunto = "🆕 Nuevo cliente registrado en Gestor SRI"
+    asunto = "🆕 Nuevo cliente registrado en Gestor Tributario"
     cuerpo = (
-        "Se registró un nuevo cliente en Gestor SRI.\n\n"
+        "Se registró un nuevo cliente en Gestor Tributario.\n\n"
         f"Correo:  {email}\n"
         f"Fecha:   {date.today().isoformat()}\n"
         f"Prueba gratuita activa hasta: {fin}  ({TRIAL_DIAS} días, módulo Gastos)\n\n"

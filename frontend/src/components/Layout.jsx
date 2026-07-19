@@ -49,7 +49,7 @@ export default function Layout({ user, onLogout }) {
       {/* Barra superior solo en móvil: botón de menú */}
       <header className="layout-topbar">
         <button className="topbar-burger" onClick={() => setSidebarOpen((o) => !o)} aria-label="Menú">☰</button>
-        <span className="topbar-title">📑 Gestor SRI</span>
+        <span className="topbar-title">📑 Gestor Tributario</span>
         {user?.email && <span className="topbar-user">👤 {user.email}</span>}
         {user?.email && <RoleSwitcher />}
       </header>

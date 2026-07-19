@@ -29,7 +29,7 @@ def bytes_to_base64url(b: bytes) -> str:
 router = APIRouter(prefix="/api/webauthn", tags=["webauthn"])
 settings = get_settings()
 
-_RP_NAME = "Gestor SRI"
+_RP_NAME = "Gestor Tributario"
 
 # Challenges en memoria con TTL de 5 minutos
 _challenges: dict = {}

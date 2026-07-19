@@ -1,4 +1,4 @@
-# Guía de Setup - Gestor SRI Web
+# Guía de Setup - Gestor Tributario Web
 
 ## Resumen del Proyecto
 

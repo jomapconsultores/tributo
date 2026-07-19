@@ -54,7 +54,7 @@ const conIva = (neto) => ({ iva: neto * IVA, total: neto * (1 + IVA) })
 
 // WhatsApp directo (formato internacional: 0963511411 → 593963511411)
 const WHATSAPP_NUM = '593963511411'
-const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUM}?text=${encodeURIComponent('Hola, me interesa el Gestor SRI. Quisiera más información.')}`
+const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUM}?text=${encodeURIComponent('Hola, me interesa el Gestor Tributario. Quisiera más información.')}`
 const WHATSAPP_CAPACITACION_URL = `https://wa.me/${WHATSAPP_NUM}?text=${encodeURIComponent('Hola, quiero reservar una hora de Capacitación y acompañamiento ($50 + IVA/hora). ¿Disponibilidad?')}`
 
 function WaIcon({ size = 22 }) {
@@ -160,7 +160,7 @@ export default function Landing() {
       <header className={`lp-nav ${scrolled ? 'scrolled' : ''}`}>
         <div className="lp-brand">
           <span className="lp-brand-badge">📑</span>
-          <span className="lp-brand-name">Gestor SRI</span>
+          <span className="lp-brand-name">Gestor Tributario</span>
           <span className="lp-brand-div" />
           <img src="/capsa-horizontal.png" className="lp-nav-logo" alt="CAPSA" />
         </div>
@@ -379,7 +379,7 @@ export default function Landing() {
 
       <footer className="lp-footer">
         <div className="lp-footer-main">
-          <div className="lp-brand"><span className="lp-brand-badge">📑</span> Gestor SRI</div>
+          <div className="lp-brand"><span className="lp-brand-badge">📑</span> Gestor Tributario</div>
           <p>Gastos · Retenciones · ICE · Declaraciones — Hecho en Ecuador 🇪🇨</p>
           <button className="lp-btn lp-btn-login" onClick={() => navigate('/login')}>Ingresar</button>
         </div>
