@@ -1,7 +1,7 @@
 /* ─── Sidebar — diseño profesional refinado ─── */
 .sidebar {
-  width: 268px;
-  min-width: 268px;
+  width: 312px;
+  min-width: 312px;
   height: 100vh;
   background:
     radial-gradient(120% 60% at 0% 0%, rgba(59, 130, 246, 0.10) 0%, transparent 55%),
@@ -511,14 +511,140 @@
 .sqn-chip:hover { background: rgba(99, 102, 241, 0.22); color: #e2e8f0; transform: translateY(-1px); }
 .sqn-chip.active { background: rgba(99, 102, 241, 0.30); color: #c7d2fe; }
 
+/* ═══════════ Dos columnas: franja de módulos + panel del módulo ═══════════ */
+.sb-cols {
+  flex: 1;
+  display: flex;
+  min-height: 0;           /* permite que cada columna haga su propio scroll */
+}
+
+/* ── Columna 1: franja de módulos ── */
+.sb-rail {
+  width: 96px;
+  min-width: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 6px 14px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.22);
+  border-right: 1px solid rgba(148, 163, 184, 0.10);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.10) transparent;
+}
+.sb-rail::-webkit-scrollbar { width: 4px; }
+.sb-rail::-webkit-scrollbar-track { background: transparent; }
+.sb-rail::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); border-radius: 4px; }
+
+.sb-rail-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 4px;
+  cursor: pointer;
+  color: #94a3b8;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.sb-rail-btn:hover { background: rgba(255,255,255,0.07); color: #e2e8f0; }
+/* Módulo abierto en la segunda columna */
+.sb-rail-btn.sel { background: rgba(255,255,255,0.10); color: #fff; }
+/* Módulo que además corresponde a la pantalla actual */
+.sb-rail-btn.active::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 50%;
+  transform: translateY(-50%);
+  width: 3px; height: 58%;
+  border-radius: 0 3px 3px 0;
+  background: currentColor;
+}
+.sb-rail-ico { font-size: 1.15rem; line-height: 1; }
+.sb-rail-lbl {
+  font-size: 0.60rem;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  text-align: center;
+  line-height: 1.15;
+  text-transform: uppercase;
+  word-break: break-word;
+}
+/* Punto rojo de movimientos nuevos sobre el módulo Admin */
+.sb-rail-dot {
+  position: absolute;
+  top: 7px; right: 12px;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 2px rgba(17,24,39,0.9);
+}
+
+/* Colores por módulo (mismos que antes) */
+.sb-rail-btn.gastos { color: #6ee7b7; }
+.sb-rail-btn.retenciones { color: #7dd3fc; }
+.sb-rail-btn.ingresos { color: #fcd34d; }
+.sb-rail-btn.declaraciones { color: #a5b4fc; }
+.sb-rail-btn.devoluciones { color: #f9a8d4; }
+
+/* ── Columna 2: panel del módulo seleccionado ── */
+.sb-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.sb-panel-head {
+  padding: 12px 14px 8px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: #64748b;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+.sb-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.10) transparent;
+  animation: submenuIn 0.20s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.sb-panel-body::-webkit-scrollbar { width: 5px; }
+.sb-panel-body::-webkit-scrollbar-track { background: transparent; }
+.sb-panel-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); border-radius: 4px; }
+.sb-panel-body::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
+
+/* Dentro del panel los ítems ya no van indentados */
+.sb-panel-body .submodule { margin-left: 0; }
+.sb-panel-body .sidebar-quick-nav { margin: 0 0 8px; }
+.sb-panel-body .level-1 { margin-bottom: 6px; }
+
 /* ── Mobile overlay ── */
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
-    left: -288px;
+    left: -332px;
     z-index: 200;
     transition: left 0.25s ease;
-    width: 268px;
+    width: 312px;
+    min-width: 312px;
   }
   .sidebar.is-open { left: 0; box-shadow: 4px 0 32px rgba(0,0,0,0.6); }
+}
+
+/* Pantallas muy angostas: franja más compacta */
+@media (max-width: 380px) {
+  .sidebar, .sidebar.is-open { width: 290px; min-width: 290px; }
+  .sb-rail { width: 84px; min-width: 84px; }
 }
