@@ -1,7 +1,7 @@
 /* ─── Sidebar — diseño profesional refinado ─── */
 .sidebar {
-  width: 394px;
-  min-width: 394px;
+  width: 360px;
+  min-width: 360px;
   height: 100vh;
   background:
     radial-gradient(120% 60% at 0% 0%, rgba(59, 130, 246, 0.10) 0%, transparent 55%),
@@ -698,6 +698,8 @@
   color: #fff;
   box-shadow: inset 2px 0 0 #818cf8;
 }
+.sb-panel-body .submodule > span:last-child,
+.sb-panel-body .info-item > span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .sb-panel-body .sidebar-quick-nav { margin: 0 0 8px; }
 .sb-panel-body .level-1 { margin-bottom: 5px; font-size: 0.745rem; padding: 6px 9px; }
 .sb-panel-body .info-title { padding: 10px 9px 2px; letter-spacing: 0.12em; font-size: 0.565rem; }
@@ -707,18 +709,18 @@
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
-    left: -414px;
+    left: -380px;
     z-index: 200;
     transition: left 0.25s ease;
-    width: 394px;
-    min-width: 394px;
+    width: 360px;
+    min-width: 360px;
   }
   .sidebar.is-open { left: 0; box-shadow: 4px 0 32px rgba(0,0,0,0.6); }
 }
 
 /* Pantallas angostas: se conserva la franja ancha, se ajusta el panel */
 @media (max-width: 420px) {
-  .sidebar { width: 364px; min-width: 364px; left: -384px; }
+  .sidebar { width: 348px; min-width: 348px; left: -368px; }
   .sb-rail { width: 190px; min-width: 190px; }
   .sb-rail-lbl { font-size: 0.70rem; }
 }
