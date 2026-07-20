@@ -1,7 +1,7 @@
 /* ─── Sidebar — diseño profesional refinado ─── */
 .sidebar {
-  width: 312px;
-  min-width: 312px;
+  width: 356px;
+  min-width: 356px;
   height: 100vh;
   background:
     radial-gradient(120% 60% at 0% 0%, rgba(59, 130, 246, 0.10) 0%, transparent 55%),
@@ -520,12 +520,12 @@
 
 /* ── Columna 1: franja de módulos ── */
 .sb-rail {
-  width: 96px;
-  min-width: 96px;
+  width: 152px;
+  min-width: 152px;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 6px 14px;
+  padding: 10px 8px 14px;
   overflow-y: auto;
   background: rgba(0, 0, 0, 0.22);
   border-right: 1px solid rgba(148, 163, 184, 0.10);
@@ -539,16 +539,17 @@
 .sb-rail-btn {
   position: relative;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 4px;
+  gap: 9px;
   width: 100%;
   background: transparent;
   border: none;
   border-radius: 10px;
-  padding: 9px 4px;
+  padding: 10px 10px;
   cursor: pointer;
   color: #94a3b8;
+  text-align: left;
   transition: background 0.18s ease, color 0.18s ease;
 }
 .sb-rail-btn:hover { background: rgba(255,255,255,0.07); color: #e2e8f0; }
@@ -564,20 +565,22 @@
   border-radius: 0 3px 3px 0;
   background: currentColor;
 }
-.sb-rail-ico { font-size: 1.15rem; line-height: 1; }
+.sb-rail-ico { font-size: 1.05rem; line-height: 1; width: 20px; text-align: center; flex-shrink: 0; }
 .sb-rail-lbl {
-  font-size: 0.60rem;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.735rem;
   font-weight: 700;
-  letter-spacing: 0.2px;
-  text-align: center;
-  line-height: 1.15;
+  letter-spacing: 0.25px;
+  text-align: left;
+  line-height: 1.2;
   text-transform: uppercase;
   word-break: break-word;
 }
 /* Punto rojo de movimientos nuevos sobre el módulo Admin */
 .sb-rail-dot {
   position: absolute;
-  top: 7px; right: 12px;
+  top: 8px; right: 8px;
   width: 7px; height: 7px;
   border-radius: 50%;
   background: #ef4444;
@@ -634,17 +637,18 @@
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
-    left: -332px;
+    left: -376px;
     z-index: 200;
     transition: left 0.25s ease;
-    width: 312px;
-    min-width: 312px;
+    width: 356px;
+    min-width: 356px;
   }
   .sidebar.is-open { left: 0; box-shadow: 4px 0 32px rgba(0,0,0,0.6); }
 }
 
-/* Pantallas muy angostas: franja más compacta */
-@media (max-width: 380px) {
-  .sidebar, .sidebar.is-open { width: 290px; min-width: 290px; }
-  .sb-rail { width: 84px; min-width: 84px; }
+/* Pantallas angostas: se conserva la franja ancha, se ajusta el panel */
+@media (max-width: 420px) {
+  .sidebar { width: 322px; min-width: 322px; left: -342px; }
+  .sb-rail { width: 138px; min-width: 138px; }
+  .sb-rail-lbl { font-size: 0.70rem; }
 }

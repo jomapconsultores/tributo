@@ -125,7 +125,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         items: [L('🧾', 'Retenciones', '/retenciones')],
       },
       {
-        key: 'agente_ret', ico: '🧷', rail: 'Agente Ret.', title: 'Agente de retención',
+        key: 'agente_ret', ico: '🧷', rail: 'Agente de retención', title: 'Agente de retención',
         color: 'retenciones', visible: has('agente_retencion'),
         items: [L('🧷', 'Retenciones efectuadas', '/retenciones-efectuadas', hasSub('agret_retenciones'))],
       },
@@ -139,13 +139,13 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         ],
       },
       {
-        key: 'pendientes', ico: '⏳', rail: 'Pendientes', title: 'Clientes pendientes',
+        key: 'pendientes', ico: '⏳', rail: 'Clientes pendientes', title: 'Clientes pendientes',
         color: 'declaraciones', visible: has('declaraciones') || has('agente_retencion'),
         autoNav: true,
         items: [L('⏳', 'Clientes pendientes', '/clientes-pendientes')],
       },
       {
-        key: 'devoluciones', ico: '💰', rail: 'Devoluciones', title: 'Devoluciones IVA',
+        key: 'devoluciones', ico: '💰', rail: 'Devoluciones IVA', title: 'Devoluciones IVA',
         color: 'devoluciones', visible: has('declaraciones') && hasSub('decl_devoluciones'),
         items: [L('👵', 'Adultos mayores', '/devoluciones-iva/tercera-edad')],
       },
@@ -158,7 +158,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         ],
       },
       {
-        key: 'odoo', ico: '🧾', rail: 'Odoo', title: 'Facturación Odoo',
+        key: 'odoo', ico: '🧾', rail: 'Facturación Odoo', title: 'Facturación Odoo',
         visible: true, match: (p) => p.startsWith('/odoo-facturacion'),
         items: [
           L('📤', 'Emitir facturas', '/odoo-facturacion'),
@@ -166,7 +166,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         ],
       },
       {
-        key: 'capacitaciones', ico: '🎓', rail: 'Capacitación', title: 'Capacitaciones',
+        key: 'capacitaciones', ico: '🎓', rail: 'Capacitaciones', title: 'Capacitaciones',
         visible: true, autoNav: true,
         items: [L('🎓', 'Capacitaciones', '/capacitaciones')],
       },
@@ -180,7 +180,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         items: [L('👥', 'Compradores', '/compradores')],
       },
       {
-        key: 'admin', ico: '🛠️', rail: 'Admin', title: 'Administración',
+        key: 'admin', ico: '🛠️', rail: 'Administración', title: 'Administración',
         visible: isSuperAdmin,
         items: [
           L('🛠️', 'Administración', '/admin'),
