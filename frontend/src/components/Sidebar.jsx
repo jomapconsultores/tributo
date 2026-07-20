@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useClients } from '../context/ClientContext'
 import { useAccess, homeFor } from '../context/AccessContext'
@@ -196,9 +196,22 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         items: [L('🔐', 'Credenciales SRI', '/admin/credenciales')],
       },
     ]
+    // Agrupación de la franja: da orden y hace el menú más fácil de recorrer.
+    const GRUPOS = {
+      ingresos_iva: 'Ingresos', ingresos_ice: 'Ingresos',
+      gastos: 'Egresos', retenciones: 'Egresos', agente_ret: 'Egresos',
+      declaraciones: 'Tributario', pendientes: 'Tributario', devoluciones: 'Tributario',
+      reportes: 'Gestión', odoo: 'Gestión', capacitaciones: 'Gestión',
+      clientes: 'Datos', compradores: 'Datos',
+      admin: 'Sistema', credenciales: 'Sistema',
+    }
     return defs
       .filter((m) => m.visible)
-      .map((m) => ({ ...m, items: (m.items || []).filter((i) => i.visible !== false) }))
+      .map((m) => ({
+        ...m,
+        group: GRUPOS[m.key] || '',
+        items: (m.items || []).filter((i) => i.visible !== false),
+      }))
   }, [has, hasSub, isSuperAdmin, role, movNuevos])
 
   // Módulo al que pertenece la ruta actual (para resaltar y abrir su panel).
@@ -364,22 +377,29 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
       {/* Dos columnas: franja de módulos + panel del módulo seleccionado */}
       <div className="sb-cols">
         <nav className="sb-rail">
-          {menus.map((m) => (
-            <button
-              key={m.key}
-              className={`sb-rail-btn ${m.color || ''} ${selKey === m.key ? 'sel' : ''} ${activeKey === m.key ? 'active' : ''}`}
-              onClick={() => onRailClick(m)}
-              title={m.title}
-            >
-              <span className="sb-rail-ico">{m.ico}</span>
-              <span className="sb-rail-lbl">{m.rail}</span>
-              {m.key === 'admin' && movNuevos > 0 && <span className="sb-rail-dot" />}
-            </button>
+          {menus.map((m, i) => (
+            <Fragment key={m.key}>
+              {m.group && m.group !== menus[i - 1]?.group && (
+                <div className="sb-rail-group">{m.group}</div>
+              )}
+              <button
+                className={`sb-rail-btn ${m.color || ''} ${selKey === m.key ? 'sel' : ''} ${activeKey === m.key ? 'active' : ''}`}
+                onClick={() => onRailClick(m)}
+                title={m.title}
+              >
+                <span className="sb-rail-ico">{m.ico}</span>
+                <span className="sb-rail-lbl">{m.rail}</span>
+                {m.key === 'admin' && movNuevos > 0 && <span className="sb-rail-dot" />}
+              </button>
+            </Fragment>
           ))}
         </nav>
 
         <div className="sb-panel">
-          <div className="sb-panel-head">{sel?.title}</div>
+          <div className="sb-panel-head">
+            <span className="sb-panel-head-ico">{sel?.ico}</span>
+            <span className="sb-panel-head-txt">{sel?.title}</span>
+          </div>
           <div className="sb-panel-body">
             {sel?.custom === 'clientes' ? renderClientes() : (sel?.items || []).map(renderItem)}
           </div>

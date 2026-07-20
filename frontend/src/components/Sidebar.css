@@ -524,14 +524,27 @@
   min-width: 190px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 10px 8px 14px;
+  gap: 1px;
+  padding: 6px 8px 16px;
   overflow-y: auto;
-  background: rgba(0, 0, 0, 0.22);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.30) 0%, rgba(0, 0, 0, 0.18) 100%);
   border-right: 1px solid rgba(148, 163, 184, 0.10);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.02);
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.10) transparent;
 }
+
+/* Rótulo de grupo dentro de la franja */
+.sb-rail-group {
+  font-size: 0.575rem;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: #475569;
+  padding: 13px 10px 5px;
+  user-select: none;
+}
+.sb-rail-group:first-child { padding-top: 5px; }
 .sb-rail::-webkit-scrollbar { width: 4px; }
 .sb-rail::-webkit-scrollbar-track { background: transparent; }
 .sb-rail::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); border-radius: 4px; }
@@ -541,42 +554,72 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   width: 100%;
   background: transparent;
   border: none;
-  border-radius: 10px;
-  padding: 10px 10px;
+  border-radius: 9px;
+  padding: 7px 9px;
   cursor: pointer;
   color: #94a3b8;
   text-align: left;
-  transition: background 0.18s ease, color 0.18s ease;
+  transition: background 0.16s ease, color 0.16s ease;
 }
-.sb-rail-btn:hover { background: rgba(255,255,255,0.07); color: #e2e8f0; }
-/* Módulo abierto en la segunda columna */
-.sb-rail-btn.sel { background: rgba(255,255,255,0.10); color: #fff; }
-/* Módulo que además corresponde a la pantalla actual */
+.sb-rail-btn:hover { background: rgba(255,255,255,0.055); color: #e2e8f0; }
+.sb-rail-btn:hover .sb-rail-ico { background: rgba(255,255,255,0.11); }
+
+/* Módulo abierto en la segunda columna: se "conecta" visualmente con el panel */
+.sb-rail-btn.sel {
+  background: rgba(255,255,255,0.085);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+}
+.sb-rail-btn.sel .sb-rail-ico {
+  background: rgba(255,255,255,0.14);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.09);
+}
+.sb-rail-btn.sel .sb-rail-lbl { color: #fff; }
+
+/* Módulo que además corresponde a la pantalla actual: acento en su color */
 .sb-rail-btn.active::before {
   content: '';
   position: absolute;
-  left: 0; top: 50%;
+  left: 1px; top: 50%;
   transform: translateY(-50%);
-  width: 3px; height: 58%;
+  width: 3px; height: 62%;
   border-radius: 0 3px 3px 0;
   background: currentColor;
+  box-shadow: 0 0 7px currentColor;
 }
-.sb-rail-ico { font-size: 1.05rem; line-height: 1; width: 20px; text-align: center; flex-shrink: 0; }
+
+/* Icono en "chip": alinea perfecto y da un acabado más pulido */
+.sb-rail-ico {
+  width: 27px;
+  height: 27px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  line-height: 1;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  flex-shrink: 0;
+  transition: background 0.16s ease, box-shadow 0.16s ease;
+}
 .sb-rail-lbl {
   flex: 1;
   min-width: 0;
-  font-size: 0.735rem;
+  font-size: 0.705rem;
   font-weight: 700;
-  letter-spacing: 0.25px;
+  letter-spacing: 0.045em;
   text-align: left;
-  line-height: 1.2;
+  line-height: 1.22;
   text-transform: uppercase;
+  color: #a8b6c8;
   word-break: break-word;
+  transition: color 0.16s ease;
 }
+.sb-rail-btn:hover .sb-rail-lbl { color: #e2e8f0; }
 /* Punto rojo de movimientos nuevos sobre el módulo Admin */
 .sb-rail-dot {
   position: absolute;
@@ -603,15 +646,29 @@
   min-height: 0;
 }
 .sb-panel-head {
-  padding: 12px 14px 8px;
-  font-size: 0.68rem;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 13px 14px 11px;
+  font-size: 0.70rem;
   font-weight: 800;
-  letter-spacing: 0.9px;
+  letter-spacing: 0.085em;
   text-transform: uppercase;
-  color: #64748b;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  color: #cbd5e1;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
   flex-shrink: 0;
 }
+/* Filo luminoso bajo el título, como en la cabecera de marca */
+.sb-panel-head::after {
+  content: '';
+  position: absolute;
+  left: 14px; right: 14px; bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(99, 179, 237, 0.55), transparent);
+}
+.sb-panel-head-ico { font-size: 0.95rem; line-height: 1; opacity: 0.9; }
+.sb-panel-head-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-panel-body {
   flex: 1;
   overflow-y: auto;
@@ -629,9 +686,22 @@
 .sb-panel-body::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
 
 /* Dentro del panel los ítems ya no van indentados */
-.sb-panel-body .submodule { margin-left: 0; }
+.sb-panel-body .submodule {
+  margin-left: 0;
+  font-size: 0.815rem;
+  padding: 8px 11px;
+  border-radius: 8px;
+}
+/* Pantalla actual: acento sólido a la izquierda, más legible que solo el fondo */
+.sb-panel-body .submodule.active {
+  background: rgba(99, 130, 246, 0.16);
+  color: #fff;
+  box-shadow: inset 2px 0 0 #818cf8;
+}
 .sb-panel-body .sidebar-quick-nav { margin: 0 0 8px; }
-.sb-panel-body .level-1 { margin-bottom: 6px; }
+.sb-panel-body .level-1 { margin-bottom: 8px; }
+.sb-panel-body .info-title { padding: 13px 11px 4px; letter-spacing: 0.11em; }
+.sb-panel-body .client-search { margin-bottom: 8px; }
 
 /* ── Mobile overlay ── */
 @media (max-width: 768px) {
