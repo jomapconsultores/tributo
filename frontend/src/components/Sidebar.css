@@ -1,7 +1,7 @@
 /* ─── Sidebar — diseño profesional refinado ─── */
 .sidebar {
-  width: 356px;
-  min-width: 356px;
+  width: 374px;
+  min-width: 374px;
   height: 100vh;
   background:
     radial-gradient(120% 60% at 0% 0%, rgba(59, 130, 246, 0.10) 0%, transparent 55%),
@@ -520,8 +520,8 @@
 
 /* ── Columna 1: franja de módulos ── */
 .sb-rail {
-  width: 152px;
-  min-width: 152px;
+  width: 170px;
+  min-width: 170px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -637,18 +637,18 @@
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
-    left: -376px;
+    left: -394px;
     z-index: 200;
     transition: left 0.25s ease;
-    width: 356px;
-    min-width: 356px;
+    width: 374px;
+    min-width: 374px;
   }
   .sidebar.is-open { left: 0; box-shadow: 4px 0 32px rgba(0,0,0,0.6); }
 }
 
 /* Pantallas angostas: se conserva la franja ancha, se ajusta el panel */
 @media (max-width: 420px) {
-  .sidebar { width: 322px; min-width: 322px; left: -342px; }
-  .sb-rail { width: 138px; min-width: 138px; }
+  .sidebar { width: 344px; min-width: 344px; left: -364px; }
+  .sb-rail { width: 170px; min-width: 170px; }
   .sb-rail-lbl { font-size: 0.70rem; }
 }
