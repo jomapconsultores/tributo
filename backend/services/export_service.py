@@ -37,6 +37,10 @@ DATOS_COLS = [
     ("Desc. Manual", "desc_manual"),
     ("Total", "total"),
     ("Destinatario", "destinatario"),
+    # Marca al FINAL (no altera las letras de columna que usan las fórmulas
+    # SUMIF/COUNTIF de RESUMEN, que apuntan a F..S). Indica que la clasificación
+    # de ese gasto fue MODIFICADA excepcionalmente para este contribuyente/período.
+    ("Excepción", "es_excepcion"),
 ]
 
 NUMERIC_KEYS = {
@@ -69,6 +73,9 @@ def generate_excel(invoices: List[Dict]) -> bytes:
                     sin_clasif.add((inv.get('ruc_proveedor', ''), inv.get('nombre_proveedor', '')))
                 r = {}
                 for header, key in DATOS_COLS:
+                    if key == "es_excepcion":
+                        r[header] = "⚡ EXCEPCIÓN" if inv.get("es_excepcion") else ""
+                        continue
                     val = inv.get(key, "")
                     if key in NUMERIC_KEYS:
                         try:
@@ -137,6 +144,33 @@ def generate_excel(invoices: List[Dict]) -> bytes:
             row_cursor = 0
             row_cursor = write_summary_table(row_cursor, "GASTOS PERSONALES", l_pers, "#28a745")
             row_cursor = write_summary_table(row_cursor, "GASTOS DEL EJERCICIO", l_ejer, "#007bff")
+
+            # Aviso de gastos con clasificación EXCEPCIONAL (modificada solo para
+            # este contribuyente/período): deja constancia en el reporte de que la
+            # clasificación de esos proveedores fue cambiada a propósito.
+            excep_map = {}
+            for inv in rows_ok:
+                if inv.get("es_excepcion"):
+                    key = (inv.get("ruc_proveedor", ""), inv.get("nombre_proveedor", ""))
+                    excep_map[key] = (inv.get("clasificacion") or "").upper()
+            if excep_map:
+                fmt_ex_title = wb.add_format({'bold': True, 'font_size': 12, 'font_color': '#92400e'})
+                ws_res.merge_range(row_cursor, 0, row_cursor, 9,
+                                   "⚡ GASTOS CON CLASIFICACIÓN EXCEPCIONAL (modificada solo para este contribuyente y período)",
+                                   fmt_ex_title)
+                fmt_ex_head = wb.add_format({'bold': True, 'bg_color': '#f59e0b', 'font_color': 'white', 'border': 1})
+                fmt_ex_cell = wb.add_format({'border': 1})
+                hr = row_cursor + 1
+                for i, h in enumerate(["RUC", "Proveedor", "Categoría excepcional aplicada"]):
+                    ws_res.write(hr, i, h, fmt_ex_head)
+                rr = hr + 1
+                for (ruc, nom), cat in sorted(excep_map.items()):
+                    ws_res.write(rr, 0, ruc, fmt_ex_cell)
+                    ws_res.write(rr, 1, nom, fmt_ex_cell)
+                    ws_res.write(rr, 2, cat, fmt_ex_cell)
+                    rr += 1
+                row_cursor = rr + 2
+
             ws_res.set_column(0, 0, 30)
             ws_res.set_column(1, 9, 15)
 
@@ -196,14 +230,40 @@ def generate_pdf(invoices: List[Dict], titulo: str = "Resumen de Gastos") -> byt
         story.append(res_table)
         story.append(Spacer(1, 0.3 * inch))
 
-        # Detalle
+        # Gastos con clasificación EXCEPCIONAL (modificada solo para este
+        # contribuyente/período): se listan para dejar constancia en el reporte.
+        excep_map = {}
+        for inv in rows_ok:
+            if inv.get('es_excepcion'):
+                excep_map[(inv.get('ruc_proveedor', ''), str(inv.get('nombre_proveedor', '')))] = (inv.get('clasificacion') or '').upper()
+        if excep_map:
+            ex_data = [["RUC", "Proveedor", "Categoría excepcional aplicada"]]
+            for (ruc, nom), cat in sorted(excep_map.items()):
+                ex_data.append([ruc, nom[:30], cat])
+            ex_table = Table(ex_data, colWidths=[1.4 * inch, 3.0 * inch, 2.2 * inch])
+            ex_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f59e0b')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#fff7ed')),
+            ]))
+            story.append(Paragraph("⚡ Clasificación excepcional (modificada solo para este contribuyente y período)", styles['Heading2']))
+            story.append(ex_table)
+            story.append(Spacer(1, 0.3 * inch))
+
+        # Detalle (marca ⚡ en la clasificación de los gastos con excepción)
         data = [["Fecha", "RUC", "Proveedor", "Clasificación", "Base 15%", "IVA 15%", "Total"]]
         for inv in rows_ok[:200]:
+            clasif = inv.get('clasificacion', '') or ''
+            if inv.get('es_excepcion'):
+                clasif = f"⚡ {clasif}"
             data.append([
                 inv.get('fecha', ''),
                 inv.get('ruc_proveedor', ''),
                 str(inv.get('nombre_proveedor', ''))[:30],
-                inv.get('clasificacion', ''),
+                clasif,
                 f"${float(inv.get('base_15', 0)):,.2f}",
                 f"${float(inv.get('iva_15', 0)):,.2f}",
                 f"${float(inv.get('total', 0)):,.2f}",

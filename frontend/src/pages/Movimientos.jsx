@@ -172,6 +172,12 @@ export default function Movimientos() {
                         {m.identificacion && <span className="mv-ruc"> · {m.identificacion}</span>}
                         {m.metadata?.periodo && <span className="mv-meta"> · período {m.metadata.periodo}</span>}
                         {m.metadata?.mes && <span className="mv-meta"> · {String(m.metadata.mes).padStart(2, '0')}/{m.metadata.anio}</span>}
+                        {m.metadata?.ruc && (
+                          <span className="mv-meta"> · proveedor {m.metadata.ruc}
+                            {m.metadata?.categoria ? ` → ${m.metadata.categoria}` : ''}
+                            {m.metadata?.categoria_revertida ? ` → ${m.metadata.categoria_revertida}` : ''}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>

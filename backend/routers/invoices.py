@@ -436,7 +436,23 @@ def _fetch_for_export(supabase, client_id: Optional[str], user_id: str):
         if client_id:
             return supabase.table("invoices").select("*").eq("client_id", client_id).order("fecha", desc=True)
         return supabase.table("invoices").select("*").eq("user_id", user_id).order("fecha", desc=True)
-    return fetch_all(_q)
+    rows = fetch_all(_q)
+    # Marca los gastos cuya clasificación fue MODIFICADA excepcionalmente para su
+    # contribuyente/período (por (client_id, ruc)), para señalarlo en el reporte.
+    cids = list({r.get("client_id") for r in rows if r.get("client_id")})
+    pares = set()
+    if cids:
+        try:
+            for i in range(0, len(cids), 100):
+                lote = cids[i:i + 100]
+                ex = supabase.table("clasificacion_excepciones").select("client_id,ruc")\
+                    .in_("client_id", lote).execute().data or []
+                pares.update((e["client_id"], (e.get("ruc") or "").strip()) for e in ex)
+        except Exception:
+            pares = set()
+    for r in rows:
+        r["es_excepcion"] = (r.get("client_id"), (r.get("ruc_proveedor") or "").strip()) in pares
+    return rows
 
 
 def _client_label(supabase, client_id: Optional[str]) -> str:

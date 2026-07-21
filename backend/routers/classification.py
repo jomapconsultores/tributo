@@ -171,6 +171,7 @@ async def set_excepcion(body: ExcepcionBody, user_id: str = Depends(get_current_
         raise HTTPException(status_code=400, detail="RUC y categoría son obligatorios")
     existing = supabase.table("clasificacion_excepciones").select("id")\
         .eq("client_id", body.client_id).eq("ruc", ruc).execute().data
+    accion = "editar" if existing else "crear"
     if existing:
         supabase.table("clasificacion_excepciones").update(
             {"categoria": cat, "updated_at": "now()"}).eq("id", existing[0]["id"]).execute()
@@ -178,6 +179,15 @@ async def set_excepcion(body: ExcepcionBody, user_id: str = Depends(get_current_
         supabase.table("clasificacion_excepciones").insert(
             {"user_id": user_id, "client_id": body.client_id, "ruc": ruc, "categoria": cat}).execute()
     n = _materializar_excepcion(supabase, body.client_id, ruc, cat)
+    # Bitácora (módulo Movimientos): deja constancia de QUÉ se cambió y para quién.
+    try:
+        from services.activity import registrar
+        registrar(actor_user_id=user_id, action="update", module="gastos",
+                  entity="Excepción de clasificación de gasto", client_id=body.client_id,
+                  cantidad=n, metadata={"accion": accion, "ruc": ruc, "categoria": cat,
+                                        "reclasificadas": n})
+    except Exception as e:
+        print(f"[excepcion] no se pudo registrar movimiento: {e}")
     return {"ok": True, "reclasificadas": n, "categoria": cat}
 
 
@@ -197,6 +207,14 @@ async def del_excepcion(client_id: str = Query(...), ruc: str = Query(...),
     owner_uid = owner[0]["user_id"] if owner else user_id
     cat = resolve_team_classification(supabase, owner_uid).get(ruc, "SIN CLASIFICAR")
     n = _materializar_excepcion(supabase, client_id, ruc, cat)
+    # Bitácora: registrar que se quitó la excepción y a qué categoría se revirtió.
+    try:
+        from services.activity import registrar
+        registrar(actor_user_id=user_id, action="delete", module="gastos",
+                  entity="Quitar excepción de clasificación de gasto", client_id=client_id,
+                  cantidad=n, metadata={"ruc": ruc, "categoria_revertida": cat, "revertidas": n})
+    except Exception as e:
+        print(f"[excepcion] no se pudo registrar movimiento: {e}")
     return {"ok": True, "revertidas": n, "categoria": cat}
 
 
