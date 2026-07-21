@@ -163,9 +163,14 @@ async def process_txt(
                 fp_count += 1
                 fuera_periodo.append({"archivo": "(XML del SRI)", "factura": invoice.get("factura_numero"), "fecha": invoice.get("fecha")})
                 continue
+            # La compra debe estar A NOMBRE del contribuyente (comprador = cliente).
+            # Si el comprador es otra persona/RUC, el gasto NO le corresponde: se
+            # descarta (con aviso) y no se guarda. La equivalencia RUC↔cédula del
+            # mismo dueño la resuelve identificacion_no_coincide.
             if identificacion_no_coincide(invoice.get("ruc_comprador"), cli_ident):
                 comprador_ajeno.append({"archivo": "(XML del SRI)", "factura": invoice.get("factura_numero"),
                                         "ruc_comprador": invoice.get("ruc_comprador")})
+                continue
             guardar_xml_original(supabase, user_id, client_id, "gasto", xml_content)
             result = _store_invoice(supabase, client_id, user_id, invoice)
             if result == "new":
@@ -224,9 +229,13 @@ async def process_xml(
                 fp_count += 1
                 fuera_periodo.append({"archivo": file.filename, "factura": invoice.get("factura_numero"), "fecha": invoice.get("fecha")})
                 continue
+            # La compra debe estar A NOMBRE del contribuyente (comprador = cliente).
+            # Si el comprador es otra persona/RUC, el gasto NO le corresponde: se
+            # descarta (con aviso) y no se guarda.
             if identificacion_no_coincide(invoice.get("ruc_comprador"), cli_ident):
                 comprador_ajeno.append({"archivo": file.filename, "factura": invoice.get("factura_numero"),
                                         "ruc_comprador": invoice.get("ruc_comprador")})
+                continue
             guardar_xml_original(supabase, user_id, client_id, "gasto", xml_content)
             result = _store_invoice(supabase, client_id, user_id, invoice)
             if result == "new":

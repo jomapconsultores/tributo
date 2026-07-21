@@ -118,6 +118,10 @@ async def process_xml(
                 })
                 continue
             # El emisor de una VENTA debe ser el propio contribuyente que declara.
+            # Si la emitió OTRO RUC, la venta NO le corresponde: se descarta (con
+            # aviso) y no se guarda. La equivalencia RUC↔cédula (persona natural)
+            # la resuelve identificacion_no_coincide, así que no se descartan las
+            # emitidas con la cédula del mismo dueño.
             # ruc_emisor no es columna de sales_iva: se extrae del dict antes de insertar.
             emisor = parsed.pop("ruc_emisor", "")
             if identificacion_no_coincide(emisor, cli_ident):
@@ -126,6 +130,7 @@ async def process_xml(
                     "factura": parsed.get("factura_numero"),
                     "ruc_emisor": emisor,
                 })
+                continue
             if xml_content:
                 guardar_xml_original(supabase, user_id, client_id, "ingreso_iva", xml_content)
             try:
@@ -151,6 +156,7 @@ async def process_xml(
             "rechazadas": rechazadas,
             "fuera_de_periodo": fp_count,
             "fuera_periodo": fuera_periodo,
+            "emisor_ajeno": emisor_ajeno,
             "periodo": etiqueta_periodo(pmes, panio, pfreq, psem),
         }
     except HTTPException:
@@ -162,10 +168,10 @@ async def process_xml(
 def _guardar_venta(supabase, client_id, user_id, xml_content, pmes=None, panio=None, cli_ident="",
                    pfreq="mensual", psem=None):
     """Parsea un XML de venta y lo guarda en sales_iva. Devuelve (estado, info):
-    estado ∈ 'new' | 'dup' | 'err' | 'con_ice' | 'fuera'. En 'new'/'dup', info es
-    None salvo que el EMISOR no sea el contribuyente que declara (cli_ident): en
-    ese caso info = {'factura', 'ruc_emisor'} para advertir. (Reutilizado por
-    process-txt.)"""
+    estado ∈ 'new' | 'dup' | 'err' | 'con_ice' | 'fuera' | 'ajeno'. Para 'con_ice'
+    info es el número de factura; para 'fuera'/'ajeno' es {'factura', ...}; en el
+    resto None. 'ajeno' = el EMISOR no es el contribuyente que declara → NO se
+    guarda (la venta la emitió otro RUC). (Reutilizado por process-txt.)"""
     parsed = parse_venta_xml(xml_content)
     if parsed is None:
         return "err", None
@@ -174,14 +180,14 @@ def _guardar_venta(supabase, client_id, user_id, xml_content, pmes=None, panio=N
     if es_de_otro_periodo(parsed.get("fecha"), pmes, panio, pfreq, psem):
         return "fuera", {"factura": parsed.get("factura_numero"), "fecha": parsed.get("fecha")}
     # ruc_emisor no es columna: se extrae antes de insertar y sirve para validar
-    # que la venta la emita el propio contribuyente.
+    # que la venta la emita el propio contribuyente. Si es de otro RUC, se descarta.
     emisor = parsed.pop("ruc_emisor", "")
-    ajeno = {"factura": parsed.get("factura_numero"), "ruc_emisor": emisor} \
-        if identificacion_no_coincide(emisor, cli_ident) else None
+    if identificacion_no_coincide(emisor, cli_ident):
+        return "ajeno", {"factura": parsed.get("factura_numero"), "ruc_emisor": emisor}
     guardar_xml_original(supabase, user_id, client_id, "ingreso_iva", xml_content)
     try:
         supabase.table("sales_iva").insert({"client_id": client_id, "user_id": user_id, **parsed}).execute()
-        return "new", ajeno
+        return "new", None
     except Exception as e:
         if es_error_duplicado(e):
             return "dup", None
@@ -217,8 +223,6 @@ async def process_txt(
             estado, info = _guardar_venta(supabase, client_id, user_id, xml_content, pmes, panio, cli_ident, pfreq, psem)
             if estado == "new":
                 new_count += 1
-                if info:  # emisor no es el contribuyente
-                    emisor_ajeno.append({"archivo": "(XML del SRI)", **info})
             elif estado == "dup":
                 dup_count += 1
             elif estado == "con_ice":
@@ -227,6 +231,8 @@ async def process_txt(
             elif estado == "fuera":
                 fp_count += 1
                 fuera_periodo.append({"archivo": "(XML del SRI)", "factura": info.get("factura"), "fecha": info.get("fecha")})
+            elif estado == "ajeno":  # emisor no es el contribuyente → descartada
+                emisor_ajeno.append({"archivo": "(XML del SRI)", **info})
             else:
                 err_count += 1
         if new_count:
