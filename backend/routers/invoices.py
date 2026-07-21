@@ -366,7 +366,26 @@ async def update_invoice(
         # FUTURAS de ese RUC entren ya clasificadas.
         if row and clasif_value and clasif_value != "SIN CLASIFICAR":
             ruc = (row.get("ruc_proveedor") or "").strip()
-            if ruc:
+            cid = row.get("client_id")
+            # Si este proveedor tiene EXCEPCIÓN en este período, editar su categoría
+            # es un cambio LOCAL: se actualiza la excepción y solo las facturas de
+            # este client_id; NO se propaga al mapa global ni a otros períodos.
+            excep = None
+            if ruc and cid:
+                try:
+                    excep = supabase.table("clasificacion_excepciones").select("id")\
+                        .eq("client_id", cid).eq("ruc", ruc).execute().data
+                except Exception:
+                    excep = None
+            if excep:
+                try:
+                    from routers.classification import _materializar_excepcion
+                    supabase.table("clasificacion_excepciones").update(
+                        {"categoria": clasif_value, "updated_at": "now()"}).eq("id", excep[0]["id"]).execute()
+                    reclasificadas = _materializar_excepcion(supabase, cid, ruc, clasif_value)
+                except Exception as exc_e:
+                    print(f"Error actualizando excepción {ruc}: {exc_e}")
+            elif ruc:
                 try:
                     from routers.classification import _propagate_classification
                     reclasificadas = _propagate_classification(supabase, ruc, clasif_value, user_id)

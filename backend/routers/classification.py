@@ -38,6 +38,45 @@ def _client_ids_del_equipo(supabase, user_id):
         return set()
 
 
+def _excepcion_client_ids(supabase, ruc: str) -> set:
+    """client_id que tienen una EXCEPCIÓN de clasificación para ese RUC (ver
+    migración 050). Esos períodos NO deben ser tocados por la propagación global:
+    su categoría manda solo ahí y se maneja aparte (set_excepcion/del_excepcion)."""
+    try:
+        rows = supabase.table("clasificacion_excepciones").select("client_id")\
+            .eq("ruc", (ruc or "").strip()).execute().data or []
+        return {r["client_id"] for r in rows}
+    except Exception:
+        return set()
+
+
+def _materializar_excepcion(supabase, client_id: str, ruc: str, categoria: str) -> int:
+    """Fija invoices.clasificacion = categoría para las facturas de ese RUC en ESE
+    client_id (contribuyente + período), sin tocar el mapa global ni otros períodos.
+    Devuelve cuántas facturas cambiaron de categoría."""
+    cat = (categoria or "").strip().upper()
+    ruc = (ruc or "").strip()
+    if not client_id or not ruc or not cat:
+        return 0
+    try:
+        rows = supabase.table("invoices").select("id,clasificacion")\
+            .eq("client_id", client_id).eq("ruc_proveedor", ruc).execute().data or []
+    except Exception as e:
+        print(f"Error leyendo facturas de la excepción {ruc}: {e}")
+        return 0
+    a_cambiar = [r["id"] for r in rows
+                 if (r.get("clasificacion") or "").strip().upper() != cat]
+    n = 0
+    for i in range(0, len(a_cambiar), 200):
+        lote = a_cambiar[i:i + 200]
+        try:
+            r = supabase.table("invoices").update({"clasificacion": cat}).in_("id", lote).execute()
+            n += len(r.data or [])
+        except Exception as e:
+            print(f"Error materializando excepción {ruc}: {e}")
+    return n
+
+
 def _propagate_classification(supabase, ruc: str, categoria: str, user_id: str,
                               client_ids="__auto__") -> int:
     """Aplica la categoría a TODAS las facturas de ese RUC en los contribuyentes
@@ -46,6 +85,9 @@ def _propagate_classification(supabase, ruc: str, categoria: str, user_id: str,
     clasificación de un RUC, se reclasifican todos sus comprobantes de todo el
     EQUIPO (una clasificación por RUC, consistente). Devuelve cuántas facturas
     cambiaron de categoría (no cuenta las que ya tenían esa misma categoría).
+
+    Los períodos (client_id) con EXCEPCIÓN para ese RUC quedan EXCLUIDOS: su
+    categoría excepcional no se pisa por una edición global (ver migración 050).
 
     client_ids: conjunto de client_id a los que limitar la propagación. Por
     defecto ('__auto__') se resuelven los contribuyentes visibles del usuario;
@@ -56,9 +98,10 @@ def _propagate_classification(supabase, ruc: str, categoria: str, user_id: str,
         return 0
     if client_ids == "__auto__":
         client_ids = _client_ids_del_equipo(supabase, user_id)
+    excluidos = _excepcion_client_ids(supabase, ruc)   # períodos con excepción → intocables
     try:
         if client_ids is None:  # admin: todas las facturas del RUC
-            rows = supabase.table("invoices").select("id,clasificacion")\
+            rows = supabase.table("invoices").select("id,clasificacion,client_id")\
                 .eq("ruc_proveedor", ruc).execute().data or []
         else:
             client_ids = list(client_ids)
@@ -67,15 +110,17 @@ def _propagate_classification(supabase, ruc: str, categoria: str, user_id: str,
             rows = []
             for i in range(0, len(client_ids), 100):  # .in_ por lotes de client_id
                 lote = client_ids[i:i + 100]
-                r = supabase.table("invoices").select("id,clasificacion")\
+                r = supabase.table("invoices").select("id,clasificacion,client_id")\
                     .eq("ruc_proveedor", ruc).in_("client_id", lote).execute().data or []
                 rows.extend(r)
     except Exception as e:
         print(f"Error leyendo facturas del RUC {ruc}: {e}")
         return 0
-    # Solo las que tienen una categoría distinta (incluye SIN CLASIFICAR / null)
+    # Solo las que tienen una categoría distinta (incluye SIN CLASIFICAR / null),
+    # excluyendo los períodos con excepción para este RUC.
     a_cambiar = [r["id"] for r in rows
-                 if (r.get("clasificacion") or "").strip().upper() != categoria]
+                 if r.get("client_id") not in excluidos
+                 and (r.get("clasificacion") or "").strip().upper() != categoria]
     if not a_cambiar:
         return 0
     cambiadas = 0
@@ -87,6 +132,72 @@ def _propagate_classification(supabase, ruc: str, categoria: str, user_id: str,
         except Exception as e:
             print(f"Error propagando clasificación {ruc}: {e}")
     return cambiadas
+
+
+# --- Excepción de clasificación por contribuyente + período (migración 050) ----
+
+class ExcepcionBody(BaseModel):
+    client_id: str
+    ruc: str
+    categoria: str
+
+
+@router.get("/excepciones")
+async def list_excepciones(client_id: str = Query(...), user_id: str = Depends(get_current_user)):
+    """Excepciones de clasificación de un período (client_id): [{ruc, categoria}].
+    Sirve para marcar en la tabla de gastos qué proveedores tienen categoría
+    excepcional en ESTE contribuyente y período."""
+    from tenancy import assert_client_owner
+    supabase = get_supabase_client()
+    assert_client_owner(client_id, user_id)
+    rows = supabase.table("clasificacion_excepciones").select("ruc,categoria")\
+        .eq("client_id", client_id).execute().data or []
+    return {"data": rows}
+
+
+@router.post("/excepcion")
+async def set_excepcion(body: ExcepcionBody, user_id: str = Depends(get_current_user)):
+    """Fija una categoría EXCEPCIONAL para un proveedor (RUC) SOLO en este
+    contribuyente y período (client_id): reclasifica sus facturas ya cargadas y
+    guarda la excepción (para revertirla y para que una edición global del RUC no
+    la pise). NO cambia el mapa global ni otros períodos; NO aplica a cargas
+    futuras. La categoría materializada la leen la declaración y el reporte."""
+    from tenancy import assert_client_owner
+    supabase = get_supabase_client()
+    assert_client_owner(body.client_id, user_id)
+    ruc = (body.ruc or "").strip()
+    cat = (body.categoria or "").strip().upper()
+    if not ruc or not cat:
+        raise HTTPException(status_code=400, detail="RUC y categoría son obligatorios")
+    existing = supabase.table("clasificacion_excepciones").select("id")\
+        .eq("client_id", body.client_id).eq("ruc", ruc).execute().data
+    if existing:
+        supabase.table("clasificacion_excepciones").update(
+            {"categoria": cat, "updated_at": "now()"}).eq("id", existing[0]["id"]).execute()
+    else:
+        supabase.table("clasificacion_excepciones").insert(
+            {"user_id": user_id, "client_id": body.client_id, "ruc": ruc, "categoria": cat}).execute()
+    n = _materializar_excepcion(supabase, body.client_id, ruc, cat)
+    return {"ok": True, "reclasificadas": n, "categoria": cat}
+
+
+@router.delete("/excepcion")
+async def del_excepcion(client_id: str = Query(...), ruc: str = Query(...),
+                        user_id: str = Depends(get_current_user)):
+    """Quita la excepción de un proveedor en este período y REVIERTE sus facturas a
+    la categoría del mapa global/personal del contribuyente (o SIN CLASIFICAR)."""
+    from tenancy import assert_client_owner
+    supabase = get_supabase_client()
+    assert_client_owner(client_id, user_id)
+    ruc = (ruc or "").strip()
+    supabase.table("clasificacion_excepciones").delete()\
+        .eq("client_id", client_id).eq("ruc", ruc).execute()
+    # Categoría a la que revierte: la del mapa efectivo del DUEÑO del contribuyente.
+    owner = supabase.table("clients").select("user_id").eq("id", client_id).execute().data
+    owner_uid = owner[0]["user_id"] if owner else user_id
+    cat = resolve_team_classification(supabase, owner_uid).get(ruc, "SIN CLASIFICAR")
+    n = _materializar_excepcion(supabase, client_id, ruc, cat)
+    return {"ok": True, "revertidas": n, "categoria": cat}
 
 
 def resolve_team_classification(supabase, user_id: str) -> dict:
@@ -586,11 +697,21 @@ def _propagate_classifications_bulk(supabase, filas: dict, user_id: str) -> int:
     # Alcance de EQUIPO: reclasifica en todos los contribuyentes visibles del
     # usuario (no solo lo que subió él), igual que _propagate_classification.
     client_ids = _client_ids_del_equipo(supabase, user_id)
+    # Pares (client_id, ruc) con EXCEPCIÓN → no se tocan (su categoría manda ahí).
+    excep_pares = set()
+    try:
+        for i in range(0, len(rucs), 200):
+            lote = rucs[i:i + 200]
+            ex = supabase.table("clasificacion_excepciones").select("client_id,ruc")\
+                .in_("ruc", lote).execute().data or []
+            excep_pares.update((e["client_id"], (e.get("ruc") or "").strip()) for e in ex)
+    except Exception:
+        excep_pares = set()
     invoices = []
     if client_ids is None:  # admin: por RUC en toda la base
         for i in range(0, len(rucs), 200):
             lote = rucs[i:i + 200]
-            rows = supabase.table("invoices").select("id,ruc_proveedor,clasificacion")\
+            rows = supabase.table("invoices").select("id,ruc_proveedor,clasificacion,client_id")\
                 .in_("ruc_proveedor", lote).execute().data or []
             invoices.extend(rows)
     else:
@@ -601,12 +722,15 @@ def _propagate_classifications_bulk(supabase, filas: dict, user_id: str) -> int:
             lote_ruc = rucs[i:i + 200]
             for j in range(0, len(client_ids), 100):
                 lote_cli = client_ids[j:j + 100]
-                rows = supabase.table("invoices").select("id,ruc_proveedor,clasificacion")\
+                rows = supabase.table("invoices").select("id,ruc_proveedor,clasificacion,client_id")\
                     .in_("ruc_proveedor", lote_ruc).in_("client_id", lote_cli).execute().data or []
                 invoices.extend(rows)
 
     por_categoria = {}  # categoria destino -> [ids a cambiar]
     for inv in invoices:
+        ruc_inv = (inv.get("ruc_proveedor") or "").strip()
+        if (inv.get("client_id"), ruc_inv) in excep_pares:
+            continue   # período con excepción para ese RUC: intocable
         categoria = filas.get(inv.get("ruc_proveedor"), (None, None))[1]
         if not categoria:
             continue

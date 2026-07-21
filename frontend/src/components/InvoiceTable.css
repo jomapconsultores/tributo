@@ -162,6 +162,21 @@
 .clasif .unclass { color: #d97706; font-weight: 600; }
 .clasif .classed { color: #003399; font-weight: 600; }
 
+/* Excepción de clasificación (solo este contribuyente + período) */
+.clasif-wrap { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.excep-btn {
+  border: 1px solid #f0c68a; background: #fff7ed; color: #b45309; border-radius: 6px;
+  font-size: 0.72rem; line-height: 1; padding: 2px 5px; cursor: pointer; opacity: 0.7;
+  transition: opacity 0.12s, background 0.12s;
+}
+.excep-btn:hover { opacity: 1; background: #ffedd5; }
+.excep-badge {
+  border: 1px solid #f59e0b; background: #fef3c7; color: #92400e; border-radius: 6px;
+  font-size: 0.68rem; line-height: 1; padding: 2px 6px; cursor: pointer; font-weight: 700;
+  white-space: nowrap;
+}
+.excep-badge:hover { background: #fde68a; }
+
 .cell-edit {
   width: 130px;
   padding: 3px 6px;

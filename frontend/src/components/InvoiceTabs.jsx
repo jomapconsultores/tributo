@@ -347,7 +347,7 @@ export default function InvoiceTabs({ invoices, client, onInvoicesChange }) {
       </div>
 
       {tab === 'datos' && (
-        <InvoiceTable invoices={invoices} onInvoicesChange={onInvoicesChange} catalog={pendCatalog} />
+        <InvoiceTable invoices={invoices} onInvoicesChange={onInvoicesChange} catalog={pendCatalog} clientId={client?.id} />
       )}
 
       {tab === 'resumen' && (

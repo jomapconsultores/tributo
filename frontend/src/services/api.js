@@ -462,6 +462,10 @@ export const classificationAPI = {
   enriquecerActividades: () => api.post('/api/classification/enriquecer-actividades'),
   porContribuyente: (identificacion) => api.get('/api/classification/por-contribuyente', { params: { identificacion } }),
   actividadesRucs: (rucs) => api.post('/api/classification/actividades-rucs', { rucs }),
+  // Excepción de clasificación por contribuyente + período (solo este client_id)
+  getExcepciones: (clientId) => api.get('/api/classification/excepciones', { params: { client_id: clientId } }),
+  setExcepcion: (clientId, ruc, categoria) => api.post('/api/classification/excepcion', { client_id: clientId, ruc, categoria }),
+  removeExcepcion: (clientId, ruc) => api.delete('/api/classification/excepcion', { params: { client_id: clientId, ruc } }),
   import: (file) => {
     const formData = new FormData()
     formData.append('file', file)

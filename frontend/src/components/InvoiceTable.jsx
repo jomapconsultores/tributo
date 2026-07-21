@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react'
-import { invoicesAPI, memoryAPI } from '../services/api'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { invoicesAPI, memoryAPI, classificationAPI } from '../services/api'
 import ClasifEditor from './ClasifEditor'
 import BulkBar from './BulkBar'
 import { useEditableCell, useCopyFeedback } from '../hooks/useEditableCell'
@@ -35,9 +35,54 @@ function readPersistedFiltros() {
   }
 }
 
-export default function InvoiceTable({ invoices, onInvoicesChange, catalog = [] }) {
+export default function InvoiceTable({ invoices, onInvoicesChange, catalog = [], clientId = null }) {
   const { edit, value, setValue, isEditing, startEdit, cancel, bind } = useEditableCell()
   const { copiedKey: copiedId, copy: copyCell } = useCopyFeedback()
+
+  // --- Excepción de clasificación (solo este contribuyente + período) ----------
+  // excepMap: RUC -> categoría excepcional vigente para el client_id actual.
+  const [excepMap, setExcepMap] = useState(() => new Map())
+  const [excepEdit, setExcepEdit] = useState(null)   // id de factura en modo "fijar excepción"
+  const loadExcepciones = useCallback(async () => {
+    if (!clientId) { setExcepMap(new Map()); return }
+    try {
+      const r = await classificationAPI.getExcepciones(clientId)
+      setExcepMap(new Map((r.data?.data || []).map((e) => [String(e.ruc), e.categoria])))
+    } catch { setExcepMap(new Map()) }
+  }, [clientId])
+  useEffect(() => { loadExcepciones() }, [loadExcepciones, invoices])
+
+  // Fija una categoría excepcional para el proveedor de esta factura, SOLO en este
+  // contribuyente y período. Reclasifica sus facturas ya cargadas; no toca el mapa
+  // global ni otros períodos.
+  const commitExcepcion = async (inv, v) => {
+    setExcepEdit(null)
+    const cat = (v || '').trim()
+    const cid = inv.client_id || clientId
+    if (!cat || !cid) return
+    try {
+      const r = await classificationAPI.setExcepcion(cid, inv.ruc_proveedor, cat)
+      await loadExcepciones()
+      await onInvoicesChange()
+      const n = r?.data?.reclasificadas || 0
+      alert(`⚡ Excepción aplicada: ${n} factura(s) del proveedor ${inv.ruc_proveedor} quedaron como «${cat.toUpperCase()}» solo para este contribuyente y período. No cambia el clasificador general.`)
+    } catch (e) {
+      alert('Error al aplicar la excepción: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+
+  const quitarExcepcion = async (inv) => {
+    const cid = inv.client_id || clientId
+    if (!cid) return
+    if (!window.confirm(`¿Quitar la excepción del proveedor ${inv.ruc_proveedor}? Sus gastos de este período volverán a la categoría del clasificador general.`)) return
+    try {
+      await classificationAPI.removeExcepcion(cid, inv.ruc_proveedor)
+      await loadExcepciones()
+      await onInvoicesChange()
+    } catch (e) {
+      alert('Error al quitar la excepción: ' + (e.response?.data?.detail || e.message))
+    }
+  }
   const persisted = readPersistedFiltros() || {}
   const [search, setSearch] = useState(persisted.search || '')
   const [fClasif, setFClasif] = useState(persisted.fClasif || '')
@@ -324,9 +369,35 @@ export default function InvoiceTable({ invoices, onInvoicesChange, catalog = [] 
                   {inv.nombre_proveedor || '-'}
                 </td>
                 <td className="clasif">
-                  {renderEditable(inv, 'clasificacion',
-                    <span className={!inv.clasificacion || inv.clasificacion === 'SIN CLASIFICAR' ? 'unclass' : 'classed'}>
-                      {inv.clasificacion || 'SIN CLASIFICAR'}
+                  {excepEdit === inv.id ? (
+                    <ClasifEditor
+                      initial={inv.clasificacion}
+                      options={categorias}
+                      onCommit={(v) => commitExcepcion(inv, v)}
+                      onCancel={() => setExcepEdit(null)}
+                    />
+                  ) : (
+                    <span className="clasif-wrap">
+                      {renderEditable(inv, 'clasificacion',
+                        <span className={!inv.clasificacion || inv.clasificacion === 'SIN CLASIFICAR' ? 'unclass' : 'classed'}>
+                          {inv.clasificacion || 'SIN CLASIFICAR'}
+                        </span>
+                      )}
+                      {excepMap.has(String(inv.ruc_proveedor)) ? (
+                        <button
+                          type="button"
+                          className="excep-badge"
+                          title={`Categoría EXCEPCIONAL solo para este contribuyente y período. Clic para quitarla y volver al clasificador general.`}
+                          onClick={() => quitarExcepcion(inv)}
+                        >⚡ excepción ✕</button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="excep-btn"
+                          title="Excepción: poner OTRA categoría solo para este contribuyente y este período (no cambia el clasificador general)"
+                          onClick={() => setExcepEdit(inv.id)}
+                        >⚡</button>
+                      )}
                     </span>
                   )}
                 </td>
