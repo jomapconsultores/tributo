@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { declaracionesAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { useAccess, homeFor } from '../context/AccessContext'
-import { estadoDeclaracion } from '../utils/declaracionSRI'
-import { nombreMes } from '../utils/periodo'
+import { estadoDeclaracionCliente } from '../utils/declaracionSRI'
+import { periodoLargo } from '../utils/periodo'
 import { filterBySearch } from '../utils/search'
 import './ClientesPendientes.css'
 
@@ -120,7 +120,7 @@ export default function ClientesPendientes() {
       ) : (
         <ul className="cp-list">
           {filtradas.map((row) => {
-            const e = estadoDeclaracion(row.identificacion)
+            const e = estadoDeclaracionCliente(row)
             const nivel = e.valido ? e.nivel : 'ok'
             return (
               <li key={row.client_id} className={`cp-card nivel-${nivel}`}>
@@ -133,7 +133,7 @@ export default function ClientesPendientes() {
                   <span className="cp-card-meta">
                     <span className="cp-card-ruc">{row.identificacion}</span>
                     <span className="cp-card-periodo">
-                      · {nombreMes(row.periodo_mes)} {row.periodo_anio}
+                      · {periodoLargo(row)}
                     </span>
                     {e.valido && (
                       <span className={`cp-plazo nivel-${e.nivel}`}>

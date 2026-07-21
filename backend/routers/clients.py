@@ -5,7 +5,9 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client, fetch_all
 from services.sri_ruc import consultar_ruc
-from services.periodo import periodo_a_declarar, periodo_anterior
+from services.periodo import (periodo_a_declarar, periodo_anterior,
+                              semestre_a_declarar, semestre_anterior,
+                              mes_ancla_semestre, semestre_de_mes)
 from tenancy import visible_clients, assert_client_owner, invalidate_clients_cache, can_access_identificacion
 from services.activity import registrar, _email_de
 
@@ -20,6 +22,10 @@ class ClientCreate(BaseModel):
     tipo_identificacion: Optional[str] = "RUC"
     notas: Optional[str] = None
     es_agente_retencion: Optional[bool] = False
+    # Periodicidad de declaración de IVA: 'mensual' (por defecto) o 'semestral'.
+    # Para 'semestral' el mes ancla (periodo_mes) se fija al último mes del semestre.
+    periodicidad: Optional[str] = "mensual"
+    periodo_semestre: Optional[int] = None   # 1 | 2, solo si periodicidad='semestral'
     forzar: bool = False   # crear aunque OTRO usuario del equipo ya tenga este contribuyente+período
 
 
@@ -32,6 +38,8 @@ class ClientUpdate(BaseModel):
     notas: Optional[str] = None
     iva_incluido: Optional[bool] = None
     es_agente_retencion: Optional[bool] = None
+    periodicidad: Optional[str] = None
+    periodo_semestre: Optional[int] = None
 
 
 def _shared_ids(supabase, user_id: str) -> list:
@@ -277,15 +285,30 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
         identificacion = entry.identificacion.strip().replace("'", "")
         if not identificacion or not entry.nombre.strip():
             raise HTTPException(status_code=400, detail="Identificación y Nombre son obligatorios")
-        if not (1 <= entry.periodo_mes <= 12):
-            raise HTTPException(status_code=400, detail="El mes debe estar entre 1 y 12")
         if not (2000 <= entry.periodo_anio <= 2100):
             raise HTTPException(status_code=400, detail="Año inválido")
+
+        # Periodicidad: para semestral se exige el semestre (1 ó 2) y el mes ancla
+        # (periodo_mes) se deriva del semestre (último mes: 6 ó 12). Para mensual,
+        # el mes debe estar entre 1 y 12 y no hay semestre.
+        periodicidad = (entry.periodicidad or "mensual").lower()
+        if periodicidad not in ("mensual", "semestral"):
+            raise HTTPException(status_code=400, detail="Periodicidad inválida")
+        periodo_semestre = None
+        periodo_mes = entry.periodo_mes
+        if periodicidad == "semestral":
+            periodo_semestre = int(entry.periodo_semestre or 0)
+            if periodo_semestre not in (1, 2):
+                raise HTTPException(status_code=400, detail="El semestre debe ser 1 ó 2")
+            periodo_mes = mes_ancla_semestre(periodo_semestre)
+        else:
+            if not (1 <= periodo_mes <= 12):
+                raise HTTPException(status_code=400, detail="El mes debe estar entre 1 y 12")
 
         existing = supabase.table("clients").select("*")\
             .eq("user_id", user_id)\
             .eq("identificacion", identificacion)\
-            .eq("periodo_mes", entry.periodo_mes)\
+            .eq("periodo_mes", periodo_mes)\
             .eq("periodo_anio", entry.periodo_anio)\
             .execute()
         if existing.data:
@@ -297,7 +320,7 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
         if not entry.forzar:
             ajeno = supabase.table("clients").select("id,nombre,user_id")\
                 .eq("identificacion", identificacion)\
-                .eq("periodo_mes", entry.periodo_mes)\
+                .eq("periodo_mes", periodo_mes)\
                 .eq("periodo_anio", entry.periodo_anio)\
                 .neq("user_id", user_id)\
                 .limit(1).execute().data
@@ -308,7 +331,7 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
                     "client_id": a["id"],
                     "nombre": a.get("nombre"),
                     "creado_por": _email_de(a.get("user_id")),
-                    "periodo": f"{entry.periodo_mes:02d}/{entry.periodo_anio}",
+                    "periodo": f"{periodo_mes:02d}/{entry.periodo_anio}",
                 })
 
         response = supabase.table("clients").insert({
@@ -318,8 +341,10 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
             # (requisito: debe verse todo en mayúsculas, como en el SRI).
             "nombre": entry.nombre.strip().upper(),
             "tipo_identificacion": entry.tipo_identificacion or "RUC",
-            "periodo_mes": entry.periodo_mes,
+            "periodo_mes": periodo_mes,
             "periodo_anio": entry.periodo_anio,
+            "periodicidad": periodicidad,
+            "periodo_semestre": periodo_semestre,
             "notas": entry.notas,
             "es_agente_retencion": bool(entry.es_agente_retencion),
         }).execute()
@@ -329,7 +354,7 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
             registrar(actor_user_id=user_id, action="create", module="clientes",
                       entity="Nuevo cliente", client_id=nuevo.get("id"),
                       identificacion=identificacion, contribuyente=entry.nombre.strip().upper(),
-                      metadata={"periodo": f"{entry.periodo_mes:02d}/{entry.periodo_anio}"})
+                      metadata={"periodo": f"{periodo_mes:02d}/{entry.periodo_anio}"})
         return nuevo
     except HTTPException:
         raise
@@ -339,18 +364,23 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
 
 @router.post("/abrir-periodo-vencido")
 async def abrir_periodo_vencido(user_id: str = Depends(get_current_user)):
-    """Declaración mes vencido — apertura automática de período.
+    """Declaración mes/semestre vencido — apertura automática de período.
 
-    Abre el período a declarar (el mes ANTERIOR al calendario, hora Ecuador; en
-    julio → junio) para los contribuyentes propios que YA tienen el período
-    inmediatamente anterior a ese (los que se trabajaron el ciclo pasado). Los
-    contribuyentes viejos/inactivos no se arrastran.
+    · MENSUAL: abre el período a declarar (el mes ANTERIOR al calendario, hora
+      Ecuador; en julio → junio) para los contribuyentes mensuales que YA tienen
+      el mes inmediatamente anterior a ese (los que se trabajaron el ciclo pasado).
+    · SEMESTRAL: al inicio de un semestre de declaración (JULIO → 1er semestre
+      ENE–JUN; ENERO → 2do semestre JUL–DIC del año anterior) abre ese semestre
+      para los contribuyentes semestrales que YA tienen el semestre inmediatamente
+      anterior. Fuera de julio/enero no se abre nada semestral.
 
-    Idempotente: los que ya tienen el período destino se omiten, así que se puede
-    llamar en cada inicio de sesión sin duplicar. NO copia datos (facturas, ventas,
-    retenciones): deja el período listo para cargar. Los meses anteriores quedan
-    archivados intactos y siguen consultables."""
+    Los contribuyentes viejos/inactivos no se arrastran. Idempotente: los que ya
+    tienen el período destino se omiten, así que se puede llamar en cada inicio de
+    sesión sin duplicar. NO copia datos (facturas, ventas, retenciones): deja el
+    período listo para cargar. Los períodos anteriores quedan archivados intactos."""
     try:
+        from datetime import datetime
+        from services.periodo import EC_TZ
         supabase = get_supabase_client()
         tgt_mes, tgt_anio = periodo_a_declarar()                  # p.ej. julio → junio
         src_mes, src_anio = periodo_anterior(tgt_mes, tgt_anio)   # mes previo al destino (mayo)
@@ -362,33 +392,16 @@ async def abrir_periodo_vencido(user_id: str = Depends(get_current_user)):
         # el actor debe poder abrir su período.
         visibles = visible_clients(user_id, "*")
 
-        # Fuente: los visibles cuyo período es el inmediatamente anterior al destino.
-        fuente = [c for c in visibles
-                  if c.get("periodo_mes") == src_mes and c.get("periodo_anio") == src_anio]
-        if not fuente:
-            return {"creados": 0, "periodo": periodo, "detalle": []}
+        def _es_semestral(c):
+            return (c.get("periodicidad") or "mensual") == "semestral"
 
-        # Los que YA tienen el período destino → no se duplican. La unicidad es por
-        # (dueño, identificación), porque dos dueños pueden tener el mismo RUC.
-        ya = {(c.get("user_id"), c.get("identificacion")) for c in visibles
-              if c.get("periodo_mes") == tgt_mes and c.get("periodo_anio") == tgt_anio}
-
-        # Cada contribuyente-dueño aparece una sola vez aunque la fuente traiga varias filas.
-        por_clave = {}
-        for c in fuente:
-            por_clave.setdefault((c.get("user_id"), c.get("identificacion")), c)
-
-        nuevos = []
-        for (owner, ident), c in por_clave.items():
-            if (owner, ident) in ya:
-                continue
+        def _fila_base(owner, ident, c):
+            """Fila nueva con la identidad del contribuyente (sin período)."""
             fila = {
                 "user_id": owner,   # se preserva el DUEÑO del contribuyente, no el actor
                 "identificacion": ident,
                 "nombre": (c.get("nombre") or "").strip().upper(),  # siempre en MAYÚSCULAS
                 "tipo_identificacion": c.get("tipo_identificacion") or "RUC",
-                "periodo_mes": tgt_mes,
-                "periodo_anio": tgt_anio,
                 "es_agente_retencion": bool(c.get("es_agente_retencion")),
             }
             # Campos opcionales: solo se copian si tienen valor, para respetar los
@@ -397,24 +410,77 @@ async def abrir_periodo_vencido(user_id: str = Depends(get_current_user)):
                 fila["notas"] = c.get("notas")
             if c.get("iva_incluido") is not None:
                 fila["iva_incluido"] = c.get("iva_incluido")
+            return fila
+
+        nuevos = []
+
+        # ---- MENSUALES ------------------------------------------------------
+        mensuales = [c for c in visibles if not _es_semestral(c)]
+        # Fuente: mensuales cuyo período es el inmediatamente anterior al destino.
+        fuente = [c for c in mensuales
+                  if c.get("periodo_mes") == src_mes and c.get("periodo_anio") == src_anio]
+        # Los que YA tienen el período destino → no se duplican. La unicidad es por
+        # (dueño, identificación), porque dos dueños pueden tener el mismo RUC.
+        ya = {(c.get("user_id"), c.get("identificacion")) for c in mensuales
+              if c.get("periodo_mes") == tgt_mes and c.get("periodo_anio") == tgt_anio}
+        por_clave = {}
+        for c in fuente:
+            por_clave.setdefault((c.get("user_id"), c.get("identificacion")), c)
+        for (owner, ident), c in por_clave.items():
+            if (owner, ident) in ya:
+                continue
+            fila = _fila_base(owner, ident, c)
+            fila["periodo_mes"] = tgt_mes
+            fila["periodo_anio"] = tgt_anio
+            fila["periodicidad"] = "mensual"
             nuevos.append(fila)
 
+        # ---- SEMESTRALES ----------------------------------------------------
+        # Solo se abre en el mes de inicio del semestre de declaración (ene/jul).
+        mes_actual = (datetime.now(EC_TZ)).month
+        sem_periodo = None
+        if mes_actual in (1, 7):
+            sem_tgt, anio_tgt = semestre_a_declarar()               # semestre a declarar ahora
+            sem_src, anio_src = semestre_anterior(sem_tgt, anio_tgt)  # semestre inmediatamente anterior
+            ancla_tgt = mes_ancla_semestre(sem_tgt)
+            semestrales = [c for c in visibles if _es_semestral(c)]
+            fuente_s = [c for c in semestrales
+                        if int(c.get("periodo_semestre") or semestre_de_mes(c.get("periodo_mes") or 1)) == sem_src
+                        and c.get("periodo_anio") == anio_src]
+            ya_s = {(c.get("user_id"), c.get("identificacion")) for c in semestrales
+                    if int(c.get("periodo_semestre") or semestre_de_mes(c.get("periodo_mes") or 1)) == sem_tgt
+                    and c.get("periodo_anio") == anio_tgt}
+            por_clave_s = {}
+            for c in fuente_s:
+                por_clave_s.setdefault((c.get("user_id"), c.get("identificacion")), c)
+            for (owner, ident), c in por_clave_s.items():
+                if (owner, ident) in ya_s:
+                    continue
+                fila = _fila_base(owner, ident, c)
+                fila["periodo_mes"] = ancla_tgt
+                fila["periodo_anio"] = anio_tgt
+                fila["periodicidad"] = "semestral"
+                fila["periodo_semestre"] = sem_tgt
+                nuevos.append(fila)
+            sem_periodo = {"semestre": sem_tgt, "anio": anio_tgt}
+
         if not nuevos:
-            return {"creados": 0, "periodo": periodo, "detalle": []}
+            return {"creados": 0, "periodo": periodo, "semestre": sem_periodo, "detalle": []}
 
         supabase.table("clients").insert(nuevos).execute()
         invalidate_clients_cache()
         registrar(actor_user_id=user_id, action="create", module="clientes",
                   entity="Apertura período mes vencido", cantidad=len(nuevos),
                   metadata={"periodo": f"{tgt_mes:02d}/{tgt_anio}", "creados": len(nuevos)})
-        return {"creados": len(nuevos), "periodo": periodo,
+        return {"creados": len(nuevos), "periodo": periodo, "semestre": sem_periodo,
                 "detalle": [{"identificacion": n["identificacion"], "nombre": n["nombre"]} for n in nuevos]}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 # Datos de IDENTIDAD del contribuyente: al editarlos se propagan a TODOS sus
-# períodos (todo el módulo). Los de período (mes/año) solo al registro elegido.
+# períodos (todo el módulo). Los de período (mes/año, y periodicidad/semestre que
+# van juntos por el CHECK de coherencia) solo al registro elegido.
 _CAMPOS_IDENTIDAD = {"identificacion", "nombre", "tipo_identificacion", "notas", "iva_incluido", "es_agente_retencion"}
 
 
@@ -431,6 +497,17 @@ async def update_client(client_id: str, entry: ClientUpdate, user_id: str = Depe
         if "nombre" in data:
             # Siempre en MAYÚSCULAS (requisito: el nombre se ve todo en mayúsculas).
             data["nombre"] = data["nombre"].strip().upper()
+        # Coherencia de periodicidad al editar:
+        #  · semestral → el mes ancla se deriva del semestre (6 ó 12) y se guarda
+        #    periodo_semestre (1 ó 2);
+        #  · mensual   → se limpia el semestre (queda NULL).
+        if data.get("periodicidad") == "semestral":
+            sem = int(data.get("periodo_semestre") or 0)
+            if sem in (1, 2):
+                data["periodo_semestre"] = sem
+                data["periodo_mes"] = mes_ancla_semestre(sem)
+        elif data.get("periodicidad") == "mensual":
+            data["periodo_semestre"] = None
         data["updated_at"] = "now()"
         # Identificación y dueño actuales (para ubicar todos los períodos del
         # MISMO contribuyente, sin tocar los de otros usuarios/despachos que

@@ -7,11 +7,22 @@ import './NewClientModal.css'
 
 const ANIOS = Array.from({ length: 12 }, (_, i) => new Date().getFullYear() - i)
 
+// Semestre "a declarar ahora" por defecto para contribuyentes semestrales: en
+// ene–jun el último semestre cerrado es el 2do del año anterior; en jul–dic es el
+// 1er semestre del año en curso.
+function _semestreDefault(hoy = new Date()) {
+  const m = hoy.getMonth() + 1
+  if (m <= 6) return { semestre: 2, anio: hoy.getFullYear() - 1 }
+  return { semestre: 1, anio: hoy.getFullYear() }
+}
+
 // Por defecto, el período a declarar (mes anterior) — lo que normalmente se carga
 const _per = periodoADeclarar()
 const EMPTY = {
   identificacion: '', nombre: '', tipo_identificacion: 'RUC',
+  periodicidad: 'mensual',
   periodo_mes: _per.mes, periodo_anio: _per.anio,
+  periodo_semestre: '',
   es_agente_retencion: false,
 }
 
@@ -59,8 +70,10 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
         identificacion: editClient.identificacion || '',
         nombre: editClient.nombre || '',
         tipo_identificacion: editClient.tipo_identificacion || 'RUC',
+        periodicidad: editClient.periodicidad || 'mensual',
         periodo_mes: editClient.periodo_mes || '',
         periodo_anio: editClient.periodo_anio || '',
+        periodo_semestre: editClient.periodo_semestre || '',
         es_agente_retencion: !!editClient.es_agente_retencion,
       })
     } else {
@@ -81,12 +94,31 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
     return w.length >= 3 && w.every((p) => p === p.toUpperCase() && /^[A-ZÁÉÍÓÚÑ]+$/.test(p))
   }
 
-  const buildPayload = (extra = {}) => ({
-    ...form,
-    periodo_mes: parseInt(form.periodo_mes, 10),
-    periodo_anio: parseInt(form.periodo_anio, 10),
-    ...extra,
-  })
+  const esSemestral = form.periodicidad === 'semestral'
+
+  const buildPayload = (extra = {}) => {
+    const anio = parseInt(form.periodo_anio, 10)
+    if (esSemestral) {
+      const sem = parseInt(form.periodo_semestre, 10)
+      return {
+        ...form,
+        periodicidad: 'semestral',
+        periodo_semestre: sem,
+        // El mes ancla (6 ó 12) lo fija también el backend; se envía por claridad.
+        periodo_mes: sem === 1 ? 6 : 12,
+        periodo_anio: anio,
+        ...extra,
+      }
+    }
+    return {
+      ...form,
+      periodicidad: 'mensual',
+      periodo_semestre: null,
+      periodo_mes: parseInt(form.periodo_mes, 10),
+      periodo_anio: anio,
+      ...extra,
+    }
+  }
 
   // Crea el cliente. Con forzar=true crea aunque OTRO usuario del equipo ya tenga
   // ese contribuyente+período (tras el aviso de duplicado).
@@ -115,7 +147,12 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
       setError('Identificación y Nombre son obligatorios')
       return
     }
-    if (!form.periodo_mes || !form.periodo_anio) {
+    if (esSemestral) {
+      if (!form.periodo_semestre || !form.periodo_anio) {
+        setError('El período (semestre y año) es obligatorio')
+        return
+      }
+    } else if (!form.periodo_mes || !form.periodo_anio) {
       setError('El período (mes y año) es obligatorio')
       return
     }
@@ -202,17 +239,45 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
             {' '}Es agente de retención (retiene IVA/Renta a sus proveedores)
           </label>
 
+          <label>Periodicidad de declaración de IVA</label>
+          <select
+            value={form.periodicidad}
+            onChange={(e) => {
+              const val = e.target.value
+              if (val === 'semestral' && !form.periodo_semestre) {
+                const d = _semestreDefault()
+                setForm({ ...form, periodicidad: val, periodo_semestre: d.semestre, periodo_anio: d.anio })
+              } else {
+                setForm({ ...form, periodicidad: val })
+              }
+            }}
+          >
+            <option value="mensual">Mensual (todos los meses)</option>
+            <option value="semestral">Semestral (ventas 0% / retención total)</option>
+          </select>
+
           <label>Período *</label>
           <div className="periodo-row">
-            <select
-              value={form.periodo_mes}
-              onChange={(e) => setForm({ ...form, periodo_mes: e.target.value })}
-            >
-              <option value="">Mes…</option>
-              {MESES.map((m, i) => (
-                <option key={m} value={i + 1}>{m}</option>
-              ))}
-            </select>
+            {esSemestral ? (
+              <select
+                value={form.periodo_semestre}
+                onChange={(e) => setForm({ ...form, periodo_semestre: e.target.value })}
+              >
+                <option value="">Semestre…</option>
+                <option value={1}>1er semestre (ENE–JUN)</option>
+                <option value={2}>2do semestre (JUL–DIC)</option>
+              </select>
+            ) : (
+              <select
+                value={form.periodo_mes}
+                onChange={(e) => setForm({ ...form, periodo_mes: e.target.value })}
+              >
+                <option value="">Mes…</option>
+                {MESES.map((m, i) => (
+                  <option key={m} value={i + 1}>{m}</option>
+                ))}
+              </select>
+            )}
             <select
               value={form.periodo_anio}
               onChange={(e) => setForm({ ...form, periodo_anio: e.target.value })}
@@ -223,6 +288,12 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
               ))}
             </select>
           </div>
+          {esSemestral && (
+            <p className="modal-sub" style={{ marginTop: 4 }}>
+              Se declara una sola vez: el 1er semestre en julio y el 2do en enero del año siguiente
+              (día según el 9no dígito del RUC). Se aceptan las facturas de los 6 meses del semestre.
+            </p>
+          )}
 
           {dup && (
             <div className="modal-error" role="alert">

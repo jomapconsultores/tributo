@@ -423,7 +423,7 @@ async def pendientes_declaracion(user_id: str = Depends(get_current_user)):
             return {"data": []}
 
         clientes = visible_clients(
-            user_id, "id,identificacion,nombre,periodo_mes,periodo_anio,es_agente_retencion")
+            user_id, "id,identificacion,nombre,periodo_mes,periodo_anio,es_agente_retencion,periodicidad,periodo_semestre")
         if not clientes:
             return {"data": []}
 
@@ -481,6 +481,8 @@ async def pendientes_declaracion(user_id: str = Depends(get_current_user)):
                     "nombre": c.get("nombre") or "",
                     "periodo_mes": c.get("periodo_mes"),
                     "periodo_anio": c.get("periodo_anio"),
+                    "periodicidad": c.get("periodicidad") or "mensual",
+                    "periodo_semestre": c.get("periodo_semestre"),
                     "pendientes": pendientes,
                 })
 

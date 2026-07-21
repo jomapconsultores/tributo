@@ -12,7 +12,7 @@ from database import get_supabase_client, es_error_duplicado
 from services.xml_parser_ventas import parse_venta_xml
 from services.pdf_parser_ventas import parse_venta_pdf
 from services.xml_store import guardar_xml_original
-from services.periodo import (periodo_cliente, es_de_otro_periodo, etiqueta_periodo,
+from services.periodo import (periodo_cliente_ext, es_de_otro_periodo, etiqueta_periodo,
                               identificacion_cliente, identificacion_no_coincide)
 from services.sri_service import extract_claves_from_txt, descargar_multiples_xmls
 from services.activity import registrar
@@ -81,7 +81,7 @@ async def process_xml(
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
-        pmes, panio = periodo_cliente(supabase, client_id)
+        pmes, panio, pfreq, psem = periodo_cliente_ext(supabase, client_id)
         cli_ident = identificacion_cliente(supabase, client_id)
         new_count = dup_count = err_count = rej_count = fp_count = 0
         rechazadas = []  # facturas con ICE
@@ -109,7 +109,7 @@ async def process_xml(
                     "motivo": parsed.get("message"),
                 })
                 continue
-            if es_de_otro_periodo(parsed.get("fecha"), pmes, panio):
+            if es_de_otro_periodo(parsed.get("fecha"), pmes, panio, pfreq, psem):
                 fp_count += 1
                 fuera_periodo.append({
                     "archivo": file.filename,
@@ -151,7 +151,7 @@ async def process_xml(
             "rechazadas": rechazadas,
             "fuera_de_periodo": fp_count,
             "fuera_periodo": fuera_periodo,
-            "periodo": etiqueta_periodo(pmes, panio),
+            "periodo": etiqueta_periodo(pmes, panio, pfreq, psem),
         }
     except HTTPException:
         raise
@@ -159,7 +159,8 @@ async def process_xml(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _guardar_venta(supabase, client_id, user_id, xml_content, pmes=None, panio=None, cli_ident=""):
+def _guardar_venta(supabase, client_id, user_id, xml_content, pmes=None, panio=None, cli_ident="",
+                   pfreq="mensual", psem=None):
     """Parsea un XML de venta y lo guarda en sales_iva. Devuelve (estado, info):
     estado ∈ 'new' | 'dup' | 'err' | 'con_ice' | 'fuera'. En 'new'/'dup', info es
     None salvo que el EMISOR no sea el contribuyente que declara (cli_ident): en
@@ -170,7 +171,7 @@ def _guardar_venta(supabase, client_id, user_id, xml_content, pmes=None, panio=N
         return "err", None
     if parsed.get("error") == "CON_ICE":
         return "con_ice", parsed.get("factura_numero")
-    if es_de_otro_periodo(parsed.get("fecha"), pmes, panio):
+    if es_de_otro_periodo(parsed.get("fecha"), pmes, panio, pfreq, psem):
         return "fuera", {"factura": parsed.get("factura_numero"), "fecha": parsed.get("fecha")}
     # ruc_emisor no es columna: se extrae antes de insertar y sirve para validar
     # que la venta la emita el propio contribuyente.
@@ -206,14 +207,14 @@ async def process_txt(
             raise HTTPException(status_code=400, detail="No se encontraron claves de acceso (49 dígitos) en el archivo.")
         xmls, no_descargadas = descargar_multiples_xmls(list(claves), max_workers=8, max_rondas=3)
 
-        pmes, panio = periodo_cliente(supabase, client_id)
+        pmes, panio, pfreq, psem = periodo_cliente_ext(supabase, client_id)
         cli_ident = identificacion_cliente(supabase, client_id)
         new_count = dup_count = err_count = rej_count = fp_count = 0
         rechazadas = []
         fuera_periodo = []
         emisor_ajeno = []
         for xml_content in xmls:
-            estado, info = _guardar_venta(supabase, client_id, user_id, xml_content, pmes, panio, cli_ident)
+            estado, info = _guardar_venta(supabase, client_id, user_id, xml_content, pmes, panio, cli_ident, pfreq, psem)
             if estado == "new":
                 new_count += 1
                 if info:  # emisor no es el contribuyente
@@ -244,7 +245,7 @@ async def process_txt(
             "fuera_de_periodo": fp_count,
             "fuera_periodo": fuera_periodo,
             "emisor_ajeno": emisor_ajeno,
-            "periodo": etiqueta_periodo(pmes, panio),
+            "periodo": etiqueta_periodo(pmes, panio, pfreq, psem),
         }
     except HTTPException:
         raise

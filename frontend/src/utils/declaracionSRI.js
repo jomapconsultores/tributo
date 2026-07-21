@@ -101,6 +101,60 @@ export function estadoDeclaracion(ruc, hoy = new Date()) {
   }
 }
 
+// --- Semestral (IVA Form. 104 semestral) -----------------------------------
+// El 1er semestre (ENE–JUN) se declara en JULIO; el 2do (JUL–DIC) en ENERO del
+// año siguiente. El día máximo dentro de ese mes lo sigue dando el 9no dígito
+// (misma tabla DIA_POR_DIGITO), con traslado a día hábil.
+
+// Semestre (1|2) de un cliente: usa periodo_semestre o lo deduce del mes ancla.
+function _semestreCliente(client) {
+  if (client?.periodo_semestre) return parseInt(client.periodo_semestre, 10)
+  return (parseInt(client?.periodo_mes, 10) || 1) <= 6 ? 1 : 2
+}
+
+// Mes/año (calendario) en que se declara un semestre dado. S1 del año Y → julio Y;
+// S2 del año Y → enero (Y+1). Devuelve { mes (1-12), anio }.
+export function mesDeclaracionSemestre(semestre, anio) {
+  const a = parseInt(anio, 10)
+  return parseInt(semestre, 10) === 1 ? { mes: 7, anio: a } : { mes: 1, anio: a + 1 }
+}
+
+// Estado del plazo para un contribuyente SEMESTRAL, análogo a estadoDeclaracion
+// pero con el calendario de julio/enero. `client` aporta periodo_semestre/anio.
+export function estadoDeclaracionSemestral(ruc, client, hoy = new Date()) {
+  const dia = diaDeclaracion(ruc)
+  if (dia === null || !client?.periodo_anio) return { valido: false }
+  const sem = _semestreCliente(client)
+  const { mes, anio } = mesDeclaracionSemestre(sem, client.periodo_anio)
+  const limite = siguienteDiaHabil(new Date(anio, mes - 1, dia))
+  const base = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
+  const dias = Math.round((limite - base) / 86400000)
+  let nivel, mensaje
+  if (dias > 3) { nivel = 'ok'; mensaje = `Faltan ${dias} días` }
+  else if (dias > 0) { nivel = 'pronto'; mensaje = `Faltan ${dias} día(s)` }
+  else if (dias === 0) { nivel = 'hoy'; mensaje = 'HOY es el último día' }
+  else { nivel = 'vencido'; mensaje = `Vencido hace ${-dias} día(s)` }
+  const rango = sem === 1 ? 'enero a junio' : 'julio a diciembre'
+  return {
+    valido: true, dia, nivel, mensaje, dias, limite, semestral: true,
+    semestre: sem, anioSemestre: parseInt(client.periodo_anio, 10),
+    nombrePeriodo: `${sem === 1 ? '1er' : '2do'} semestre ${client.periodo_anio}`,
+    rangoMeses: rango,
+    limiteTexto: fechaTextoLargo(limite),
+  }
+}
+
+// Dispatcher por periodicidad: usa el calendario mensual o el semestral según el
+// cliente. Para mensual delega en estadoDeclaracion (por RUC). Úsalo cuando tengas
+// el objeto `client` a mano (sabe si es semestral).
+export function estadoDeclaracionCliente(client, hoy = new Date()) {
+  const ruc = client?.identificacion
+  if ((client?.periodicidad || 'mensual') === 'semestral') {
+    return estadoDeclaracionSemestral(ruc, client, hoy)
+  }
+  return estadoDeclaracion(ruc, hoy)
+}
+
 // Resumen listo para mostrar. { valido, digito, dia, proximaFecha, proximaFechaTexto }
 export function infoDeclaracion(ruc, hoy = new Date()) {
   const digito = novenoDigito(ruc)

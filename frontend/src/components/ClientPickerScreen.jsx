@@ -120,7 +120,7 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
                               <span>{c.tipo_identificacion || 'RUC'}: {c.identificacion}</span>
                               <span className="cps-period">{periodoLargo(c)}</span>
                               {periodos > 1 && <span className="cps-period">· {periodos} períodos</span>}
-                              <BadgeVencimiento ruc={c.identificacion} />
+                              <BadgeVencimiento ruc={c.identificacion} client={c} />
                             </span>
                           </span>
                           <span className="cps-item-arrow">›</span>

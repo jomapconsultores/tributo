@@ -443,7 +443,7 @@ export default function Declaraciones({ tipo }) {
         <div>
           <h1>{icon} Declaración {tipo}</h1>
           <p className="dc-sub">
-            <strong>{selectedClient.identificacion}</strong> — {selectedClient.nombre} · {nombreMes(selectedClient.periodo_mes)} {selectedClient.periodo_anio}
+            <strong>{selectedClient.identificacion}</strong> — {selectedClient.nombre} · {periodoLargo(selectedClient)}
             {creds?.es_admin && creds?.credencial && (
               <span className="clave-header-tag">
                 🔐 <strong>{creds.credencial.username || '—'}</strong>
@@ -927,7 +927,9 @@ export default function Declaraciones({ tipo }) {
                   return (
                     <li key={s.id}>
                       <span>
-                        {nombreMes(s.mes)} {s.anio} · {s.tipo}
+                        {selectedClient.periodicidad === 'semestral'
+                          ? `${(s.mes <= 6 ? '1er' : '2do')} semestre ${s.anio}`
+                          : `${nombreMes(s.mes)} ${s.anio}`} · {s.tipo}
                         {esActual && <span className="dc-hist-actual"> · período actual</span>}
                       </span>
                       {s.presentada_sri ? (

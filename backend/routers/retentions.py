@@ -8,7 +8,7 @@ from services.retention_parser import parse_retention_xml
 from services.retention_export import generate_retention_excel
 from services.sri_service import extract_claves_from_txt, descargar_multiples_xmls
 from services.xml_store import guardar_xml_original
-from services.periodo import periodo_cliente, es_de_otro_periodo, etiqueta_periodo
+from services.periodo import periodo_cliente_ext, es_de_otro_periodo, etiqueta_periodo
 from database import fetch_all, fetch_in, es_error_duplicado
 from tenancy import assert_client_owner, visible_client_ids, fetch_visible_rows, filter_ids_by_tenancy
 from services.activity import registrar
@@ -72,7 +72,7 @@ async def process_xml(
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
-        pmes, panio = periodo_cliente(supabase, client_id)
+        pmes, panio, pfreq, psem = periodo_cliente_ext(supabase, client_id)
         new_count = dup_count = err_count = fp_count = 0
         fuera_periodo = []
         for file in files:
@@ -81,7 +81,7 @@ async def process_xml(
             if not ret:
                 err_count += 1
                 continue
-            if es_de_otro_periodo(ret.get("fecha"), pmes, panio):
+            if es_de_otro_periodo(ret.get("fecha"), pmes, panio, pfreq, psem):
                 fp_count += 1
                 fuera_periodo.append({"archivo": file.filename, "factura": ret.get("nro_comprobante"), "fecha": ret.get("fecha")})
                 continue
@@ -98,7 +98,7 @@ async def process_xml(
                       entity="Retenciones", client_id=client_id, cantidad=new_count)
         return {"new": new_count, "duplicates": dup_count, "errors": err_count,
                 "fuera_de_periodo": fp_count, "fuera_periodo": fuera_periodo,
-                "periodo": etiqueta_periodo(pmes, panio)}
+                "periodo": etiqueta_periodo(pmes, panio, pfreq, psem)}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -127,7 +127,7 @@ async def process_txt(
         # TODOS los comprobantes y no solo una parte (igual que gastos).
         xmls, no_descargadas = descargar_multiples_xmls(list(claves), max_workers=8, max_rondas=3)
 
-        pmes, panio = periodo_cliente(supabase, client_id)
+        pmes, panio, pfreq, psem = periodo_cliente_ext(supabase, client_id)
         new_count = dup_count = err_count = fp_count = 0
         fuera_periodo = []
         for xml_content in xmls:
@@ -135,7 +135,7 @@ async def process_txt(
             if not ret:
                 err_count += 1
                 continue
-            if es_de_otro_periodo(ret.get("fecha"), pmes, panio):
+            if es_de_otro_periodo(ret.get("fecha"), pmes, panio, pfreq, psem):
                 fp_count += 1
                 fuera_periodo.append({"archivo": "(XML del SRI)", "factura": ret.get("nro_comprobante"), "fecha": ret.get("fecha")})
                 continue
@@ -153,7 +153,7 @@ async def process_txt(
         return {"new": new_count, "duplicates": dup_count, "errors": err_count,
                 "total_claves": len(claves), "descargadas": len(xmls), "no_descargadas": no_descargadas,
                 "fuera_de_periodo": fp_count, "fuera_periodo": fuera_periodo,
-                "periodo": etiqueta_periodo(pmes, panio)}
+                "periodo": etiqueta_periodo(pmes, panio, pfreq, psem)}
     except HTTPException:
         raise
     except Exception as e:

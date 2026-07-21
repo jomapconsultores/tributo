@@ -1,4 +1,4 @@
-import { estadoDeclaracion } from '../utils/declaracionSRI'
+import { estadoDeclaracion, estadoDeclaracionCliente } from '../utils/declaracionSRI'
 import './BadgeVencimiento.css'
 
 const fechaCorta = (f) =>
@@ -9,15 +9,21 @@ const fechaCorta = (f) =>
  * ya trasladada a día hábil). "Bombea" (pulsa) para llamar la atención cuando el
  * plazo está por vencer: nivel 'pronto' (≤3 días), 'hoy' o 'vencido'.
  *
+ * Si se pasa `client` (con periodicidad/semestre) se usa su calendario —mensual o
+ * semestral (julio/enero)—; si solo se pasa `ruc`, se asume mensual.
+ *
  * Devuelve null si el RUC/identificación no permite calcular la fecha.
  */
-export default function BadgeVencimiento({ ruc, className = '' }) {
-  const e = estadoDeclaracion(ruc)
+export default function BadgeVencimiento({ ruc, client = null, className = '' }) {
+  const e = client ? estadoDeclaracionCliente(client) : estadoDeclaracion(ruc)
   if (!e.valido) return null
 
   const urgente = e.nivel === 'pronto' || e.nivel === 'hoy' || e.nivel === 'vencido'
   const ico = e.nivel === 'ok' ? '🟢' : e.nivel === 'pronto' ? '🟠' : '🔴'
-  const titulo = `Declaración de ${e.nombreMes} ${e.anioADeclarar} — fecha máxima ${e.limiteTexto} · ${e.mensaje}`
+  const periodoTit = e.semestral
+    ? `${e.nombrePeriodo}`
+    : `${e.nombreMes} ${e.anioADeclarar}`
+  const titulo = `Declaración de ${periodoTit} — fecha máxima ${e.limiteTexto} · ${e.mensaje}`
 
   return (
     <span
