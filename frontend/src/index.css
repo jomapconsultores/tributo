@@ -46,6 +46,24 @@ html, body, #root {
   width: 100%;
 }
 
+/* Actividad económica (SRI) del proveedor: en CUALQUIER tabla o panel donde
+   aparezca, se muestra en letra pequeña y acotada a 2–3 renglones (no en una sola
+   línea recortada). El texto completo queda en el `title` para verlo al pasar el
+   mouse. Clase global para mantener el mismo aspecto en todos los módulos. */
+.actividad-sri {
+  font-size: 0.68rem;
+  line-height: 1.25;
+  color: #475569;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  white-space: normal;
+  word-break: break-word;
+  max-width: 340px;
+}
+
 /* Botón "Continuar con cliente →" compartido entre módulos */
 .continuar-btn {
   background: #003399;

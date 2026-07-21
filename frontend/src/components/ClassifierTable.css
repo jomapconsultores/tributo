@@ -95,7 +95,7 @@
 /* Actividad económica (SRI) y vigencia de la calificación */
 /* Muestra hasta 3 renglones con letra pequeña (antes se truncaba a 1 línea);
    clic en la celda expande el texto completo (.full). */
-.actividad-cell { max-width:280px; font-size:.72rem; line-height:1.2; color:#334155;
+.actividad-cell { max-width:280px; font-size:.68rem; line-height:1.25; color:#475569;
   display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; line-clamp:3;
   overflow:hidden; white-space:normal; word-break:break-word; }
 button.calif-badge { border:none; cursor:pointer; font:inherit; }
@@ -141,8 +141,8 @@ button.calif-badge.ok:hover { filter:brightness(.96); }
 .classifier-table .delete-btn { background:transparent; border:none; cursor:pointer; opacity:.45; font-size:.95rem;
   transition:opacity .12s, transform .12s; }
 .classifier-table .delete-btn:hover { opacity:1; transform:scale(1.15); }
-.classifier-table .actividad-cell { color:#475569; font-size:.72rem; line-height:1.2; }
-.classifier-table .actividad-cell.full { font-size:.72rem; }
+.classifier-table .actividad-cell { color:#475569; font-size:.68rem; line-height:1.25; }
+.classifier-table .actividad-cell.full { font-size:.68rem; }
 .calif-badge { display:inline-flex; align-items:center; gap:4px; }
 
 /* ===== Columnas redimensionables (arrastrar el borde del encabezado) ===== */

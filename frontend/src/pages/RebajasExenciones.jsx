@@ -568,7 +568,7 @@ export default function RebajasExenciones() {
                   <tr key={p.id}>
                     <td>{p.ruc}</td>
                     <td>{p.nombre || '—'}</td>
-                    <td className="re-cat" title={p.actividad || ''}>{p.actividad || '—'}</td>
+                    <td className="actividad-sri" title={p.actividad || ''}>{p.actividad || '—'}</td>
                     <td>
                       <span className={`re-badge ${p.calificado ? 'ok' : 'no'}`}>{p.calificado ? (p.categoria || '✔ Calificado') : 'No'}</span>
                       {p.calificado && !p.categoria && <div className="re-cat" style={{ color: '#b45309' }}>Indica el tipo (microempresa, artesano…) en el formulario</div>}

@@ -392,7 +392,7 @@ export default function InvoiceTabs({ invoices, client, onInvoicesChange }) {
                       <tr key={`${p.ruc}|${p.nombre}`}>
                         <td>{p.ruc || '-'}</td>
                         <td>{p.nombre || '-'}</td>
-                        <td className="pend-act" title={actMap[p.ruc] || ''}>{actMap[p.ruc] || '—'}</td>
+                        <td className="pend-act actividad-sri" title={actMap[p.ruc] || ''}>{actMap[p.ruc] || '—'}</td>
                         <td>
                           <input
                             className="pend-cat-input"

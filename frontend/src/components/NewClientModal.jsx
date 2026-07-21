@@ -214,7 +214,7 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
             <div className="ruc-sri">
               <div className="ruc-sri-row"><b>{sri.razon_social}</b> <span className={`ruc-estado ${sri.estado === 'ACTIVO' ? 'ok' : 'no'}`}>{sri.estado}</span></div>
               {sri.tipo && <div className="ruc-sri-line">{sri.tipo} · Régimen {sri.regimen}</div>}
-              {sri.actividad && <div className="ruc-sri-line">🏷 {sri.actividad}</div>}
+              {sri.actividad && <div className="ruc-sri-line actividad-sri" title={sri.actividad}>🏷 {sri.actividad}</div>}
               {sri.obligaciones?.length > 0 && (
                 <div className="ruc-sri-obl">{sri.obligaciones.map((o) => <span key={o} className="ruc-chip">{o}</span>)}</div>
               )}

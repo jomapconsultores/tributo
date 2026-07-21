@@ -142,8 +142,10 @@
   cursor: not-allowed;
 }
 
-/* Actividad económica (SRI) en Pendientes */
-.pend-table .pend-act { max-width:340px; font-size:.8rem; color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* Actividad económica (SRI) en Pendientes: el aspecto (letra pequeña, 2–3
+   renglones) lo da la clase global .actividad-sri; aquí solo se fija el ancho de
+   la columna. */
+.pend-table .pend-act { max-width:340px; }
 
 /* Pendientes: mensaje de confirmación no bloqueante + ayuda */
 .pend-msg { background:#dcfce7; color:#166534; border:1px solid #86efac; border-radius:8px; padding:8px 12px; margin-bottom:8px; font-weight:600; font-size:.9rem; }
