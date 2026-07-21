@@ -11,9 +11,11 @@ Comandos:
                                     del período y (con --upload) lo sube al
                                     tributos-api, que descarga los XML por SOAP.
   python descargar.py emitidos --ruc XXX --anio 2026 --mes 6 [--upload]
-                                    Baja el listado TXT de comprobantes EMITIDOS
-                                    (ventas) del período y (con --upload) lo sube
-                                    a /api/sales-iva/process-txt (ingresos IVA).
+                                    Baja las facturas EMITIDAS (ingresos) del
+                                    período recorriéndolo DÍA POR DÍA (default),
+                                    acumula todas las claves en un TXT y (con
+                                    --upload) lo sube a /api/sales-iva/process-txt.
+                                    --mes-completo usa el modo viejo (mes entero).
   python descargar.py devoluciones capturar --ruc XXX --anio 2026 --mes 6
                                     Abre el portal real de Devolución de IVA
                                     (tercera edad) y vuelca HTML/screenshot a
@@ -253,10 +255,15 @@ def cmd_comprobantes(ruc: str, anio: int, mes: int, tipo: str, upload: bool, hea
               help="Tipo de comprobante emitido a listar.")
 @click.option("--upload", is_flag=True, default=False,
               help="Sube el TXT al tributos-api (/api/sales-iva/process-txt → ingresos IVA).")
+@click.option("--dia-por-dia/--mes-completo", "dia_por_dia", default=True, show_default=True,
+              help="Recorre el mes DÍA POR DÍA (recomendado: trae TODAS las facturas; "
+                   "el listado 'Todos' del SRI suele topar). --mes-completo usa el modo viejo.")
 @click.option("--headless/--no-headless", default=True, show_default=True,
               help="Correr el navegador sin ventana.")
-def cmd_emitidos(ruc: str, anio: int, mes: int, tipo: str, upload: bool, headless: bool):
-    """Descarga el listado TXT de Comprobantes EMITIDOS (ventas) del período.
+def cmd_emitidos(ruc: str, anio: int, mes: int, tipo: str, upload: bool, dia_por_dia: bool, headless: bool):
+    """Descarga el listado TXT de Comprobantes EMITIDOS (ventas / facturas de
+    ingreso) del período. Por defecto recorre DÍA POR DÍA y acumula todas las
+    claves en un solo TXT (sin duplicados).
 
     Con --upload, además lo sube a POST /api/sales-iva/process-txt del
     tributos-api (config "api" en clientes.local.json): el backend baja los
@@ -277,7 +284,7 @@ def cmd_emitidos(ruc: str, anio: int, mes: int, tipo: str, upload: bool, headles
     try:
         from playwright.sync_api import sync_playwright
         from core.sri_login import LoginError, login
-        from core.emitidos import ScrapeError, descargar_listado_emitidos
+        from core.emitidos import ScrapeError, descargar_listado_emitidos, descargar_emitidos_dia_por_dia
     except ImportError:
         click.secho(
             "[ERR] Playwright no está instalado. Corré:\n"
@@ -288,7 +295,13 @@ def cmd_emitidos(ruc: str, anio: int, mes: int, tipo: str, upload: bool, headles
         sys.exit(1)
 
     debug_dir = BASE_DIR / "debug" / ruc
-    destino = dir_descargas_cliente(ruc) / f"emitidos_{tipo}_{anio}-{mes:02d}.txt"
+    sufijo = "diaXdia" if dia_por_dia else "mes"
+    destino = dir_descargas_cliente(ruc) / f"emitidos_{tipo}_{anio}-{mes:02d}_{sufijo}.txt"
+
+    def _progreso(dia, total, nuevas, estado):
+        color = "green" if estado == "ok" else ("yellow" if estado == "sin datos" else "red")
+        extra = f" (+{nuevas} claves)" if estado == "ok" else ""
+        click.secho(f"   día {dia:>2}/{total}: {estado}{extra}", fg=color)
 
     click.echo(f"-> Login SRI para {ruc} ({cliente.get('alias', '')})...")
     with sync_playwright() as pw:
@@ -300,10 +313,22 @@ def cmd_emitidos(ruc: str, anio: int, mes: int, tipo: str, upload: bool, headles
             click.secho(f"[ERR] Login falló: {e}", fg="red")
             sys.exit(1)
         try:
-            click.echo(f"-> Consultando comprobantes emitidos ({tipo}) de {mes:02d}/{anio}...")
-            descargar_listado_emitidos(
-                page, anio=anio, mes=mes, tipo=tipo, destino=destino, debug_dir=debug_dir
-            )
+            if dia_por_dia:
+                click.echo(f"-> Consultando emitidos ({tipo}) de {mes:02d}/{anio} DÍA POR DÍA...")
+                stats = descargar_emitidos_dia_por_dia(
+                    page, anio=anio, mes=mes, tipo=tipo, destino=destino,
+                    debug_dir=debug_dir, progreso=_progreso,
+                )
+                click.secho(
+                    f"   Resumen: {stats['dias_con_datos']} día(s) con datos, "
+                    f"{stats['dias_sin_datos']} sin datos, {stats['dias_con_error']} con error.",
+                    fg="cyan",
+                )
+            else:
+                click.echo(f"-> Consultando emitidos ({tipo}) de {mes:02d}/{anio} (mes completo)...")
+                descargar_listado_emitidos(
+                    page, anio=anio, mes=mes, tipo=tipo, destino=destino, debug_dir=debug_dir
+                )
         except ScrapeError as e:
             click.secho(f"[ERR] {e}", fg="red")
             browser.close()
@@ -311,7 +336,10 @@ def cmd_emitidos(ruc: str, anio: int, mes: int, tipo: str, upload: bool, headles
         browser.close()
 
     claves = sum(1 for linea in destino.read_text(encoding="utf-8", errors="ignore").splitlines() if linea.strip())
-    click.secho(f"[OK] Listado guardado: {destino} ({claves} línea(s))", fg="green")
+    click.secho(f"[OK] Listado guardado: {destino} ({claves} clave(s) de acceso)", fg="green")
+    if claves == 0:
+        click.secho("  El SRI no reportó facturas emitidas en ese período (o el form cambió; revisá debug/).", fg="yellow")
+        return
 
     if not upload:
         click.echo("  Podés subirlo a mano en la pantalla de Ingresos IVA, o re-correr con --upload.")
