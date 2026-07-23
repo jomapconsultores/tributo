@@ -255,15 +255,12 @@ def cmd_comprobantes(ruc: str, anio: int, mes: int, tipo: str, upload: bool, hea
               help="Tipo de comprobante emitido a listar.")
 @click.option("--upload", is_flag=True, default=False,
               help="Sube el TXT al tributos-api (/api/sales-iva/process-txt → ingresos IVA).")
-@click.option("--dia-por-dia/--mes-completo", "dia_por_dia", default=True, show_default=True,
-              help="Recorre el mes DÍA POR DÍA (recomendado: trae TODAS las facturas; "
-                   "el listado 'Todos' del SRI suele topar). --mes-completo usa el modo viejo.")
 @click.option("--headless/--no-headless", default=True, show_default=True,
               help="Correr el navegador sin ventana.")
-def cmd_emitidos(ruc: str, anio: int, mes: int, tipo: str, upload: bool, dia_por_dia: bool, headless: bool):
-    """Descarga el listado TXT de Comprobantes EMITIDOS (ventas / facturas de
-    ingreso) del período. Por defecto recorre DÍA POR DÍA y acumula todas las
-    claves en un solo TXT (sin duplicados).
+def cmd_emitidos(ruc: str, anio: int, mes: int, tipo: str, upload: bool, headless: bool):
+    """Descarga las facturas EMITIDAS (ventas / ingresos) del período recorriéndolo
+    DÍA POR DÍA (el form del SRI filtra por 'Fecha emisión', un día a la vez) y
+    acumula todas las claves de acceso en un solo TXT (sin duplicados).
 
     Con --upload, además lo sube a POST /api/sales-iva/process-txt del
     tributos-api (config "api" en clientes.local.json): el backend baja los
@@ -284,7 +281,7 @@ def cmd_emitidos(ruc: str, anio: int, mes: int, tipo: str, upload: bool, dia_por
     try:
         from playwright.sync_api import sync_playwright
         from core.sri_login import LoginError, login
-        from core.emitidos import ScrapeError, descargar_listado_emitidos, descargar_emitidos_dia_por_dia
+        from core.emitidos import ScrapeError, descargar_emitidos_dia_por_dia
     except ImportError:
         click.secho(
             "[ERR] Playwright no está instalado. Corré:\n"
@@ -295,8 +292,7 @@ def cmd_emitidos(ruc: str, anio: int, mes: int, tipo: str, upload: bool, dia_por
         sys.exit(1)
 
     debug_dir = BASE_DIR / "debug" / ruc
-    sufijo = "diaXdia" if dia_por_dia else "mes"
-    destino = dir_descargas_cliente(ruc) / f"emitidos_{tipo}_{anio}-{mes:02d}_{sufijo}.txt"
+    destino = dir_descargas_cliente(ruc) / f"emitidos_{tipo}_{anio}-{mes:02d}.txt"
 
     def _progreso(dia, total, nuevas, estado):
         color = "green" if estado == "ok" else ("yellow" if estado == "sin datos" else "red")
@@ -313,22 +309,16 @@ def cmd_emitidos(ruc: str, anio: int, mes: int, tipo: str, upload: bool, dia_por
             click.secho(f"[ERR] Login falló: {e}", fg="red")
             sys.exit(1)
         try:
-            if dia_por_dia:
-                click.echo(f"-> Consultando emitidos ({tipo}) de {mes:02d}/{anio} DÍA POR DÍA...")
-                stats = descargar_emitidos_dia_por_dia(
-                    page, anio=anio, mes=mes, tipo=tipo, destino=destino,
-                    debug_dir=debug_dir, progreso=_progreso,
-                )
-                click.secho(
-                    f"   Resumen: {stats['dias_con_datos']} día(s) con datos, "
-                    f"{stats['dias_sin_datos']} sin datos, {stats['dias_con_error']} con error.",
-                    fg="cyan",
-                )
-            else:
-                click.echo(f"-> Consultando emitidos ({tipo}) de {mes:02d}/{anio} (mes completo)...")
-                descargar_listado_emitidos(
-                    page, anio=anio, mes=mes, tipo=tipo, destino=destino, debug_dir=debug_dir
-                )
+            click.echo(f"-> Consultando emitidos ({tipo}) de {mes:02d}/{anio} DÍA POR DÍA...")
+            stats = descargar_emitidos_dia_por_dia(
+                page, anio=anio, mes=mes, tipo=tipo, destino=destino,
+                debug_dir=debug_dir, progreso=_progreso,
+            )
+            click.secho(
+                f"   Resumen: {stats['dias_con_datos']} día(s) con datos, "
+                f"{stats['dias_sin_datos']} sin datos, {stats['dias_con_error']} con error.",
+                fg="cyan",
+            )
         except ScrapeError as e:
             click.secho(f"[ERR] {e}", fg="red")
             browser.close()

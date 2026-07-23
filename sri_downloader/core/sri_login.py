@@ -51,6 +51,20 @@ class LoginError(Exception):
     """Falla esperable de login: clave incorrecta, captcha, SRI caído, etc."""
 
 
+def _pagina_es_login(page: Page) -> bool:
+    """True si el DOM actual es la pantalla de login de Keycloak del SRI.
+
+    Se usa para no confundir una sesión reusada pero expirada (que carga el shell
+    del perfil sin redirigir al realm) con una sesión válida."""
+    if "auth/realms" in (page.url or "").lower():
+        return True
+    try:
+        html = page.content().lower()
+    except Exception:
+        return False
+    return "kc-form-login" in html or "input-datos-login" in html
+
+
 def _fill_first(page: Page, selectors: list[str], value: str) -> str:
     """Llena el primer selector que aparezca. Devuelve el selector usado."""
     last_err = None
@@ -135,9 +149,17 @@ def login(
                     page.wait_for_load_state("networkidle", timeout=10_000)
                 except PWTimeoutError:
                     pass
-                _save_state(context, state_file)
-                return browser, context, page
-            # Ni en el realm ni en srienlinea: dar un margen extra al form de login.
+                # Verificar que la sesión reusada es REALMENTE válida: una sesión
+                # Keycloak expirada puede cargar el shell del perfil sin redirigir
+                # al realm y aun así no estar autenticada (después rebota al login
+                # al entrar a otras apps del SRI, p.ej. comprobantes). Si el DOM
+                # muestra el form de login, NO lo damos por éxito: seguimos al
+                # flujo de credenciales.
+                if not _pagina_es_login(page):
+                    _save_state(context, state_file)
+                    return browser, context, page
+            # Ni en el realm ni con sesión válida confirmada: dar un margen extra
+            # al form de login del realm.
             page.wait_for_url("**/auth/realms/**", timeout=15_000)
 
         _fill_first(page, USERNAME_SELECTORS, ruc)
