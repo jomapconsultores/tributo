@@ -11,6 +11,10 @@ import ClaveHeader from '../components/ClaveHeader'
 import WorkflowGuide from '../components/WorkflowGuide'
 import './IngresosIva.css'
 
+import {
+  AVISO_BAJADOR_EMITIDOS, BAJADOR_EMITIDOS_HREF, setBajadorEmitidosHref, SRI_EMITIDOS_URL,
+} from '../utils/bajadorEmitidos'
+
 import { fmtMoney as money, msgFueraPeriodo, msgIdentAjena } from '../utils/format'
 import { periodoLargo } from '../utils/periodo'
 
@@ -120,6 +124,18 @@ export default function IngresosIva() {
     }
   }
 
+  // Clic en el bajador: no puede ejecutarse desde acá (tiene que correr dentro de
+  // la sesión del SRI), así que explica el flujo, deja el script en el portapapeles
+  // por si prefiere pegarlo en la consola, y ofrece abrir el portal.
+  const handleBajador = (e) => {
+    e.preventDefault()
+    navigator.clipboard?.writeText(BAJADOR_EMITIDOS_HREF).catch(() => {})
+    const msg = AVISO_BAJADOR_EMITIDOS +
+      '\n\n(El script quedó copiado: si no querés instalar el marcador, pegalo en la consola del SRI.)' +
+      '\n\n¿Abrir ahora el SRI en otra pestaña?'
+    if (window.confirm(msg)) window.open(SRI_EMITIDOS_URL, '_blank', 'noopener')
+  }
+
   const handleDrag = (e) => {
     e.preventDefault(); e.stopPropagation()
     if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true)
@@ -212,6 +228,13 @@ export default function IngresosIva() {
           value={search} onChange={(e) => setSearch(e.target.value)}
         />
         <span className="ing-iva-count">{filtered.length} de {rows.length}</span>
+        <a
+          ref={setBajadorEmitidosHref}
+          className="ing-iva-clear ing-iva-bajador"
+          draggable="true"
+          onClick={handleBajador}
+          title="Baja del SRI las facturas EMITIDAS del período que elijas (te pregunta mes/semestre y año). Arrastralo a tus marcadores para instalarlo."
+        >📅 Bajar facturas del SRI (por fecha)</a>
         <input ref={txtInputRef} type="file" accept=".txt" style={{ display: 'none' }} id="ing-iva-txt"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadTxt(f) }} />
         <button className="ing-iva-clear" onClick={() => txtInputRef.current?.click()}

@@ -5,6 +5,7 @@ import { useAccess, homeFor } from '../context/AccessContext'
 import { actividadAPI } from '../services/api'
 import bajadorBookmarklet from '../utils/bajador-facturas.bookmarklet.txt?raw'
 import bajadorIngresosBookmarklet from '../utils/bajador-ingresos.bookmarklet.txt?raw'
+import { AVISO_BAJADOR_EMITIDOS, setBajadorEmitidosHref } from '../utils/bajadorEmitidos'
 import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import './Sidebar.css'
 
@@ -92,6 +93,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         items: [
           L('📈', 'Ingresos IVA', '/ingresos-iva', hasSub('ice_ingresos_iva')),
           { kind: 'bajador', which: 'ingresos', ico: '📥', label: 'Bajador-INGRESOS', visible: true },
+          { kind: 'bajador', which: 'emitidos', ico: '📅', label: 'Bajar EMITIDAS por fecha', visible: true },
         ],
       },
       {
@@ -252,15 +254,16 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
       )
     }
     if (it.kind === 'bajador') {
-      const esGastos = it.which === 'gastos'
+      const refs = { gastos: setBajadorHref, ingresos: setBajadorIngresosHref, emitidos: setBajadorEmitidosHref }
+      const avisos = { gastos: AVISO_BAJADOR_GASTOS, ingresos: AVISO_BAJADOR_INGRESOS, emitidos: AVISO_BAJADOR_EMITIDOS }
       return (
         <a
           key={`b${i}`}
-          ref={esGastos ? setBajadorHref : setBajadorIngresosHref}
+          ref={refs[it.which]}
           className="nav-item submodule bajador-item"
           draggable="true"
           title="Arrástralo a tu barra de marcadores para instalarlo"
-          onClick={(e) => { e.preventDefault(); alert(esGastos ? AVISO_BAJADOR_GASTOS : AVISO_BAJADOR_INGRESOS) }}
+          onClick={(e) => { e.preventDefault(); alert(avisos[it.which]) }}
         >
           <span className="nav-ico">{it.ico}</span><span>{it.label}</span>
         </a>

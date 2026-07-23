@@ -22,6 +22,10 @@
 .ing-iva-count { color: #6b7888; font-size: 0.8rem; }
 .ing-iva-clear { background: #fff; border: 1px solid #cdd8e6; color: #1a3d6b; padding: 6px 12px; border-radius: 7px; cursor: pointer; font-size: 0.8rem; }
 .ing-iva-clear:hover { background: #f4f8fc; }
+/* Bajador de EMITIDAS: es un <a href="javascript:…"> para poder arrastrarlo a la
+   barra de marcadores, pero se ve y se alinea como el resto de los botones. */
+.ing-iva-bajador { display: inline-block; text-decoration: none; background: #eaf6ec; border-color: #a9d3b3; color: #1e6b33; font-weight: 600; }
+.ing-iva-bajador:hover { background: #dcefe1; }
 
 .ing-iva-tablewrap { background: #fff; border: 1px solid #e8edf3; border-radius: 10px; overflow-x: auto; box-shadow: 0 1px 2px rgba(16,40,80,.04); }
 .ing-iva-table { width: 100%; border-collapse: collapse; font-size: 0.81rem; }
