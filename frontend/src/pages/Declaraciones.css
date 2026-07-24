@@ -163,3 +163,11 @@
 }
 .dc-sri-badge:hover { filter: brightness(.93); }
 .dc-sri-badge:disabled { opacity: .6; cursor: default; }
+
+/* Cobertura del período: qué comprobantes entran, mes por mes. Solo se muestra
+   cuando el período abarca más de un mes (declaración SEMESTRAL). */
+.dc-cobertura { margin-bottom: 12px; }
+.dc-cobertura .dc-cero { color: #b91c1c; font-weight: 700; }
+.dc-cobertura tr.dc-mes-vacio td { background: #fff7ed; }
+.dc-cobertura tr.dc-total-row td { background: #f6f8fb; border-top: 2px solid #e8edf3; }
+.dc-aviso-cobertura { margin: 9px 0 0; font-size: .78rem; color: #8b5a00; line-height: 1.45; }

@@ -5,6 +5,16 @@ import { useOutletContext } from 'react-router-dom'
 import { declaracionesAPI, credentialsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, nombreMes } from '../utils/periodo'
+
+// Fuentes de datos de una declaración, en el orden en que se muestran en el
+// desglose por mes. Las claves son las que arma el backend en decl.cobertura.
+const ETIQUETA_FUENTE = {
+  gastos: 'Gastos',
+  ingresos_iva: 'Ingresos IVA',
+  ingresos_ice: 'Ingresos ICE',
+  retenciones: 'Retenciones recibidas',
+  ret_efectuadas: 'Retenciones efectuadas',
+}
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import WorkflowGuide from '../components/WorkflowGuide'
@@ -412,6 +422,18 @@ export default function Declaraciones({ tipo }) {
   // Declaración GUARDADA del período actual (si existe): habilita el control de
   // «subida al SRI». historial ya viene filtrado por identificación + tipo.
   const declActual = historial.find((s) => s.client_id === selectedClientId) || null
+
+  // Cobertura del período (qué comprobantes entran, mes por mes). El backend solo
+  // devuelve las fuentes que aplican al tipo de declaración.
+  const cobertura = decl?.cobertura || null
+  const fuentesCobertura = cobertura
+    ? Object.keys(ETIQUETA_FUENTE)
+        .filter((k) => k in (cobertura.totales || {}))
+        .map((k) => ({ key: k, label: ETIQUETA_FUENTE[k] }))
+    : []
+  const mesesVacios = cobertura
+    ? cobertura.por_mes.filter((m) => fuentesCobertura.every((f) => !m[f.key])).map((m) => m.mes)
+    : []
 
   const filasDisplay = decl?.filas || []
   const seccionesDisplay = filasDisplay.length
@@ -861,6 +883,53 @@ export default function Declaraciones({ tipo }) {
             <>Comprobantes de retención efectuados: <strong>{resumen.num_comprobantes || 0}</strong></>
           ) : (
             <>Registros ICE: <strong>{resumen.num_registros || 0}</strong></>
+          )}
+        </div>
+      )}
+
+      {/* Cobertura del período. En una declaración SEMESTRAL el período abarca seis
+          meses, así que hay que ver de dónde sale cada comprobante: si un mes quedó
+          en cero es que falta subir ingresos, gastos o retenciones de ese mes. */}
+      {cobertura && cobertura.meses?.length > 1 && (
+        <div className="dc-card-box dc-cobertura">
+          <h2 className="dc-h2">📆 Comprobantes incluidos, mes por mes — {cobertura.etiqueta}</h2>
+          <table className="dc-table">
+            <thead>
+              <tr>
+                <th>Mes</th>
+                {fuentesCobertura.map((f) => <th key={f.key} className="r">{f.label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {cobertura.por_mes.map((m) => (
+                <tr key={m.mes} className={fuentesCobertura.every((f) => !m[f.key]) ? 'dc-mes-vacio' : undefined}>
+                  <td>{nombreMes(m.mes)}</td>
+                  {fuentesCobertura.map((f) => (
+                    <td key={f.key} className="r">{m[f.key] || <span className="dc-cero">0</span>}</td>
+                  ))}
+                </tr>
+              ))}
+              <tr className="dc-total-row">
+                <td><strong>TOTAL {cobertura.etiqueta}</strong></td>
+                {fuentesCobertura.map((f) => (
+                  <td key={f.key} className="r"><strong>{cobertura.totales[f.key] || 0}</strong></td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+          {mesesVacios.length > 0 && (
+            <p className="dc-aviso-cobertura">
+              ⚠ Sin ningún comprobante en {mesesVacios.map(nombreMes).join(', ')}. Si ese mes tuvo
+              movimiento, subí sus ingresos, gastos o retenciones antes de presentar: la declaración
+              semestral se presenta por los seis meses juntos.
+            </p>
+          )}
+          {Object.keys(cobertura.fuera_de_periodo || {}).length > 0 && (
+            <p className="dc-aviso-cobertura">
+              ⚠ Hay comprobantes cargados con fecha FUERA de {cobertura.etiqueta} y no entran en el
+              cálculo: {Object.entries(cobertura.fuera_de_periodo)
+                .map(([k, n]) => `${n} en ${ETIQUETA_FUENTE[k] || k}`).join(' · ')}.
+            </p>
           )}
         </div>
       )}

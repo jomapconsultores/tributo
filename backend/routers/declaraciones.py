@@ -11,6 +11,8 @@ from auth import get_current_user
 from database import get_supabase_client, fetch_all, fetch_in
 from services.declaracion import declaracion_iva, declaracion_ice, declaracion_103
 from services.declaracion_oficial import llenar_oficial
+from services.periodo import (etiqueta_periodo, mes_anio_de_fecha, rango_semestre,
+                              semestre_de_mes)
 from tenancy import assert_client_owner, visible_client_ids, visible_clients
 from routers.access import es_admin, es_data_admin, modulos_de, puede_submodulo
 
@@ -48,8 +50,100 @@ class MarcarPagado(BaseModel):
 
 
 def _cliente(supabase, client_id):
-    c = supabase.table("clients").select("identificacion,nombre,periodo_mes,periodo_anio,user_id").eq("id", client_id).execute()
+    c = supabase.table("clients").select(
+        "identificacion,nombre,periodo_mes,periodo_anio,user_id,periodicidad,periodo_semestre"
+    ).eq("id", client_id).execute()
     return c.data[0] if c.data else {}
+
+
+def _meses_del_periodo(c):
+    """Meses (1-12) que cubre la declaración de este cliente.
+
+    · Mensual:   [periodo_mes].
+    · Semestral: los SEIS del semestre (ENE–JUN ó JUL–DIC). La declaración semestral
+      del Form. 104 se presenta por el semestre entero, así que tiene que reflejar
+      los comprobantes de los seis meses, no solo los del mes ancla (6 ó 12) que se
+      guarda en periodo_mes para ordenar cronológicamente."""
+    mes = c.get("periodo_mes")
+    if (c.get("periodicidad") or "mensual") == "semestral":
+        sem = int(c["periodo_semestre"]) if c.get("periodo_semestre") else semestre_de_mes(mes or 1)
+        ini, fin = rango_semestre(sem)
+        return list(range(ini, fin + 1))
+    return [int(mes)] if mes else []
+
+
+# Nombres de las fuentes de datos de una declaración, para los desgloses por mes.
+_ETIQUETA_FUENTE = {
+    "gastos": "Gastos (compras)",
+    "ingresos_iva": "Ingresos IVA",
+    "ingresos_ice": "Ingresos ICE",
+    "retenciones": "Retenciones recibidas",
+    "ret_efectuadas": "Retenciones efectuadas",
+}
+
+_NOMBRE_MES = {1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
+               7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"}
+
+
+def _sufijo_periodo(decl):
+    """Sufijo de período para el nombre de archivo: '202603' mensual, '2026-S1'
+    semestral (así no queda un semestre archivado como si fuera el mes 6)."""
+    c = decl.get("cliente") or {}
+    anio = decl.get("anio")
+    if (c.get("periodicidad") or "mensual") == "semestral":
+        sem = int(c["periodo_semestre"]) if c.get("periodo_semestre") else semestre_de_mes(decl.get("mes") or 1)
+        return f"{anio}-S{sem}"
+    return f"{anio}{str(decl.get('mes') or '').zfill(2)}"
+
+
+def _cobertura(c, fuentes):
+    """Qué comprobantes alimentan la declaración, DESGLOSADOS POR MES.
+
+    `fuentes` es {nombre: (filas, es_por_linea)}. Se cuentan solo las filas en
+    estado OK. Para ice_sales se cuentan COMPROBANTES y no líneas (hay una fila por
+    producto y el unique_id es 'claveAcceso-linea'), igual criterio que el resumen.
+
+    Sirve para que el contador vea de un vistazo que la declaración —sobre todo la
+    SEMESTRAL— está tomando ingresos, gastos y retenciones de los seis meses, y
+    para detectar un mes vacío antes de presentar. `fuera` cuenta lo cargado que
+    NO cae en el período (puede pasar si el período del cliente se cambió después
+    de subir los comprobantes)."""
+    meses = _meses_del_periodo(c)
+    anio = int(c["periodo_anio"]) if c.get("periodo_anio") else None
+
+    def _clave(r, por_linea):
+        return str(r.get("unique_id") or "").rsplit("-", 1)[0] if por_linea else (r.get("id") or id(r))
+
+    por_mes = {m: {"mes": m} for m in meses}
+    totales, fuera = {}, {}
+    for nombre, (filas, por_linea) in fuentes.items():
+        vistos = {m: set() for m in meses}
+        fuera_n = set()
+        for r in filas:
+            if (r.get("estado") or "OK") != "OK":
+                continue
+            fmes, fanio = mes_anio_de_fecha(r.get("fecha"))
+            k = _clave(r, por_linea)
+            if fmes in vistos and (anio is None or fanio == anio):
+                vistos[fmes].add(k)
+            else:
+                fuera_n.add(k)
+        for m in meses:
+            por_mes[m][nombre] = len(vistos[m])
+        totales[nombre] = sum(len(vistos[m]) for m in meses)
+        if fuera_n:
+            fuera[nombre] = len(fuera_n)
+
+    return {
+        "periodicidad": c.get("periodicidad") or "mensual",
+        "semestre": c.get("periodo_semestre"),
+        "etiqueta": etiqueta_periodo(c.get("periodo_mes"), c.get("periodo_anio"),
+                                     c.get("periodicidad") or "mensual", c.get("periodo_semestre")),
+        "meses": meses,
+        "por_mes": [por_mes[m] for m in meses],
+        "totales": totales,
+        "fuera_de_periodo": fuera,
+    }
 
 
 def _remanente_de_resumen(datos):
@@ -223,11 +317,13 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
                                override_rebaja=override_rebaja, override_exencion=override_exencion,
                                marcar_rebaja=marcar_rebaja, marcar_exencion=marcar_exencion)
         decl["aplazados_vencen"] = aplazados_ice
+        decl["cobertura"] = _cobertura(c, {"ingresos_ice": (ice, True)})
     elif tipo.upper() == "103":
         if "agente_retencion" not in modulos_de(user_id):
             raise HTTPException(status_code=403, detail="Módulo no contratado: agente_retencion")
         ref = fetch_all(lambda: supabase.table("retenciones_efectuadas").select("*").eq("client_id", client_id))
         decl = declaracion_103(ref, anio, mes)
+        decl["cobertura"] = _cobertura(c, {"ret_efectuadas": (ref, False)})
     else:
         invoices = fetch_all(lambda: supabase.table("invoices").select("*").eq("client_id", client_id))
         ventas_ice = fetch_all(lambda: supabase.table("ice_sales").select("*").eq("client_id", client_id))
@@ -274,9 +370,19 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
             retenciones_iva_agente=retenciones_ref,
         )
         decl["aplazados_vencen"] = aplazados
+        decl["cobertura"] = _cobertura(c, {
+            "gastos": (invoices, False),
+            "ingresos_iva": (ventas_iva, False),
+            "ingresos_ice": (ventas_ice, True),
+            "retenciones": (retentions, False),
+            "ret_efectuadas": (retenciones_ref, False),
+        })
     decl["cliente"] = c
     decl["anio"] = anio
     decl["mes"] = mes
+    decl["periodo_label"] = etiqueta_periodo(
+        c.get("periodo_mes"), c.get("periodo_anio"),
+        c.get("periodicidad") or "mensual", c.get("periodo_semestre"))
     return decl
 
 
@@ -920,7 +1026,7 @@ async def export_oficial(client_id: str = Query(...), tipo: str = Query("IVA"),
                          factor_prop=factor_prop)
         c = decl.get("cliente", {})
         data, llenados, omitidos = llenar_oficial(tipo, decl)
-        label = f"Formulario_{tipo.upper()}_{c.get('identificacion','')}_{decl.get('anio')}{str(decl.get('mes') or '').zfill(2)}".replace(" ", "_")
+        label = f"Formulario_{tipo.upper()}_{c.get('identificacion','')}_{_sufijo_periodo(decl)}".replace(" ", "_")
         return StreamingResponse(
             iter([data]),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -971,10 +1077,39 @@ async def export_excel(client_id: str = Query(...), tipo: str = Query("IVA"),
         money_tot = wb.add_format({"border": 1, "bg_color": "#ffcc66", "bold": True, "num_format": "#,##0.00"})
         TOTALES = {"409", "419", "429", "499", "509", "519", "529", "620", "699", "859", "999", "399", "902"}
 
-        ws.write(0, 0, f"DECLARACIÓN {tipo.upper()} — {c.get('identificacion','')} {c.get('nombre','')} · {decl.get('mes')}/{decl.get('anio')}", title)
-        ws.write(2, 0, "Sección", head); ws.write(2, 1, "Código SRI", head)
-        ws.write(2, 2, "Concepto", head); ws.write(2, 3, "# Fact.", head); ws.write(2, 4, "Valor", head)
-        r = 3
+        # El período va con su etiqueta real: un semestral dice "1er semestre 2026
+        # (ENE–JUN)", no "6/2026" — el 6 es solo el mes ancla interno.
+        periodo_txt = decl.get("periodo_label") or f"{decl.get('mes')}/{decl.get('anio')}"
+        ws.write(0, 0, f"DECLARACIÓN {tipo.upper()} — {c.get('identificacion','')} "
+                       f"{c.get('nombre','')} · {periodo_txt}", title)
+        r = 2
+        # Cobertura: de qué meses salen los comprobantes. En una declaración
+        # SEMESTRAL deja a la vista que están los seis meses de ingresos, gastos y
+        # retenciones (y cuál mes quedó vacío, si alguno).
+        cob = decl.get("cobertura") or {}
+        if len(cob.get("meses") or []) > 1:
+            cols = [k for k in ("gastos", "ingresos_iva", "ingresos_ice", "retenciones", "ret_efectuadas")
+                    if k in (cob.get("totales") or {})]
+            ws.write(r, 0, "COMPROBANTES INCLUIDOS POR MES", sec_fmt)
+            r += 1
+            ws.write(r, 0, "Mes", head)
+            for j, k in enumerate(cols):
+                ws.write(r, j + 1, _ETIQUETA_FUENTE.get(k, k), head)
+            r += 1
+            for fila_mes in cob.get("por_mes") or []:
+                ws.write(r, 0, _NOMBRE_MES.get(fila_mes.get("mes"), fila_mes.get("mes")), cell)
+                for j, k in enumerate(cols):
+                    ws.write(r, j + 1, fila_mes.get(k, 0), cell)
+                r += 1
+            ws.write(r, 0, "TOTAL", cell_tot)
+            for j, k in enumerate(cols):
+                ws.write(r, j + 1, (cob.get("totales") or {}).get(k, 0), cell_tot)
+            r += 2
+
+        cab = r
+        ws.write(cab, 0, "Sección", head); ws.write(cab, 1, "Código SRI", head)
+        ws.write(cab, 2, "Concepto", head); ws.write(cab, 3, "# Fact.", head); ws.write(cab, 4, "Valor", head)
+        r = cab + 1
         secciones_escritas = set()
         for f in decl["filas"]:
             sec = f.get("seccion", "")
@@ -995,7 +1130,7 @@ async def export_excel(client_id: str = Query(...), tipo: str = Query("IVA"),
         ws.set_column(0, 0, 26); ws.set_column(1, 1, 11); ws.set_column(2, 2, 60); ws.set_column(3, 3, 9); ws.set_column(4, 4, 16)
         wb.close()
         output.seek(0)
-        label = f"Declaracion_{tipo.upper()}_{c.get('identificacion','')}_{decl.get('anio')}{str(decl.get('mes') or '').zfill(2)}".replace(" ", "_")
+        label = f"Declaracion_{tipo.upper()}_{c.get('identificacion','')}_{_sufijo_periodo(decl)}".replace(" ", "_")
         return StreamingResponse(iter([output.getvalue()]),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename={label}.xlsx"})
