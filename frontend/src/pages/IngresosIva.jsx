@@ -233,7 +233,7 @@ export default function IngresosIva() {
           className="ing-iva-clear ing-iva-bajador"
           draggable="true"
           onClick={handleBajador}
-          title="Baja del SRI las facturas EMITIDAS del período que elijas (mes o semestre): los XML de cada factura y un TXT con las claves. Arrastralo a tus marcadores para instalarlo."
+          title="Baja del SRI las facturas EMITIDAS del período que elijas (mes o semestre): el archivo de cada factura (XML, o PDF si no hay XML) y un TXT con las claves. Arrastralo a tus marcadores para instalarlo."
         >📥 Bajador-INGRESOS (SRI)</a>
         <input ref={txtInputRef} type="file" accept=".txt" style={{ display: 'none' }} id="ing-iva-txt"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadTxt(f) }} />

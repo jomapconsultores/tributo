@@ -20,12 +20,14 @@ export const AVISO_BAJADOR_EMITIDOS =
   '1. Entrá al SRI → Facturación Electrónica → Comprobantes electrónicos EMITIDOS\n' +
   '   (hasta ver el formulario con Fecha emisión y Consultar).\n' +
   '2. Tocá el marcador: se abre un panel con BOTONES.\n' +
-  '   Elegís el año (< 2026 >), dejás marcada la casilla "bajar también los XML"\n' +
-  '   y después "Por MES" (Ene…Dic) o "Por SEMESTRE" (1ro Ene-Jun / 2do Jul-Dic).\n' +
+  '   Elegís el año (< 2026 >), dejás marcada la casilla "bajar también el archivo\n' +
+  '   de cada factura" y después "Por MES" (Ene…Dic) o "Por SEMESTRE".\n' +
   '3. Recorre el período día por día mostrando el avance, y baja DOS cosas:\n' +
-  '   • el XML de cada factura (van a tu carpeta de Descargas);\n' +
+  '   • el archivo de cada factura: el XML, y si esa fila no lo ofrece, el PDF\n' +
+  '     (RIDE) — lo que el portal tenga a mano. Van a tu carpeta de Descargas;\n' +
   '   • un TXT con todas las claves de acceso.\n' +
-  '4. Los XML subilos en Ingresos IVA → "Subir XML".\n' +
+  '4. Los XML y PDF arrastralos a Ingresos IVA (acepta los dos: el PDF se lee\n' +
+  '   automáticamente y podés corregir cualquier valor con ✎).\n' +
   '   El TXT subilo en Ingresos IVA → "Subir reporte (TXT)": sirve para completar\n' +
   '   las que no hayan bajado (el sistema las trae del SRI por la clave).\n\n' +
   'Si Chrome pregunta si permitir "descargar varios archivos", dale PERMITIR.\n' +

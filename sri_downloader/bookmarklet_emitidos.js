@@ -10,10 +10,12 @@
  * período, lo recorre día por día y de cada factura emitida:
  *   - junta la CLAVE DE ACCESO (49 díg) -> descarga un TXT al final (formato que
  *     acepta POST /api/sales-iva/process-txt del backend, que baja los XML por SOAP);
- *   - dispara la descarga del XML desde la propia grilla del portal (casilla
- *     marcada por defecto). Esto es lo único que sirve para las emitidas por el
+ *   - dispara la descarga del archivo desde la propia grilla del portal (casilla
+ *     marcada por defecto): el XML si la fila lo ofrece y, si no, el PDF / RIDE —
+ *     lo que haya a mano. Esto es lo único que sirve para las emitidas por el
  *     FACTURADOR del SRI: para esas el web service contesta numeroComprobantes=0,
- *     así que el TXT no alcanza. Los XML se suben en Ingresos IVA > "Subir XML".
+ *     así que el TXT no alcanza. Ingresos IVA acepta las dos cosas: el XML se lee
+ *     entero y el PDF (RIDE) se interpreta y queda corregible a mano.
  *
  * INTERFAZ (sin prompts de texto):
  *   1) Año   < 2026 >  +  casilla "bajar también los XML"
@@ -218,9 +220,20 @@
     return [...zona.querySelectorAll('tr')].filter((tr) => /\d{49}/.test(tr.textContent || ''));
   };
 
-  const controlXml = (tr) => [...tr.querySelectorAll('a,button,img,input,span,[onclick]')].find((e) => /xml/i.test(
-    (e.getAttribute('title') || '') + ' ' + (e.getAttribute('alt') || '') + ' ' + (e.id || '') + ' ' +
-    (e.getAttribute('onclick') || '') + ' ' + (e.getAttribute('href') || '') + ' ' + (e.textContent || '')));
+  // Se baja lo que la fila tenga a mano: primero el XML (es lo que el sistema lee
+  // entero) y, si esa fila no lo ofrece, el PDF / RIDE — Ingresos IVA también lo
+  // acepta y lo lee automáticamente.
+  const FORMATOS = [
+    { clave: 'xml', re: /xml/i, items: ['XML'] },
+    { clave: 'pdf', re: /pdf|ride/i, items: ['PDF', 'RIDE'] },
+  ];
+
+  const senas = (e) => (e.getAttribute('title') || '') + ' ' + (e.getAttribute('alt') || '') + ' ' +
+    (e.id || '') + ' ' + (e.getAttribute('onclick') || '') + ' ' + (e.getAttribute('href') || '') + ' ' +
+    (e.textContent || '');
+
+  const controlDe = (tr, re) =>
+    [...tr.querySelectorAll('a,button,img,input,span,[onclick]')].find((e) => re.test(senas(e)));
 
   const abrirMenuFila = (tr) => {
     const cand = tr.querySelectorAll(
@@ -232,9 +245,9 @@
     return true;
   };
 
-  const clickItemXml = () => {
+  const clickItemMenu = (nombres) => {
     const items = [...document.querySelectorAll('a,span,li,button,[role="menuitem"],.ui-menuitem-link')]
-      .filter((e) => (e.textContent || '').trim().toUpperCase() === 'XML' && e.offsetParent !== null);
+      .filter((e) => nombres.indexOf((e.textContent || '').trim().toUpperCase()) >= 0 && e.offsetParent !== null);
     if (!items.length) return false;
     const it = items[items.length - 1];
     disparar(it);
@@ -243,18 +256,27 @@
     return true;
   };
 
-  const bajarXmlDeFila = async (tr) => {
-    const c = controlXml(tr);
-    if (c) {
-      disparar((c.closest && c.closest('a,button,[onclick]')) || c);
-      await sleep(ESPERA_XML);
-      return true;
+  // Devuelve 'xml', 'pdf' o null (null = esa fila no ofrecía ninguno de los dos).
+  const bajarDeFila = async (tr) => {
+    for (const f of FORMATOS) {
+      const c = controlDe(tr, f.re);
+      if (c) {
+        disparar((c.closest && c.closest('a,button,[onclick]')) || c);
+        await sleep(ESPERA_XML);
+        return f.clave;
+      }
     }
-    if (abrirMenuFila(tr)) {
+    if (abrirMenuFila(tr)) {          // caso Facturador: menú por fila
       await sleep(700);
-      if (clickItemXml()) { await sleep(ESPERA_XML); return true; }
+      for (const f of FORMATOS) {
+        if (clickItemMenu(f.items)) { await sleep(ESPERA_XML); return f.clave; }
+      }
+      // No estaba ninguno: cerrar el menú para que no tape la fila siguiente.
+      try {
+        document.body.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+      } catch (e) { /* nada */ }
     }
-    return false;
+    return null;
   };
 
   const consultarDia = async (fecha, claves, cont) => {
@@ -270,11 +292,15 @@
       if (bajarXml) {
         for (const tr of filasConClave()) {
           if (cancelado) break;
-          if (await bajarXmlDeFila(tr)) {
+          const que = await bajarDeFila(tr);
+          if (que === 'xml') {
             cont.xmlOk++;
             if (tr.style) tr.style.outline = '2px solid #1e6b33';
+          } else if (que === 'pdf') {
+            cont.pdfOk++;
+            if (tr.style) tr.style.outline = '2px solid #8b6b1e';
           } else {
-            cont.xmlFallo++;
+            cont.fallo++;
             if (!cont.diag) cont.diag = tr.outerHTML;   // para ajustar el selector
           }
         }
@@ -325,13 +351,13 @@
     cuerpo.appendChild(btnCancelar);
 
     const claves = new Set();
-    const cont = { xmlOk: 0, xmlFallo: 0, diag: '' };
+    const cont = { xmlOk: 0, pdfOk: 0, fallo: 0, diag: '' };
     let conDatos = 0, sinD = 0, errores = 0;
     const t0 = Date.now();
     for (let i = 0; i < dias.length && !cancelado; i++) {
       estado.textContent = 'Día ' + (i + 1) + ' de ' + dias.length + '   (' + dias[i] + ')';
       detalle.textContent = claves.size + ' claves · ' + conDatos + ' días con datos' +
-        (bajarXml ? ' · ' + cont.xmlOk + ' XML' : '');
+        (bajarXml ? ' · ' + cont.xmlOk + ' XML' + (cont.pdfOk ? ' · ' + cont.pdfOk + ' PDF' : '') : '');
       document.title = dias[i] + ' - ' + claves.size + ' claves';
       try {
         if (await consultarDia(dias[i], claves, cont) > 0) conDatos++; else sinD++;
@@ -346,7 +372,10 @@
     linea((cancelado ? 'Cancelado — ' : 'Listo — ') + etiqueta + ' ' + anio,
       'font-weight:700;color:#1e6b33;margin-bottom:6px');
     linea('Claves de acceso: ' + claves.size);
-    if (bajarXml) linea('XML descargados: ' + cont.xmlOk + (cont.xmlFallo ? ' · sin botón de XML: ' + cont.xmlFallo : ''));
+    if (bajarXml) {
+      linea('XML descargados: ' + cont.xmlOk + (cont.pdfOk ? ' · PDF (RIDE): ' + cont.pdfOk : '') +
+        (cont.fallo ? ' · sin XML ni PDF: ' + cont.fallo : ''));
+    }
     linea('Días con datos: ' + conDatos + ' · sin datos: ' + sinD + (errores ? ' · con error: ' + errores : ''));
     linea('Duración: ' + seg + ' s');
     if (claves.size) {
@@ -354,8 +383,8 @@
         etiqueta.replace(/[^A-Za-z0-9]+/g, '') + '_' + anio + '.txt';
       bajarArchivo([...claves].join('\n') + '\n', nombre, 'text/plain');
       linea('Se descargó ' + nombre, 'margin:6px 0;color:#1e6b33;font-weight:600');
-      linea(cont.xmlOk
-        ? 'Los XML quedaron en tu carpeta de Descargas: subilos en Ingresos IVA > "Subir XML". El TXT sirve para completar con las que no bajaron.'
+      linea((cont.xmlOk || cont.pdfOk)
+        ? 'Los archivos quedaron en tu carpeta de Descargas: arrastralos a Ingresos IVA (acepta XML y PDF). El TXT sirve para completar las que no bajaron.'
         : 'Subilo en Ingresos IVA > "Subir reporte (TXT)": el sistema baja los XML solo.',
         'margin:4px 0;color:#555;font-size:12px');
     } else {
@@ -392,7 +421,7 @@
     chk.onchange = () => { bajarXml = chk.checked; };
     fila.appendChild(chk);
     fila.appendChild(el('span', 'font-size:12px;color:#333',
-      'Bajar también los XML de cada factura (más lento)'));
+      'Bajar también el archivo de cada factura: XML, o PDF si no hay XML (más lento)'));
     return fila;
   }
 
@@ -407,7 +436,7 @@
     fila.appendChild(boton('Por MES', pantallaMeses, CSS_BTN + ';flex:1'));
     fila.appendChild(boton('Por SEMESTRE', pantallaSemestres, CSS_BTN + ';flex:1'));
     cuerpo.appendChild(fila);
-    linea('Recorre el período día por día: descarga un TXT con las claves de acceso y, si está marcada la casilla, el XML de cada factura.',
+    linea('Recorre el período día por día: descarga un TXT con las claves de acceso y, si está marcada la casilla, el archivo de cada factura (XML, o PDF/RIDE si esa fila no ofrece XML).',
       'margin-top:8px;color:#555;font-size:12px');
     linea('Si Chrome pregunta si permitir "descargar varios archivos", dale PERMITIR.',
       'margin-top:4px;color:#555;font-size:12px');
