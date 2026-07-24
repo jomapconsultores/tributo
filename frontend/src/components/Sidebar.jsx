@@ -8,7 +8,6 @@ import { useAccess, homeFor } from '../context/AccessContext'
 import { actividadAPI } from '../services/api'
 import bajadorBookmarklet from '../utils/bajador-facturas.bookmarklet.txt?raw'
 import bajadorIngresosBookmarklet from '../utils/bajador-ingresos.bookmarklet.txt?raw'
-import { AVISO_BAJADOR_EMITIDOS, setBajadorEmitidosHref } from '../utils/bajadorEmitidos'
 import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import './Sidebar.css'
 
@@ -96,7 +95,6 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         items: [
           L('📈', 'Ingresos IVA', '/ingresos-iva', hasSub('ice_ingresos_iva')),
           { kind: 'bajador', which: 'ingresos', ico: '📥', label: 'Bajador-INGRESOS', visible: true },
-          { kind: 'bajador', which: 'emitidos', ico: '📅', label: 'Bajar EMITIDAS por fecha', visible: true },
         ],
       },
       {
@@ -257,8 +255,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
       )
     }
     if (it.kind === 'bajador') {
-      const refs = { gastos: setBajadorHref, ingresos: setBajadorIngresosHref, emitidos: setBajadorEmitidosHref }
-      const avisos = { gastos: AVISO_BAJADOR_GASTOS, ingresos: AVISO_BAJADOR_INGRESOS, emitidos: AVISO_BAJADOR_EMITIDOS }
+      const refs = { gastos: setBajadorHref, ingresos: setBajadorIngresosHref }
+      const avisos = { gastos: AVISO_BAJADOR_GASTOS, ingresos: AVISO_BAJADOR_INGRESOS }
       return (
         <a
           key={`b${i}`}
