@@ -492,6 +492,59 @@ async def pendientes_declaracion(user_id: str = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/estado-cliente")
+async def estado_cliente(client_id: str = Query(...), user_id: str = Depends(get_current_user)):
+    """Estado de declaración de UN client_id (contribuyente + período): qué tipos
+    están PENDIENTES (contratados y aún NO subidos al SRI) y cuáles ya PRESENTADOS.
+    Sirve para que las alertas/badges de plazo dejen de marcar 'pendiente/vencido'
+    una vez que se marca la declaración como presentada. Mismo criterio que
+    /pendientes (presentada_sri), pero acotado a un cliente."""
+    try:
+        supabase = get_supabase_client()
+        assert_client_owner(client_id, user_id)
+        cli = supabase.table("clients").select("identificacion").eq("id", client_id).limit(1).execute().data
+        if not cli:
+            return {"client_id": client_id, "esperados": [], "presentadas": [], "pendientes": [], "todo_presentado": False}
+        ident = (cli[0].get("identificacion") or "").strip()
+        # Servicios contratados y 'agente de retención' agregados sobre TODOS los
+        # períodos del contribuyente (al abrir un período nuevo no se copian).
+        rows = supabase.table("clients").select("id,es_agente_retencion").eq("identificacion", ident).execute().data or []
+        all_ids = [r["id"] for r in rows]
+        agente = any(r.get("es_agente_retencion") for r in rows)
+        svcs = set()
+        if all_ids:
+            sv = fetch_in(
+                lambda: supabase.table("client_services").select("service").eq("active", True),
+                all_ids, "client_id")
+            svcs = {r.get("service") for r in sv}
+        esperados = []
+        if "declaracion_iva" in svcs:
+            esperados.append("IVA")
+        if agente:
+            esperados.append("103")
+        if "declaracion_ice" in svcs:
+            esperados.append("ICE")
+        # Tipos ya PRESENTADOS al SRI en ESTE período (client_id).
+        pr = supabase.table("declaraciones").select("tipo,presentada_sri").eq("client_id", client_id).execute().data or []
+        presentadas = {(r.get("tipo") or "").upper() for r in pr if r.get("presentada_sri")}
+        pendientes = [t for t in esperados if t not in presentadas]
+        return {
+            "client_id": client_id,
+            "esperados": esperados,
+            "presentadas": sorted(presentadas),
+            "pendientes": pendientes,
+            # Se considera todo presentado cuando se marcó al menos una declaración
+            # como presentada y no queda ningún tipo ESPERADO sin presentar. Así, si
+            # el servicio no está marcado pero el usuario ya presentó, igual deja de
+            # marcar plazo/pendiente.
+            "todo_presentado": bool(presentadas) and not pendientes,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class OverridesIn(BaseModel):
     client_id: str
     tipo: Optional[str] = "IVA"
