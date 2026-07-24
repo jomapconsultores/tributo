@@ -1,91 +1,331 @@
-/*
- * BOOKMARKLET — Bajar Comprobantes EMITIDOS del SRI por mes o semestre
- * ====================================================================
+/* ------------------------------------------------------------
+ * Desarrollado por Marco Antonio Posligua San Martín
+ * ------------------------------------------------------------
+ *
+ * BOOKMARKLET — Bajar Comprobantes EMITIDOS del SRI (por MES o por SEMESTRE)
+ * ==========================================================================
  *
  * QUÉ HACE: estando en el SRI, en "Facturación Electrónica > Comprobantes
- * electrónicos emitidos" (ya logueado), recorre día por día el período elegido
- * (un mes, 1er semestre ene-jun, o 2do semestre jul-dic), junta todas las CLAVES
- * DE ACCESO (49 díg) de las facturas emitidas y descarga un TXT (formato que acepta
- * POST /api/sales-iva/process-txt del backend).
+ * electrónicos emitidos" (ya logueado), abre un PANEL CON BOTONES para elegir el
+ * período, recorre día por día, junta todas las CLAVES DE ACCESO (49 díg) de las
+ * facturas emitidas y descarga un TXT (formato que acepta POST
+ * /api/sales-iva/process-txt del backend, que baja los XML por SOAP).
+ *
+ * INTERFAZ (sin prompts de texto):
+ *   1) Año   < 2026 >
+ *   2) "Por MES"  o  "Por SEMESTRE"
+ *   3) Mes (Ene…Dic)  o  Semestre (1ro Ene-Jun / 2do Jul-Dic)
+ *   4) Progreso día por día, con Cancelar.
  *
  * POR QUÉ ASÍ: el portal del SRI fuerza login en cada navegación nueva, así que NO
  * se puede automatizar desde afuera. Pero una vez DENTRO del formulario, "Consultar"
  * es un ajax de PrimeFaces que no recarga la página — un bookmarklet recorre las
  * fechas sin romperse. El SRI solo muestra las emitidas del RUC logueado. Fecha < hoy.
  *
- * IDs del form (confirmados jul-2026): fecha=frmPrincipal:calendarFechaDesde_input,
- * Consultar=frmPrincipal:btnConsultar, tabla=frmPrincipal:tablaCompEmitidos.
- * La clave se extrae CELDA por celda (td) — NO por innerText del panel, que concatena
- * el secuencial con la clave y el regex \d{49} agarra una ventana errónea.
+ * IDs reales del portal (verificados en vivo, jul-2026):
+ *   frmPrincipal:txtParametro ............ RUC del contribuyente autenticado
+ *   frmPrincipal:calendarFechaDesde_input  Fecha emisión (dd/mm/aaaa)
+ *   frmPrincipal:btnConsultar ............ Botón Consultar
+ *   frmPrincipal:panelListaComprobantes .. Panel donde se pinta la grilla
+ *   formMessages:messages ................ Avisos ("No existen datos…") — ¡va APARTE!
+ *   dlgpopStatusPrime .................... Overlay bloqueante "Espere por favor"
+ * Los combos Estado autorización / Tipo de comprobante NO se tocan: se respeta lo
+ * que el usuario haya dejado elegido en el formulario.
+ *
+ * TRES COSAS QUE ANTES FALLABAN Y ACÁ ESTÁN RESUELTAS:
+ *   a) "No existen datos" NO aparece dentro de panelListaComprobantes (que queda
+ *      vacío), sale en formMessages:messages. Buscarlo en el panel daba falsos
+ *      "hay datos" y contaba mal los días.
+ *   b) Esperar un tiempo fijo (2,3 s) no alcanza: en vivo la primera consulta tardó
+ *      7,4 s y las siguientes ~2 s. Ahora se espera a que el overlay
+ *      dlgpopStatusPrime se oculte (clase ui-overlay-hidden) — la señal real de
+ *      "ya respondió" — así no se saltean facturas.
+ *   c) La clave se extrae CELDA por celda (td) y NO por innerText del panel: el
+ *      innerText concatena el secuencial con la clave y el regex \d{49} agarra una
+ *      ventana errónea.
+ *
+ * NOTA: a propósito no se usa el carácter de porcentaje en el código — el
+ * bookmarklet viaja como URL "javascript:" y ahí ese carácter se lee como escape.
  *
  * DÓNDE VIVE LA COPIA QUE SE DESPACHA: frontend/src/utils/bajador-emitidos.bookmarklet.txt
- * (misma lógica, minificada). La app la ofrece como botón arrastrable en
+ * (misma lógica, minificada con esbuild). La app la ofrece como botón arrastrable en
  * Ingresos IVA y en el Sidebar (Ingresos IVA > "Bajar EMITIDAS por fecha").
- * Si tocás este archivo, actualizá también ese .txt.
+ * Si tocás este archivo, regenerá ese .txt:
+ *   node_modules/.bin/esbuild --minify sri_downloader/bookmarklet_emitidos.js
  */
 
-// ---- Fuente legible (mantener/editar acá; la de abajo es la misma minificada) ----
-(async () => {
-  const $ = id => document.getElementById(id);
+// ---- Fuente legible (mantener/editar acá; el .txt es esta misma, minificada) ----
+(() => {
+  const ID = 'sri_bajador_emitidos';
+  const $ = (id) => document.getElementById(id);
+
+  // Chrome FRENA setTimeout en las pestañas que no están a la vista (hasta una vez
+  // por minuto). Con eso el bajador parecía colgado en "Día 1 de 23" apenas el
+  // usuario se iba a otra pestaña. Los temporizadores de un Web Worker NO sufren ese
+  // freno — medido en vivo sobre el portal: se pidieron 150 ms y llegó en 171 ms con
+  // document.hidden = true. Por eso las esperas salen del worker, y solo si el worker
+  // no se puede crear (CSP) se cae de nuevo a setTimeout.
+  let worker = null;
+  const pendientes = new Map();
+  let idSleep = 0;
+  try {
+    const fuente = 'onmessage=function(e){setTimeout(function(){postMessage(e.data.id)},e.data.ms)}';
+    worker = new Worker(URL.createObjectURL(new Blob([fuente], { type: 'text/javascript' })));
+    worker.onmessage = (e) => {
+      const r = pendientes.get(e.data);
+      if (r) { pendientes.delete(e.data); r(); }
+    };
+  } catch (e) {
+    worker = null;
+  }
+  const sleep = (ms) => new Promise((r) => {
+    if (!worker) { setTimeout(r, ms); return; }
+    const id = ++idSleep;
+    pendientes.set(id, r);
+    worker.postMessage({ id, ms });
+  });
+
   const di = $('frmPrincipal:calendarFechaDesde_input');
-  const btn = $('frmPrincipal:btnConsultar');
-  const panel = $('frmPrincipal:panelListaComprobantes') || document.body;
-  if (!di || !btn) { alert('Primero abrí la consulta: Facturación Electrónica > Comprobantes electrónicos emitidos.'); return; }
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const btnConsultar = $('frmPrincipal:btnConsultar');
+  if (!di || !btnConsultar) {
+    // El mensaje se arma con join en tiempo de ejecución a propósito: si se
+    // concatenaran los saltos de línea, el minificador los volvería saltos REALES
+    // dentro de un template literal y el bookmarklet (que viaja como URL de una
+    // sola línea) quedaría partido.
+    alert([
+      'Primero abrí la consulta:',
+      '',
+      'SRI en línea > Facturación Electrónica > Comprobantes electrónicos EMITIDOS.',
+      '',
+      'Cuando veas el formulario (Fecha emisión / Consultar), volvé a tocar el marcador.',
+    ].join(String.fromCharCode(10)));
+    return;
+  }
+  const anterior = $(ID);
+  if (anterior) anterior.remove();
 
-  const opt = (prompt('¿QUE FECHA queres bajar?\n\nEscribi:\n  M  = un mes\n  S1 = 1er semestre (ene-jun)\n  S2 = 2do semestre (jul-dic)', 'M') || '').trim().toUpperCase();
-  if (!opt) return;
-  const year = parseInt(prompt('Año (AAAA):', String(new Date().getFullYear())), 10);
-  if (!year) return;
-  let months;
-  if (opt === 'S1') months = [1, 2, 3, 4, 5, 6];
-  else if (opt === 'S2') months = [7, 8, 9, 10, 11, 12];
-  else { const mm = parseInt(prompt('Mes (1-12):', String(new Date().getMonth() + 1)), 10); if (!mm) return; months = [mm]; }
+  const RUC = (($('frmPrincipal:txtParametro') || {}).value || '').trim();
+  const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
 
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const claves = new Set();
-  let con = 0, sin = 0, skip = 0;
-  const grab = () => {
-    const tbl = $('frmPrincipal:tablaCompEmitidos') || panel;
-    tbl.querySelectorAll('td').forEach(td => { const m = (td.textContent || '').match(/\d{49}/); if (m) claves.add(m[0]); });
+  let anio = hoy.getFullYear();
+  let cancelado = false;
+
+  // --- Panel flotante ------------------------------------------------------
+  const el = (tag, css, txt) => {
+    const e = document.createElement(tag);
+    if (css) e.style.cssText = css;
+    if (txt !== undefined) e.textContent = txt;
+    return e;
+  };
+  const CSS_BTN = 'padding:8px 10px;margin:3px;border:1px solid #a9d3b3;border-radius:6px;' +
+    'background:#eaf6ec;color:#1e6b33;font-weight:600;font-size:13px;cursor:pointer';
+  const CSS_GRIS = 'padding:6px 10px;margin:8px 3px 0;border:1px solid #ccc;border-radius:6px;' +
+    'background:#f5f5f5;color:#333;cursor:pointer';
+  const boton = (txt, fn, css) => {
+    const b = el('button', css || CSS_BTN, txt);
+    b.onclick = fn;
+    return b;
   };
 
-  for (const m of months) {
-    const nd = new Date(year, m, 0).getDate();
-    for (let d = 1; d <= nd; d++) {
-      const f = new Date(year, m - 1, d); f.setHours(0, 0, 0, 0);
-      if (f >= today) { skip++; continue; }              // el SRI exige fecha < hoy
-      const s = String(d).padStart(2, '0') + '/' + String(m).padStart(2, '0') + '/' + year;
-      di.value = s;
-      di.dispatchEvent(new Event('input', { bubbles: true }));
-      di.dispatchEvent(new Event('change', { bubbles: true }));
-      btn.click();
-      await sleep(2300);
-      let g = 0;
-      while (g++ < 80) {                                  // recorrer todas las páginas del día
-        grab();
-        const nx = panel.querySelector('.ui-paginator-next:not(.ui-state-disabled)');
-        if (!nx) break;
-        nx.click(); await sleep(1400);
-      }
-      if (/No existen datos/i.test(panel.innerText)) sin++; else con++;
-      document.title = s + ' - ' + claves.size + ' claves';
+  const caja = el('div', 'position:fixed;top:80px;right:20px;z-index:2147483647;width:330px;' +
+    'background:#fff;border:2px solid #1e6b33;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35);' +
+    'font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#222;overflow:hidden');
+  caja.id = ID;
+  const cabecera = el('div', 'background:#1e6b33;color:#fff;padding:8px 10px;font-weight:700;' +
+    'display:flex;justify-content:space-between;align-items:center');
+  cabecera.appendChild(el('span', '', 'Bajar EMITIDAS del SRI'));
+  cabecera.appendChild(boton('X', () => {
+    cancelado = true;
+    if (worker) worker.terminate();
+    caja.remove();
+    document.title = 'SRI';
+  },
+    'background:transparent;color:#fff;border:0;font-weight:700;font-size:15px;cursor:pointer'));
+  const cuerpo = el('div', 'padding:10px');
+  caja.appendChild(cabecera);
+  caja.appendChild(cuerpo);
+  document.body.appendChild(caja);
+
+  const limpiar = () => { cuerpo.textContent = ''; };
+  const linea = (txt, css) => cuerpo.appendChild(el('div', css || 'margin:4px 0;color:#555', txt));
+
+  // --- Consulta al portal --------------------------------------------------
+
+  // El overlay "Espere por favor" es la señal real de que el ajax sigue corriendo.
+  const overlayOculto = () => {
+    const d = $('dlgpopStatusPrime');
+    return !d || d.classList.contains('ui-overlay-hidden') || d.offsetParent === null;
+  };
+  const esperarSri = async () => {
+    const t0 = Date.now();
+    while (overlayOculto() && Date.now() - t0 < 3000) await sleep(80);     // que aparezca
+    while (!overlayOculto() && Date.now() - t0 < 30000) await sleep(120);  // que termine
+    await sleep(350);                                                      // pintar la grilla
+  };
+
+  const sinDatos = () => {
+    const m = $('formMessages:messages');
+    return !!m && /no existen datos/i.test(m.innerText || '');
+  };
+
+  // Celda por celda: el innerText del panel pega el secuencial con la clave.
+  const juntarClaves = (claves) => {
+    const zona = $('frmPrincipal:panelListaComprobantes') || document.body;
+    let nuevas = 0;
+    zona.querySelectorAll('td').forEach((td) => {
+      const m = (td.textContent || '').match(/\d{49}/);
+      if (m && !claves.has(m[0])) { claves.add(m[0]); nuevas++; }
+    });
+    return nuevas;
+  };
+
+  const btnSiguientePagina = () => {
+    const zona = $('frmPrincipal:panelListaComprobantes') || document;
+    return zona.querySelector('.ui-paginator-next:not(.ui-state-disabled)');
+  };
+
+  const consultarDia = async (fecha, claves) => {
+    di.value = fecha;
+    di.dispatchEvent(new Event('input', { bubbles: true }));
+    di.dispatchEvent(new Event('change', { bubbles: true }));
+    btnConsultar.click();
+    await esperarSri();
+    if (sinDatos()) return 0;
+    let nuevas = 0;
+    for (let pag = 0; pag < 100 && !cancelado; pag++) {   // todas las páginas del día
+      nuevas += juntarClaves(claves);
+      const nx = btnSiguientePagina();
+      if (!nx) break;
+      nx.click();
+      await esperarSri();
     }
+    return nuevas;
+  };
+
+  // --- Corrida -------------------------------------------------------------
+  const bajarTxt = (claves, nombre) => {
+    const txt = [...claves].join('\n') + (claves.size ? '\n' : '');
+    const a = el('a');
+    a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }));
+    a.download = nombre;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const correr = async (meses, etiqueta) => {
+    cancelado = false;
+    const dias = [];
+    for (const m of meses) {
+      const n = new Date(anio, m, 0).getDate();
+      for (let d = 1; d <= n; d++) {
+        const f = new Date(anio, m - 1, d); f.setHours(0, 0, 0, 0);
+        if (f >= hoy) continue;   // el SRI no devuelve el día en curso ni el futuro
+        dias.push(String(d).padStart(2, '0') + '/' + String(m).padStart(2, '0') + '/' + anio);
+      }
+    }
+    limpiar();
+    linea(etiqueta + ' ' + anio, 'font-weight:700;color:#1e6b33;margin-bottom:6px');
+    if (!dias.length) {
+      linea('Ese período no tiene días anteriores a hoy.');
+      cuerpo.appendChild(boton('Volver', pantallaInicio, CSS_GRIS));
+      return;
+    }
+    const estado = el('div', 'margin:6px 0;font-weight:600');
+    const detalle = el('div', 'margin:4px 0;color:#555;font-size:12px');
+    cuerpo.appendChild(estado);
+    cuerpo.appendChild(detalle);
+    const btnCancelar = boton('Cancelar', () => { cancelado = true; estado.textContent = 'Cancelando…'; },
+      'padding:8px 10px;margin:6px 3px;border:1px solid #d9a9a9;border-radius:6px;' +
+      'background:#f6eaea;color:#8b1e1e;font-weight:600;cursor:pointer');
+    cuerpo.appendChild(btnCancelar);
+
+    const claves = new Set();
+    let conDatos = 0, sinD = 0, errores = 0;
+    const t0 = Date.now();
+    for (let i = 0; i < dias.length && !cancelado; i++) {
+      estado.textContent = 'Día ' + (i + 1) + ' de ' + dias.length + '   (' + dias[i] + ')';
+      detalle.textContent = claves.size + ' claves · ' + conDatos + ' días con datos';
+      document.title = dias[i] + ' - ' + claves.size + ' claves';
+      try {
+        if (await consultarDia(dias[i], claves) > 0) conDatos++; else sinD++;
+      } catch (e) {
+        errores++;
+      }
+    }
+    document.title = 'SRI';
+    btnCancelar.remove();
+    const seg = Math.round((Date.now() - t0) / 1000);
+    limpiar();
+    linea((cancelado ? 'Cancelado — ' : 'Listo — ') + etiqueta + ' ' + anio,
+      'font-weight:700;color:#1e6b33;margin-bottom:6px');
+    linea('Claves de acceso: ' + claves.size);
+    linea('Días con datos: ' + conDatos + ' · sin datos: ' + sinD + (errores ? ' · con error: ' + errores : ''));
+    linea('Duración: ' + seg + ' s');
+    if (claves.size) {
+      const nombre = 'emitidos_' + (RUC ? RUC + '_' : '') +
+        etiqueta.replace(/[^A-Za-z0-9]+/g, '') + '_' + anio + '.txt';
+      bajarTxt(claves, nombre);
+      linea('Se descargó ' + nombre, 'margin:6px 0;color:#1e6b33;font-weight:600');
+      linea('Ahora subilo en Ingresos IVA > "Subir reporte (TXT)": el sistema baja los XML solo.',
+        'margin:4px 0;color:#555;font-size:12px');
+    } else {
+      linea('No se encontró ninguna clave en ese período.', 'margin:6px 0;color:#8b1e1e;font-weight:600');
+    }
+    cuerpo.appendChild(boton('Bajar otro período', pantallaInicio, CSS_GRIS));
+  };
+
+  // --- Pantallas -----------------------------------------------------------
+  function filaAnio() {
+    const fila = el('div', 'display:flex;align-items:center;justify-content:center;margin:6px 0');
+    const texto = el('span', 'font-size:17px;font-weight:700;min-width:60px;text-align:center', String(anio));
+    const chico = 'padding:4px 12px;margin:0 6px;border:1px solid #ccc;border-radius:6px;' +
+      'background:#f5f5f5;color:#333;cursor:pointer;font-weight:700';
+    fila.appendChild(boton('<', () => { anio--; texto.textContent = String(anio); }, chico));
+    fila.appendChild(texto);
+    fila.appendChild(boton('>', () => { anio++; texto.textContent = String(anio); }, chico));
+    return fila;
   }
 
-  const txt = [...claves].join('\n') + (claves.size ? '\n' : '');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }));
-  a.download = 'emitidos_' + (opt === 'M' ? ('mes' + months[0]) : opt) + '_' + year + '.txt';
-  document.body.appendChild(a); a.click(); a.remove();
-  document.title = 'SRI';
-  alert('Listo. Claves de acceso: ' + claves.size + '.\nDias con datos: ' + con + ', sin datos: ' + sin + (skip ? ', omitidos (fecha >= hoy): ' + skip : '') + '.\n\nSe descargo el TXT. Ahora subilo en Ingresos IVA > "Subir reporte (TXT)" y el sistema baja los XML solo.');
+  function pantallaInicio() {
+    limpiar();
+    if (RUC) linea('RUC: ' + RUC, 'margin:0 0 6px;color:#555;font-size:12px');
+    linea('Año', 'font-weight:600');
+    cuerpo.appendChild(filaAnio());
+    linea('¿Qué querés bajar?', 'font-weight:600;margin-top:8px');
+    const fila = el('div', 'display:flex');
+    fila.appendChild(boton('Por MES', pantallaMeses, CSS_BTN + ';flex:1'));
+    fila.appendChild(boton('Por SEMESTRE', pantallaSemestres, CSS_BTN + ';flex:1'));
+    cuerpo.appendChild(fila);
+    linea('Recorre el período día por día y descarga un TXT con las claves de acceso.',
+      'margin-top:8px;color:#555;font-size:12px');
+    linea(worker
+      ? 'Podés seguir trabajando en otras pestañas: sigue corriendo igual. No cierres ESTA.'
+      : 'Dejá esta pestaña A LA VISTA mientras corre (si no, Chrome frena los tiempos).',
+      'margin-top:4px;color:#8b6b1e;font-size:12px');
+  }
+
+  function pantallaMeses() {
+    limpiar();
+    linea('Elegí el MES de ' + anio, 'font-weight:600;margin-bottom:4px');
+    const grilla = el('div', 'display:grid;grid-template-columns:repeat(4,1fr);gap:2px');
+    MESES.forEach((nombre, i) => {
+      grilla.appendChild(boton(nombre, () => correr([i + 1], nombre), CSS_BTN + ';margin:0'));
+    });
+    cuerpo.appendChild(grilla);
+    cuerpo.appendChild(boton('Volver', pantallaInicio, CSS_GRIS));
+  }
+
+  function pantallaSemestres() {
+    limpiar();
+    linea('Elegí el SEMESTRE de ' + anio, 'font-weight:600;margin-bottom:4px');
+    // ancho fijo en px (no se usa porcentaje: el bookmarklet viaja como URL javascript:)
+    const ancho = CSS_BTN + ';display:block;width:300px;box-sizing:border-box;text-align:center';
+    cuerpo.appendChild(boton('1er semestre   (Ene - Jun)', () => correr([1, 2, 3, 4, 5, 6], '1er semestre'), ancho));
+    cuerpo.appendChild(boton('2do semestre   (Jul - Dic)', () => correr([7, 8, 9, 10, 11, 12], '2do semestre'), ancho));
+    cuerpo.appendChild(boton('Volver', pantallaInicio, CSS_GRIS));
+  }
+
+  pantallaInicio();
 })();
-
-
-/* ============================================================================
- * MINIFICADO: ya no se duplica acá para que no se bifurque. La única copia
- * ejecutable es frontend/src/utils/bajador-emitidos.bookmarklet.txt — una sola
- * línea `javascript:...` que la app sirve como botón arrastrable. Para instalarlo
- * a mano, abrí ese archivo y pegá la línea como URL de un marcador nuevo.
- * ============================================================================ */
