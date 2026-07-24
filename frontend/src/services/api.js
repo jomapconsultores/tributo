@@ -413,6 +413,8 @@ export const declaracionesAPI = {
     api.put('/api/declaraciones/presentada-directa', { client_id, tipo, presentada }),
   // Estado de declaración de un cliente/período: {esperados, presentadas, pendientes, todo_presentado}.
   estadoCliente: (clientId) => api.get('/api/declaraciones/estado-cliente', { params: { client_id: clientId } }),
+  // Estado de TODOS los contribuyentes visibles, keyed por identificación (para los badges de lista).
+  estadoTodos: () => api.get('/api/declaraciones/estado-todos'),
   exportExcel: (clientId, tipo, ov = {}) => api.get('/api/declaraciones/export/excel', { params: { client_id: clientId, tipo, ...ov }, responseType: 'blob' }),
   exportOficial: (clientId, tipo, ov = {}) => api.get('/api/declaraciones/export/oficial', { params: { client_id: clientId, tipo, ...ov }, responseType: 'blob' }),
   // Pagos aplazados

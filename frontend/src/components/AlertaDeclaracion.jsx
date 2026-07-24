@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useClients } from '../context/ClientContext'
 import { declaracionesAPI } from '../services/api'
+import { EVENTO_PRESENTADA } from '../hooks/useDeclPresentadas'
 import { estadoDeclaracionCliente } from '../utils/declaracionSRI'
 import { nombreMes, periodoLargo } from '../utils/periodo'
 import './AlertaDeclaracion.css'
@@ -17,14 +18,22 @@ export default function AlertaDeclaracion() {
   const [estado, setEstado] = useState(null)   // {todo_presentado, pendientes, presentadas}
 
   // Estado de presentación del cliente/período (para no marcar plazo si ya declaró).
-  useEffect(() => {
+  const clientId = selectedClient?.id
+  const cargarEstado = useCallback(() => {
+    if (!clientId) { setEstado(null); return () => {} }
     let vivo = true
-    if (!selectedClient?.id) { setEstado(null); return }
-    declaracionesAPI.estadoCliente(selectedClient.id)
+    declaracionesAPI.estadoCliente(clientId)
       .then((r) => { if (vivo) setEstado(r.data) })
       .catch(() => { if (vivo) setEstado(null) })
     return () => { vivo = false }
-  }, [selectedClient?.id])
+  }, [clientId])
+  useEffect(() => cargarEstado(), [cargarEstado])
+  // Refrescar al marcar/desmarcar una declaración como presentada en otra pantalla.
+  useEffect(() => {
+    const onCambio = () => cargarEstado()
+    window.addEventListener(EVENTO_PRESENTADA, onCambio)
+    return () => window.removeEventListener(EVENTO_PRESENTADA, onCambio)
+  }, [cargarEstado])
 
   if (!selectedClient?.identificacion) return null
 

@@ -3,6 +3,7 @@ import { credentialsAPI, clientsAPI } from '../services/api'
 import { useAccess } from '../context/AccessContext'
 import { infoDeclaracion } from '../utils/declaracionSRI'
 import { filterBySearch } from '../utils/search'
+import useDeclPresentadas from '../hooks/useDeclPresentadas'
 import BadgeVencimiento from '../components/BadgeVencimiento'
 import './AdminCredentials.css'
 
@@ -33,6 +34,7 @@ export default function AdminCredentials() {
   // El admin (super) ve TODO (claves, revelar, editar). Socio/trabajador acceden
   // a la vista LIMITADA: solo marcar qué declaraciones hace cada contribuyente.
   const { isSuperAdmin } = useAccess()
+  const { estaPresentada } = useDeclPresentadas()
   const [creds, setCreds] = useState([])
   const [contribs, setContribs] = useState([])
   // Servicios contratados por RUC (compartidos por todo el contribuyente). Maneja
@@ -343,7 +345,7 @@ export default function AdminCredentials() {
                   </td>
                   <td className="adm-cred-decl-cell">
                     {infoDeclaracion(c.ruc).valido
-                      ? <BadgeVencimiento ruc={c.ruc} />
+                      ? <BadgeVencimiento ruc={c.ruc} presentada={estaPresentada(c.ruc)} />
                       : <span className="adm-cred-dim">—</span>}
                   </td>
                   {isSuperAdmin && <td>{c.username || <span className="adm-cred-dim">{c._sinClave ? '(sin clave)' : '(usa el RUC)'}</span>}</td>}

@@ -4,6 +4,7 @@ import { declaracionesAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { useAccess, homeFor } from '../context/AccessContext'
 import { estadoDeclaracionCliente } from '../utils/declaracionSRI'
+import { refrescarPresentadas } from '../hooks/useDeclPresentadas'
 import { periodoLargo } from '../utils/periodo'
 import { filterBySearch } from '../utils/search'
 import './ClientesPendientes.css'
@@ -61,6 +62,7 @@ export default function ClientesPendientes() {
     setMarcando(key)
     try {
       await declaracionesAPI.marcarPresentadaDirecta(row.client_id, tipo, true)
+      refrescarPresentadas()   // que los badges de vencimiento dejen de marcar plazo
       await cargar()
     } catch (e) {
       alert('No se pudo marcar: ' + (e.response?.data?.detail || e.message))

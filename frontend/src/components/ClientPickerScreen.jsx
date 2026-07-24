@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, periodoCorto } from '../utils/periodo'
 import { filtrarClientesPorTexto } from '../utils/clientSearch'
+import useDeclPresentadas from '../hooks/useDeclPresentadas'
 import BadgeVencimiento from './BadgeVencimiento'
 import './ClientPickerScreen.css'
 
@@ -23,6 +24,7 @@ const avatarColor = (nombre) => {
 
 export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, onNewClient, svcLabel, hint }) {
   const { clients, selectClient } = useClients()
+  const { estaPresentada } = useDeclPresentadas()
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState({}) // identificacion -> mostrar sus períodos
 
@@ -120,7 +122,7 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
                               <span>{c.tipo_identificacion || 'RUC'}: {c.identificacion}</span>
                               <span className="cps-period">{periodoLargo(c)}</span>
                               {periodos > 1 && <span className="cps-period">· {periodos} períodos</span>}
-                              <BadgeVencimiento ruc={c.identificacion} client={c} />
+                              <BadgeVencimiento ruc={c.identificacion} client={c} presentada={estaPresentada(c.identificacion)} />
                             </span>
                           </span>
                           <span className="cps-item-arrow">›</span>

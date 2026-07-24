@@ -399,95 +399,124 @@ async def listar(client_id: Optional[str] = Query(None), tipo: Optional[str] = Q
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/pendientes")
-async def pendientes_declaracion(user_id: str = Depends(get_current_user)):
-    """Contribuyentes con al menos una declaración PENDIENTE en su período más
-    reciente. Respeta los permisos concedidos:
+def _estado_declaraciones_visibles(user_id: str):
+    """Estado de declaración del PERÍODO MÁS RECIENTE de cada contribuyente visible.
+
+    Base común de /pendientes y /estado-todos. Respeta los permisos concedidos:
       · rol → contribuyentes VISIBLES (admin: todos; socio/cliente: propios+compartidos);
       · submódulos → tipos que el usuario puede ver (decl_iva, decl_ice, agret_103).
 
     Un tipo se considera CONTRATADO si el servicio está activo en cualquier
     período del contribuyente (declaracion_iva / declaracion_ice), o —para el 103—
     si el contribuyente está marcado como agente de retención. Se considera
-    PENDIENTE si ese tipo NO tiene una declaración guardada en el período más
-    reciente. Ordenados alfabéticamente por nombre."""
-    try:
-        supabase = get_supabase_client()
+    PENDIENTE si ese tipo NO tiene una declaración PRESENTADA al SRI en el período
+    más reciente (guardar no basta: presentada_sri). Devuelve una lista de dicts,
+    uno por contribuyente, con esperados/presentadas/pendientes."""
+    supabase = get_supabase_client()
 
-        # Tipos que el usuario puede ver, según módulos + submódulos concedidos.
-        mods = set(modulos_de(user_id))
-        puede_iva = "declaraciones" in mods and puede_submodulo(user_id, "decl_iva")
-        puede_ice = "declaraciones" in mods and puede_submodulo(user_id, "decl_ice")
-        puede_103 = "agente_retencion" in mods and puede_submodulo(user_id, "agret_103")
-        if not (puede_iva or puede_ice or puede_103):
-            return {"data": []}
+    # Tipos que el usuario puede ver, según módulos + submódulos concedidos.
+    mods = set(modulos_de(user_id))
+    puede_iva = "declaraciones" in mods and puede_submodulo(user_id, "decl_iva")
+    puede_ice = "declaraciones" in mods and puede_submodulo(user_id, "decl_ice")
+    puede_103 = "agente_retencion" in mods and puede_submodulo(user_id, "agret_103")
+    if not (puede_iva or puede_ice or puede_103):
+        return []
 
-        clientes = visible_clients(
-            user_id, "id,identificacion,nombre,periodo_mes,periodo_anio,es_agente_retencion,periodicidad,periodo_semestre")
-        if not clientes:
-            return {"data": []}
+    clientes = visible_clients(
+        user_id, "id,identificacion,nombre,periodo_mes,periodo_anio,es_agente_retencion,periodicidad,periodo_semestre")
+    if not clientes:
+        return []
 
-        # Período MÁS RECIENTE (año, mes) por contribuyente (identificación).
-        latest = {}
-        agente = {}          # identificación → es agente de retención (en cualquier período)
-        for c in clientes:
-            ident = (c.get("identificacion") or "").strip()
-            if not ident or c.get("periodo_mes") is None or c.get("periodo_anio") is None:
-                continue
-            if c.get("es_agente_retencion"):
-                agente[ident] = True
-            clave = (c["periodo_anio"], c["periodo_mes"])
-            cur = latest.get(ident)
-            if cur is None or clave > (cur["periodo_anio"], cur["periodo_mes"]):
-                latest[ident] = c
+    # Período MÁS RECIENTE (año, mes) por contribuyente (identificación).
+    latest = {}
+    agente = {}          # identificación → es agente de retención (en cualquier período)
+    for c in clientes:
+        ident = (c.get("identificacion") or "").strip()
+        if not ident or c.get("periodo_mes") is None or c.get("periodo_anio") is None:
+            continue
+        if c.get("es_agente_retencion"):
+            agente[ident] = True
+        clave = (c["periodo_anio"], c["periodo_mes"])
+        cur = latest.get(ident)
+        if cur is None or clave > (cur["periodo_anio"], cur["periodo_mes"]):
+            latest[ident] = c
 
-        # Servicios contratados por contribuyente (agregados sobre todos sus períodos:
-        # al abrir un período nuevo no se copian, pueden quedar en un período viejo).
-        id_to_ident = {c["id"]: (c.get("identificacion") or "").strip() for c in clientes}
-        svc_rows = fetch_in(
-            lambda: supabase.table("client_services").select("client_id,service").eq("active", True),
-            list(id_to_ident.keys()), "client_id")
-        svc_by_ident = {}
-        for r in svc_rows:
-            ident = id_to_ident.get(r.get("client_id"))
-            if ident:
-                svc_by_ident.setdefault(ident, set()).add(r.get("service"))
+    # Servicios contratados por contribuyente (agregados sobre todos sus períodos:
+    # al abrir un período nuevo no se copian, pueden quedar en un período viejo).
+    id_to_ident = {c["id"]: (c.get("identificacion") or "").strip() for c in clientes}
+    svc_rows = fetch_in(
+        lambda: supabase.table("client_services").select("client_id,service").eq("active", True),
+        list(id_to_ident.keys()), "client_id")
+    svc_by_ident = {}
+    for r in svc_rows:
+        ident = id_to_ident.get(r.get("client_id"))
+        if ident:
+            svc_by_ident.setdefault(ident, set()).add(r.get("service"))
 
-        # Declaraciones ya SUBIDAS AL SRI en el período más reciente. Guardar la
-        # declaración NO basta: sigue pendiente hasta confirmar que se presentó
-        # al SRI (presentada_sri). Así "pendiente" = falta subirla al portal.
-        latest_ids = [c["id"] for c in latest.values()]
-        saved_rows = fetch_in(
-            lambda: supabase.table("declaraciones").select("client_id,tipo,presentada_sri"),
-            latest_ids, "client_id")
-        presentadas = {(r.get("client_id"), (r.get("tipo") or "").upper())
+    # Declaraciones ya SUBIDAS AL SRI en el período más reciente. Guardar la
+    # declaración NO basta: sigue pendiente hasta confirmar que se presentó
+    # al SRI (presentada_sri). Así "pendiente" = falta subirla al portal.
+    latest_ids = [c["id"] for c in latest.values()]
+    saved_rows = fetch_in(
+        lambda: supabase.table("declaraciones").select("client_id,tipo,presentada_sri"),
+        latest_ids, "client_id")
+    presentadas_set = {(r.get("client_id"), (r.get("tipo") or "").upper())
                        for r in saved_rows if r.get("presentada_sri")}
 
-        out = []
-        for ident, c in latest.items():
-            svcs = svc_by_ident.get(ident, set())
-            tipos = []
-            if puede_iva and "declaracion_iva" in svcs:
-                tipos.append("IVA")
-            if puede_103 and agente.get(ident):
-                tipos.append("103")
-            if puede_ice and "declaracion_ice" in svcs:
-                tipos.append("ICE")
-            pendientes = [t for t in tipos if (c["id"], t) not in presentadas]
-            if pendientes:
-                out.append({
-                    "client_id": c["id"],
-                    "identificacion": ident,
-                    "nombre": c.get("nombre") or "",
-                    "periodo_mes": c.get("periodo_mes"),
-                    "periodo_anio": c.get("periodo_anio"),
-                    "periodicidad": c.get("periodicidad") or "mensual",
-                    "periodo_semestre": c.get("periodo_semestre"),
-                    "pendientes": pendientes,
-                })
+    out = []
+    for ident, c in latest.items():
+        svcs = svc_by_ident.get(ident, set())
+        esperados = []
+        if puede_iva and "declaracion_iva" in svcs:
+            esperados.append("IVA")
+        if puede_103 and agente.get(ident):
+            esperados.append("103")
+        if puede_ice and "declaracion_ice" in svcs:
+            esperados.append("ICE")
+        presentadas = [t for t in esperados if (c["id"], t) in presentadas_set]
+        pendientes = [t for t in esperados if (c["id"], t) not in presentadas_set]
+        out.append({
+            "client_id": c["id"],
+            "identificacion": ident,
+            "nombre": c.get("nombre") or "",
+            "periodo_mes": c.get("periodo_mes"),
+            "periodo_anio": c.get("periodo_anio"),
+            "periodicidad": c.get("periodicidad") or "mensual",
+            "periodo_semestre": c.get("periodo_semestre"),
+            "esperados": esperados,
+            "presentadas": presentadas,
+            "pendientes": pendientes,
+            # Todo presentado: hay algo esperado y no queda ninguno pendiente.
+            "todo_presentado": bool(esperados) and not pendientes,
+        })
 
-        out.sort(key=lambda x: (x["nombre"] or "").upper())
+    out.sort(key=lambda x: (x["nombre"] or "").upper())
+    return out
+
+
+@router.get("/pendientes")
+async def pendientes_declaracion(user_id: str = Depends(get_current_user)):
+    """Contribuyentes con al menos una declaración PENDIENTE en su período más
+    reciente. Los que ya presentaron TODO al SRI no aparecen. Ordenados por nombre."""
+    try:
+        out = [x for x in _estado_declaraciones_visibles(user_id) if x["pendientes"]]
         return {"data": out}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/estado-todos")
+async def estado_todos(user_id: str = Depends(get_current_user)):
+    """Estado de declaración de TODOS los contribuyentes visibles (período más
+    reciente), keyed por identificación. Sirve para que los badges de vencimiento
+    en las listas (selector de cliente, datos guardados, credenciales) dejen de
+    marcar plazo/pendiente cuando ese contribuyente ya presentó todo al SRI.
+
+    Devuelve {"data": {"<identificacion>": {client_id, esperados, presentadas,
+    pendientes, todo_presentado, ...}}}."""
+    try:
+        por_ident = {x["identificacion"]: x for x in _estado_declaraciones_visibles(user_id)}
+        return {"data": por_ident}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -4,6 +4,7 @@ import { useClients } from '../context/ClientContext'
 import { nombreMes } from '../utils/periodo'
 import { infoDeclaracion } from '../utils/declaracionSRI'
 import { filtrarClientesPorTexto } from '../utils/clientSearch'
+import useDeclPresentadas from '../hooks/useDeclPresentadas'
 import BadgeVencimiento from '../components/BadgeVencimiento'
 import WorkflowGuide from '../components/WorkflowGuide'
 import './SavedData.css'
@@ -21,6 +22,7 @@ const SD_STEPS = [
 
 export default function SavedData() {
   const { clients } = useClients()
+  const { estaPresentada } = useDeclPresentadas()
   const idents_svc = null
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(null) // { identificacion, nombre }
@@ -158,7 +160,7 @@ export default function SavedData() {
                   <span className="sd-li-meta">
                     {c.identificacion} · {c.periodos} período(s) · {c.num_facturas} fact.
                   </span>
-                  <span className="sd-li-decl"><BadgeVencimiento ruc={c.identificacion} /></span>
+                  <span className="sd-li-decl"><BadgeVencimiento ruc={c.identificacion} presentada={estaPresentada(c.identificacion)} /></span>
                 </button>
               )
             })}

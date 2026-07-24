@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import useDraft, { clearDraftsByPrefix } from '../hooks/useDraft'
+import { refrescarPresentadas } from '../hooks/useDeclPresentadas'
 import { useOutletContext } from 'react-router-dom'
 import { declaracionesAPI, credentialsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
@@ -294,6 +295,7 @@ export default function Declaraciones({ tipo }) {
     setMarcandoSri(true)
     try {
       await declaracionesAPI.marcarPresentada(id, presentada)
+      refrescarPresentadas()   // que los badges de vencimiento dejen de marcar plazo
       await cargarHistorial()
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
     finally { setMarcandoSri(false) }
