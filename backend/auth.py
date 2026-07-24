@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 from fastapi import HTTPException, Depends, Header
 import jwt
 from jwt import PyJWKClient

@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Diagnóstico de conectividad (Fase 0 del scraping SRI server-side).
 
 Prueba, DESDE EL SERVIDOR, si se puede alcanzar el portal del SRI

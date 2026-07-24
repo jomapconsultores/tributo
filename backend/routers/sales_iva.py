@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Router para INGRESOS IVA (facturas de venta SIN ICE).
 
 Para contribuyentes que solo declaran IVA (no ICE). Las facturas con ICE deben

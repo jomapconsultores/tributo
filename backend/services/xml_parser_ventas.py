@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Parser de XMLs de facturas de VENTA (ingresos) SIN ICE.
 
 A diferencia de:

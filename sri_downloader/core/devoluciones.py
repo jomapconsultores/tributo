@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Portal de Devolución de IVA — Adultos mayores (tercera edad) del SRI
 (iteración 5 — flujo navegado y confirmado; parseo del grid pendiente de captura).
 

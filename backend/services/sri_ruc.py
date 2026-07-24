@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Consulta de datos básicos de un RUC/cédula en la API pública del SRI
 (catastro de contribuyentes): razón social, estado, actividad económica,
 régimen y obligaciones (contabilidad, agente de retención, especial)."""

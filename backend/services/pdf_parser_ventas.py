@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Parser de facturas de VENTA (ingresos) desde el PDF (RIDE del SRI).
 
 Se usa cuando el XML no está disponible (ej. facturas emitidas por el FACTURADOR

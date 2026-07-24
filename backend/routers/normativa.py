@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Biblioteca de normativa: cuerpos legales (LRTI, Reglamento, normativa
 institucional vigente) presentados como libro consultable. El texto se extrae
 por página al subir el PDF (PyPDF2) y se guarda en normativa_paginas para

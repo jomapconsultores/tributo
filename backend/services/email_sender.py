@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Envío de correo por SMTP. Las credenciales se leen de variables de entorno
 (NUNCA del código): SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM.
 Si no están configuradas, enviar_correo devuelve (False, motivo) y la app cae

@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Carga de configuración de clientes.
 
 clientes.local.json (gitignored) contiene { "clientes": [ {ruc, clave, alias}, ... ] }.

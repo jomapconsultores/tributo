@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Formulario de contacto público (landing). No requiere autenticación."""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel

@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Almacenamiento del archivo de Códigos ICE en Supabase Storage.
 
 En producción el disco del contenedor es efímero, así que el archivo reemplazable se

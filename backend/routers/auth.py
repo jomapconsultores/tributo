@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 from database import get_supabase_client_anon, get_supabase_client

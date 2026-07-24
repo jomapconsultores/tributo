@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Reservas de Capacitación y acompañamiento ($50 + IVA/hora).
 
 Flujo:

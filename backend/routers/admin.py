@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Panel de administración (Fase 3). Solo para admins (app_admins).
 Permite listar/crear usuarios y asignar módulos/planes con vigencia."""
 from datetime import date, timedelta

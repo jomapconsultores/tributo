@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Generación del anexo ICE para el SRI y agrupaciones por producto / cliente.
 Portado de la lógica de ICEcompleto(1).py (sincronizar_editor + generar_xml)."""
 import re

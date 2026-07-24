@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Lectura de documentos con IA (Mistral) para el catálogo de proveedores calificados.
 
 Lee certificados/documentos (PDF, foto/imagen o Excel) y extrae: RUC, razón social,

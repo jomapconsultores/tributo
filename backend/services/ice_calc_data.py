@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Tarifas ICE por categoría y año, IVA por fecha, y cálculo manual de ICE.
 
 Categorías:

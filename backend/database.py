@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 from supabase import create_client, Client
 from config import get_settings
 from functools import lru_cache

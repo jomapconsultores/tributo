@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Autenticación biométrica FIDO2/WebAuthn (huella dactilar, Face ID, Windows Hello)."""
 import time
 import json

@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Siembra (o re-siembra) la biblioteca de normativa con PDFs locales.
 Uso:  python scripts/seed_normativa.py <lrti.pdf> <reglamento.pdf> <vigente.pdf>
 Hace lo mismo que el endpoint /api/normativa/{slug}/reemplazar pero desde la

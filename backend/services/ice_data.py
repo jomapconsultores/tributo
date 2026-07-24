@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Datos tributarios, catálogo de productos y cálculos de ICE.
 Portado de ICEcompleto(1).py (lógica, sin la interfaz tkinter)."""
 

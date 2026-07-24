@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Login al SRI vía Keycloak (OpenID Connect).
 
 Estrategia: navegar a la página de Perfil (requiere login) y dejar que el SRI

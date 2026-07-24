@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Formatos xlsxwriter compartidos entre módulos de exportación ICE
 (ice_export.py, ice_calc_export.py, anexo_export.py comparten el mismo estilo
 de encabezado/título/celda; antes cada uno redeclaraba los mismos formatos por

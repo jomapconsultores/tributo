@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 from collections import defaultdict
 from services.ice_calc_data import calcular_fila, CATEGORIAS, CAT_LABEL
 

@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Búsqueda en el catálogo oficial de Códigos ICE del SRI (resources/codigos_ice.xls).
 Cada hoja con nombre numérico (3011, 3031, …) es un impuesto; sus filas tienen:
 Código Impuesto | Impuesto | Código Clasificación | Clasificación | Código de Marca | Descripción.

@@ -1,3 +1,6 @@
+/* ------------------------------------------------------------
+ * Desarrollado por Marco Antonio Posligua San Martín
+ * ------------------------------------------------------------ */
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'

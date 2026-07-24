@@ -1,3 +1,6 @@
+/* ------------------------------------------------------------
+ * Desarrollado por Marco Antonio Posligua San Martín
+ * ------------------------------------------------------------ */
 import { useState, useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
@@ -71,6 +74,9 @@ export default function Layout({ user, onLogout }) {
         <AlertaDeclaracion />
         <RecordatorioAplazados />
         <Outlet context={{ openNewClient }} />
+        <footer className="layout-credit">
+          Desarrollado por Marco Antonio Posligua San Martín
+        </footer>
       </main>
       <NewClientModal open={modalOpen} onClose={() => setModalOpen(false)} />
       <CobrosPendientesModal />

@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Validación de período: las facturas de venta, gastos y retenciones deben
 pertenecer al MES EN PROCESO del cliente (clients.periodo_mes / periodo_anio).
 Las que tienen otra fecha NO se toman en cuenta y se informan al usuario.

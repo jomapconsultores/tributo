@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Exportación del Anexo PVP+ICE (cabecera + detalle de ventas) a Excel y PDF."""
 import io
 from reportlab.lib.pagesizes import letter, landscape

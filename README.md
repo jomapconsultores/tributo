@@ -53,3 +53,7 @@ Repositorio GitHub conectado a Coolify (dos apps: `tributo` = frontend, `tributo
   responde y que `/openapi.json` refleja el código nuevo.
 - **Migraciones Supabase:** aplicar las de `supabase/migrations/` ANTES de desplegar el
   código que las usa, para no dejar columnas sin leer entre migración y despliegue.
+
+## Autor
+
+Desarrollado por **Marco Antonio Posligua San Martín**.

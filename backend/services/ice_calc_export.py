@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 import io
 from services.ice_calc_report import enrich, por_categoria, por_producto, general
 from services.ice_calc_data import CAT_LABEL, tarifas_anio, iva_rate

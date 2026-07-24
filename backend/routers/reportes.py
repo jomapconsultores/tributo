@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """REPORTES de honorarios: cuadro de todos los contribuyentes con los SERVICIOS
 que se les hace (declaraciones y anexos, esencialmente), indicando si se cobra
 y el valor a cobrar. Los valores se guardan (tabla reportes_honorarios) para

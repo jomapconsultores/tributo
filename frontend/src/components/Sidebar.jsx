@@ -1,3 +1,6 @@
+/* ------------------------------------------------------------
+ * Desarrollado por Marco Antonio Posligua San Martín
+ * ------------------------------------------------------------ */
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useClients } from '../context/ClientContext'

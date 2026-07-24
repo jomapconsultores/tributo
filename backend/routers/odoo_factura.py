@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Integración con Odoo 19: crea y confirma facturas de venta desde honorarios.
 
 Credenciales Odoo desde variables de entorno (nunca hardcodeadas):

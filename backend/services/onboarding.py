@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Alta automática de clientes nuevos (auto-registro desde el Landing/Login).
 
 Cuando un cliente se registra solo (`/auth/signup`):

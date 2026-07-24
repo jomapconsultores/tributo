@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 import subprocess
 import sys
 

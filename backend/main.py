@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 import time
 from fastapi import FastAPI, Depends, Request
 from fastapi.responses import JSONResponse

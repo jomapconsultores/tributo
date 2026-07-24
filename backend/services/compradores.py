@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Clientes importados (compradores de las facturas), guardados aparte de la
 tabla clients (contribuyentes). Se alimentan al procesar XML de ventas ICE."""
 

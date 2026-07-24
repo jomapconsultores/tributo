@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Bitácora de movimientos (auditoría de actividad).
 
 `registrar(...)` deja constancia de QUÉ hizo un usuario, con QUÉ contribuyente y

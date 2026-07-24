@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Utilidades de aislamiento multiusuario.
 
 El backend usa la service key de Supabase (que omite RLS), por lo que el

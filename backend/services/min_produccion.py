@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Verificación de un RUC para la rebaja/exención de ICE.
 
 1) Ministerio de Producción (RUM): consultaCategorizacion.jsf — dice si el RUC

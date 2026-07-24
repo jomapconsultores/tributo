@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Scraper de Comprobantes Electrónicos Recibidos (iteración 2).
 
 Tras el login (core.sri_login), navega a la consulta de comprobantes recibidos

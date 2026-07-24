@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Devolución de IVA — adultos mayores y personas con discapacidad.
 
 Flujo: los comprobantes del período ya están en `invoices` (subidos por TXT/XML

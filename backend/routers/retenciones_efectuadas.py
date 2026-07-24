@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Retenciones EFECTUADAS: el cliente actúa como AGENTE de retención hacia sus
 propios proveedores (retiene IVA y Renta al pagarles, emite el comprobante).
 

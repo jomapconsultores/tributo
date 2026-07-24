@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Cliente del tributos-api (iteración 4: upload automático).
 
 La config vive en clientes.local.json, clave raíz "api":

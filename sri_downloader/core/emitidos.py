@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Scraper de Comprobantes Electrónicos EMITIDOS (ventas / facturas de ingreso).
 
 Tras el login (core.sri_login), navega a la consulta de comprobantes EMITIDOS del

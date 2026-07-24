@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Control de acceso por módulos contratados (Fase 2 multi-tenant).
 
 Cada usuario tiene un conjunto de módulos activos en `user_modules`. Los admins

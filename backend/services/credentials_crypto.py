@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Cifrado/descifrado de credenciales de servicios externos (portal SRI, IESS, etc.).
 
 Modelo de amenaza:

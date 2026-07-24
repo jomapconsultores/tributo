@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Gestión segura de credenciales de servicios externos (portal SRI, IESS, etc.).
 
 Solo accesible por administradores (tabla app_admins). Cada acción queda registrada en

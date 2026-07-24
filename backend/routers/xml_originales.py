@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Descarga de los XML originales subidos, agrupados por contribuyente,
 período y módulo, en un ZIP nombrado Tipo_RUC_nombre_mes_año."""
 import io

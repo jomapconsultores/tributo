@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Llena el formulario oficial del SRI (IVA / ICE) a partir de la declaración
 calculada. Criterio: el valor se escribe en la celda contigua (a la derecha) de
 cada código SRI. Se omiten los códigos de la sección RESULTADO (399, 499…) que

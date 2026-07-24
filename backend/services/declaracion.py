@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Cálculo de declaraciones (código SRI → valor) a partir de los datos cargados.
 IVA = Formulario 104; ICE = Formulario ICE. Los mapeos de código son los
 campos estándar del SRI; el contador debe verificarlos antes de presentar."""

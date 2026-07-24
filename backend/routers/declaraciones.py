@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 import io
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query

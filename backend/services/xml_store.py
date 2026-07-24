@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Almacenamiento de los XML originales subidos, para poder re-descargarlos
 después con nombre Tipo_RUC_nombre_mes_año. Se guarda el contenido tal cual,
 deduplicado por md5. Nunca interrumpe la carga: cualquier error se ignora."""

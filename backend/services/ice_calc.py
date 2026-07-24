@@ -1,3 +1,6 @@
+# ------------------------------------------------------------
+# Desarrollado por Marco Antonio Posligua San Martín
+# ------------------------------------------------------------
 """Cálculo de auditoría ICE (específico + ad-valorem) por año fiscal.
 Replica la hoja 'Auditoría por Producto' de ICEcompleto(1).py: el ICE se
 calcula por botella y se multiplica por el total de botellas (bot/caja * cajas)."""
