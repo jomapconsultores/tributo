@@ -7,15 +7,24 @@
  *
  * QUÉ HACE: estando en el SRI, en "Facturación Electrónica > Comprobantes
  * electrónicos emitidos" (ya logueado), abre un PANEL CON BOTONES para elegir el
- * período, recorre día por día, junta todas las CLAVES DE ACCESO (49 díg) de las
- * facturas emitidas y descarga un TXT (formato que acepta POST
- * /api/sales-iva/process-txt del backend, que baja los XML por SOAP).
+ * período, lo recorre día por día y de cada factura emitida:
+ *   - junta la CLAVE DE ACCESO (49 díg) -> descarga un TXT al final (formato que
+ *     acepta POST /api/sales-iva/process-txt del backend, que baja los XML por SOAP);
+ *   - dispara la descarga del XML desde la propia grilla del portal (casilla
+ *     marcada por defecto). Esto es lo único que sirve para las emitidas por el
+ *     FACTURADOR del SRI: para esas el web service contesta numeroComprobantes=0,
+ *     así que el TXT no alcanza. Los XML se suben en Ingresos IVA > "Subir XML".
  *
  * INTERFAZ (sin prompts de texto):
- *   1) Año   < 2026 >
+ *   1) Año   < 2026 >  +  casilla "bajar también los XML"
  *   2) "Por MES"  o  "Por SEMESTRE"
  *   3) Mes (Ene…Dic)  o  Semestre (1ro Ene-Jun / 2do Jul-Dic)
  *   4) Progreso día por día, con Cancelar.
+ *
+ * SI NO ENCUENTRA EL BOTÓN DE XML en una fila, guarda esa fila y al terminar baja
+ * DIAG_fila_emitida.html para poder ajustar el selector con el HTML real (todavía
+ * no se pudo ver una grilla CON facturas: el contribuyente de prueba no emitió
+ * ninguna en 2026, se barrieron los 205 días del año).
  *
  * POR QUÉ ASÍ: el portal del SRI fuerza login en cada navegación nueva, así que NO
  * se puede automatizar desde afuera. Pero una vez DENTRO del formulario, "Consultar"
@@ -108,8 +117,11 @@
   const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
 
+  const ESPERA_XML = 1200;   // pausa entre descargas de XML, para no ahogar al portal
+
   let anio = hoy.getFullYear();
   let cancelado = false;
+  let bajarXml = true;       // además del TXT de claves, bajar el XML de cada fila
 
   // --- Panel flotante ------------------------------------------------------
   const el = (tag, css, txt) => {
@@ -185,7 +197,67 @@
     return zona.querySelector('.ui-paginator-next:not(.ui-state-disabled)');
   };
 
-  const consultarDia = async (fecha, claves) => {
+  // --- Descarga del XML de cada fila ---------------------------------------
+  // El TXT de claves sirve para las facturas que el web service del SRI devuelve,
+  // pero las emitidas por el FACTURADOR del SRI no vienen por ahí (el WS contesta
+  // numeroComprobantes=0). Para esas, el único XML posible es el que baja la propia
+  // grilla del portal. Por eso acá, además de juntar la clave, se dispara la
+  // descarga del XML fila por fila, probando las dos formas que usa el portal:
+  // un control directo con "xml" en title/alt/id/onclick/href/texto, o un menú por
+  // fila que hay que abrir para recién ahí elegir "XML".
+  const disparar = (el) => {
+    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach((t) => {
+      try {
+        el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
+      } catch (e) { /* algún navegador puede rechazar el evento sintético */ }
+    });
+  };
+
+  const filasConClave = () => {
+    const zona = $('frmPrincipal:panelListaComprobantes') || document.body;
+    return [...zona.querySelectorAll('tr')].filter((tr) => /\d{49}/.test(tr.textContent || ''));
+  };
+
+  const controlXml = (tr) => [...tr.querySelectorAll('a,button,img,input,span,[onclick]')].find((e) => /xml/i.test(
+    (e.getAttribute('title') || '') + ' ' + (e.getAttribute('alt') || '') + ' ' + (e.id || '') + ' ' +
+    (e.getAttribute('onclick') || '') + ' ' + (e.getAttribute('href') || '') + ' ' + (e.textContent || '')));
+
+  const abrirMenuFila = (tr) => {
+    const cand = tr.querySelectorAll(
+      'button,a[onclick],[class*="caret"],[class*="arrow"],[class*="trigger"],[class*="dropdown"],[class*="menu"]');
+    const celdas = tr.querySelectorAll('td');
+    const destino = cand.length ? cand[cand.length - 1] : (celdas.length ? celdas[celdas.length - 1] : null);
+    if (!destino) return false;
+    disparar(destino);
+    return true;
+  };
+
+  const clickItemXml = () => {
+    const items = [...document.querySelectorAll('a,span,li,button,[role="menuitem"],.ui-menuitem-link')]
+      .filter((e) => (e.textContent || '').trim().toUpperCase() === 'XML' && e.offsetParent !== null);
+    if (!items.length) return false;
+    const it = items[items.length - 1];
+    disparar(it);
+    const a = it.closest ? it.closest('a') : null;
+    if (a && a !== it) disparar(a);
+    return true;
+  };
+
+  const bajarXmlDeFila = async (tr) => {
+    const c = controlXml(tr);
+    if (c) {
+      disparar((c.closest && c.closest('a,button,[onclick]')) || c);
+      await sleep(ESPERA_XML);
+      return true;
+    }
+    if (abrirMenuFila(tr)) {
+      await sleep(700);
+      if (clickItemXml()) { await sleep(ESPERA_XML); return true; }
+    }
+    return false;
+  };
+
+  const consultarDia = async (fecha, claves, cont) => {
     di.value = fecha;
     di.dispatchEvent(new Event('input', { bubbles: true }));
     di.dispatchEvent(new Event('change', { bubbles: true }));
@@ -195,6 +267,18 @@
     let nuevas = 0;
     for (let pag = 0; pag < 100 && !cancelado; pag++) {   // todas las páginas del día
       nuevas += juntarClaves(claves);
+      if (bajarXml) {
+        for (const tr of filasConClave()) {
+          if (cancelado) break;
+          if (await bajarXmlDeFila(tr)) {
+            cont.xmlOk++;
+            if (tr.style) tr.style.outline = '2px solid #1e6b33';
+          } else {
+            cont.xmlFallo++;
+            if (!cont.diag) cont.diag = tr.outerHTML;   // para ajustar el selector
+          }
+        }
+      }
       const nx = btnSiguientePagina();
       if (!nx) break;
       nx.click();
@@ -204,10 +288,9 @@
   };
 
   // --- Corrida -------------------------------------------------------------
-  const bajarTxt = (claves, nombre) => {
-    const txt = [...claves].join('\n') + (claves.size ? '\n' : '');
+  const bajarArchivo = (contenido, nombre, tipo) => {
     const a = el('a');
-    a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }));
+    a.href = URL.createObjectURL(new Blob([contenido], { type: tipo }));
     a.download = nombre;
     document.body.appendChild(a);
     a.click();
@@ -242,14 +325,16 @@
     cuerpo.appendChild(btnCancelar);
 
     const claves = new Set();
+    const cont = { xmlOk: 0, xmlFallo: 0, diag: '' };
     let conDatos = 0, sinD = 0, errores = 0;
     const t0 = Date.now();
     for (let i = 0; i < dias.length && !cancelado; i++) {
       estado.textContent = 'Día ' + (i + 1) + ' de ' + dias.length + '   (' + dias[i] + ')';
-      detalle.textContent = claves.size + ' claves · ' + conDatos + ' días con datos';
+      detalle.textContent = claves.size + ' claves · ' + conDatos + ' días con datos' +
+        (bajarXml ? ' · ' + cont.xmlOk + ' XML' : '');
       document.title = dias[i] + ' - ' + claves.size + ' claves';
       try {
-        if (await consultarDia(dias[i], claves) > 0) conDatos++; else sinD++;
+        if (await consultarDia(dias[i], claves, cont) > 0) conDatos++; else sinD++;
       } catch (e) {
         errores++;
       }
@@ -261,17 +346,26 @@
     linea((cancelado ? 'Cancelado — ' : 'Listo — ') + etiqueta + ' ' + anio,
       'font-weight:700;color:#1e6b33;margin-bottom:6px');
     linea('Claves de acceso: ' + claves.size);
+    if (bajarXml) linea('XML descargados: ' + cont.xmlOk + (cont.xmlFallo ? ' · sin botón de XML: ' + cont.xmlFallo : ''));
     linea('Días con datos: ' + conDatos + ' · sin datos: ' + sinD + (errores ? ' · con error: ' + errores : ''));
     linea('Duración: ' + seg + ' s');
     if (claves.size) {
       const nombre = 'emitidos_' + (RUC ? RUC + '_' : '') +
         etiqueta.replace(/[^A-Za-z0-9]+/g, '') + '_' + anio + '.txt';
-      bajarTxt(claves, nombre);
+      bajarArchivo([...claves].join('\n') + '\n', nombre, 'text/plain');
       linea('Se descargó ' + nombre, 'margin:6px 0;color:#1e6b33;font-weight:600');
-      linea('Ahora subilo en Ingresos IVA > "Subir reporte (TXT)": el sistema baja los XML solo.',
+      linea(cont.xmlOk
+        ? 'Los XML quedaron en tu carpeta de Descargas: subilos en Ingresos IVA > "Subir XML". El TXT sirve para completar con las que no bajaron.'
+        : 'Subilo en Ingresos IVA > "Subir reporte (TXT)": el sistema baja los XML solo.',
         'margin:4px 0;color:#555;font-size:12px');
     } else {
       linea('No se encontró ninguna clave en ese período.', 'margin:6px 0;color:#8b1e1e;font-weight:600');
+    }
+    // Si hubo filas sin control de XML, se baja una para poder ajustar el selector.
+    if (cont.diag) {
+      bajarArchivo(cont.diag, 'DIAG_fila_emitida.html', 'text/html');
+      linea('Bajé DIAG_fila_emitida.html: pasámelo y con eso ajusto el botón de XML.',
+        'margin:6px 0;color:#8b6b1e;font-size:12px');
     }
     cuerpo.appendChild(boton('Bajar otro período', pantallaInicio, CSS_GRIS));
   };
@@ -288,18 +382,35 @@
     return fila;
   }
 
+  // Casilla "bajar también los XML". Va como control propio (no un botón) porque
+  // es una opción del período, no un paso: se deja marcada y se elige mes/semestre.
+  function filaXml() {
+    const fila = el('label', 'display:flex;align-items:center;gap:6px;margin:8px 0;cursor:pointer');
+    const chk = el('input');
+    chk.type = 'checkbox';
+    chk.checked = bajarXml;
+    chk.onchange = () => { bajarXml = chk.checked; };
+    fila.appendChild(chk);
+    fila.appendChild(el('span', 'font-size:12px;color:#333',
+      'Bajar también los XML de cada factura (más lento)'));
+    return fila;
+  }
+
   function pantallaInicio() {
     limpiar();
     if (RUC) linea('RUC: ' + RUC, 'margin:0 0 6px;color:#555;font-size:12px');
     linea('Año', 'font-weight:600');
     cuerpo.appendChild(filaAnio());
+    cuerpo.appendChild(filaXml());
     linea('¿Qué querés bajar?', 'font-weight:600;margin-top:8px');
     const fila = el('div', 'display:flex');
     fila.appendChild(boton('Por MES', pantallaMeses, CSS_BTN + ';flex:1'));
     fila.appendChild(boton('Por SEMESTRE', pantallaSemestres, CSS_BTN + ';flex:1'));
     cuerpo.appendChild(fila);
-    linea('Recorre el período día por día y descarga un TXT con las claves de acceso.',
+    linea('Recorre el período día por día: descarga un TXT con las claves de acceso y, si está marcada la casilla, el XML de cada factura.',
       'margin-top:8px;color:#555;font-size:12px');
+    linea('Si Chrome pregunta si permitir "descargar varios archivos", dale PERMITIR.',
+      'margin-top:4px;color:#555;font-size:12px');
     linea(worker
       ? 'Podés seguir trabajando en otras pestañas: sigue corriendo igual. No cierres ESTA.'
       : 'Dejá esta pestaña A LA VISTA mientras corre (si no, Chrome frena los tiempos).',

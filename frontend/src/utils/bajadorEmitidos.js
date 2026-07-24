@@ -14,18 +14,21 @@ import raw from './bajador-emitidos.bookmarklet.txt?raw'
 export const BAJADOR_EMITIDOS_HREF = raw.trim()
 
 export const AVISO_BAJADOR_EMITIDOS =
-  '📅 Bajar facturas EMITIDAS por FECHA\n\n' +
+  '📥 Bajador-INGRESOS (facturas EMITIDAS del SRI)\n\n' +
   'INSTALAR (una sola vez): ARRÁSTRA este botón a la barra de marcadores (favoritos).\n\n' +
   'CÓMO SE USA:\n' +
   '1. Entrá al SRI → Facturación Electrónica → Comprobantes electrónicos EMITIDOS\n' +
   '   (hasta ver el formulario con Fecha emisión y Consultar).\n' +
   '2. Tocá el marcador: se abre un panel con BOTONES.\n' +
-  '   Elegís el año (< 2026 >) y después "Por MES" (Ene…Dic) o "Por SEMESTRE"\n' +
-  '   (1ro Ene-Jun / 2do Jul-Dic).\n' +
-  '3. Recorre el período día por día mostrando el avance y descarga un TXT\n' +
-  '   con las claves de acceso. Un mes tarda menos de 2 minutos.\n' +
-  '4. Ese TXT subilo en Ingresos IVA → "Subir reporte (TXT)": el sistema baja\n' +
-  '   los XML del SRI y carga las facturas solo.\n\n' +
+  '   Elegís el año (< 2026 >), dejás marcada la casilla "bajar también los XML"\n' +
+  '   y después "Por MES" (Ene…Dic) o "Por SEMESTRE" (1ro Ene-Jun / 2do Jul-Dic).\n' +
+  '3. Recorre el período día por día mostrando el avance, y baja DOS cosas:\n' +
+  '   • el XML de cada factura (van a tu carpeta de Descargas);\n' +
+  '   • un TXT con todas las claves de acceso.\n' +
+  '4. Los XML subilos en Ingresos IVA → "Subir XML".\n' +
+  '   El TXT subilo en Ingresos IVA → "Subir reporte (TXT)": sirve para completar\n' +
+  '   las que no hayan bajado (el sistema las trae del SRI por la clave).\n\n' +
+  'Si Chrome pregunta si permitir "descargar varios archivos", dale PERMITIR.\n' +
   'Podés seguir trabajando en otras pestañas mientras corre — pero NO cierres la\n' +
   'del SRI. Respeta el Tipo de comprobante y el Estado que hayas dejado elegidos.\n' +
   'Solo trae fechas ANTERIORES a hoy (el SRI no admite el día en curso).'

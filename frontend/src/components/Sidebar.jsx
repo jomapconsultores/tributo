@@ -7,7 +7,6 @@ import { useClients } from '../context/ClientContext'
 import { useAccess, homeFor } from '../context/AccessContext'
 import { actividadAPI } from '../services/api'
 import bajadorBookmarklet from '../utils/bajador-facturas.bookmarklet.txt?raw'
-import bajadorIngresosBookmarklet from '../utils/bajador-ingresos.bookmarklet.txt?raw'
 import { AVISO_BAJADOR_EMITIDOS, setBajadorEmitidosHref } from '../utils/bajadorEmitidos'
 import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import './Sidebar.css'
@@ -16,14 +15,6 @@ const AVISO_BAJADOR_GASTOS =
   '📥 Bajador-GASTOS\n\n' +
   'Para instalarlo: ARRÁSTRA este botón hacia la barra de marcadores (favoritos) de tu navegador.\n\n' +
   'Sirve en el portal SRI de comprobantes RECIBIDOS: descarga TODOS los XML (todas las páginas).'
-
-const AVISO_BAJADOR_INGRESOS =
-  '📥 Bajador-INGRESOS\n\n' +
-  'Para instalarlo: ARRÁSTRA este botón a la barra de marcadores (favoritos).\n\n' +
-  'IMPORTANTE: úsalo en la CONSULTA de "Comprobantes electrónicos EMITIDOS"\n' +
-  '(SRI en línea → Facturación Electrónica → Consultas → Emitidos), donde los XML\n' +
-  'se bajan con íconos. Ahí pon Fecha inicio/fin, Consultar y toca el marcador.\n\n' +
-  'En el FACTURADOR (pantalla de emisión) el SRI bloquea la descarga automática del XML.'
 
 export default function Sidebar({ onNewClient, onLogout, userEmail, open = false }) {
   const navigate = useNavigate()
@@ -80,7 +71,6 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   // El href "javascript:" se fija con un callback ref que se reaplica en CADA
   // render (React sanitiza/restaura un href puesto en el JSX).
   const setBajadorHref = (el) => { if (el) el.setAttribute('href', bajadorBookmarklet.trim()) }
-  const setBajadorIngresosHref = (el) => { if (el) el.setAttribute('href', bajadorIngresosBookmarklet.trim()) }
 
   const path = location.pathname
   const moduleHome = homeFor(has, hasSub)
@@ -95,8 +85,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         color: 'ingresos', visible: has('ingresos_ice'),
         items: [
           L('📈', 'Ingresos IVA', '/ingresos-iva', hasSub('ice_ingresos_iva')),
-          { kind: 'bajador', which: 'ingresos', ico: '📥', label: 'Bajador-INGRESOS', visible: true },
-          { kind: 'bajador', which: 'emitidos', ico: '📅', label: 'Bajar EMITIDAS por fecha', visible: true },
+          { kind: 'bajador', which: 'emitidos', ico: '📥', label: 'Bajador-INGRESOS (SRI)', visible: true },
         ],
       },
       {
@@ -257,8 +246,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
       )
     }
     if (it.kind === 'bajador') {
-      const refs = { gastos: setBajadorHref, ingresos: setBajadorIngresosHref, emitidos: setBajadorEmitidosHref }
-      const avisos = { gastos: AVISO_BAJADOR_GASTOS, ingresos: AVISO_BAJADOR_INGRESOS, emitidos: AVISO_BAJADOR_EMITIDOS }
+      const refs = { gastos: setBajadorHref, emitidos: setBajadorEmitidosHref }
+      const avisos = { gastos: AVISO_BAJADOR_GASTOS, emitidos: AVISO_BAJADOR_EMITIDOS }
       return (
         <a
           key={`b${i}`}
