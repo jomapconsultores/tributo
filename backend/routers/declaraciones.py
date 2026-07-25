@@ -370,13 +370,21 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
             retenciones_iva_agente=retenciones_ref,
         )
         decl["aplazados_vencen"] = aplazados
-        decl["cobertura"] = _cobertura(c, {
+        # 'retenciones' son las RECIBIDAS (las que le efectuaron al vender, casillero
+        # 609); 'ret_efectuadas' son las que él hizo como AGENTE de retención. Van en
+        # columnas distintas porque no son lo mismo: la primera resta del impuesto a
+        # pagar y la segunda lo suma. La columna de agente solo aparece si el módulo
+        # está contratado — si no, retenciones_ref viene vacío y sería una columna de
+        # ceros que se lee como "falta cargar".
+        fuentes = {
             "gastos": (invoices, False),
             "ingresos_iva": (ventas_iva, False),
             "ingresos_ice": (ventas_ice, True),
             "retenciones": (retentions, False),
-            "ret_efectuadas": (retenciones_ref, False),
-        })
+        }
+        if "agente_retencion" in modulos_de(user_id):
+            fuentes["ret_efectuadas"] = (retenciones_ref, False)
+        decl["cobertura"] = _cobertura(c, fuentes)
     decl["cliente"] = c
     decl["anio"] = anio
     decl["mes"] = mes
