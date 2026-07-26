@@ -8,7 +8,7 @@
 // una vez y ejecuta en su propia sesión del SRI.
 //
 // Fuente legible/comentada: sri_downloader/bookmarklet_emitidos.js
-// El .txt de acá se GENERA desde esa fuente: node scripts/build_bookmarklet_emitidos.mjs
+// El .txt de acá se GENERA desde esa fuente: node scripts/build_bookmarklets.mjs
 import raw from './bajador-emitidos.bookmarklet.txt?raw'
 
 export const BAJADOR_EMITIDOS_HREF = raw.trim()

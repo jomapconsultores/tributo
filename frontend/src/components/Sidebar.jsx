@@ -6,15 +6,10 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useClients } from '../context/ClientContext'
 import { useAccess, homeFor } from '../context/AccessContext'
 import { actividadAPI } from '../services/api'
-import bajadorBookmarklet from '../utils/bajador-facturas.bookmarklet.txt?raw'
 import { AVISO_BAJADOR_EMITIDOS, setBajadorEmitidosHref } from '../utils/bajadorEmitidos'
+import { AVISO_BAJADOR_GASTOS, setBajadorGastosHref } from '../utils/bajadorGastos'
 import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import './Sidebar.css'
-
-const AVISO_BAJADOR_GASTOS =
-  '📥 Bajador-GASTOS\n\n' +
-  'Para instalarlo: ARRÁSTRA este botón hacia la barra de marcadores (favoritos) de tu navegador.\n\n' +
-  'Sirve en el portal SRI de comprobantes RECIBIDOS: descarga TODOS los XML (todas las páginas).'
 
 export default function Sidebar({ onNewClient, onLogout, userEmail, open = false }) {
   const navigate = useNavigate()
@@ -68,10 +63,6 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
     navigate('/')
   }
 
-  // El href "javascript:" se fija con un callback ref que se reaplica en CADA
-  // render (React sanitiza/restaura un href puesto en el JSX).
-  const setBajadorHref = (el) => { if (el) el.setAttribute('href', bajadorBookmarklet.trim()) }
-
   const path = location.pathname
   const moduleHome = homeFor(has, hasSub)
 
@@ -110,13 +101,17 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
           L('💸', 'Gastos', '/', hasSub('gastos_facturas')),
           L('🏷️', 'Clasificador de Gastos', '/clasificador', hasSub('gastos_clasificar')),
           L('📊', 'Datos guardados', '/datos', hasSub('gastos_facturas')),
-          { kind: 'bajador', which: 'gastos', ico: '📥', label: 'Bajador-GASTOS', visible: true },
+          { kind: 'bajador', which: 'gastos', ico: '📥', label: 'Bajador-GASTOS (SRI)', visible: true },
         ],
       },
       {
         key: 'retenciones', ico: '🧾', rail: 'Retenciones', title: 'Retenciones',
         color: 'retenciones', visible: has('retenciones'),
-        items: [L('🧾', 'Retenciones', '/retenciones')],
+        items: [
+          L('🧾', 'Retenciones', '/retenciones'),
+          // Mismo marcador que Gastos: el panel pregunta si bajar gastos, retenciones o ambos.
+          { kind: 'bajador', which: 'gastos', ico: '📥', label: 'Bajador-GASTOS (SRI)', visible: true },
+        ],
       },
       {
         key: 'agente_ret', ico: '🧷', rail: 'Agente de retención', title: 'Agente de retención',
@@ -246,7 +241,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
       )
     }
     if (it.kind === 'bajador') {
-      const refs = { gastos: setBajadorHref, emitidos: setBajadorEmitidosHref }
+      const refs = { gastos: setBajadorGastosHref, emitidos: setBajadorEmitidosHref }
       const avisos = { gastos: AVISO_BAJADOR_GASTOS, emitidos: AVISO_BAJADOR_EMITIDOS }
       return (
         <a

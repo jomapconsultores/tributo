@@ -62,7 +62,7 @@
  * (misma lógica, minificada con esbuild). La app la ofrece como botón arrastrable en
  * Ingresos IVA y en el Sidebar (Ingresos IVA > "Bajar EMITIDAS por fecha").
  * Si tocás este archivo, regenerá ese .txt:
- *   node_modules/.bin/esbuild --minify sri_downloader/bookmarklet_emitidos.js
+ *   node scripts/build_bookmarklets.mjs
  */
 
 // ---- Fuente legible (mantener/editar acá; el .txt es esta misma, minificada) ----
