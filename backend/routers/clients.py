@@ -395,6 +395,28 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
                     "periodo": f"{periodo_mes:02d}/{entry.periodo_anio}",
                 })
 
+        # Mismo contribuyente con OTRA identificación: la cédula y el RUC de una
+        # persona natural son el mismo número (RUC = cédula + '001'), así que
+        # registrarla por los dos lados la parte en DOS contribuyentes que se
+        # reparten los comprobantes, las declaraciones marcadas y la clave del SRI
+        # —y ninguno queda completo—. Se avisa para usar el que ya existe.
+        nucleo = identificacion[:10]
+        if not entry.forzar and len(nucleo) == 10 and nucleo.isdigit():
+            gemelo = supabase.table("clients").select("id,identificacion,nombre,user_id,periodo_mes,periodo_anio")\
+                .like("identificacion", f"{nucleo}%")\
+                .neq("identificacion", identificacion)\
+                .order("periodo_anio", desc=True).order("periodo_mes", desc=True)\
+                .limit(1).execute().data
+            if gemelo:
+                g = gemelo[0]
+                raise HTTPException(status_code=409, detail={
+                    "mismo_contribuyente": True,
+                    "client_id": g["id"],
+                    "nombre": g.get("nombre"),
+                    "identificacion": g.get("identificacion"),
+                    "creado_por": _email_de(g.get("user_id")) if g.get("user_id") != user_id else None,
+                })
+
         response = supabase.table("clients").insert({
             "user_id": user_id,
             "identificacion": identificacion,

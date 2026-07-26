@@ -131,8 +131,8 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
     } catch (err) {
       const st = err.response?.status
       const det = err.response?.data?.detail
-      if (st === 409 && det && typeof det === 'object' && det.existe_en_equipo) {
-        setDup(det)   // duplicado en el equipo → mostrar aviso con opciones
+      if (st === 409 && det && typeof det === 'object' && (det.existe_en_equipo || det.mismo_contribuyente)) {
+        setDup(det)   // duplicado (mismo período del equipo, o cédula/RUC de la misma persona)
       } else {
         setError(typeof det === 'string' ? det : (err.message || 'No se pudo crear el cliente'))
       }
@@ -297,8 +297,20 @@ export default function NewClientModal({ open, onClose, editClient = null, selec
 
           {dup && (
             <div className="modal-error" role="alert">
-              ⚠ Ya existe <b>{dup.nombre}</b> para <b>{dup.periodo}</b>
-              {dup.creado_por ? ` (creado por ${dup.creado_por})` : ''}. Probablemente sea un duplicado.
+              {dup.mismo_contribuyente ? (
+                <>
+                  ⚠ <b>{dup.nombre}</b> ya está registrado con la identificación{' '}
+                  <b>{dup.identificacion}</b>{dup.creado_por ? ` (creado por ${dup.creado_por})` : ''}.
+                  Es la <b>misma persona</b>: la cédula y el RUC comparten los mismos diez dígitos.
+                  Si lo creás igual, sus comprobantes, declaraciones y la clave del SRI quedan
+                  repartidos entre dos contribuyentes y ninguno queda completo.
+                </>
+              ) : (
+                <>
+                  ⚠ Ya existe <b>{dup.nombre}</b> para <b>{dup.periodo}</b>
+                  {dup.creado_por ? ` (creado por ${dup.creado_por})` : ''}. Probablemente sea un duplicado.
+                </>
+              )}
               <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                 {clients.some((c) => c.id === dup.client_id) && (
                   <button type="button" className="btn-primary" onClick={() => { selectClient(dup.client_id); onClose() }}>
