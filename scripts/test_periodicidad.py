@@ -1,6 +1,15 @@
-"""Prueba de services/periodicidad.py con un Supabase falso en memoria."""
+"""Prueba de services/periodicidad.py con un Supabase falso en memoria.
+
+No toca la BD ni necesita el backend levantado:
+
+    ./backend/venv/Scripts/python.exe scripts/test_periodicidad.py
+"""
 import sys, os
-sys.path.insert(0, os.path.abspath("backend"))
+from pathlib import Path
+
+# El script vive en scripts/ pero importa services/ del backend. Se resuelve desde
+# la ruta del archivo para poder correrlo desde cualquier directorio.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 import types
 # El módulo importa database (que crea el cliente real al importar config): lo stubbeamos.
