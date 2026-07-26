@@ -189,7 +189,9 @@ export default function IngresosIva() {
         <div>
           <h2>📈 Ingresos IVA — <span className="ing-iva-ruc">{selectedClient?.identificacion}</span> {selectedClient?.nombre}<ClaveHeader clientId={selectedClientId} /></h2>
           <p className="ing-iva-sub">
-            Facturas de venta SIN ICE. Sus totales se suman a los códigos 411–415 / 421–422 del
+            Período <strong>{periodoLargo(selectedClient)}</strong>
+            {selectedClient?.periodicidad === 'semestral' && ' — se cargan las ventas de los SEIS meses'}.
+            {' '}Facturas de venta SIN ICE. Sus totales se suman a los códigos 411–415 / 421–422 del
             formulario 104 (declaración IVA). Si una factura tiene ICE, subila en "ICE - XML".
           </p>
         </div>

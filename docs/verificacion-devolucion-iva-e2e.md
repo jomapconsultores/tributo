@@ -1,11 +1,35 @@
 # Verificación end-to-end — Módulo Devolución de IVA (tercera edad / discapacidad)
 
-Checklist para correr en la **máquina de desarrollo con Python** (`mapos`), donde
-sí se puede levantar el backend FastAPI. En el equipo `digic` no hay Python, por
-eso esta verificación quedó pendiente de ejecutar en la superficie real (backend
-HTTP + navegador). La capa de datos ya se validó contra la BD real (proyecto
-`tributos`) con un contribuyente que tiene el servicio activo: los cálculos de
-tope y `monto = min(IVA, tope)` coincidieron con el router, y las constraints
+> **VERIFICADO el 2026-07-25 en `digic`** — 23/23 comprobaciones PASS contra el
+> backend HTTP real (`uvicorn` en :8000) y la BD real (proyecto `tributos`),
+> usando el contribuyente `0918099342001` (FLOR MARIA GUTIERREZ VELASQUEZ,
+> período 05/2026, 22 comprobantes, IVA disponible $97.05). Se ejercitaron:
+> parámetros/topes, comprobantes, guardar, **reemplazo** UNIQUE(client,mes,anio),
+> validaciones (sin comprobantes / discapacidad sin %), **tope proporcional**
+> por discapacidad, **excedente** (IVA 97.05 > tope 86.76 → se solicita el tope),
+> tenancy (cliente ajeno → 404), cambio de estado, export Excel (7 902 bytes,
+> xlsx válido) y borrado. La BD quedó **limpia** (0 solicitudes, 0 ítems), igual
+> que antes de la prueba.
+>
+> El bloqueo real no era el código sino el entorno: **el `venv` venía clonado por
+> Dropbox desde la máquina `mapos`** y su `pyvenv.cfg` apuntaba a
+> `C:\Users\mapos\...\Python312`, que no existe en `digic` → cualquier
+> `python.exe` del venv moría con *"No Python at ..."*. Se repuntó `pyvenv.cfg`
+> (backend y raíz) al Python local 3.12.10 y se corrió
+> `pip install -r requirements.txt` (faltaban `webauthn`, `playwright`,
+> `sentry-sdk` y otras). Los `.bak-mapos` quedan junto a cada `pyvenv.cfg`.
+
+> **Reejecutable**: casi todo este checklist está automatizado en
+> `scripts/e2e_devoluciones_iva.py`. Con el backend arriba:
+> `cd backend && ./venv/Scripts/python.exe ../scripts/e2e_devoluciones_iva.py`
+> Elige solo el contribuyente, mintea el token y limpia lo que crea. **Aborta si
+> ya existe una solicitud del período** (el guardado la reemplazaría); usa
+> `--ruc` para elegir otro o `--force` si esa solicitud es descartable.
+
+Checklist para correr en una máquina con Python y el backend FastAPI levantado.
+La capa de datos ya se validó contra la BD real (proyecto `tributos`) con un
+contribuyente que tiene el servicio activo: los cálculos de tope y
+`monto = min(IVA, tope)` coincidieron con el router, y las constraints
 UNIQUE(client_id, mes, anio) y ON DELETE CASCADE funcionaron.
 
 Ruta del módulo: **`/devoluciones-iva/tercera-edad`**
@@ -86,6 +110,27 @@ Servicio por cliente: **`devolucion_iva`** (tabla `client_services`)
 - [ ] **Cambiar estado** a Presentada / Aprobada / Rechazada → el historial refleja
       el nuevo estado.
 - [ ] **Eliminar** la solicitud → desaparece del historial (y borra sus ítems).
+
+## 3b. Tipo de gasto y envío (agregado 2026-07-26)
+
+- [ ] Cada comprobante trae un **Tipo de gasto** propuesto según la clasificación
+      del proveedor (farmacia→Salud, supermercado→Alimentación, …) y se puede
+      cambiar por fila. Al guardar, el rubro queda en el ítem (snapshot) y se
+      recupera al volver a entrar.
+- [ ] El resumen muestra los **chips por rubro** con el IVA de cada uno.
+- [ ] En un contribuyente **semestral** aparece la tabla de **desglose por mes**:
+      seis filas, cada una con su tope (el tope es mensual) y lo que se solicita
+      en ese mes. El total a solicitar es la SUMA de los seis, no `min(IVA, tope)`
+      del semestre.
+- [ ] **📤 Enviar al SRI** en el historial: copia el paquete de la solicitud,
+      ofrece abrir el portal y, al confirmar, deja la solicitud en **Presentada**
+      con `presentada_at`.
+- [ ] El marcador **📤 Enviador-DEVOLUCIÓN** (arrastrable desde la barra de la
+      pantalla) abre, dentro del portal del SRI, el panel con la solicitud:
+      claves de acceso copiables, TXT/CSV del detalle y avance marcable.
+- [ ] El Excel trae la columna **Tipo de gasto**, el **resumen por rubro** y, si el
+      período abarca más de un mes, el **desglose por mes**.
+- [ ] Migración **032** aplicada (`rubro`, `detalle_meses`, `presentada_at`).
 
 ## 4. Probes adversariales (romper a propósito)
 

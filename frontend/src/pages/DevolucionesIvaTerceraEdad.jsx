@@ -7,6 +7,9 @@ import { nombreMes } from '../utils/periodo'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import WorkflowGuide from '../components/WorkflowGuide'
+import {
+  AVISO_ENVIADOR_DEVOLUCION, ENVIADOR_DEVOLUCION_HREF, setEnviadorDevolucionHref, SRI_DEVOLUCION_URL,
+} from '../utils/enviadorDevolucion'
 import './DevolucionesIva.css'
 
 const DV_STEPS = [
@@ -23,6 +26,16 @@ const ESTADO_LABEL = {
   rechazada: '❌ Rechazada',
 }
 
+// Mes (1-12) de un comprobante por su fecha 'dd/mm/aaaa' (o 'aaaa-mm-dd').
+function mesDeFecha(fecha) {
+  const s = String(fecha || '').trim()
+  let m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s)
+  if (m) return { mes: parseInt(m[2], 10), anio: parseInt(m[3], 10) }
+  m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s)
+  if (m) return { mes: parseInt(m[2], 10), anio: parseInt(m[1], 10) }
+  return { mes: null, anio: null }
+}
+
 export default function DevolucionesIvaTerceraEdad() {
   const { openNewClient } = useOutletContext()
   const { selectedClient, identsForSvc } = useClients()
@@ -31,6 +44,9 @@ export default function DevolucionesIvaTerceraEdad() {
   const [comps, setComps] = useState([])
   const [periodo, setPeriodo] = useState('')
   const [anio, setAnio] = useState(null)
+  const [meses, setMeses] = useState([])          // meses que cubre el período (6 si es semestral)
+  const [rubros, setRubros] = useState([])        // catálogo de tipos de gasto
+  const [rubroDe, setRubroDe] = useState({})      // invoice_id → rubro elegido
   const [seleccion, setSeleccion] = useState(() => new Set())
   const [tipo, setTipo] = useState('tercera_edad')
   const [porcentaje, setPorcentaje] = useState('')
@@ -52,9 +68,15 @@ export default function DevolucionesIvaTerceraEdad() {
         devolucionesIvaAPI.comprobantes(clientId),
         devolucionesIvaAPI.solicitudes(clientId),
       ])
-      setComps(rc.data.comprobantes || [])
+      const lista = rc.data.comprobantes || []
+      setComps(lista)
       setPeriodo(rc.data.periodo || '')
       setAnio(rc.data.anio)
+      setMeses(rc.data.meses || [])
+      setRubros(rc.data.rubros || [])
+      // Rubro por comprobante: el guardado en la solicitud, o el sugerido por la
+      // clasificación del proveedor.
+      setRubroDe(Object.fromEntries(lista.map((c) => [c.id, c.rubro || c.rubro_sugerido])))
       setSolicitudes(rs.data.data || [])
       const sol = rc.data.solicitud
       setSolicitudActual(sol || null)
@@ -80,20 +102,53 @@ export default function DevolucionesIvaTerceraEdad() {
       .catch(() => setParams(null))
   }, [anio, tipo, porcentaje])
 
+  const r2 = (n) => Math.round(n * 100) / 100
+
+  // El tope de la devolución es MENSUAL, así que se aplica mes a mes: un período
+  // semestral tiene seis topes y el excedente de un mes no usa el cupo de otro.
   const totales = useMemo(() => {
-    let base = 0; let iva = 0
+    const topeMes = params?.tope_mensual ?? 0
+    const lista = meses.length ? meses : []
+    const ancla = lista.length ? lista[lista.length - 1] : null
+    const porMes = new Map(lista.map((m) => [m, { mes: m, comprobantes: 0, base: 0, iva: 0 }]))
+    let sueltos = { base: 0, iva: 0 }
     for (const c of comps) {
-      if (seleccion.has(c.id)) { base += c.base; iva += c.iva }
+      if (!seleccion.has(c.id)) continue
+      const f = mesDeFecha(c.fecha)
+      const destino = (porMes.has(f.mes) && (!anio || f.anio === anio)) ? f.mes : ancla
+      if (destino == null) { sueltos.base += c.base; sueltos.iva += c.iva; continue }
+      const d = porMes.get(destino)
+      d.comprobantes += 1; d.base += c.base; d.iva += c.iva
     }
-    const tope = params?.tope_mensual ?? 0
+    const detalle = [...porMes.values()].map((d) => ({
+      ...d, base: r2(d.base), iva: r2(d.iva), tope: topeMes,
+      solicitar: r2(Math.min(d.iva, topeMes)), excedente: r2(Math.max(0, d.iva - topeMes)),
+    }))
+    const base = r2(detalle.reduce((s, d) => s + d.base, 0) + sueltos.base)
+    const iva = r2(detalle.reduce((s, d) => s + d.iva, 0) + sueltos.iva)
     return {
-      base: Math.round(base * 100) / 100,
-      iva: Math.round(iva * 100) / 100,
-      tope,
-      solicitar: Math.round(Math.min(iva, tope) * 100) / 100,
-      excedente: Math.round(Math.max(0, iva - tope) * 100) / 100,
+      detalle, base, iva, topeMes,
+      tope: r2(topeMes * (lista.length || 1)),
+      solicitar: r2(detalle.reduce((s, d) => s + d.solicitar, 0)),
+      excedente: r2(detalle.reduce((s, d) => s + d.excedente, 0)),
     }
-  }, [comps, seleccion, params])
+  }, [comps, seleccion, params, meses, anio])
+
+  // A qué tipo de gasto se direccionó lo marcado (resumen para revisar antes de enviar).
+  const porRubro = useMemo(() => {
+    const acc = new Map()
+    for (const c of comps) {
+      if (!seleccion.has(c.id)) continue
+      const k = rubroDe[c.id] || c.rubro_sugerido || 'otros'
+      const a = acc.get(k) || { rubro: k, comprobantes: 0, iva: 0 }
+      a.comprobantes += 1; a.iva += c.iva
+      acc.set(k, a)
+    }
+    const orden = rubros.map((r) => r.key)
+    return [...acc.values()]
+      .map((a) => ({ ...a, iva: r2(a.iva), label: rubros.find((r) => r.key === a.rubro)?.label || a.rubro }))
+      .sort((a, b) => orden.indexOf(a.rubro) - orden.indexOf(b.rubro))
+  }, [comps, seleccion, rubroDe, rubros])
 
   const toggle = (id) => {
     setSeleccion((prev) => {
@@ -115,11 +170,13 @@ export default function DevolucionesIvaTerceraEdad() {
     setGuardando(true)
     setMsg(null)
     try {
+      const ids = [...seleccion]
       const r = await devolucionesIvaAPI.guardar({
         client_id: clientId,
         tipo_beneficiario: tipo,
         porcentaje_discapacidad: tipo === 'discapacidad' ? Number(porcentaje) : null,
-        invoice_ids: [...seleccion],
+        invoice_ids: ids,
+        rubros: Object.fromEntries(ids.map((id) => [id, rubroDe[id] || 'otros'])),
       })
       const extra = r.data.excedente > 0
         ? ` OJO: el IVA marcado supera el tope en ${fmtMoney(r.data.excedente)}; se solicita el tope.`
@@ -136,7 +193,10 @@ export default function DevolucionesIvaTerceraEdad() {
   const exportar = async (sol) => {
     try {
       const r = await devolucionesIvaAPI.exportExcel(sol.id)
-      downloadBlob(r.data, `DevolucionIVA_${selectedClient.identificacion}_${sol.anio}-${String(sol.mes).padStart(2, '0')}.xlsx`)
+      const sufijo = selectedClient.periodicidad === 'semestral'
+        ? `${sol.anio}-S${sol.mes <= 6 ? 1 : 2}`
+        : `${sol.anio}-${String(sol.mes).padStart(2, '0')}`
+      downloadBlob(r.data, `DevolucionIVA_${selectedClient.identificacion}_${sufijo}.xlsx`)
     } catch {
       setMsg({ tipo: 'err', texto: 'No se pudo exportar el Excel.' })
     }
@@ -148,6 +208,41 @@ export default function DevolucionesIvaTerceraEdad() {
       cargar()
     } catch (e) {
       setMsg({ tipo: 'err', texto: e.response?.data?.detail || 'No se pudo cambiar el estado.' })
+    }
+  }
+
+  // Enviar al SRI: el envío ocurre DENTRO del portal (sesión del contribuyente),
+  // así que la app deja el paquete de la solicitud en el portapapeles para el
+  // enviador que corre allá, abre el portal y registra el envío.
+  const enviar = async (sol) => {
+    setMsg(null)
+    try {
+      const r = await devolucionesIvaAPI.envio(sol.id)
+      const paquete = JSON.stringify(r.data)
+      let copiado = true
+      try {
+        await navigator.clipboard.writeText(paquete)
+      } catch { copiado = false }
+      const seguir = window.confirm(
+        `📤 Enviar al SRI la devolución de ${r.data.periodo.etiqueta}\n` +
+        `${r.data.contribuyente.nombre} (${r.data.contribuyente.identificacion})\n` +
+        `${r.data.items.length} comprobante(s) · a solicitar ${fmtMoney(r.data.totales.solicitado)}\n\n` +
+        (copiado
+          ? 'El paquete de la solicitud quedó COPIADO en el portapapeles.\n\n'
+          : '⚠ No se pudo copiar automáticamente: exportá el Excel y usalo como respaldo.\n\n') +
+        'En el portal del SRI (Devoluciones → Devolución de IVA), tocá el marcador\n' +
+        '"📤 Enviador-DEVOLUCIÓN" y pegá el paquete en el panel que se abre.\n\n' +
+        '¿Abrir ahora el portal del SRI en otra pestaña?'
+      )
+      if (seguir) window.open(SRI_DEVOLUCION_URL, '_blank', 'noopener')
+      if (window.confirm('¿Marcar esta solicitud como PRESENTADA al SRI?\n\n' +
+                         '(Hacelo cuando el portal ya te haya confirmado el envío.)')) {
+        await devolucionesIvaAPI.marcarEnviada(sol.id)
+        setMsg({ tipo: 'ok', texto: 'Solicitud marcada como presentada al SRI.' })
+        cargar()
+      }
+    } catch (e) {
+      setMsg({ tipo: 'err', texto: e.response?.data?.detail || 'No se pudo preparar el envío.' })
     }
   }
 
@@ -194,10 +289,28 @@ export default function DevolucionesIvaTerceraEdad() {
               onChange={(e) => setPorcentaje(e.target.value)} style={{ width: 70 }} />
           </label>
         )}
+        <a
+          ref={setEnviadorDevolucionHref}
+          className="dv-enviador"
+          draggable="true"
+          onClick={(e) => {
+            e.preventDefault()
+            navigator.clipboard?.writeText(ENVIADOR_DEVOLUCION_HREF).catch(() => {})
+            if (window.confirm(AVISO_ENVIADOR_DEVOLUCION +
+              '\n\n(El script quedó copiado por si preferís pegarlo en la consola del SRI.)' +
+              '\n\n¿Abrir ahora el SRI en otra pestaña?')) {
+              window.open(SRI_DEVOLUCION_URL, '_blank', 'noopener')
+            }
+          }}
+          title="Marcador que carga la solicitud dentro del portal del SRI. Arrastralo a tus marcadores para instalarlo."
+        >📤 Enviador-DEVOLUCIÓN (SRI)</a>
         {params && (
           <span className="dv-tope">
             Tope mensual {anio}: <strong>{fmtMoney(params.tope_mensual)}</strong>
             {' '}(IVA {Math.round(params.iva_tarifa * 100)}% de hasta {params.base_max_rbu} RBU de {fmtMoney(params.rbu)})
+            {meses.length > 1 && (
+              <> · período de {meses.length} meses → tope total <strong>{fmtMoney(totales.tope)}</strong></>
+            )}
           </span>
         )}
       </div>
@@ -214,6 +327,48 @@ export default function DevolucionesIvaTerceraEdad() {
           {guardando ? 'Guardando…' : (solicitudActual ? '💾 Actualizar solicitud' : '💾 Guardar solicitud')}
         </button>
       </div>
+
+      {seleccion.size > 0 && porRubro.length > 0 && (
+        <div className="dv-rubros-resumen">
+          <span className="dv-rubros-lbl">Direccionado a:</span>
+          {porRubro.map((r) => (
+            <span key={r.rubro} className="dv-rubro-chip" title={`${r.comprobantes} comprobante(s)`}>
+              {r.label} · <strong>{fmtMoney(r.iva)}</strong>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {meses.length > 1 && seleccion.size > 0 && (
+        <div className="dv-tabla-wrap dv-meses">
+          <table className="dv-tabla">
+            <thead>
+              <tr>
+                <th>Mes</th><th className="num">Comprobantes</th><th className="num">Base</th>
+                <th className="num">IVA</th><th className="num">Tope del mes</th>
+                <th className="num">A solicitar</th><th className="num">Excedente</th>
+              </tr>
+            </thead>
+            <tbody>
+              {totales.detalle.map((d) => (
+                <tr key={d.mes} className={d.excedente > 0 ? 'alerta' : (d.comprobantes === 0 ? 'dv-mes-vacio' : '')}>
+                  <td>{nombreMes(d.mes)}</td>
+                  <td className="num">{d.comprobantes}</td>
+                  <td className="num">{fmtMoney(d.base)}</td>
+                  <td className="num">{fmtMoney(d.iva)}</td>
+                  <td className="num">{fmtMoney(d.tope)}</td>
+                  <td className="num"><strong>{fmtMoney(d.solicitar)}</strong></td>
+                  <td className="num">{d.excedente > 0 ? fmtMoney(d.excedente) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="dv-nota-meses">
+            El tope es <strong>mensual</strong>: se aplica mes a mes y lo que sobra en un mes no
+            usa el cupo de otro. Los comprobantes sin fecha legible se imputan al último mes del período.
+          </p>
+        </div>
+      )}
 
       {cargando ? (
         <p className="dv-cargando">Cargando comprobantes…</p>
@@ -234,6 +389,7 @@ export default function DevolucionesIvaTerceraEdad() {
                 <th><input type="checkbox" checked={seleccion.size === comps.length && comps.length > 0} onChange={toggleTodos} title="Marcar/desmarcar todos" /></th>
                 <th>Fecha</th>
                 <th>Proveedor</th>
+                <th>Tipo de gasto</th>
                 <th>Clasificación</th>
                 <th className="num">Base gravada</th>
                 <th className="num">IVA</th>
@@ -246,6 +402,16 @@ export default function DevolucionesIvaTerceraEdad() {
                   <td><input type="checkbox" checked={seleccion.has(c.id)} onChange={() => toggle(c.id)} onClick={(e) => e.stopPropagation()} /></td>
                   <td>{c.fecha}</td>
                   <td title={c.ruc_proveedor}>{c.nombre_proveedor}</td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <select
+                      className="dv-rubro"
+                      value={rubroDe[c.id] || c.rubro_sugerido || 'otros'}
+                      onChange={(e) => setRubroDe((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                      title="Tipo de gasto al que se direcciona este comprobante en la solicitud"
+                    >
+                      {rubros.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+                    </select>
+                  </td>
                   <td>{c.clasificacion || 'SIN CLASIFICAR'}</td>
                   <td className="num">{fmtMoney(c.base)}</td>
                   <td className="num">{fmtMoney(c.iva)}</td>
@@ -270,7 +436,9 @@ export default function DevolucionesIvaTerceraEdad() {
             <tbody>
               {solicitudes.map((s) => (
                 <tr key={s.id}>
-                  <td>{nombreMes(s.mes)} {s.anio}</td>
+                  <td>{selectedClient.periodicidad === 'semestral'
+                    ? `${s.mes <= 6 ? '1er' : '2do'} semestre ${s.anio}`
+                    : `${nombreMes(s.mes)} ${s.anio}`}</td>
                   <td>{s.tipo_beneficiario === 'discapacidad' ? `Discapacidad ${s.porcentaje_discapacidad || ''}%` : 'Adulto mayor'}</td>
                   <td className="num">{fmtMoney(s.total_iva)}</td>
                   <td className="num">{fmtMoney(s.tope_mensual)}</td>
@@ -281,6 +449,8 @@ export default function DevolucionesIvaTerceraEdad() {
                     </select>
                   </td>
                   <td className="dv-acciones">
+                    <button className="dv-btn primary" onClick={() => enviar(s)}
+                      title="Preparar el envío al portal del SRI y registrarlo">📤 Enviar al SRI</button>
                     <button className="dv-btn" onClick={() => exportar(s)} title="Exportar Excel">📥 Excel</button>
                     <button className="dv-btn" onClick={() => eliminar(s)} title="Eliminar">🗑️</button>
                   </td>

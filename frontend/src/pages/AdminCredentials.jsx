@@ -18,13 +18,33 @@ const CLIENT_SERVICES = [
   { key: 'devolucion_iva',    label: 'Dev.', title: 'Devolución IVA (Tercera Edad, etc.)' },
 ]
 
+// Periodicidad de IVA: el contribuyente declara mes a mes, o el semestre completo
+// (Form. 104 semestral: ENE–JUN se declara en julio; JUL–DIC en enero).
+const PERIODICIDADES = [
+  { key: 'mensual',     label: 'Mensual' },
+  { key: 'semestral-1', label: '1er semestre (ENE–JUN)' },
+  { key: 'semestral-2', label: '2do semestre (JUL–DIC)' },
+]
+
+const periodicidadKey = (c) =>
+  (c?.periodicidad || 'mensual') === 'semestral'
+    ? `semestral-${c.periodo_semestre || ((c.periodo_mes || 1) <= 6 ? 1 : 2)}`
+    : 'mensual'
+
+// clientsAPI.list llega ordenado por nombre y período descendente, así que el
+// primer registro de cada identificación es su período MÁS RECIENTE: es sobre ese
+// sobre el que se cambia la periodicidad.
 function dedupContribuyentes(clients) {
   const seen = new Set()
   const out = []
   for (const c of clients) {
     if (seen.has(c.identificacion)) continue
     seen.add(c.identificacion)
-    out.push({ id: c.id, identificacion: c.identificacion, nombre: c.nombre })
+    out.push({
+      id: c.id, identificacion: c.identificacion, nombre: c.nombre,
+      periodicidad: c.periodicidad || 'mensual', periodo_semestre: c.periodo_semestre,
+      periodo_mes: c.periodo_mes, periodo_anio: c.periodo_anio,
+    })
   }
   out.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
   return out
@@ -109,11 +129,13 @@ export default function AdminCredentials() {
     return contribs.map((ct) => {
       const cred = credByRuc[ct.identificacion]
       const services = servicesByRuc[ct.identificacion] || []
-      if (cred) return { ...cred, client_services: services }
+      // `_periodo` es el período MÁS RECIENTE del contribuyente: de ahí sale la
+      // periodicidad (mensual/semestral) y sobre él se aplica el cambio.
+      if (cred) return { ...cred, client_services: services, _periodo: ct }
       return {
         id: `noc-${ct.id}`, client_id: ct.id, ruc: ct.identificacion,
         nombre: ct.nombre, username: null, notes: null, client_services: services,
-        needs_reentry: false, updated_at: null, _sinClave: true,
+        needs_reentry: false, updated_at: null, _sinClave: true, _periodo: ct,
       }
     })
   }, [creds, contribs, servicesByRuc])
@@ -197,6 +219,59 @@ export default function AdminCredentials() {
     } catch (e) {
       flip(isActive)  // rollback
       alert('Error al cambiar servicio: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+
+  // Cambio de periodicidad del contribuyente (mensual ⇄ semestral) SIN crear otro
+  // contribuyente: se convierte el período que ya existe. Antes de tocar nada se
+  // pide el plan al backend y se muestra qué va a pasar (y si hay meses sueltos
+  // del semestre con comprobantes, si se unen o no).
+  const onChangePeriodicidad = async (row, valor) => {
+    const ct = row._periodo
+    if (!ct?.id) return
+    const [periodicidad, sem] = valor.split('-')
+    const semestre = sem ? parseInt(sem, 10) : null
+    const base = { client_id: ct.id, periodicidad, periodo_semestre: semestre }
+    setBusy(true)
+    try {
+      const { data: plan } = await clientsAPI.periodicidadPreview(base)
+      const conDatos = (plan.fusionar || []).filter((f) => f.total > 0)
+      const etiqueta = periodicidad === 'semestral'
+        ? `${semestre === 1 ? '1er' : '2do'} semestre ${plan.anio}`
+        : `mes ${String(plan.destino?.periodo_mes || '').padStart(2, '0')}/${plan.anio}`
+      let texto = `${row.nombre} (${row.ruc})\n\n` +
+        `Pasa a declarar ${periodicidad === 'semestral' ? 'SEMESTRALMENTE' : 'MENSUALMENTE'}: ` +
+        `su período de trabajo queda como ${etiqueta}.\n` +
+        `Los períodos anteriores no se tocan.\n`
+      if (plan.avisos?.length) texto += `\n⚠ ${plan.avisos.join('\n⚠ ')}\n`
+      texto += `\n¿Continuar?`
+      if (!window.confirm(texto)) return
+
+      let fusionar = false
+      if (conDatos.length) {
+        const detalle = conDatos.map((f) =>
+          `  • mes ${String(f.periodo_mes).padStart(2, '0')}: ` +
+          Object.entries(f.comprobantes).map(([k, v]) => `${v} ${k}`).join(', ')
+        ).join('\n')
+        fusionar = window.confirm(
+          `¿Unir los comprobantes de esos meses al período semestral?\n\n${detalle}\n\n` +
+          `Aceptar = se mueven al ${etiqueta} y la declaración semestral los toma.\n` +
+          `Cancelar = se quedan en su mes (la declaración del semestre saldrá incompleta).`
+        )
+      }
+      const { data: res } = await clientsAPI.setPeriodicidad({ ...base, fusionar })
+      const movidos = Object.entries(res.movidos || {})
+      if (movidos.length) {
+        const dup = movidos.reduce((s, [, v]) => s + v.duplicados, 0)
+        alert(`✔ Listo. Movidos: ` +
+          movidos.map(([k, v]) => `${v.movidos} ${k}`).join(', ') +
+          (dup ? `\n(${dup} ya estaban cargados en el período destino y se dejaron donde estaban.)` : ''))
+      }
+      await load()
+    } catch (e) {
+      alert('No se pudo cambiar la periodicidad: ' + (e.response?.data?.detail || e.message))
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -318,6 +393,7 @@ export default function AdminCredentials() {
               <tr>
                 <th>Cliente</th>
                 <th>RUC</th>
+                <th title="Cada cuánto declara el IVA este contribuyente">Declara IVA</th>
                 <th>Próxima declaración</th>
                 {isSuperAdmin && <th>Usuario</th>}
                 {CLIENT_SERVICES.map((s) => (
@@ -343,9 +419,20 @@ export default function AdminCredentials() {
                       {c.ruc || '—'}
                     </span>
                   </td>
+                  <td className="adm-cred-perio-cell">
+                    <select
+                      className="adm-cred-perio"
+                      value={periodicidadKey(c._periodo)}
+                      disabled={busy || !c._periodo?.id}
+                      onChange={(e) => onChangePeriodicidad(c, e.target.value)}
+                      title="Mensual = una declaración por mes. Semestral = una sola por los seis meses (Form. 104 semestral)."
+                    >
+                      {PERIODICIDADES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                    </select>
+                  </td>
                   <td className="adm-cred-decl-cell">
                     {infoDeclaracion(c.ruc).valido
-                      ? <BadgeVencimiento ruc={c.ruc} presentada={estaPresentada(c.ruc)} />
+                      ? <BadgeVencimiento ruc={c.ruc} client={c._periodo} presentada={estaPresentada(c.ruc)} />
                       : <span className="adm-cred-dim">—</span>}
                   </td>
                   {isSuperAdmin && <td>{c.username || <span className="adm-cred-dim">{c._sinClave ? '(sin clave)' : '(usa el RUC)'}</span>}</td>}
@@ -381,7 +468,7 @@ export default function AdminCredentials() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={isSuperAdmin ? 10 : 7} className="adm-cred-empty-row">
+                  <td colSpan={isSuperAdmin ? 11 : 8} className="adm-cred-empty-row">
                     Ningún cliente coincide con el filtro seleccionado.
                   </td>
                 </tr>

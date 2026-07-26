@@ -11,6 +11,7 @@ from services.sri_ruc import consultar_ruc
 from services.periodo import (periodo_a_declarar, periodo_anterior,
                               semestre_a_declarar, semestre_anterior,
                               mes_ancla_semestre, semestre_de_mes)
+from services.periodicidad import plan_cambio, aplicar_cambio
 from tenancy import visible_clients, assert_client_owner, invalidate_clients_cache, can_access_identificacion
 from services.activity import registrar, _email_de
 
@@ -118,6 +119,63 @@ async def clients_by_service(service: str = Query(...), user_id: str = Depends(g
         return {"identificaciones": idents}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class PeriodicidadIn(BaseModel):
+    """Cambio de periodicidad de un contribuyente YA existente (mensual ⇄ semestral)."""
+    client_id: str
+    periodicidad: str                        # 'mensual' | 'semestral'
+    periodo_semestre: Optional[int] = None   # 1 | 2, obligatorio para semestral
+    fusionar: bool = False                   # unir los meses sueltos del semestre
+
+
+@router.post("/periodicidad/preview")
+async def periodicidad_preview(body: PeriodicidadIn, user_id: str = Depends(get_current_user)):
+    """Qué pasaría al cambiar la periodicidad, SIN cambiar nada: qué período queda
+    como semestral, qué meses habría que unir y con cuántos comprobantes."""
+    try:
+        supabase = get_supabase_client()
+        assert_client_owner(body.client_id, user_id)
+        if body.periodicidad not in ("mensual", "semestral"):
+            raise HTTPException(status_code=400, detail="Periodicidad inválida")
+        return plan_cambio(supabase, body.client_id, body.periodicidad, body.periodo_semestre)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/periodicidad")
+async def cambiar_periodicidad(body: PeriodicidadIn, user_id: str = Depends(get_current_user)):
+    """Pasa el contribuyente a declarar mensual o semestralmente SIN crear otro
+    contribuyente: convierte el período que ya existe (y opcionalmente une los
+    meses sueltos del semestre). Los períodos anteriores no se tocan."""
+    try:
+        supabase = get_supabase_client()
+        assert_client_owner(body.client_id, user_id)
+        if body.periodicidad not in ("mensual", "semestral"):
+            raise HTTPException(status_code=400, detail="Periodicidad inválida")
+        if body.periodicidad == "semestral" and body.periodo_semestre not in (1, 2):
+            raise HTTPException(status_code=400, detail="El semestre debe ser 1 ó 2")
+        res = aplicar_cambio(supabase, body.client_id, body.periodicidad,
+                             body.periodo_semestre, body.fusionar)
+        invalidate_clients_cache()
+        plan = res["plan"]
+        registrar(actor_user_id=user_id, action="update", module="clientes",
+                  entity="Cambio de periodicidad", client_id=res["client_id"],
+                  identificacion=plan.get("identificacion"), contribuyente=plan.get("nombre"),
+                  metadata={"periodicidad": body.periodicidad,
+                            "semestre": body.periodo_semestre,
+                            "fusionados": len(plan.get("fusionar") or []) if body.fusionar else 0})
+        return res
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/consulta-ruc")

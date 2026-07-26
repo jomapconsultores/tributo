@@ -33,6 +33,10 @@ const BOOKMARKLETS = [
     fuente: join(raiz, 'sri_downloader', 'bookmarklet_recibidos.js'),
     destino: join(raiz, 'frontend', 'src', 'utils', 'bajador-gastos.bookmarklet.txt'),
   },
+  {
+    fuente: join(raiz, 'sri_downloader', 'bookmarklet_devolucion.js'),
+    destino: join(raiz, 'frontend', 'src', 'utils', 'enviador-devolucion.bookmarklet.txt'),
+  },
 ]
 
 for (const { fuente, destino } of BOOKMARKLETS) {

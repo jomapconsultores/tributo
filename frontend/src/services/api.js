@@ -128,6 +128,10 @@ export const clientsAPI = {
   // Declaración mes vencido: abre el período a declarar (mes anterior) para los
   // contribuyentes trabajados el ciclo previo. Idempotente.
   abrirPeriodoVencido: () => api.post('/api/clients/abrir-periodo-vencido'),
+  // Periodicidad de IVA del contribuyente (mensual ⇄ semestral) sin crear otro
+  // contribuyente. `preview` solo informa qué pasaría; `set` lo aplica.
+  periodicidadPreview: (data) => api.post('/api/clients/periodicidad/preview', data),
+  setPeriodicidad: (data) => api.post('/api/clients/periodicidad', data),
 }
 
 // Invoices (por cliente)
@@ -439,6 +443,12 @@ export const devolucionesIvaAPI = {
   cambiarEstado: (id, estado) => api.put(`/api/devoluciones-iva/solicitudes/${id}`, { estado }),
   eliminar: (id) => api.delete(`/api/devoluciones-iva/solicitudes/${id}`),
   exportExcel: (id) => api.get(`/api/devoluciones-iva/solicitudes/${id}/export/excel`, { responseType: 'blob' }),
+  // Catálogo de tipos de gasto a los que se direcciona cada comprobante
+  rubros: () => api.get('/api/devoluciones-iva/rubros'),
+  // Paquete listo para llevar la solicitud al portal del SRI (lo usa el enviador)
+  envio: (id) => api.get(`/api/devoluciones-iva/solicitudes/${id}/envio`),
+  // Deja constancia de que se envió al SRI (estado presentada + fecha)
+  marcarEnviada: (id) => api.post(`/api/devoluciones-iva/solicitudes/${id}/enviar`),
 }
 
 // Recursos (Códigos ICE reemplazable)

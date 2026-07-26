@@ -164,6 +164,35 @@
 }
 .dv-tope { color: #64748b; font-size: 0.85rem; }
 
+/* Marcador arrastrable que lleva la solicitud al portal del SRI */
+.dv-enviador {
+  padding: 6px 10px; border: 1px dashed #1e6b33; border-radius: 8px;
+  background: #eaf6ec; color: #1e6b33; font-size: 0.82rem; font-weight: 600;
+  cursor: grab; text-decoration: none; white-space: nowrap;
+}
+.dv-enviador:active { cursor: grabbing; }
+
+/* Tipo de gasto al que se direcciona cada comprobante */
+.dv-rubro {
+  padding: 3px 5px; border: 1px solid #cbd5e1; border-radius: 6px;
+  font-size: 0.78rem; background: #fff; color: #334155; max-width: 150px;
+}
+.dv-rubros-resumen {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin: 8px 0; font-size: 0.82rem;
+}
+.dv-rubros-lbl { color: #64748b; }
+.dv-rubro-chip {
+  padding: 3px 8px; border: 1px solid #cfe3d4; border-radius: 999px;
+  background: #f3f8f4; color: #1e6b33;
+}
+
+/* Desglose por mes (el tope de la devolución es mensual) */
+.dv-meses { margin: 6px 0 14px; }
+.dv-meses .dv-tabla tr.alerta { background: #fff7ed; }
+.dv-meses .dv-tabla tr.dv-mes-vacio td { color: #94a3b8; }
+.dv-nota-meses { margin: 6px 0 0; color: #64748b; font-size: 0.78rem; line-height: 1.45; }
+
 .dv-resumen {
   display: flex;
   align-items: stretch;
