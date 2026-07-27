@@ -108,10 +108,24 @@ export default function ICE() {
 
   const handleUploadXml = async (files) => {
     if (!selectedClientId || !files.length) return
-    setBusy(`Procesando ${files.length} factura(s) XML…`)
+    setBusy(`Procesando ${files.length} factura(s)…`)
     try {
       const res = await iceAPI.processXml(selectedClientId, files)
-      alert(`Líneas con ICE nuevas: ${res.data.new} | Duplicadas: ${res.data.duplicates} | Errores/sin ICE: ${res.data.errors}`)
+      const d = res.data
+      let msg = `Líneas con ICE nuevas: ${d.new} | Duplicadas: ${d.duplicates} | Errores/sin ICE: ${d.errors}`
+      if (d.desde_pdf > 0) {
+        // El PDF no trae el ICE por línea (solo el total del comprobante), así que
+        // conviene decir de dónde salieron esos números y que hay que revisarlos.
+        msg += '\n\n📄 ' + d.desde_pdf + ' factura(s) leídas del PDF (RIDE). El PDF no trae el ICE' +
+          ' por línea: se repartió proporcional al precio, cuadrando con el total del comprobante.' +
+          ' Esas filas quedan marcadas "PDF" — revisalas antes de generar el anexo.'
+      }
+      if (d.pdf_ilegibles?.length) {
+        msg += '\n\n⚠ No se pudieron leer con seguridad (las líneas no cuadraban con el subtotal' +
+          ' impreso):\n' + d.pdf_ilegibles.slice(0, 5).map((n) => '  • ' + n).join('\n') +
+          '\nSubí el XML de esas, o cargalas a mano.'
+      }
+      alert(msg)
       await load()
     } catch (err) {
       alert('Error: ' + (err.response?.data?.detail || err.message))
@@ -127,8 +141,10 @@ export default function ICE() {
   }
   const handleDrop = (e) => {
     e.preventDefault(); e.stopPropagation(); setDragActive(false)
-    const files = Array.from(e.dataTransfer.files || []).filter((f) => f.name.toLowerCase().endsWith('.xml'))
-    if (!files.length) { alert('Arrastra facturas XML de venta de licor.'); return }
+    const files = Array.from(e.dataTransfer.files || []).filter((f) => {
+      const n = f.name.toLowerCase(); return n.endsWith('.xml') || n.endsWith('.pdf')
+    })
+    if (!files.length) { alert('Arrastra facturas de venta de licor en XML o PDF (RIDE del SRI).'); return }
     handleUploadXml(files)
   }
 
@@ -368,14 +384,14 @@ export default function ICE() {
         onDragEnter={handleDrag} onDragOver={handleDrag} onDragLeave={handleDrag} onDrop={handleDrop}
         onClick={() => xmlInputRef.current?.click()}>
         <span className="dz-icon">🥃</span>
-        <span className="dz-text">Arrastra aquí las facturas XML de venta de licor</span>
-        <span className="dz-sub">o haz clic para seleccionarlas — solo se toman las líneas con ICE</span>
+        <span className="dz-text">Arrastra aquí las facturas de venta de licor: XML o PDF (RIDE)</span>
+        <span className="dz-sub">o haz clic para seleccionarlas — solo se toman las líneas con ICE. El PDF se usa cuando el XML no está disponible.</span>
       </div>
 
       <div className="ice-controls">
-        <input ref={xmlInputRef} type="file" accept=".xml" multiple style={{ display: 'none' }}
+        <input ref={xmlInputRef} type="file" accept=".xml,.pdf" multiple style={{ display: 'none' }}
           onChange={(e) => { if (e.target.files?.length) handleUploadXml(Array.from(e.target.files)) }} />
-        <button className="ice-btn primary" onClick={() => xmlInputRef.current?.click()}>📂 Cargar XMLs</button>
+        <button className="ice-btn primary" onClick={() => xmlInputRef.current?.click()}>📂 Cargar XML o PDF</button>
         <button className="ice-btn small" onClick={handleExport}>⬇ Excel</button>
         <button className="ice-btn small" onClick={handleExportPdf}>⬇ PDF</button>
         <button className="ice-btn small" onClick={() => descargarXmlsOriginales(selectedClient, selectedClientId, 'IngresosICE', 'ingreso_ice')} title="Descargar los XML originales subidos">⬇ XML originales</button>
@@ -463,7 +479,15 @@ export default function ICE() {
                     <td className="sel-col"><input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSel(r.id)} /></td>
                     <td>{r.fecha || '-'}</td>
                     <td className="ice-cli" title={r.razon_social_cliente}>{r.razon_social_cliente || '-'}</td>
-                    <td className="ice-prod" title={r.nombre_producto}>{r.nombre_producto || '-'}</td>
+                    <td className="ice-prod" title={r.nombre_producto}>
+                      {r.origen === 'pdf' && (
+                        <span className="ice-origen-pdf"
+                          title="Leída del PDF (RIDE): el ICE se repartió proporcional al precio porque el PDF solo trae el total del comprobante. Conviene revisarla antes del anexo.">
+                          PDF
+                        </span>
+                      )}
+                      {r.nombre_producto || '-'}
+                    </td>
                     <td>{r.es_pack ? 'SÍ' : 'NO'}</td>
                     <td className="r">{(parseFloat(r.cantidad_cajas) || 0).toFixed(0)}</td>
                     <td className={`r ${!bc.ok ? 'ice-bot-mal' : ''}`} title={!bc.ok ? `Esperado ${bc.esperado} (${bc.cajas}×${bc.bxc}); difiere en ${bc.dif > 0 ? '+' : ''}${bc.dif}` : ''}>{r.unidades_botellas}</td>

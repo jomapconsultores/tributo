@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client, fetch_all, fetch_in, es_error_duplicado
 from services.ice_parser import parse_ice_invoice
+from services.pdf_parser_ice import parse_ice_pdf
 from services.ice_calc import full_report
 from services.ice_export import generate_ice_excel, generate_ice_pdf
 from services.ice_anexo import generar_anexo_ice, anexo_rows, catalogo_con_codigos
@@ -25,7 +26,7 @@ ICE_COLUMNS = (
     "codigo_producto,nombre_producto,cod_marca,presentacion,capacidad,unidad,grado_alcoholico,"
     "cod_impuesto,tipo_producto,es_pack,botellas_por_caja,cantidad_cajas,unidades_botellas,"
     "precio_unitario,precio_total_sin_impuesto,precio_por_caja,precio_por_botella,"
-    "base_ice,valor_ice,base_iva,valor_iva,importe_total"
+    "base_ice,valor_ice,base_iva,valor_iva,importe_total,origen"
 )
 
 
@@ -66,15 +67,32 @@ async def process_xml(
     try:
         supabase = get_supabase_client()
         assert_client_owner(client_id, user_id)
-        new_count = dup_count = err_count = 0
+        new_count = dup_count = err_count = pdf_count = 0
+        ilegibles = []       # PDF que no se pudieron leer con seguridad
         compradores_xml = {}
         for file in files:
-            xml_content = (await file.read()).decode("utf-8", errors="ignore")
-            registros = parse_ice_invoice(xml_content)
+            raw = await file.read()
+            # El RIDE (PDF) se acepta para las facturas cuyo XML no se puede bajar
+            # —las emitidas por el facturador del SRI—. El PDF no trae el ICE por
+            # línea, así que el parser lo reparte y CUADRA contra el subtotal
+            # impreso: si no cuadra devuelve vacío y acá se informa, en vez de
+            # cargar cifras que no son.
+            es_pdf = (file.filename or "").lower().endswith(".pdf") or raw[:5] == b"%PDF-"
+            if es_pdf:
+                registros = parse_ice_pdf(raw)
+                xml_content = None
+                if registros:
+                    pdf_count += 1
+                else:
+                    ilegibles.append(file.filename)
+            else:
+                xml_content = raw.decode("utf-8", errors="ignore")
+                registros = parse_ice_invoice(xml_content)
             if not registros:
                 err_count += 1
                 continue
-            guardar_xml_original(supabase, user_id, client_id, "ingreso_ice", xml_content)
+            if xml_content:
+                guardar_xml_original(supabase, user_id, client_id, "ingreso_ice", xml_content)
             for c in extraer_compradores(registros):
                 compradores_xml[c["ruc"]] = c
             for reg in registros:
@@ -97,8 +115,9 @@ async def process_xml(
             print(f"No se pudieron guardar los compradores: {e}")
         if new_count:
             registrar(actor_user_id=user_id, action="upload", module="ingresos_ice",
-                      entity="Ventas ICE (XML)", client_id=client_id, cantidad=new_count)
-        return {"new": new_count, "duplicates": dup_count, "errors": err_count}
+                      entity="Ventas ICE (XML/PDF)", client_id=client_id, cantidad=new_count)
+        return {"new": new_count, "duplicates": dup_count, "errors": err_count,
+                "desde_pdf": pdf_count, "pdf_ilegibles": ilegibles}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

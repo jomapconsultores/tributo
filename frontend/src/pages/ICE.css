@@ -119,3 +119,11 @@
 .ice-cuadre-bot.ok .cb-card.dif .cb-num { color:#166534; }
 .ice-cuadre-bot.mal .cb-card.dif { background:#fef2f2; border-color:#fca5a5; }
 .ice-cuadre-bot.mal .cb-card.dif .cb-num { color:#b91c1c; }
+
+/* Filas leídas del RIDE (PDF): el ICE por línea no viene en el PDF, se reparte
+   proporcional al precio, así que conviene revisarlas antes de generar el anexo. */
+.ice-origen-pdf {
+  display: inline-block; margin-right: 6px; padding: 1px 5px;
+  border: 1px solid #f0b429; border-radius: 4px; background: #fff7e6;
+  color: #8b6b1e; font-size: 0.68rem; font-weight: 700; vertical-align: middle;
+}
