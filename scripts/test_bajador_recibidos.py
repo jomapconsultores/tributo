@@ -90,6 +90,16 @@ def abrir_panel(page, html):
 
 
 def main():
+    print("=== 0. el archivo que despacha la app sobrevive al copiar/pegar ===")
+    href = BOOKMARKLET.read_text(encoding="utf-8").strip()
+    # Al copiar la dirección de un marcador, Chrome la devuelve URL-codificada: una
+    # comilla invertida vuelve como "%60" y pegar eso en la consola es un error de
+    # sintaxis (el script "no hace nada"). Por eso no puede quedar ninguna.
+    check("sin comillas invertidas (se vuelven %60 al copiar)", "`" not in href)
+    check("sin el carácter de porcentaje (rompe la URL javascript:)", "%" not in href)
+    check("empieza con javascript:", href.startswith("javascript:"))
+    check("no usa ventanas de mensaje (el viejo sí)", "alert(" not in href)
+
     with sync_playwright() as p:
         nav = p.chromium.launch()
         page = nav.new_page()

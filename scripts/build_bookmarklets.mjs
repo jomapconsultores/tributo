@@ -46,8 +46,20 @@ for (const { fuente, destino } of BOOKMARKLETS) {
 
   // Saltos de línea reales (siempre dentro de template literals) -> escape \n
   // (primero trim, si no el salto final del archivo se escaparía FUERA de todo string)
-  const unaLinea = min.replace(/\r/g, '').trim().replace(/\n/g, '\\n')
+  let unaLinea = min.replace(/\r/g, '').trim().replace(/\n/g, '\\n')
 
+  // Fuera las comillas invertidas. El minificador deja los strings simples como
+  // template literals (`\n`), y eso rompe el bookmarklet por un camino que no se
+  // ve: al COPIAR la dirección de un marcador, Chrome la devuelve URL-codificada
+  // y la comilla invertida sale como "%60"; pegar eso en la consola es un error
+  // de sintaxis y el script no hace nada. Con comillas normales no hay nada que
+  // codificar. (Solo se convierten los literales sin interpolación, que es lo
+  // único que produce el minificador acá.)
+  unaLinea = unaLinea.replace(/`((?:[^`$\\]|\\.|\$(?!\{))*)`/g, (_, cuerpo) => '"' + cuerpo.replace(/"/g, '\\"') + '"')
+
+  if (unaLinea.includes('`')) {
+    throw new Error(`${fuente}: quedaron comillas invertidas: al copiar el marcador se vuelven %60 y rompen el script`)
+  }
   if (unaLinea.includes('%')) {
     throw new Error(`${fuente}: el código minificado tiene un carácter de porcentaje: rompería la URL javascript:`)
   }
