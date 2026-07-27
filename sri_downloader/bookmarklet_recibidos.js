@@ -194,6 +194,14 @@
   let anio = ANIOS.indexOf(hoy.getFullYear()) >= 0 ? hoy.getFullYear() : ANIOS[ANIOS.length - 1];
   let cancelado = false;
   let bajarXml = true;       // además del TXT de claves, bajar el archivo de cada fila
+  // Consultar DÍA POR DÍA en vez del mes entero. El portal a veces devuelve un
+  // error interno (java.lang.ArithmeticException, JBoss 500) con el día "Todos";
+  // pedido en pedazos chicos, lo aguanta. Se activa solo al primer fallo, pero se
+  // puede dejar marcado de entrada si ese contribuyente ya viene fallando.
+  let porDias = false;
+  // Subir la grilla al máximo de filas por página ahorra consultas, pero es otro
+  // cambio en el paginador del portal: si estuviera implicado en el error, se apaga.
+  let rapido = true;
   let quiere = ['gastos'];   // qué tipos se van a recorrer
 
   // --- Panel flotante ------------------------------------------------------
@@ -267,6 +275,18 @@
       await esperarSri(900);          // año y mes re-renderean los combos de abajo
     }
     return true;
+  };
+
+  // El portal se cae solo: devuelve una página de error de JBoss (500) en vez de
+  // la grilla — se vio un java.lang.ArithmeticException de su propio JSF. Si pasa,
+  // el formulario ya no está en la página y seguir clickeando no tiene sentido:
+  // hay que frenar y decirle al usuario que recargue.
+  const errorDelPortal = () => {
+    if (btnConsultar()) return '';       // el formulario sigue ahí: no es la página de error
+    const t = (document.body.innerText || '').slice(0, 3000);
+    if (!/exception report|JBWEB\d|HTTP Status 5|Internal Server Error/i.test(t)) return '';
+    const m = t.match(/java\.lang\.[A-Za-z]+Exception/);
+    return m ? m[0] : 'error interno del portal';
   };
 
   const sinDatos = () => {
@@ -392,15 +412,22 @@
     return null;
   };
 
-  // --- Una consulta = un mes y un tipo -------------------------------------
-  const consultarMes = async (mes, tipo, claves, cont) => {
+  // --- Una consulta = un mes (o un día) y un tipo --------------------------
+  // `dia` null = "Todos" (el mes entero de una). Si el portal se cae con esa
+  // consulta —su ArithmeticException— se reintenta día por día, que es la misma
+  // información pedida en pedazos más chicos.
+  const consultarUna = async (mes, dia, tipo, claves, cont) => {
     if (!await elegir(cbAnio(), anio, new RegExp('^\\s*' + anio + '\\s*$'))) {
       throw new Error('El combo Año no tiene ' + anio);
     }
     if (!await elegir(cbMes(), mes, new RegExp('^\\s*' + NOMBRE_MES[mes - 1], 'i'))) {
       throw new Error('El combo Mes no tiene ' + NOMBRE_MES[mes - 1]);
     }
-    await elegir(cbDia(), '0', /todos/i);        // el día "Todos" trae el mes entero
+    if (dia === null) {
+      await elegir(cbDia(), '0', /todos/i);      // el día "Todos" trae el mes entero
+    } else {
+      await elegir(cbDia(), String(dia), new RegExp('^\\s*' + dia + '\\s*$'));
+    }
     if (!await elegir(cbTipo(), tipo.valor, tipo.re)) {
       throw new Error('El combo Tipo de comprobante no tiene ' + tipo.titulo);
     }
@@ -408,8 +435,10 @@
     if (!btn) throw new Error('No encontré el botón Consultar');
     btn.click();
     await esperarSri(3000);
+    const err = errorDelPortal();
+    if (err) throw new Error('ERROR_PORTAL: ' + err);
     if (sinDatos()) return 0;
-    await maximizarFilas();
+    if (rapido) await maximizarFilas();
     let nuevas = 0;
     for (let pag = 0; pag < 100 && !cancelado; pag++) {   // todas las páginas del mes
       nuevas += juntarClaves(claves);
@@ -433,8 +462,43 @@
       if (!nx) break;
       nx.click();
       await esperarSri();
+      const errPag = errorDelPortal();
+      if (errPag) throw new Error('ERROR_PORTAL: ' + errPag);
     }
     return nuevas;
+  };
+
+  // Un mes: primero de una (día "Todos"); si el portal revienta con eso, día por
+  // día. Devuelve {nuevas, aviso} — `aviso` explica si hubo que ir por días.
+  const consultarMes = async (mes, tipo, claves, cont, avisarPaso) => {
+    if (!porDias) {
+      try {
+        return { nuevas: await consultarUna(mes, null, tipo, claves, cont), aviso: '' };
+      } catch (e) {
+        const msg = (e && e.message) || String(e);
+        if (msg.indexOf('ERROR_PORTAL') < 0) throw e;
+        if (!btnConsultar()) throw e;     // la página de error reemplazó el formulario: no hay nada que hacer
+      }
+    }
+    // Día por día: el mismo mes en pedazos que el portal sí digiere.
+    const ultimo = new Date(anio, mes, 0).getDate();
+    let nuevas = 0;
+    let fallados = 0;
+    for (let d = 1; d <= ultimo && !cancelado; d++) {
+      if (avisarPaso) avisarPaso(NOMBRE_MES[mes - 1] + ' ' + d + '/' + ultimo);
+      try {
+        nuevas += await consultarUna(mes, d, tipo, claves, cont);
+      } catch (e) {
+        const msg = (e && e.message) || String(e);
+        if (msg.indexOf('ERROR_PORTAL') < 0 || !btnConsultar()) throw e;
+        fallados++;
+      }
+    }
+    return {
+      nuevas,
+      aviso: NOMBRE_MES[mes - 1] + ': el portal falló con el mes entero, se consultó día por día' +
+        (fallados ? ' (' + fallados + ' día(s) que también fallaron)' : ''),
+    };
   };
 
   // --- Corrida -------------------------------------------------------------
@@ -447,7 +511,8 @@
     a.remove();
   };
 
-  const correr = async (meses, etiqueta) => {
+  // `previo` (opcional) es el avance guardado que se está retomando.
+  const correr = async (meses, etiqueta, previo) => {
     cancelado = false;
     limpiar();
     linea(etiqueta + ' ' + anio + ' — ' + quiere.map((k) => TIPOS[k].titulo).join(' + '),
@@ -465,29 +530,52 @@
     const cont = { xmlOk: 0, pdfOk: 0, fallo: 0, diag: '' };
     const fallas = [];
     let conDatos = 0, sinD = 0;
-    const total = meses.length * quiere.length;
-    let paso = 0;
+    let reventoElPortal = '';   // el portal devolvió su página de error (JBoss 500)
     const t0 = Date.now();
 
-    for (const k of quiere) {
-      const tipo = TIPOS[k];
-      const claves = porTipo[k] || (porTipo[k] = new Set());
-      for (const m of meses) {
-        if (cancelado) break;
-        paso++;
-        estado.textContent = tipo.titulo + ' — ' + NOMBRE_MES[m - 1] + '   (' + paso + ' de ' + total + ')';
-        detalle.textContent = Object.keys(porTipo)
-          .map((x) => porTipo[x].size + ' ' + TIPOS[x].archivo).join(' · ') +
-          (bajarXml ? ' · ' + cont.xmlOk + ' XML' + (cont.pdfOk ? ' · ' + cont.pdfOk + ' PDF' : '') : '');
-        document.title = NOMBRE_MES[m - 1] + ' - ' + claves.size + ' claves';
-        try {
-          if (await consultarMes(m, tipo, claves, cont) > 0) conDatos++; else sinD++;
-        } catch (e) {
-          fallas.push(NOMBRE_MES[m - 1] + ' (' + tipo.archivo + '): ' + (e && e.message ? e.message : e));
+    // Lista plana de consultas (tipo + mes): así el avance se guarda y se retoma
+    // por índice, aunque el portal se lleve la página por delante.
+    const pasos = [];
+    quiere.forEach((k) => meses.forEach((m) => pasos.push({ k, m })));
+    quiere.forEach((k) => { porTipo[k] = new Set((previo && previo.porTipo && previo.porTipo[k]) || []); });
+    let desde = (previo && previo.hechos) || 0;
+    if (desde) fallas.push('Se retomó desde la consulta ' + (desde + 1) + ' de ' + pasos.length + '.');
+
+    for (let idx = desde; idx < pasos.length && !cancelado; idx++) {
+      const tipo = TIPOS[pasos[idx].k];
+      const m = pasos[idx].m;
+      const claves = porTipo[pasos[idx].k];
+      estado.textContent = tipo.titulo + ' — ' + NOMBRE_MES[m - 1] + '   (' + (idx + 1) + ' de ' + pasos.length + ')';
+      detalle.textContent = Object.keys(porTipo)
+        .map((x) => porTipo[x].size + ' ' + TIPOS[x].archivo).join(' · ') +
+        (bajarXml ? ' · ' + cont.xmlOk + ' XML' + (cont.pdfOk ? ' · ' + cont.pdfOk + ' PDF' : '') : '');
+      document.title = NOMBRE_MES[m - 1] + ' - ' + claves.size + ' claves';
+      // Antes de consultar: si esta consulta tumba el portal, al volver se retoma acá.
+      guardarAvance({
+        anio, quiere, meses, etiqueta, hechos: idx, porDias, bajarXml, rapido,
+        porTipo: Object.keys(porTipo).reduce((o, x) => { o[x] = [...porTipo[x]]; return o; }, {}),
+      });
+      try {
+        const base = estado.textContent;
+        const r = await consultarMes(m, tipo, claves, cont,
+          (p) => { estado.textContent = base + '  ·  ' + p; });
+        if (r.nuevas > 0) conDatos++; else sinD++;
+        if (r.aviso) fallas.push(r.aviso);
+      } catch (e) {
+        const msg = (e && e.message ? e.message : String(e));
+        fallas.push(NOMBRE_MES[m - 1] + ' (' + tipo.archivo + '): ' + msg);
+        // Si el portal devolvió su página de error, el formulario ya no está:
+        // seguir clickeando no hace nada. Se corta acá y se explica qué hacer.
+        if (msg.indexOf('ERROR_PORTAL') >= 0 && !btnConsultar()) {
+          cancelado = true;
+          reventoElPortal = msg.replace('ERROR_PORTAL: ', '');
         }
       }
-      if (cancelado) break;
     }
+    // Si el portal se cayó, el avance guardado ANTES de esa consulta queda como
+    // está: es lo que permite retomar al volver. Si terminó (o lo cancelaste vos),
+    // ya no hace falta y se borra para no ofrecer retomar una descarga completa.
+    if (!reventoElPortal) olvidarAvance();
 
     document.title = 'SRI';
     btnCancelar.remove();
@@ -526,6 +614,14 @@
         'margin:6px 0;color:#8b1e1e;font-weight:600');
     }
     fallas.forEach((f) => linea('⚠ ' + f, 'margin:2px 0;color:#8b1e1e;font-size:12px'));
+    if (reventoElPortal) {
+      linea('El portal del SRI devolvió un error suyo (' + reventoElPortal + ') y dejó de mostrar ' +
+        'el formulario. No es la consulta tuya: es su servidor.',
+        'margin:8px 0 2px;color:#8b1e1e;font-weight:600');
+      linea('Qué hacer: recargá la página del SRI (F5), volvé a Comprobantes recibidos, abrí de nuevo ' +
+        'el marcador y marcá la casilla "consultar día por día". Lo ya descargado hasta acá está bien.',
+        'margin:2px 0;color:#555;font-size:12px');
+    }
     // Si hubo filas sin control de XML, se baja una para poder ajustar el selector.
     if (cont.diag) {
       bajarArchivo(cont.diag, 'DIAG_fila_recibida.html', 'text/html');
@@ -584,7 +680,7 @@
 
     const claves = new Set();
     const cont = { xmlOk: 0, pdfOk: 0, fallo: 0, diag: '' };
-    await maximizarFilas();
+    if (rapido) await maximizarFilas();
     for (let pag = 0; pag < 100 && !cancelado; pag++) {
       juntarClaves(claves);
       estado.textContent = 'Página ' + (pag + 1) + ' — ' + claves.size + ' comprobantes';
@@ -697,13 +793,105 @@
       'margin:6px 0;color:#555;font-size:12px');
   }
 
+  // --- Avance guardado -----------------------------------------------------
+  // Cuando el portal devuelve su página de error (500), el documento entero se
+  // reemplaza: se lleva puesto este panel y todo lo que iba juntado. Por eso el
+  // avance se guarda en localStorage DESPUÉS DE CADA CONSULTA. Al volver a abrir
+  // el marcador (tras recargar el portal) se ofrece retomar desde donde quedó,
+  // ya en modo día por día, o al menos bajar el TXT de lo que alcanzó a juntar.
+  const LS = 'jomapBajadorGastos';
+
+  const guardarAvance = (datos) => {
+    try {
+      localStorage.setItem(LS, JSON.stringify({ ...datos, cuando: Date.now(), ruc: RUC }));
+    } catch (e) { /* modo incógnito o sin espacio: se sigue igual */ }
+  };
+  const leerAvance = () => {
+    try {
+      const d = JSON.parse(localStorage.getItem(LS) || 'null');
+      if (!d || !d.cuando || Date.now() - d.cuando > 6 * 3600 * 1000) return null;  // más de 6 h: viejo
+      if (d.ruc && RUC && d.ruc !== RUC) return null;                               // otro contribuyente
+      if (!d.meses || !d.quiere || !d.etiqueta) return null;
+      // Sirve si quedaron consultas por hacer (aunque no hubiera juntado nada
+      // todavía: caerse en el primer mes es justo cuando más molesta empezar de cero).
+      const pendientes = d.meses.length * d.quiere.length - (d.hechos || 0);
+      const juntadas = Object.keys(d.porTipo || {}).reduce((s, k) => s + (d.porTipo[k] || []).length, 0);
+      return pendientes > 0 || juntadas ? d : null;
+    } catch (e) { return null; }
+  };
+  const olvidarAvance = () => {
+    try { localStorage.removeItem(LS); } catch (e) { /* nada que hacer */ }
+  };
+
+  // Casilla genérica de opción (misma pinta que la de los XML).
+  function filaOpcion(marcada, texto, alCambiar) {
+    const fila = el('label', 'display:flex;align-items:center;gap:6px;margin:6px 0;cursor:pointer');
+    const chk = el('input');
+    chk.type = 'checkbox';
+    chk.checked = marcada;
+    chk.onchange = () => alCambiar(chk.checked);
+    fila.appendChild(chk);
+    fila.appendChild(el('span', 'font-size:12px;color:#333', texto));
+    return fila;
+  }
+
+  // Al volver después de que el portal se cayera: qué había juntado y cómo seguir.
+  function pantallaRetomar(av) {
+    limpiar();
+    const pendientes = av.meses.length * av.quiere.length - av.hechos;
+    linea('Quedó una descarga a medias', 'font-weight:700;color:#8b6b1e;margin-bottom:6px');
+    linea(av.etiqueta + ' ' + av.anio + ' — ' + av.quiere.map((k) => TIPOS[k].titulo).join(' + '),
+      'font-weight:600');
+    Object.keys(av.porTipo || {}).forEach((k) => {
+      linea(TIPOS[k].titulo + ': ' + (av.porTipo[k] || []).length + ' comprobantes ya juntados');
+    });
+    linea('Faltan ' + pendientes + ' consulta(s).', 'margin:4px 0;color:#555;font-size:12px');
+    const ancho = CSS_BTN + ';display:block;width:300px;box-sizing:border-box;text-align:center';
+    cuerpo.appendChild(boton('Continuar — día por día (recomendado)', () => {
+      anio = av.anio; quiere = av.quiere; bajarXml = av.bajarXml; rapido = av.rapido;
+      porDias = true;
+      correr(av.meses, av.etiqueta, av);
+    }, ancho));
+    cuerpo.appendChild(boton('Continuar igual que antes', () => {
+      anio = av.anio; quiere = av.quiere; bajarXml = av.bajarXml;
+      rapido = av.rapido; porDias = av.porDias;
+      correr(av.meses, av.etiqueta, av);
+    }, ancho));
+    cuerpo.appendChild(boton('Bajar el TXT de lo ya juntado', () => {
+      let hubo = false;
+      Object.keys(av.porTipo || {}).forEach((k) => {
+        const cl = av.porTipo[k] || [];
+        if (!cl.length) return;
+        hubo = true;
+        bajarArchivo(cl.join('\n') + '\n',
+          TIPOS[k].archivo + '_' + (RUC ? RUC + '_' : '') +
+          av.etiqueta.replace(/[^A-Za-z0-9]+/g, '') + '_' + av.anio + '_parcial.txt', 'text/plain');
+      });
+      linea(hubo ? 'Listo: revisá tu carpeta de Descargas.' : 'No había ninguna clave juntada.',
+        'margin:6px 0;color:#1e6b33;font-weight:600');
+    }, CSS_GRIS));
+    cuerpo.appendChild(boton('Empezar de nuevo', () => { olvidarAvance(); pantallaInicio(); }, CSS_GRIS));
+    linea('El portal del SRI a veces devuelve un error suyo y se lleva la página por delante; ' +
+      'por eso el avance se guarda después de cada consulta.',
+      'margin:8px 0 0;color:#555;font-size:12px');
+  }
+
   function pantallaInicio() {
     limpiar();
     if (!formularioListo()) { pantallaDiagnostico(); return; }
+    const av = leerAvance();
+    if (av && av.hechos < av.meses.length * av.quiere.length) { pantallaRetomar(av); return; }
+    if (av) olvidarAvance();
     if (RUC) linea('RUC: ' + RUC, 'margin:0 0 6px;color:#555;font-size:12px');
     linea('Año', 'font-weight:600');
     cuerpo.appendChild(filaAnio());
     cuerpo.appendChild(filaXml());
+    cuerpo.appendChild(filaOpcion(porDias,
+      'Consultar día por día (más lento; usalo si el portal tira error con el mes entero)',
+      (v) => { porDias = v; }));
+    cuerpo.appendChild(filaOpcion(rapido,
+      'Subir las filas por página al máximo (menos consultas)',
+      (v) => { rapido = v; }));
     linea('¿Qué querés bajar?', 'font-weight:600;margin-top:8px');
     const ancho = CSS_BTN + ';display:block;width:300px;box-sizing:border-box;text-align:center';
     const elegirTipos = (lista) => { quiere = lista; pantallaPeriodo(); };

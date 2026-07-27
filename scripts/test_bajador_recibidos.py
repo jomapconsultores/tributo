@@ -50,6 +50,46 @@ def _filas():
         for i, c in enumerate(CLAVES))
 
 
+def pagina_que_revienta():
+    """Réplica del portal cuando devuelve SU error: con el día 'Todos' contesta la
+    página de error de JBoss (java.lang.ArithmeticException, lo que le pasó al
+    usuario); consultado día por día, responde bien. El día 3 tiene una factura."""
+    base = pagina(ids_clasicos=True)
+    grilla_dia = ("<div id='grid'><table><tr><td>1</td><td>03/01/2026</td>"
+                  f"<td>PROVEEDOR X</td><td>{CLAVES[0]}</td></tr></table></div>")
+    script = """
+    <script>
+      var DIA_CON_DATOS = document.getElementById('grid').innerHTML;
+      var ov = document.getElementById('dlgpopStatusPrime');
+      var btn = document.getElementById('frmPrincipal:btnConsultar');
+      btn.onclick = function () {
+        var dia = document.getElementById('frmPrincipal:dia').value;
+        if (dia === '0') {          // el mes entero: el portal se cae
+          document.body.innerHTML = '<h1>JBWEB000065: HTTP Status 500</h1>' +
+            '<p>JBWEB000309: type JBWEB000066: Exception report</p>' +
+            '<pre>javax.servlet.ServletException ... root cause java.lang.ArithmeticException</pre>';
+          return;
+        }
+        ov.style.display = 'block';               // el overlay real del portal
+        setTimeout(function () {
+          ov.style.display = 'none';
+          var g = document.getElementById('grid');
+          g.innerHTML = (dia === '3') ? DIA_CON_DATOS : '';
+          g.style.display = '';
+          document.getElementById('form_messages').innerText =
+            (dia === '3') ? '' : 'No existen datos para los parametros ingresados';
+        }, 80);
+      };
+    </script>"""
+    base = base.replace("<div id=\"grid\"",
+                        "<div id='form_messages'></div>"
+                        "<div id='dlgpopStatusPrime' style='display:none'>Espere por favor</div>"
+                        "<div id=\"grid\"")
+    base = base.replace(f"<div id=\"grid\" style=\"display:none\"><table>{_filas()}</table></div>",
+                        grilla_dia.replace("<div id='grid'>", "<div id='grid' style='display:none'>"))
+    return base.replace("</body>", script + "</body>")
+
+
 def pagina(ids_clasicos=True, con_formulario=True):
     """HTML de la réplica. Con ids_clasicos=False los combos se llaman distinto,
     pero conservan su etiqueta visible y sus opciones."""
@@ -80,8 +120,16 @@ def pagina(ids_clasicos=True, con_formulario=True):
     </body></html>"""
 
 
+URL_FALSA = "https://portal.sri.test/comprobantes/recibidos.jsf"
+
+
 def abrir_panel(page, html):
-    page.set_content(html)
+    """Sirve la réplica desde un origen de verdad (no about:blank: ahí localStorage
+    está prohibido y el marcador guarda el avance justamente ahí) y ejecuta el
+    bookmarklet tal como lo pegaría el usuario en la consola."""
+    page.route(URL_FALSA, lambda ruta: ruta.fulfill(
+        status=200, content_type="text/html; charset=utf-8", body=html))
+    page.goto(URL_FALSA)
     codigo = BOOKMARKLET.read_text(encoding="utf-8").strip()
     codigo = re.sub(r"^javascript:", "", codigo)
     page.evaluate(codigo)
@@ -175,6 +223,38 @@ def main():
         check("informa lo descargado", "Se descargó" in txt and "3 comprobantes" in txt,
               txt[:100].replace("\n", " "))
         ctx.close()
+
+        print("=== 6a. el portal devuelve SU error (ArithmeticException) y se lleva la página ===")
+        ctx2 = nav.new_context(accept_downloads=True)
+        page3 = ctx2.new_page()
+        abrir_panel(page3, pagina_que_revienta())
+        page3.click("#sri_bajador_gastos >> input[type=checkbox] >> nth=0")   # sin XML
+        page3.click("#sri_bajador_gastos >> button:has-text('facturas de compra')")
+        page3.click("#sri_bajador_gastos >> button:has-text('Por MES')")
+        page3.click("#sri_bajador_gastos >> button:text-is('Feb')")
+        page3.wait_for_function("() => /ArithmeticException/.test(document.body.innerText)", timeout=20000)
+        check("el panel muere con la página (por eso hace falta guardar el avance)",
+              page3.evaluate("() => !document.getElementById('sri_bajador_gastos')"))
+        check("el avance quedó guardado", page3.evaluate(
+            "() => !!JSON.parse(localStorage.getItem('jomapBajadorGastos') || 'null')"))
+
+        print("=== 6b. al volver, ofrece retomar y con día por día sí entrega ===")
+        # Igual que en la vida real: el usuario recarga el portal y vuelve a abrir el marcador.
+        txt = abrir_panel(page3, pagina_que_revienta())
+        check("ofrece retomar la descarga a medias", "Quedó una descarga a medias" in txt,
+              txt[:90].replace("\n", " "))
+        check("ofrece continuar día por día", "día por día" in txt)
+        check("ofrece bajar lo ya juntado", "Bajar el TXT de lo ya juntado" in txt)
+        with page3.expect_download(timeout=180000) as espera:
+            page3.click("#sri_bajador_gastos >> button:has-text('Continuar — día por día')")
+        contenido = Path(espera.value.path()).read_text(encoding="utf-8").strip().splitlines()
+        check("baja la factura del único día con datos", contenido == [CLAVES[0]],
+              f"{len(contenido)} claves")
+        check("el formulario sobrevivió: nunca disparó la consulta que rompe",
+              page3.eval_on_selector("#frmPrincipal\\:btnConsultar", "b => !!b"))
+        check("al terminar, ya no queda avance pendiente", page3.evaluate(
+            "() => !localStorage.getItem('jomapBajadorGastos')"))
+        ctx2.close()
 
         nav.close()
 
