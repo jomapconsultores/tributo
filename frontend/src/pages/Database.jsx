@@ -10,6 +10,7 @@ import NewClientModal from '../components/NewClientModal'
 import ClientNavigator from '../components/ClientNavigator'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClaveHeader from '../components/ClaveHeader'
+import BajadorSRI from '../components/BajadorSRI'
 import { periodoLargo } from '../utils/periodo'
 import { fmtMoney, msgFueraPeriodo, msgIdentAjena } from '../utils/format'
 import './Database.css'
@@ -27,6 +28,7 @@ export default function Database() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
   const [editClient, setEditClient] = useState(null)
+  const [verBajador, setVerBajador] = useState(false)
 
   const loadInvoices = useCallback(async (silent = false) => {
     if (!selectedClientId) {
@@ -188,6 +190,10 @@ export default function Database() {
       {busy && <div className="db-busy">⏳ {busy}</div>}
 
       <div className="db-controls">
+        <button className="db-btn small bajador" onClick={() => setVerBajador(true)}
+          title="Bajar del SRI los comprobantes recibidos (gastos y/o retenciones) del mes o semestre que elijas">
+          📥 Bajador-GASTOS (SRI)
+        </button>
         <button className="db-btn small" onClick={handleExportExcel}>⬇ Excel</button>
         <button className="db-btn small" onClick={handleExportPdf}>⬇ PDF</button>
         <button className="db-btn small" onClick={handleDownloadXmls} title="Descargar los XML originales subidos">⬇ XML originales</button>
@@ -203,6 +209,7 @@ export default function Database() {
       )}
 
       <NewClientModal open={!!editClient} editClient={editClient} onClose={() => setEditClient(null)} />
+      {verBajador && <BajadorSRI which="gastos" onClose={() => setVerBajador(false)} />}
     </div>
   )
 }

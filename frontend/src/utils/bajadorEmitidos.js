@@ -13,6 +13,10 @@ import raw from './bajador-emitidos.bookmarklet.txt?raw'
 
 export const BAJADOR_EMITIDOS_HREF = raw.trim()
 
+// El mismo script SIN el prefijo "javascript:", para PEGARLO en la consola del
+// SRI (Chrome borra ese prefijo al pegar en la barra de direcciones).
+export const BAJADOR_EMITIDOS_CODIGO = BAJADOR_EMITIDOS_HREF.replace(/^javascript:/, '')
+
 export const AVISO_BAJADOR_EMITIDOS =
   '📥 Bajador-INGRESOS (facturas EMITIDAS del SRI)\n\n' +
   'INSTALAR (una sola vez): ARRÁSTRA este botón a la barra de marcadores (favoritos).\n\n' +

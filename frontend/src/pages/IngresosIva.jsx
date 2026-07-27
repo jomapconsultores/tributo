@@ -11,9 +11,8 @@ import ClaveHeader from '../components/ClaveHeader'
 import WorkflowGuide from '../components/WorkflowGuide'
 import './IngresosIva.css'
 
-import {
-  AVISO_BAJADOR_EMITIDOS, BAJADOR_EMITIDOS_HREF, setBajadorEmitidosHref, SRI_EMITIDOS_URL,
-} from '../utils/bajadorEmitidos'
+import { setBajadorEmitidosHref } from '../utils/bajadorEmitidos'
+import BajadorSRI from '../components/BajadorSRI'
 
 import { fmtMoney as money, msgFueraPeriodo, msgIdentAjena } from '../utils/format'
 import { periodoLargo } from '../utils/periodo'
@@ -37,6 +36,7 @@ export default function IngresosIva() {
   const [busy, setBusy] = useState('')
   const [search, setSearch] = useState('')
   const [dragActive, setDragActive] = useState(false)
+  const [verBajador, setVerBajador] = useState(false)
   const [editId, setEditId] = useState(null)
   const [editData, setEditData] = useState({})
   const [savingEdit, setSavingEdit] = useState(false)
@@ -125,15 +125,11 @@ export default function IngresosIva() {
   }
 
   // Clic en el bajador: no puede ejecutarse desde acá (tiene que correr dentro de
-  // la sesión del SRI), así que explica el flujo, deja el script en el portapapeles
-  // por si prefiere pegarlo en la consola, y ofrece abrir el portal.
+  // la sesión del SRI), así que se abre el panel que lo deja copiar para pegarlo
+  // en la consola del portal o instalarlo como marcador.
   const handleBajador = (e) => {
     e.preventDefault()
-    navigator.clipboard?.writeText(BAJADOR_EMITIDOS_HREF).catch(() => {})
-    const msg = AVISO_BAJADOR_EMITIDOS +
-      '\n\n(El script quedó copiado: si no querés instalar el marcador, pegalo en la consola del SRI.)' +
-      '\n\n¿Abrir ahora el SRI en otra pestaña?'
-    if (window.confirm(msg)) window.open(SRI_EMITIDOS_URL, '_blank', 'noopener')
+    setVerBajador(true)
   }
 
   const handleDrag = (e) => {
@@ -353,6 +349,8 @@ export default function IngresosIva() {
           </table>
         </div>
       )}
+
+      {verBajador && <BajadorSRI which="emitidos" onClose={() => setVerBajador(false)} />}
     </div>
   )
 }

@@ -7,9 +7,8 @@ import { nombreMes } from '../utils/periodo'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import WorkflowGuide from '../components/WorkflowGuide'
-import {
-  AVISO_ENVIADOR_DEVOLUCION, ENVIADOR_DEVOLUCION_HREF, setEnviadorDevolucionHref, SRI_DEVOLUCION_URL,
-} from '../utils/enviadorDevolucion'
+import { setEnviadorDevolucionHref, SRI_DEVOLUCION_URL } from '../utils/enviadorDevolucion'
+import BajadorSRI from '../components/BajadorSRI'
 import './DevolucionesIva.css'
 
 const DV_STEPS = [
@@ -54,6 +53,7 @@ export default function DevolucionesIvaTerceraEdad() {
   const [solicitudes, setSolicitudes] = useState([])
   const [solicitudActual, setSolicitudActual] = useState(null)
   const [cargando, setCargando] = useState(false)
+  const [verEnviador, setVerEnviador] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null) // { tipo: 'ok'|'err', texto }
 
@@ -293,16 +293,8 @@ export default function DevolucionesIvaTerceraEdad() {
           ref={setEnviadorDevolucionHref}
           className="dv-enviador"
           draggable="true"
-          onClick={(e) => {
-            e.preventDefault()
-            navigator.clipboard?.writeText(ENVIADOR_DEVOLUCION_HREF).catch(() => {})
-            if (window.confirm(AVISO_ENVIADOR_DEVOLUCION +
-              '\n\n(El script quedó copiado por si preferís pegarlo en la consola del SRI.)' +
-              '\n\n¿Abrir ahora el SRI en otra pestaña?')) {
-              window.open(SRI_DEVOLUCION_URL, '_blank', 'noopener')
-            }
-          }}
-          title="Marcador que carga la solicitud dentro del portal del SRI. Arrastralo a tus marcadores para instalarlo."
+          onClick={(e) => { e.preventDefault(); setVerEnviador(true) }}
+          title="Script que carga la solicitud dentro del portal del SRI: tocalo para copiarlo o instalarlo."
         >📤 Enviador-DEVOLUCIÓN (SRI)</a>
         {params && (
           <span className="dv-tope">
@@ -460,6 +452,8 @@ export default function DevolucionesIvaTerceraEdad() {
           </table>
         </section>
       )}
+
+      {verEnviador && <BajadorSRI which="devolucion" onClose={() => setVerEnviador(false)} />}
     </div>
   )
 }

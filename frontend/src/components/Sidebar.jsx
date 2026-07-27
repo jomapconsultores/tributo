@@ -6,9 +6,10 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useClients } from '../context/ClientContext'
 import { useAccess, homeFor } from '../context/AccessContext'
 import { actividadAPI } from '../services/api'
-import { AVISO_BAJADOR_EMITIDOS, setBajadorEmitidosHref } from '../utils/bajadorEmitidos'
-import { AVISO_BAJADOR_GASTOS, setBajadorGastosHref } from '../utils/bajadorGastos'
+import { setBajadorEmitidosHref } from '../utils/bajadorEmitidos'
+import { setBajadorGastosHref } from '../utils/bajadorGastos'
 import { filtrarClientesPorTexto } from '../utils/clientSearch'
+import BajadorSRI from './BajadorSRI'
 import './Sidebar.css'
 
 export default function Sidebar({ onNewClient, onLogout, userEmail, open = false }) {
@@ -20,6 +21,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const [movNuevos, setMovNuevos] = useState(0)
   // Módulo abierto en la SEGUNDA columna. null = seguir la ruta actual.
   const [openKey, setOpenKey] = useState(null)
+  // Bajador abierto en el panel copiable ('gastos' | 'emitidos'), o null.
+  const [bajador, setBajador] = useState(null)
 
   // Insignia de movimientos nuevos (solo admin).
   useEffect(() => {
@@ -241,16 +244,17 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
       )
     }
     if (it.kind === 'bajador') {
+      // Se puede ARRASTRAR a los marcadores (el href es el script) o TOCAR para
+      // abrir el panel, que además lo deja copiar y pegar en la consola del SRI.
       const refs = { gastos: setBajadorGastosHref, emitidos: setBajadorEmitidosHref }
-      const avisos = { gastos: AVISO_BAJADOR_GASTOS, emitidos: AVISO_BAJADOR_EMITIDOS }
       return (
         <a
           key={`b${i}`}
           ref={refs[it.which]}
           className="nav-item submodule bajador-item"
           draggable="true"
-          title="Arrástralo a tu barra de marcadores para instalarlo"
-          onClick={(e) => { e.preventDefault(); alert(avisos[it.which]) }}
+          title="Tocalo para copiarlo o instalarlo (también podés arrastrarlo a tus marcadores)"
+          onClick={(e) => { e.preventDefault(); setBajador(it.which) }}
         >
           <span className="nav-ico">{it.ico}</span><span>{it.label}</span>
         </a>
@@ -400,6 +404,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         <div className="user-email" title={userEmail}>{userEmail}</div>
         <button className="logout-link" onClick={onLogout}>Cerrar sesión</button>
       </div>
+
+      {bajador && <BajadorSRI which={bajador} onClose={() => setBajador(null)} />}
     </aside>
   )
 }

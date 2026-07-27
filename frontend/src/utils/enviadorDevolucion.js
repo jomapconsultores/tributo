@@ -13,6 +13,10 @@ import raw from './enviador-devolucion.bookmarklet.txt?raw'
 
 export const ENVIADOR_DEVOLUCION_HREF = raw.trim()
 
+// El mismo script SIN el prefijo "javascript:", para PEGARLO en la consola del
+// SRI (Chrome borra ese prefijo al pegar en la barra de direcciones).
+export const ENVIADOR_DEVOLUCION_CODIGO = ENVIADOR_DEVOLUCION_HREF.replace(/^javascript:/, '')
+
 export const AVISO_ENVIADOR_DEVOLUCION =
   '📤 Enviador-DEVOLUCIÓN (solicitud de devolución de IVA en el SRI)\n\n' +
   'INSTALAR (una sola vez): ARRASTRÁ este botón a la barra de marcadores (favoritos).\n\n' +

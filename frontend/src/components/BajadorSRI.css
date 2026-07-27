@@ -1,0 +1,68 @@
+/* Panel para llevar un bajador/enviador al portal del SRI: copiarlo a la consola
+   o instalarlo como marcador. */
+.bsri-bg {
+  position: fixed; inset: 0; z-index: 3000;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.bsri-modal {
+  width: min(620px, 100%); max-height: 88vh; overflow: auto;
+  background: #fff; border-radius: 12px; box-shadow: 0 18px 45px rgba(0, 0, 0, 0.3);
+  font-size: 0.9rem; color: #1f2937;
+}
+.bsri-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-bottom: 1px solid #e5e7eb;
+  background: #1e6b33; color: #fff; border-radius: 12px 12px 0 0;
+}
+.bsri-head strong { font-size: 1rem; }
+.bsri-x {
+  background: transparent; border: 0; color: #fff; font-size: 1.1rem; cursor: pointer;
+}
+.bsri-body { padding: 14px 16px 18px; }
+.bsri-intro { margin: 0 0 12px; line-height: 1.5; color: #374151; }
+
+.bsri-via {
+  border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;
+  background: #f8fafc;
+}
+.bsri-via h4 { margin: 0 0 8px; font-size: 0.92rem; color: #1e6b33; }
+.bsri-pasos { margin: 0 0 10px; padding-left: 20px; line-height: 1.6; }
+.bsri-pasos em { color: #334155; font-style: normal; }
+.bsri-parrafo { margin: 0 0 10px; line-height: 1.5; }
+
+.bsri-acciones { display: flex; flex-wrap: wrap; gap: 8px; }
+.bsri-btn {
+  padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px;
+  background: #fff; color: #334155; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+}
+.bsri-btn:hover { background: #f1f5f9; }
+.bsri-btn.primary { background: #1e6b33; border-color: #1e6b33; color: #fff; }
+.bsri-btn.primary:hover { background: #17562a; }
+
+.bsri-drag {
+  display: inline-block; margin-bottom: 10px; padding: 8px 12px;
+  border: 1px dashed #1e6b33; border-radius: 8px; background: #eaf6ec;
+  color: #1e6b33; font-weight: 600; font-size: 0.85rem; cursor: grab; text-decoration: none;
+}
+.bsri-drag:active { cursor: grabbing; }
+
+.bsri-nota { margin: 8px 0 0; font-size: 0.78rem; color: #64748b; line-height: 1.45; }
+.bsri-que { padding: 0 2px; }
+.bsri-que h4 { margin: 0 0 6px; font-size: 0.9rem; color: #334155; }
+.bsri-que ul { margin: 0; padding-left: 20px; line-height: 1.55; color: #475569; }
+.bsri-despues { margin: 8px 0 0; color: #1e6b33; font-weight: 600; }
+.bsri-error { margin: 10px 0 0; color: #b91c1c; }
+
+.bsri-body kbd {
+  padding: 1px 5px; border: 1px solid #cbd5e1; border-bottom-width: 2px;
+  border-radius: 4px; background: #fff; font-size: 0.78rem; font-family: inherit;
+}
+.bsri-body code {
+  padding: 1px 4px; border-radius: 4px; background: #eef2f7; font-size: 0.82rem;
+}
+
+@media (max-width: 520px) {
+  .bsri-modal { font-size: 0.85rem; }
+  .bsri-acciones .bsri-btn { flex: 1 1 auto; }
+}

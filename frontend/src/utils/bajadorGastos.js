@@ -13,6 +13,11 @@ import raw from './bajador-gastos.bookmarklet.txt?raw'
 
 export const BAJADOR_GASTOS_HREF = raw.trim()
 
+// El mismo script SIN el prefijo "javascript:", para PEGARLO en la consola del
+// SRI. Chrome borra ese prefijo al pegar en la barra de direcciones, así que
+// pegar el href ahí no funciona: o se instala como marcador, o se pega esto.
+export const BAJADOR_GASTOS_CODIGO = BAJADOR_GASTOS_HREF.replace(/^javascript:/, '')
+
 export const AVISO_BAJADOR_GASTOS =
   '📥 Bajador-GASTOS (comprobantes RECIBIDOS del SRI)\n\n' +
   'INSTALAR (una sola vez): ARRÁSTRA este botón a la barra de marcadores (favoritos).\n\n' +

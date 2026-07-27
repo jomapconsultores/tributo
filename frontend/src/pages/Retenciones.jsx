@@ -12,6 +12,7 @@ import RetentionReport from '../components/RetentionReport'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import WorkflowGuide from '../components/WorkflowGuide'
+import BajadorSRI from '../components/BajadorSRI'
 import './Retenciones.css'
 
 import { fmtMoney as money, fmtPct as pct, msgFueraPeriodo } from '../utils/format'
@@ -34,6 +35,7 @@ export default function Retenciones() {
   )
   const [busy, setBusy] = useState('')
   const [search, setSearch] = useState('')
+  const [verBajador, setVerBajador] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const xmlInputRef = useRef(null)
 
@@ -180,6 +182,10 @@ export default function Retenciones() {
           onChange={(e) => { if (e.target.files?.length) handleUploadXml(Array.from(e.target.files)) }}
         />
         <button className="ret-btn primary" onClick={() => xmlInputRef.current?.click()}>📂 Cargar XMLs</button>
+        <button className="ret-btn small" onClick={() => setVerBajador(true)}
+          title="Bajar del SRI las retenciones recibidas del mes o semestre que elijas (mismo bajador que Gastos: pregunta qué bajar)">
+          📥 Bajador-GASTOS (SRI)
+        </button>
         <button className="ret-btn small" onClick={handleExport}>⬇ Exportar Excel</button>
         <button className="ret-btn small" onClick={() => descargarXmlsOriginales(selectedClient, selectedClientId, 'Retenciones', 'retencion')} title="Descargar los XML originales subidos">⬇ XML originales</button>
         <button className="ret-btn small danger" onClick={handleClear}>🗑 Limpiar todo</button>
@@ -243,6 +249,7 @@ export default function Retenciones() {
       )}
 
       {rows.length > 0 && <RetentionReport rows={rows} />}
+      {verBajador && <BajadorSRI which="gastos" onClose={() => setVerBajador(false)} />}
     </div>
   )
 }
