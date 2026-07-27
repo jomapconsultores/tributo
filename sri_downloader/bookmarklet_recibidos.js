@@ -255,11 +255,21 @@
   };
   // Si el overlay nunca aparece (pantalla sin blocker), la primera espera corta
   // igual da tiempo al ajax; por eso el tope de "que aparezca" es chico.
+  // Tope de espera por consulta. Si el overlay del portal se queda colgado (pasa
+  // al cambiar de tipo de comprobante: JSF re-renderea el formulario y a veces su
+  // ajax no vuelve), sin tope el bajador se queda esperando para siempre y parece
+  // trabado. Con tope, esa consulta se da por fallada y se sigue con la siguiente:
+  // el avance ya está guardado, así que no se pierde nada.
+  const TOPE_ESPERA = 25000;
+
+  // Devuelve false si se agotó el tope (el portal nunca terminó de responder).
   const esperarSri = async (maxAparecer) => {
     const t0 = Date.now();
     while (!overlayVisible() && Date.now() - t0 < (maxAparecer || 1500)) await sleep(80);
-    while (overlayVisible() && Date.now() - t0 < 40000) await sleep(120);
+    while (overlayVisible() && Date.now() - t0 < TOPE_ESPERA) await sleep(120);
+    const colgado = overlayVisible();
     await sleep(450);   // pintar la grilla
+    return !colgado;
   };
 
   // Elige una opción por valor y, si el SRI cambió los valores, por el texto.
@@ -416,7 +426,7 @@
   // `dia` null = "Todos" (el mes entero de una). Si el portal se cae con esa
   // consulta —su ArithmeticException— se reintenta día por día, que es la misma
   // información pedida en pedazos más chicos.
-  const consultarUna = async (mes, dia, tipo, claves, cont) => {
+  const consultarUna = async (mes, dia, tipo, claves, cont, avisar) => {
     if (!await elegir(cbAnio(), anio, new RegExp('^\\s*' + anio + '\\s*$'))) {
       throw new Error('El combo Año no tiene ' + anio);
     }
@@ -434,17 +444,26 @@
     const btn = btnConsultar();
     if (!btn) throw new Error('No encontré el botón Consultar');
     btn.click();
-    await esperarSri(3000);
+    const respondio = await esperarSri(3000);
     const err = errorDelPortal();
     if (err) throw new Error('ERROR_PORTAL: ' + err);
+    if (!respondio) {
+      throw new Error('el portal no respondió en ' + Math.round(TOPE_ESPERA / 1000) + ' s (se sigue con la próxima consulta)');
+    }
     if (sinDatos()) return 0;
     if (rapido) await maximizarFilas();
     let nuevas = 0;
     for (let pag = 0; pag < 100 && !cancelado; pag++) {   // todas las páginas del mes
       nuevas += juntarClaves(claves);
       if (bajarXml) {
-        for (const tr of filasConClave()) {
+        const filas = filasConClave();
+        let iFila = 0;
+        for (const tr of filas) {
           if (cancelado) break;
+          iFila++;
+          // Con muchos comprobantes esto tarda (una pausa por archivo): sin este
+          // aviso parece trabado justo cuando está haciendo lo que tiene que hacer.
+          if (avisar) avisar('bajando archivo ' + iFila + ' de ' + filas.length);
           const que = await bajarDeFila(tr);
           if (que === 'xml') {
             cont.xmlOk++;
@@ -473,7 +492,7 @@
   const consultarMes = async (mes, tipo, claves, cont, avisarPaso) => {
     if (!porDias) {
       try {
-        return { nuevas: await consultarUna(mes, null, tipo, claves, cont), aviso: '' };
+        return { nuevas: await consultarUna(mes, null, tipo, claves, cont, avisarPaso), aviso: '' };
       } catch (e) {
         const msg = (e && e.message) || String(e);
         if (msg.indexOf('ERROR_PORTAL') < 0) throw e;
@@ -487,7 +506,8 @@
     for (let d = 1; d <= ultimo && !cancelado; d++) {
       if (avisarPaso) avisarPaso(NOMBRE_MES[mes - 1] + ' ' + d + '/' + ultimo);
       try {
-        nuevas += await consultarUna(mes, d, tipo, claves, cont);
+        nuevas += await consultarUna(mes, d, tipo, claves, cont,
+          (p) => { if (avisarPaso) avisarPaso(NOMBRE_MES[mes - 1] + ' ' + d + '/' + ultimo + ' · ' + p); });
       } catch (e) {
         const msg = (e && e.message) || String(e);
         if (msg.indexOf('ERROR_PORTAL') < 0 || !btnConsultar()) throw e;
@@ -527,7 +547,18 @@
     cuerpo.appendChild(btnCancelar);
 
     const porTipo = {};       // clave del tipo -> Set de claves de acceso
+    const txtBajados = {};    // tipos cuyo TXT ya se descargó (uno solo por tipo)
     const cont = { xmlOk: 0, pdfOk: 0, fallo: 0, diag: '' };
+
+    // Baja el TXT de un tipo. Devuelve el nombre, o '' si no había nada o ya se bajó.
+    const bajarTxt = (k, claves, parcial) => {
+      if (txtBajados[k] || !claves.size) return '';
+      const nombre = TIPOS[k].archivo + '_' + (RUC ? RUC + '_' : '') +
+        etiqueta.replace(/[^A-Za-z0-9]+/g, '') + '_' + anio + (parcial ? '_parcial' : '') + '.txt';
+      bajarArchivo([...claves].join('\n') + '\n', nombre, 'text/plain');
+      txtBajados[k] = nombre;
+      return nombre;
+    };
     const fallas = [];
     let conDatos = 0, sinD = 0;
     let reventoElPortal = '';   // el portal devolvió su página de error (JBoss 500)
@@ -571,6 +602,11 @@
           reventoElPortal = msg.replace('ERROR_PORTAL: ', '');
         }
       }
+      // TXT en cuanto TERMINA cada tipo, no al final de todo: si el portal se
+      // cuelga en retenciones, el de gastos ya está bajado. (Antes se escribían
+      // los dos recién al final y un cuelgue se llevaba puesto el trabajo bueno.)
+      const ultimoDelTipo = idx + 1 >= pasos.length || pasos[idx + 1].k !== pasos[idx].k;
+      if (ultimoDelTipo && !cancelado) bajarTxt(pasos[idx].k, claves);
     }
     // Si el portal se cayó, el avance guardado ANTES de esa consulta queda como
     // está: es lo que permite retomar al volver. Si terminó (o lo cancelaste vos),
@@ -583,17 +619,17 @@
     limpiar();
     linea((cancelado ? 'Cancelado — ' : 'Listo — ') + etiqueta + ' ' + anio,
       'font-weight:700;color:#1e6b33;margin-bottom:6px');
-    const bajados = [];      // módulos que quedaron con TXT, para el consejo final
     for (const k of Object.keys(porTipo)) {
       const claves = porTipo[k];
       linea(TIPOS[k].titulo + ': ' + claves.size + ' comprobantes');
-      if (!claves.size) continue;
-      bajados.push(TIPOS[k].modulo);
-      const nombre = TIPOS[k].archivo + '_' + (RUC ? RUC + '_' : '') +
-        etiqueta.replace(/[^A-Za-z0-9]+/g, '') + '_' + anio + '.txt';
-      bajarArchivo([...claves].join('\n') + '\n', nombre, 'text/plain');
-      linea('Se descargó ' + nombre, 'margin:2px 0 6px;color:#1e6b33;font-weight:600');
+      // Los tipos que ya terminaron bajaron su TXT durante la corrida; acá salen
+      // los que quedaron a medias (cancelados o cortados), como parciales.
+      bajarTxt(k, claves, cancelado);
+      if (txtBajados[k]) {
+        linea('Se descargó ' + txtBajados[k], 'margin:2px 0 6px;color:#1e6b33;font-weight:600');
+      }
     }
+    const bajados = Object.keys(txtBajados).map((k) => TIPOS[k].modulo);
     if (bajarXml) {
       linea('Archivos bajados: ' + cont.xmlOk + ' XML' +
         (cont.pdfOk ? ' · ' + cont.pdfOk + ' PDF (RIDE)' : '') +
