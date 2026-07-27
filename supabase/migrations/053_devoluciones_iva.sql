@@ -1,4 +1,4 @@
--- 031: Devolución de IVA (adultos mayores / personas con discapacidad)
+-- 053: Devolución de IVA (adultos mayores / personas con discapacidad)
 -- Una solicitud por contribuyente+período con el snapshot de los comprobantes
 -- marcados. El snapshot (items) se copia de invoices al guardar, para que la
 -- solicitud presentada al SRI no cambie si después se edita/borra la factura.

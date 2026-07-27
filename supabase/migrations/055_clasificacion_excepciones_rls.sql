@@ -1,0 +1,21 @@
+-- =============================================================================
+-- Migración 055: RLS en clasificacion_excepciones (la 050 se quedó sin activarlo)
+-- =============================================================================
+-- TODAS las tablas de este proyecto llevan RLS ACTIVO y SIN policies: el backend
+-- entra siempre con la SERVICE KEY (database.get_supabase_client), que salta RLS,
+-- mientras que el rol `anon` —cuya llave está incrustada en el bundle del
+-- frontend y por tanto es pública— queda sin poder leer ni escribir nada directo.
+-- Es el mismo criterio documentado en services/credentials_crypto.py.
+--
+-- `clasificacion_excepciones` (migración 050) se creó sin esa línea. Como PostgREST
+-- expone el esquema `public` y `anon` conserva los GRANT de SELECT/INSERT, la tabla
+-- quedó legible Y escribible por cualquiera con la llave pública: se comprobó que
+-- GET /rest/v1/clasificacion_excepciones devolvía RUC y categoría reales, mientras
+-- que la misma llave sobre `invoices` devolvía vacío.
+--
+-- Activar RLS sin policies no cambia nada para la aplicación (el backend usa la
+-- service key; el cliente anon solo se usa para Supabase Auth, nunca para tablas)
+-- y cierra el acceso directo. Reversible con DISABLE ROW LEVEL SECURITY.
+-- =============================================================================
+
+ALTER TABLE clasificacion_excepciones ENABLE ROW LEVEL SECURITY;

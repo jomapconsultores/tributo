@@ -53,8 +53,9 @@ Servicio por cliente: **`devolucion_iva`** (tabla `client_services`)
       credenciales, `CORS_ORIGINS` incluyendo el origen del frontend.
 - [ ] **`frontend/.env.local`** con `VITE_API_URL=http://localhost:8000`.
 - [ ] **Deps del frontend**: `cd frontend && npm install`.
-- [ ] **Migración 031 aplicada** (ya lo está en `tributos`; si usas otra BD, corre
-      `backend/migrations/031_devoluciones_iva.sql`).
+- [ ] **Migraciones 053 y 054 aplicadas** (ya lo están en `tributos`; si usas otra
+      BD, corre `supabase/migrations/053_devoluciones_iva.sql` y
+      `054_devoluciones_iva_rubro.sql`).
 
 ## 1. Datos de prueba (una vez)
 
