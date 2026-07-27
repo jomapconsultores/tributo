@@ -53,6 +53,15 @@ Repositorio GitHub conectado a Coolify (dos apps: `tributo` = frontend, `tributo
   responde y que `/openapi.json` refleja el código nuevo.
 - **Migraciones Supabase:** aplicar las de `supabase/migrations/` ANTES de desplegar el
   código que las usa, para no dejar columnas sin leer entre migración y despliegue.
+  `supabase/migrations/` es el ÚNICO lugar donde van: numeradas de corrido y
+  aplicadas en ese orden. (Hubo un tiempo una segunda carpeta `backend/migrations/`
+  cuya numeración chocaba con esta, así que un despliegue nuevo que siguiera esta
+  guía se saltaba cuatro migraciones —entre ellas las tablas de Devolución de IVA—;
+  esas cuatro están ahora aquí como 051–054.)
+- **Tablas nuevas:** toda tabla se crea con `ENABLE ROW LEVEL SECURITY` y sin
+  policies. El backend entra con la service key (salta RLS); el rol `anon` —cuya
+  llave es pública, va dentro del bundle del frontend— no debe poder leer ni
+  escribir ninguna tabla directamente.
 
 ## Autor
 

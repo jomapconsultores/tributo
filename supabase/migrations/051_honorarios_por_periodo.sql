@@ -1,4 +1,4 @@
--- 029: Honorarios por período (mes/año)
+-- 051: Honorarios por período (mes/año)
 -- Permite el histórico mensual (desplegable de meses anteriores) y el arrastre
 -- automático de los valores al mes siguiente. Antes había un único valor por
 -- (user, RUC, producto); ahora hay uno por período.

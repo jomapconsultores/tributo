@@ -3,6 +3,15 @@ import { startRegistration, startAuthentication } from '@simplewebauthn/browser'
 const BIO_EMAIL_KEY = 'bio_email'
 const BIO_PROMPTED_PREFIX = 'bio_prompted_'
 
+// El backend vive en OTRO dominio que el frontend (Coolify: app `tributo` =
+// estático servido por nginx, app `tributos-api` = FastAPI). Estas llamadas
+// usaban rutas relativas: en local funcionaban por el proxy /api de Vite, pero
+// en producción nginx no proxea /api —su `try_files` devuelve el index.html—,
+// así que la respuesta era HTML con 200 y `res.json()` reventaba. Igual que el
+// resto del frontend (services/api.js), hay que apuntar a VITE_API_URL.
+const API_URL = import.meta.env.VITE_API_URL || ''
+const url = (ruta) => `${API_URL}${ruta}`
+
 // ── Detección de soporte ─────────────────────────────────────────────────────
 
 export async function isBiometricSupported() {
@@ -28,7 +37,7 @@ export const markPrompted = (userId) => localStorage.setItem(BIO_PROMPTED_PREFIX
 
 export async function registerBiometric(token) {
   // 1. Pedir opciones al backend (requiere JWT activo)
-  const optRes = await fetch('/api/webauthn/register/begin', {
+  const optRes = await fetch(url('/api/webauthn/register/begin'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -43,7 +52,7 @@ export async function registerBiometric(token) {
   const credential = await startRegistration({ optionsJSON: options })
 
   // 3. Verificar y guardar en el servidor
-  const verRes = await fetch('/api/webauthn/register/complete', {
+  const verRes = await fetch(url('/api/webauthn/register/complete'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -63,7 +72,7 @@ export async function registerBiometric(token) {
 
 export async function loginWithBiometric(email) {
   // 1. Pedir opciones (solo necesita el email)
-  const optRes = await fetch('/api/webauthn/login/begin', {
+  const optRes = await fetch(url('/api/webauthn/login/begin'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
@@ -75,7 +84,7 @@ export async function loginWithBiometric(email) {
   const credential = await startAuthentication({ optionsJSON: options })
 
   // 3. Verificar en el servidor → recibe JWT
-  const verRes = await fetch('/api/webauthn/login/complete', {
+  const verRes = await fetch(url('/api/webauthn/login/complete'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, credential }),

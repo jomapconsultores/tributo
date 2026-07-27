@@ -1,4 +1,4 @@
--- 032: Devolución de IVA — rubro de gasto por comprobante y período semestral
+-- 054: Devolución de IVA — rubro de gasto por comprobante y período semestral
 --
 -- 1) RUBRO: cada comprobante que entra a la solicitud se direcciona al tipo de
 --    gasto que corresponde (vivienda, salud, alimentación, vestimenta,
