@@ -188,8 +188,13 @@
     const zona = $('frmPrincipal:panelListaComprobantes') || document.body;
     let nuevas = 0;
     zona.querySelectorAll('td').forEach((td) => {
-      const m = (td.textContent || '').match(/\d{49}/);
-      if (m && !claves.has(m[0])) { claves.add(m[0]); nuevas++; }
+      // Sin celdas de formulario y con los 49 dígitos DELIMITADOS: cuando no está
+      // el panel se recorre todo el documento, y el texto de un combo con muchas
+      // opciones numéricas (Día: Todos, 1, 2, …) pasa de 49 dígitos seguidos y
+      // colaba una clave inventada en el TXT.
+      if (td.querySelector('select,input,textarea,option')) return;
+      const m = (td.textContent || '').match(/(?:^|\D)(\d{49})(?:\D|$)/);
+      if (m && !claves.has(m[1])) { claves.add(m[1]); nuevas++; }
     });
     return nuevas;
   };

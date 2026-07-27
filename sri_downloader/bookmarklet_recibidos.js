@@ -63,15 +63,64 @@
   const $ = (id) => document.getElementById(id);
 
   // Los controles se buscan SIEMPRE en el momento de usarlos (ver cabecera).
+  //
+  // TRES FORMAS, en orden, porque el portal cambia los ids cada tanto y antes el
+  // marcador moría con un "abrí la consulta" aunque el formulario estuviera ahí:
+  //   1. el id exacto de JSF, o cualquier id que TERMINE en ese sufijo;
+  //   2. la ETIQUETA visible del control (Año / Mes / Día / Tipo de comprobante);
+  //   3. el CONTENIDO de sus opciones (años, nombres de mes, "Factura"…), que es
+  //      lo único que no depende de cómo se llame el control.
   const ctrl = (id, sufijo, tag) =>
     $(id) || document.querySelector((tag || 'select') + '[id$="' + sufijo + '"]');
-  const cbAnio = () => ctrl('frmPrincipal:ano', ':ano');
-  const cbMes = () => ctrl('frmPrincipal:mes', ':mes');
-  const cbDia = () => ctrl('frmPrincipal:dia', ':dia');
-  const cbTipo = () => ctrl('frmPrincipal:cmbTipoComprobante', ':cmbTipoComprobante');
-  const btnConsultar = () =>
-    $('frmPrincipal:btnConsultar') ||
-    document.querySelector('input[id$=":btnConsultar"],button[id$=":btnConsultar"]');
+
+  const textoOpciones = (sel) => [...sel.options].map((o) => (o.textContent || '').trim());
+
+  // Etiqueta del select: su <label for>, el <label> que lo contiene, o el texto de
+  // la celda/nodo anterior (el portal usa las tres formas según la pantalla).
+  const etiquetaDe = (sel) => {
+    let t = '';
+    if (sel.id) {
+      const lab = document.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(sel.id) : sel.id) + '"]');
+      if (lab) t += ' ' + (lab.textContent || '');
+    }
+    const cont = sel.closest ? sel.closest('label,td,div') : null;
+    if (cont) t += ' ' + (cont.textContent || '').slice(0, 80);
+    const celda = sel.closest ? sel.closest('td') : null;
+    if (celda && celda.previousElementSibling) t += ' ' + (celda.previousElementSibling.textContent || '');
+    return t.toLowerCase();
+  };
+
+  const selects = () => [...document.querySelectorAll('select')].filter((s) => s.offsetParent !== null);
+
+  // Busca entre los selects visibles el que cumpla `porEtiqueta` o `porOpciones`.
+  const buscarSelect = (porEtiqueta, porOpciones) => {
+    const lista = selects();
+    const conEtiqueta = lista.find((s) => porEtiqueta.test(etiquetaDe(s)));
+    if (conEtiqueta) return conEtiqueta;
+    return lista.find((s) => porOpciones(textoOpciones(s))) || null;
+  };
+
+  const esAnio = (ops) => ops.filter((o) => /^(19|20)\d\d$/.test(o)).length >= 2;
+  const esMes = (ops) => /ene|enero/i.test(ops.join(' ')) && /dic|diciembre/i.test(ops.join(' '));
+  const esDia = (ops) => ops.some((o) => /^todos$/i.test(o)) && ops.filter((o) => /^\d{1,2}$/.test(o)).length >= 20;
+  const esTipo = (ops) => /factura/i.test(ops.join(' ')) && /retenci/i.test(ops.join(' '));
+
+  const cbAnio = () => ctrl('frmPrincipal:ano', ':ano') || buscarSelect(/a(ñ|n)o/, esAnio);
+  const cbMes = () => ctrl('frmPrincipal:mes', ':mes') || buscarSelect(/mes/, esMes);
+  const cbDia = () => ctrl('frmPrincipal:dia', ':dia') || buscarSelect(/d(í|i)a/, esDia);
+  const cbTipo = () => ctrl('frmPrincipal:cmbTipoComprobante', ':cmbTipoComprobante') ||
+    buscarSelect(/tipo de comprobante|comprobante/, esTipo);
+
+  const btnConsultar = () => {
+    const porId = $('frmPrincipal:btnConsultar') ||
+      document.querySelector('input[id$=":btnConsultar"],button[id$=":btnConsultar"]');
+    if (porId) return porId;
+    // Por TEXTO, pero solo entre botones/inputs: hay links de menú que dicen
+    // "Consultar" y clickearlos navega fuera de la pantalla (y el portal reloguea).
+    return [...document.querySelectorAll('button,input[type="submit"],input[type="button"]')]
+      .filter((b) => b.offsetParent !== null)
+      .find((b) => /^(consultar|buscar)$/i.test(((b.value || b.textContent) || '').trim())) || null;
+  };
 
   // Chrome FRENA setTimeout en las pestañas que no están a la vista (hasta una vez
   // por minuto): con eso el bajador parecía colgado apenas el usuario se iba a otra
@@ -97,21 +146,11 @@
     worker.postMessage({ id, ms });
   });
 
-  if (!cbAnio() || !cbMes() || !btnConsultar()) {
-    // El mensaje se arma con join en tiempo de ejecución a propósito: si se
-    // concatenaran los saltos de línea, el minificador los volvería saltos REALES
-    // dentro de un template literal y el bookmarklet (que viaja como URL de una
-    // sola línea) quedaría partido.
-    alert([
-      'Primero abrí la consulta:',
-      '',
-      'SRI en línea > Facturación Electrónica > Comprobantes electrónicos RECIBIDOS.',
-      '',
-      'Cuando veas el formulario (Año / Mes / Tipo de comprobante / Consultar),',
-      'volvé a tocar el marcador.',
-    ].join(String.fromCharCode(10)));
-    return;
-  }
+  // ¿Se puede manejar el formulario? Si no, NO se abandona: el panel abre en la
+  // pantalla de diagnóstico, que dice qué falta, deja copiarlo para arreglarlo y
+  // ofrece bajar lo que ya esté consultado en pantalla (modo manual).
+  const formularioListo = () => !!(cbAnio() && cbMes() && btnConsultar());
+
   const anterior = $(ID);
   if (anterior) anterior.remove();
 
@@ -243,11 +282,19 @@
 
   // Celda por celda: el innerText del panel pega el secuencial con la clave y el
   // regex de 49 dígitos agarraría una ventana corrida.
+  //
+  // Dos recaudos, porque cuando no se encuentra el panel de la grilla se recorre
+  // TODO el documento y ahí adentro está también el formulario:
+  //   · se saltan las celdas con controles — el combo "Día" (Todos, 1, 2, … 31)
+  //     concatena más de 49 dígitos en su texto y colaba una clave inventada;
+  //   · los 49 dígitos tienen que estar DELIMITADOS (no ser un pedazo de una
+  //     tira más larga), que es lo mismo que pasa con esas listas de opciones.
   const juntarClaves = (claves) => {
     let nuevas = 0;
     zonaGrilla().querySelectorAll('td').forEach((td) => {
-      const m = (td.textContent || '').match(/\d{49}/);
-      if (m && !claves.has(m[0])) { claves.add(m[0]); nuevas++; }
+      if (td.querySelector('select,input,textarea,option')) return;
+      const m = (td.textContent || '').match(/(?:^|\D)(\d{49})(?:\D|$)/);
+      if (m && !claves.has(m[1])) { claves.add(m[1]); nuevas++; }
     });
     return nuevas;
   };
@@ -520,8 +567,139 @@
     return fila;
   }
 
+  // --- Modo manual: bajar lo que YA está consultado en pantalla ------------
+  // Es la red de seguridad: si el portal cambió y no se puede llenar el formulario,
+  // el usuario elige año/mes/tipo a mano, da Consultar, y esto recorre la grilla
+  // igual que siempre (todas las páginas): junta las claves y baja los archivos.
+  const correrManual = async (k) => {
+    const tipo = TIPOS[k];
+    cancelado = false;
+    limpiar();
+    linea('Modo manual — ' + tipo.titulo, 'font-weight:700;color:#1e6b33;margin-bottom:6px');
+    const estado = el('div', 'margin:6px 0;font-weight:600');
+    cuerpo.appendChild(estado);
+    cuerpo.appendChild(boton('Cancelar', () => { cancelado = true; },
+      'padding:8px 10px;margin:6px 3px;border:1px solid #d9a9a9;border-radius:6px;' +
+      'background:#f6eaea;color:#8b1e1e;font-weight:600;cursor:pointer'));
+
+    const claves = new Set();
+    const cont = { xmlOk: 0, pdfOk: 0, fallo: 0, diag: '' };
+    await maximizarFilas();
+    for (let pag = 0; pag < 100 && !cancelado; pag++) {
+      juntarClaves(claves);
+      estado.textContent = 'Página ' + (pag + 1) + ' — ' + claves.size + ' comprobantes';
+      if (bajarXml) {
+        for (const tr of filasConClave()) {
+          if (cancelado) break;
+          const que = await bajarDeFila(tr);
+          if (que === 'xml') { cont.xmlOk++; if (tr.style) tr.style.outline = '2px solid #1e6b33'; }
+          else if (que === 'pdf') { cont.pdfOk++; if (tr.style) tr.style.outline = '2px solid #8b6b1e'; }
+          else { cont.fallo++; }
+        }
+      }
+      const nx = btnSiguientePagina();
+      if (!nx) break;
+      nx.click();
+      await esperarSri();
+    }
+
+    limpiar();
+    linea((cancelado ? 'Cancelado' : 'Listo') + ' — ' + tipo.titulo,
+      'font-weight:700;color:#1e6b33;margin-bottom:6px');
+    linea(claves.size + ' comprobantes en pantalla');
+    if (claves.size) {
+      const nombre = tipo.archivo + '_' + (RUC ? RUC + '_' : '') + 'consulta.txt';
+      bajarArchivo([...claves].join('\n') + '\n', nombre, 'text/plain');
+      linea('Se descargó ' + nombre, 'margin:2px 0 6px;color:#1e6b33;font-weight:600');
+      linea('Subilo en ' + tipo.modulo + ' > "Subir reporte (TXT)".',
+        'margin:2px 0;color:#555;font-size:12px');
+    }
+    if (bajarXml) {
+      linea('Archivos bajados: ' + cont.xmlOk + ' XML' +
+        (cont.pdfOk ? ' · ' + cont.pdfOk + ' PDF' : '') +
+        (cont.fallo ? ' · sin XML ni PDF: ' + cont.fallo : ''));
+    }
+    linea('Cambiá el mes en el portal, dale Consultar y repetí para el siguiente.',
+      'margin:6px 0;color:#555;font-size:12px');
+    cuerpo.appendChild(boton('Bajar otra consulta', pantallaManual, CSS_GRIS));
+    cuerpo.appendChild(boton('Reintentar el modo automático', pantallaInicio, CSS_GRIS));
+  };
+
+  function pantallaManual() {
+    limpiar();
+    linea('Bajar lo que YA está en pantalla', 'font-weight:700;color:#1e6b33');
+    linea('En el portal elegí el año, el mes y el tipo, dale Consultar, y después decime ' +
+      'qué es lo que quedó en la grilla:', 'margin:4px 0;color:#555;font-size:12px');
+    cuerpo.appendChild(filaXml());
+    const ancho = CSS_BTN + ';display:block;width:300px;box-sizing:border-box;text-align:center';
+    cuerpo.appendChild(boton('Son GASTOS   (facturas de compra)', () => correrManual('gastos'), ancho));
+    cuerpo.appendChild(boton('Son RETENCIONES', () => correrManual('retenciones'), ancho));
+    cuerpo.appendChild(boton('Volver', pantallaInicio, CSS_GRIS));
+  }
+
+  // --- Diagnóstico: qué controles ve el marcador en esta pantalla ----------
+  const diagnostico = () => {
+    const partes = [];
+    partes.push('URL: ' + location.href.split('?')[0]);
+    partes.push('Año: ' + (cbAnio() ? (cbAnio().id || '(sin id)') : 'NO ENCONTRADO'));
+    partes.push('Mes: ' + (cbMes() ? (cbMes().id || '(sin id)') : 'NO ENCONTRADO'));
+    partes.push('Día: ' + (cbDia() ? (cbDia().id || '(sin id)') : 'NO ENCONTRADO'));
+    partes.push('Tipo: ' + (cbTipo() ? (cbTipo().id || '(sin id)') : 'NO ENCONTRADO'));
+    partes.push('Consultar: ' + (btnConsultar() ? (btnConsultar().id || '(sin id)') : 'NO ENCONTRADO'));
+    partes.push('');
+    partes.push('Selects visibles en la pantalla:');
+    selects().forEach((s, i) => {
+      partes.push('  [' + i + '] id=' + (s.id || '-') + ' | name=' + (s.name || '-') +
+        ' | ' + s.options.length + ' opciones: ' +
+        textoOpciones(s).slice(0, 4).join(' / '));
+    });
+    partes.push('Botones visibles:');
+    [...document.querySelectorAll('button,input[type="submit"],input[type="button"]')]
+      .filter((b) => b.offsetParent !== null).slice(0, 12).forEach((b, i) => {
+        partes.push('  [' + i + '] id=' + (b.id || '-') + ' | ' +
+          (((b.value || b.textContent) || '').trim().slice(0, 30)));
+      });
+    return partes.join(String.fromCharCode(10));
+  };
+
+  function pantallaDiagnostico() {
+    limpiar();
+    linea('No puedo manejar el formulario de esta pantalla',
+      'font-weight:700;color:#8b1e1e;margin-bottom:6px');
+    linea('Tiene que ser: Facturación Electrónica > Comprobantes electrónicos RECIBIDOS, ' +
+      'con los combos Año / Mes / Tipo de comprobante y el botón Consultar a la vista.',
+      'margin:4px 0;color:#555;font-size:12px');
+    const faltan = [];
+    if (!cbAnio()) faltan.push('Año');
+    if (!cbMes()) faltan.push('Mes');
+    if (!btnConsultar()) faltan.push('Consultar');
+    if (faltan.length) linea('No encontré: ' + faltan.join(', '), 'margin:4px 0;color:#8b1e1e;font-weight:600');
+    cuerpo.appendChild(boton('Reintentar (ya abrí la consulta)', pantallaInicio));
+    cuerpo.appendChild(boton('Bajar lo que está en pantalla', pantallaManual));
+    cuerpo.appendChild(boton('Copiar diagnóstico', function () {
+      const txt = diagnostico();
+      const b = this;
+      const ok = (() => {
+        try {
+          const ta = el('textarea', 'position:fixed;opacity:0');
+          ta.value = txt;
+          document.body.appendChild(ta);
+          ta.select();
+          const r = document.execCommand('copy');
+          ta.remove();
+          return r;
+        } catch (e) { return false; }
+      })();
+      b.textContent = ok ? 'Copiado — pegalo en el chat' : 'No pude copiar';
+      if (!ok) bajarArchivo(txt, 'DIAG_bajador_gastos.txt', 'text/plain');
+    }, CSS_GRIS));
+    linea('El diagnóstico dice qué controles hay en esta pantalla: con eso se ajusta el marcador.',
+      'margin:6px 0;color:#555;font-size:12px');
+  }
+
   function pantallaInicio() {
     limpiar();
+    if (!formularioListo()) { pantallaDiagnostico(); return; }
     if (RUC) linea('RUC: ' + RUC, 'margin:0 0 6px;color:#555;font-size:12px');
     linea('Año', 'font-weight:600');
     cuerpo.appendChild(filaAnio());
