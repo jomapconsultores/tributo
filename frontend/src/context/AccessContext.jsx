@@ -1,9 +1,14 @@
-import { createContext, useContext, useCallback } from 'react'
-import { accessAPI } from '../services/api'
+import { createContext, useContext, useCallback, useEffect } from 'react'
+import { accessAPI, SELECTED_ORG_KEY } from '../services/api'
 import { clearAll as clearApiCache } from '../services/cache'
 import useCachedResource from '../hooks/useCachedResource'
 
-const DEFAULTS = { modules: [], submodules: null, isAdmin: false, role: 'cliente', roles: ['cliente'], subscription: null }
+const DEFAULTS = {
+  modules: [], submodules: null, isAdmin: false, role: 'cliente', roles: ['cliente'],
+  subscription: null,
+  // Multiempresa: empresa activa y empresas entre las que puede cambiar.
+  org: null, orgs: [], isPlatformAdmin: false, multiempresa: false,
+}
 
 const AccessContext = createContext({ ...DEFAULTS, loading: true, has: () => false, hasSub: () => true })
 
@@ -18,6 +23,11 @@ const transformMe = (r) => ({
   role: r.data?.role || 'cliente',
   roles: r.data?.roles?.length ? r.data.roles : [r.data?.role || 'cliente'],
   subscription: r.data?.subscription || null,
+  // Los permisos de arriba son los de ESTA empresa, no los del usuario suelto.
+  org: r.data?.org || null,
+  orgs: r.data?.orgs || [],
+  isPlatformAdmin: !!r.data?.is_platform_admin,
+  multiempresa: !!r.data?.multiempresa,
 })
 
 export function AccessProvider({ children }) {
@@ -26,7 +36,24 @@ export function AccessProvider({ children }) {
   const { data, loading } = useCachedResource('access:me', 5 * 60_000, fetchMe, transformMe)
 
   const state = { ...DEFAULTS, ...data, loading }
-  const isSuperAdmin = state.role === 'admin'
+
+  // El backend es quien decide qué empresa quedó activa: si el navegador tenía
+  // guardada una a la que el usuario ya no pertenece, cae a otra y aquí se
+  // sincroniza el valor guardado. Sin esto, la cabecera seguiría mandando una
+  // empresa muerta en cada petición.
+  const orgActivaId = state.org?.org_id || null
+  useEffect(() => {
+    if (!orgActivaId) return
+    if (localStorage.getItem(SELECTED_ORG_KEY) !== orgActivaId) {
+      localStorage.setItem(SELECTED_ORG_KEY, orgActivaId)
+    }
+  }, [orgActivaId])
+  // Administrador de la PLATAFORMA. Ya no se deduce de role === 'admin': con
+  // multiempresa ese role es el de la empresa activa, así que el administrador
+  // de un despacho lo cumpliría y vería el panel del producto (el backend se lo
+  // negaría con un 403, pero el menú ya estaría mintiendo). El fallback por rol
+  // se conserva para cuando el modelo multiempresa aún no está activo.
+  const isSuperAdmin = state.isPlatformAdmin || (!state.multiempresa && state.role === 'admin')
   const has = (m) => isSuperAdmin || state.modules.includes(m)
   // hasSub: ¿el usuario puede ver esta pantalla (submódulo)? Fail-open si aún no
   // se conocen los submódulos (null): el backend sigue siendo la autoridad.
@@ -42,8 +69,19 @@ export function AccessProvider({ children }) {
     window.location.assign('/')
   }, [state.role])
 
+  // Cambiar de empresa. Igual que el cambio de rol, se recarga la app entera:
+  // los contribuyentes, los módulos y hasta el rol son distintos en cada
+  // empresa, así que arrastrar cualquier dato cacheado de la anterior sería
+  // mostrar información de una empresa dentro de otra.
+  const switchOrg = useCallback((orgId) => {
+    if (!orgId || orgId === orgActivaId) return
+    localStorage.setItem(SELECTED_ORG_KEY, orgId)
+    clearApiCache()
+    window.location.assign('/')
+  }, [orgActivaId])
+
   return (
-    <AccessContext.Provider value={{ ...state, has, hasSub, isSuperAdmin, switchRole }}>
+    <AccessContext.Provider value={{ ...state, has, hasSub, isSuperAdmin, switchRole, switchOrg }}>
       {children}
     </AccessContext.Provider>
   )

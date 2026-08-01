@@ -10,11 +10,21 @@ const api = axios.create({
   },
 })
 
-// Interceptor para agregar token a todas las requests
+// Empresa activa (multiempresa). Se manda en TODAS las peticiones y el backend
+// la valida contra las membresías reales del usuario: si aquí quedó una empresa
+// a la que ya no pertenece, no da error, el backend cae a la que le corresponda
+// y AccessContext corrige este valor con lo que devuelve /api/access/me.
+export const SELECTED_ORG_KEY = 'selectedOrgId'
+
+// Interceptor para agregar token y empresa activa a todas las requests
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  const orgId = localStorage.getItem(SELECTED_ORG_KEY)
+  if (orgId) {
+    config.headers['X-Org-Id'] = orgId
   }
   return config
 }, (error) => Promise.reject(error))
@@ -64,6 +74,26 @@ export const accessAPI = {
   me: () => api.get('/api/access/me'),
   // Cambia el rol activo del propio usuario (solo entre los roles que el admin le otorgó)
   switchRole: (role) => api.post('/api/access/switch-role', { role }),
+}
+
+// Empresas (multiempresa) y sus miembros
+export const orgsAPI = {
+  // Empresas entre las que el usuario puede cambiar (alimenta el selector)
+  list: () => api.get('/api/organizations/'),
+  create: (data) => api.post('/api/organizations/', data),
+  update: (id, data) => api.put(`/api/organizations/${id}`, data),
+  remove: (id) => api.delete(`/api/organizations/${id}`),
+  // Miembros: quién pertenece a la empresa, con qué rol y qué permisos
+  members: (id) => api.get(`/api/organizations/${id}/members`),
+  candidatos: (id) => api.get(`/api/organizations/${id}/candidatos`),
+  addMember: (id, data) => api.post(`/api/organizations/${id}/members`, data),
+  updateMember: (id, uid, data) => api.put(`/api/organizations/${id}/members/${uid}`, data),
+  removeMember: (id, uid) => api.delete(`/api/organizations/${id}/members/${uid}`),
+  // Reparto de la cartera entre empresas
+  contribuyentes: (id) => api.get(`/api/organizations/${id}/contribuyentes`),
+  huerfanos: () => api.get('/api/organizations/sin-empresa/contribuyentes'),
+  asignarContribuyentes: (id, identificaciones) =>
+    api.put(`/api/organizations/${id}/contribuyentes`, { identificaciones }),
 }
 
 // Formulario de contacto (público)

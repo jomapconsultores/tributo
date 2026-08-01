@@ -1,0 +1,89 @@
+/* Selector de empresa en la barra superior oscura (user-topbar).
+   Mismo lenguaje visual que RoleSwitcher, en verde para distinguir de un
+   vistazo "en qué empresa estoy" (verde) de "con qué rol" (azul). */
+.org-switcher { position: relative; }
+
+.org-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #d1fae5;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 20px;
+  padding: 3px 12px;
+  white-space: nowrap;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.org-switcher-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #d1fae5;
+  background: rgba(16, 185, 129, 0.20);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  border-radius: 20px;
+  padding: 4px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+  max-width: 260px;
+}
+.org-switcher-btn:hover { background: rgba(16, 185, 129, 0.32); }
+.org-switcher-btn:disabled { opacity: 0.6; cursor: default; }
+.org-switcher-nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-caret { font-size: 0.6rem; opacity: 0.8; }
+
+.org-switcher-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 240px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.25);
+  padding: 6px;
+  z-index: 50;
+}
+.org-switcher-title {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #94a3b8;
+  font-weight: 700;
+  padding: 4px 10px 6px;
+}
+.org-switcher-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 8px 10px;
+  cursor: pointer;
+  text-align: left;
+}
+.org-switcher-item:hover { background: #f1f5f9; }
+.org-switcher-item.active { background: #ecfdf5; }
+.org-item-texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.org-item-nombre {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-item-rol { font-size: 0.68rem; color: #64748b; font-weight: 600; }
+.org-switcher-item.active .org-item-nombre { color: #047857; }
+.org-check { color: #047857; font-weight: 700; }

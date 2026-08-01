@@ -1,0 +1,144 @@
+/* Pantalla de administración de EMPRESAS (multiempresa) */
+.empresas-page { padding: 22px 26px 60px; }
+
+.empresas-header h1 { font-size: 1.4rem; color: #1a3d6b; margin: 0 0 6px; }
+.empresas-header p { color: #64748b; font-size: 0.86rem; max-width: 780px; margin: 0 0 18px; }
+
+.empresas-error,
+.empresas-aviso,
+.empresas-vacio {
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  margin-bottom: 14px;
+}
+.empresas-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+.empresas-aviso { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+.empresas-vacio { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.empresas-vacio code { background: #fef3c7; padding: 1px 5px; border-radius: 4px; }
+
+.empresas-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 22px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .empresas-grid { grid-template-columns: 1fr; }
+}
+
+.empresas-col {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+}
+.empresas-col h2 { font-size: 0.95rem; color: #1e293b; margin: 0 0 12px; }
+.empresas-hint { color: #94a3b8; font-size: 0.86rem; }
+
+/* Lista de empresas */
+.empresas-lista { list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.empresa-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.empresa-item:hover { background: #f8fafc; }
+.empresa-item.sel { background: #eff6ff; border-color: #bfdbfe; }
+.empresa-nombre { font-size: 0.87rem; font-weight: 700; color: #1e293b; }
+.empresa-meta { font-size: 0.7rem; color: #64748b; }
+.empresa-suspendida { color: #b91c1c; font-style: normal; font-weight: 700; }
+.empresa-actual { color: #047857; font-style: normal; font-weight: 700; }
+
+/* Alta de empresa */
+.empresa-nueva { border-top: 1px solid #e2e8f0; padding-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.empresa-nueva h3 { font-size: 0.8rem; color: #475569; margin: 0; text-transform: uppercase; letter-spacing: 0.4px; }
+.empresa-nueva input,
+.miembro-nuevo select {
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  padding: 7px 10px;
+  font-size: 0.85rem;
+}
+.empresa-nueva button,
+.miembro-nuevo button,
+.empresa-acciones button,
+.huerfanos button {
+  background: #1a3d6b;
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  padding: 7px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.empresa-nueva button:disabled,
+.miembro-nuevo button:disabled,
+.huerfanos button:disabled { opacity: 0.5; cursor: default; }
+button.peligro { background: #fee2e2; color: #b91c1c; }
+
+/* Cabecera de la empresa seleccionada */
+.empresa-titulo { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.empresa-titulo h2 { margin: 0; }
+.empresa-acciones { display: flex; gap: 8px; }
+.empresa-acciones button { padding: 5px 12px; font-size: 0.76rem; }
+.empresa-sub { color: #64748b; font-size: 0.78rem; margin: 4px 0 14px; }
+
+.miembro-nuevo { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.miembro-nuevo select { min-width: 180px; }
+
+/* Tabla de miembros */
+.miembros-tabla { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+.miembros-tabla th {
+  text-align: left;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #94a3b8;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 6px 8px;
+}
+.miembros-tabla td { border-bottom: 1px solid #f1f5f9; padding: 10px 8px; vertical-align: top; }
+.miembros-tabla tr.abierto { background: #f8fafc; }
+.miembros-tabla select { border: 1px solid #cbd5e1; border-radius: 6px; padding: 5px 8px; font-size: 0.8rem; }
+.miembros-tabla button.peligro { padding: 5px 10px; font-size: 0.76rem; border: none; border-radius: 6px; cursor: pointer; }
+.sin-datos { color: #94a3b8; text-align: center; padding: 22px 0; }
+
+.miembro-email { font-weight: 600; color: #1e293b; }
+.miembro-detalle {
+  background: none; border: none; padding: 2px 0; margin-top: 2px;
+  color: #2563eb; font-size: 0.74rem; cursor: pointer;
+}
+
+/* Chips de módulos */
+.modulos-chips { display: flex; flex-wrap: wrap; gap: 5px; max-width: 340px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid #e2e8f0; border-radius: 20px;
+  padding: 3px 10px; font-size: 0.74rem; color: #64748b; cursor: pointer;
+}
+.chip.on { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; font-weight: 700; }
+.chip input { margin: 0; }
+
+/* Detalle de submódulos */
+.submodulos { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }
+.submodulo-grupo { display: flex; flex-direction: column; gap: 3px; }
+.submodulo-grupo strong { font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.3px; }
+.submodulo-grupo label { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: #334155; }
+.submodulos-nota { font-size: 0.72rem; color: #94a3b8; margin: 0; max-width: 380px; }
+
+/* Contribuyentes sin empresa */
+.huerfanos { margin-top: 26px; border-top: 1px solid #e2e8f0; padding-top: 16px; }
+.huerfanos h3 { font-size: 0.9rem; color: #92400e; margin: 0 0 4px; }
+.huerfanos p { font-size: 0.78rem; color: #64748b; margin: 0 0 10px; max-width: 620px; }
+.huerfanos-lista { display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow-y: auto; margin-bottom: 12px; }
+.huerfanos-lista label { display: flex; align-items: center; gap: 7px; font-size: 0.8rem; color: #334155; }
+.huerfano-ruc { color: #94a3b8; font-size: 0.74rem; }

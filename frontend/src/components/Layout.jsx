@@ -10,6 +10,7 @@ import AvisoAperturaVencido from './AvisoAperturaVencido'
 import RecordatorioAplazados from './RecordatorioAplazados'
 import CobrosPendientesModal from './CobrosPendientesModal'
 import RoleSwitcher from './RoleSwitcher'
+import OrgSwitcher from './OrgSwitcher'
 import AbrirSistemaMAP from './AbrirSistemaMAP'
 import { useAccess } from '../context/AccessContext'
 import './Layout.css'
@@ -66,6 +67,9 @@ export default function Layout({ user, onLogout }) {
             <span className="user-topbar-ico">👤</span>
             <span className="user-topbar-email">{user.email}</span>
             <RoleSwitcher />
+            {/* Va DESPUÉS del selector de rol a propósito: .role-switcher lleva
+                margin-left:auto y es quien empuja el grupo a la derecha. */}
+            <OrgSwitcher />
             <AbrirSistemaMAP />
           </div>
         )}

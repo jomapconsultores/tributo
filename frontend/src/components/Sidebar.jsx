@@ -180,7 +180,16 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
           L('🔐', 'Credenciales SRI', '/admin/credenciales'),
           L('🔑', 'Acceso a clientes', '/admin/acceso-clientes'),
           L('🛡️', 'Permisos', '/admin/permisos'),
+          L('🏢', 'Empresas', '/admin/empresas'),
         ],
+      },
+      {
+        // El administrador DE UNA EMPRESA (no de la plataforma) gestiona el
+        // equipo de su despacho, y solo eso: se le da la entrada suelta en vez
+        // del panel completo de Administración.
+        key: 'empresas', ico: '🏢', rail: 'Empresas', title: 'Mi empresa',
+        visible: !isSuperAdmin && role === 'admin', autoNav: true,
+        items: [L('🏢', 'Empresas', '/admin/empresas')],
       },
       {
         key: 'credenciales', ico: '🔐', rail: 'Credenciales', title: 'Credenciales SRI',
@@ -195,7 +204,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
       declaraciones: 'Tributario', pendientes: 'Tributario', devoluciones: 'Tributario',
       reportes: 'Gestión', odoo: 'Gestión', capacitaciones: 'Gestión',
       clientes: 'Datos', compradores: 'Datos',
-      admin: 'Sistema', credenciales: 'Sistema',
+      admin: 'Sistema', credenciales: 'Sistema', empresas: 'Sistema',
     }
     return defs
       .filter((m) => m.visible)

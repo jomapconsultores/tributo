@@ -15,6 +15,7 @@ from services.periodo import (periodo_cliente_ext, es_de_otro_periodo, etiqueta_
                               identificacion_cliente, identificacion_no_coincide)
 from database import fetch_all
 from tenancy import assert_client_owner, visible_client_ids, filter_ids_by_tenancy
+import orgs
 from services.activity import registrar
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
@@ -96,17 +97,26 @@ async def list_invoices(
         count_q = supabase.table("invoices").select("id", count="exact")
         data_q = supabase.table("invoices").select(INVOICE_COLUMNS)
 
+        # Con multiempresa NADIE consulta sin filtro, ni el administrador: la
+        # excepción de data_admin era "ve los datos de cualquier usuario", y eso
+        # sigue valiendo, pero dentro de su empresa. Sin empresa activa (modo
+        # heredado) el comportamiento es el de siempre.
+        org_activa = orgs.org_activa()
         if client_id:
-            if not data_admin:
+            if not data_admin or org_activa:
+                # Para el admin dentro de su empresa esto pasa siempre: solo
+                # corta el acceso a contribuyentes de OTRA empresa.
                 assert_client_owner(client_id, user_id)
             count_q = count_q.eq("client_id", client_id)
             data_q = data_q.eq("client_id", client_id)
-        elif not data_admin:
+        elif not data_admin or org_activa:
             # Sin client_id: limitar a lo VISIBLE según el rol (no toda la DB).
-            # admin entra por data_admin (sin filtro); aquí van socio y cliente.
             ids = list(visible_client_ids(user_id) or [])
             if ids:
-                filt = f"user_id.eq.{user_id},client_id.in.({','.join(ids)})"
+                # Con empresa activa NO se añade `user_id.eq.<yo>`: arrastraría
+                # las facturas que este usuario cargó en otra empresa.
+                filt = (f"client_id.in.({','.join(ids)})" if org_activa
+                        else f"user_id.eq.{user_id},client_id.in.({','.join(ids)})")
                 count_q = count_q.or_(filt)
                 data_q = data_q.or_(filt)
             else:

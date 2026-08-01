@@ -14,6 +14,7 @@ from services.periodo import (periodo_a_declarar, periodo_anterior,
 from services.periodicidad import plan_cambio, aplicar_cambio
 from tenancy import visible_clients, assert_client_owner, invalidate_clients_cache, can_access_identificacion
 from services.activity import registrar, _email_de
+import orgs
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
@@ -252,7 +253,14 @@ async def client_summary(identificacion: str, user_id: str = Depends(get_current
         ident = identificacion.strip()
         if not can_access_identificacion(user_id, ident):
             raise HTTPException(status_code=404, detail="No hay registros para esa identificación")
-        recs = supabase.table("clients").select("*").eq("identificacion", ident).execute().data or []
+        # Los datos guardados por RUC se comparten entre todos los usuarios
+        # autorizados del contribuyente, pero nunca cruzando la frontera de
+        # empresa: el resumen se arma solo con los períodos de la empresa activa.
+        q_recs = supabase.table("clients").select("*").eq("identificacion", ident)
+        org_id = orgs.org_activa()
+        if org_id:
+            q_recs = q_recs.eq("org_id", org_id)
+        recs = q_recs.execute().data or []
         if not recs:
             raise HTTPException(status_code=404, detail="No hay registros para esa identificación")
 
@@ -366,11 +374,20 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
             if not (1 <= periodo_mes <= 12):
                 raise HTTPException(status_code=400, detail="El mes debe estar entre 1 y 12")
 
-        existing = supabase.table("clients").select("*")\
-            .eq("user_id", user_id)\
-            .eq("identificacion", identificacion)\
-            .eq("periodo_mes", periodo_mes)\
-            .eq("periodo_anio", entry.periodo_anio)\
+        # Empresa activa: el contribuyente nace dentro de ella y TODAS las
+        # comprobaciones de duplicado se acotan a ella. Sin este filtro, el aviso
+        # "ya existe en el equipo" delataría contribuyentes —y el correo de quien
+        # los creó— de OTRA empresa, que es justo lo que la separación evita.
+        org_id = orgs.org_activa()
+
+        def _q_org(q):
+            return q.eq("org_id", org_id) if org_id else q
+
+        existing = _q_org(supabase.table("clients").select("*")
+                          .eq("user_id", user_id)
+                          .eq("identificacion", identificacion)
+                          .eq("periodo_mes", periodo_mes)
+                          .eq("periodo_anio", entry.periodo_anio))\
             .execute()
         if existing.data:
             return existing.data[0]
@@ -379,11 +396,11 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
         # este período, no crear un duplicado en silencio — avisar (409) para que se
         # use el existente. El usuario decide: abrir el existente o forzar la creación.
         if not entry.forzar:
-            ajeno = supabase.table("clients").select("id,nombre,user_id")\
-                .eq("identificacion", identificacion)\
-                .eq("periodo_mes", periodo_mes)\
-                .eq("periodo_anio", entry.periodo_anio)\
-                .neq("user_id", user_id)\
+            ajeno = _q_org(supabase.table("clients").select("id,nombre,user_id")
+                           .eq("identificacion", identificacion)
+                           .eq("periodo_mes", periodo_mes)
+                           .eq("periodo_anio", entry.periodo_anio)
+                           .neq("user_id", user_id))\
                 .limit(1).execute().data
             if ajeno:
                 a = ajeno[0]
@@ -402,9 +419,9 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
         # —y ninguno queda completo—. Se avisa para usar el que ya existe.
         nucleo = identificacion[:10]
         if not entry.forzar and len(nucleo) == 10 and nucleo.isdigit():
-            gemelo = supabase.table("clients").select("id,identificacion,nombre,user_id,periodo_mes,periodo_anio")\
-                .like("identificacion", f"{nucleo}%")\
-                .neq("identificacion", identificacion)\
+            gemelo = _q_org(supabase.table("clients").select("id,identificacion,nombre,user_id,periodo_mes,periodo_anio")
+                            .like("identificacion", f"{nucleo}%")
+                            .neq("identificacion", identificacion))\
                 .order("periodo_anio", desc=True).order("periodo_mes", desc=True)\
                 .limit(1).execute().data
             if gemelo:
@@ -417,8 +434,12 @@ async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_
                     "creado_por": _email_de(g.get("user_id")) if g.get("user_id") != user_id else None,
                 })
 
+        # org_id solo se manda si hay empresa activa: si la migración 051 aún no
+        # se aplicó la columna no existe y mandarla en el insert lo haría fallar.
+        campos_org = {"org_id": org_id} if org_id else {}
         response = supabase.table("clients").insert({
             "user_id": user_id,
+            **campos_org,
             "identificacion": identificacion,
             # El nombre del contribuyente se guarda SIEMPRE en MAYÚSCULAS
             # (requisito: debe verse todo en mayúsculas, como en el SRI).
@@ -487,6 +508,12 @@ async def abrir_periodo_vencido(user_id: str = Depends(get_current_user)):
                 "tipo_identificacion": c.get("tipo_identificacion") or "RUC",
                 "es_agente_retencion": bool(c.get("es_agente_retencion")),
             }
+            # La EMPRESA se hereda del período del que se copia, no de la que el
+            # actor tenga abierta: quien dispara la apertura puede ser un socio
+            # que trabaja para varios despachos. Solo se manda si tiene valor,
+            # porque antes de la migración 051 la columna no existe.
+            if c.get("org_id"):
+                fila["org_id"] = c["org_id"]
             # Campos opcionales: solo se copian si tienen valor, para respetar los
             # defaults de la columna (igual que create_client, que no los fija).
             if c.get("notas") is not None:
@@ -606,9 +633,15 @@ async def update_client(client_id: str, entry: ClientUpdate, user_id: str = Depe
         identidad = {k: v for k, v in data.items() if k in _CAMPOS_IDENTIDAD}
         if ident_actual and owner_actual and identidad:
             identidad["updated_at"] = "now()"
-            supabase.table("clients").update(identidad).eq(
+            q_prop = supabase.table("clients").update(identidad).eq(
                 "identificacion", ident_actual).eq(
-                "user_id", owner_actual).neq("id", client_id).execute()
+                "user_id", owner_actual).neq("id", client_id)
+            # …y dentro de la MISMA empresa: el mismo dueño puede llevar ese RUC
+            # en dos despachos y renombrarlo en uno no debe tocar el otro.
+            org_actual = orgs.org_activa()
+            if org_actual:
+                q_prop = q_prop.eq("org_id", org_actual)
+            q_prop.execute()
         invalidate_clients_cache()
         return response.data[0] if response.data else None
     except HTTPException:

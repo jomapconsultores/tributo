@@ -6,6 +6,7 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AccessProvider, useAccess, homeFor } from './context/AccessContext'
 import { ClientProvider, SELECTED_CLIENT_KEY } from './context/ClientContext'
+import { SELECTED_ORG_KEY } from './services/api'
 import { clearAll as clearApiCache } from './services/cache'
 import { useInactivityLogout } from './hooks/useInactivityLogout'
 import Layout from './components/Layout'
@@ -42,6 +43,7 @@ const OdooFacturacion          = lazy(() => import('./pages/OdooFacturacion'))
 const FacturasProcesadas       = lazy(() => import('./pages/FacturasProcesadas'))
 const AdminClientAccess        = lazy(() => import('./pages/AdminClientAccess'))
 const AdminPermisos            = lazy(() => import('./pages/AdminPermisos'))
+const AdminEmpresas            = lazy(() => import('./pages/AdminEmpresas'))
 
 const PageLoader = () => <div className="loading">Cargando…</div>
 
@@ -126,6 +128,16 @@ function RequireSuperAdmin({ children }) {
   return children
 }
 
+// Administración de EMPRESAS: entran el administrador de la plataforma (gestiona
+// todas) y el administrador de la empresa activa (gestiona la suya). El backend
+// vuelve a verificarlo empresa por empresa.
+function RequireOrgAdmin({ children }) {
+  const { isPlatformAdmin, role, loading, has, hasSub } = useAccess()
+  if (loading) return <PageLoader />
+  if (!isPlatformAdmin && role !== 'admin') return <Navigate to={homeFor(has, hasSub)} replace />
+  return children
+}
+
 function UpdateBanner() {
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW()
   if (!needRefresh) return null
@@ -164,6 +176,9 @@ function App() {
 
   const handleLogin = (token, userId, email) => {
     clearApiCache() // evita heredar datos cacheados de una sesión anterior en este navegador
+    // Y la empresa activa de quien usara antes este navegador: la correcta la
+    // fija el backend en la primera llamada a /api/access/me.
+    localStorage.removeItem(SELECTED_ORG_KEY)
     localStorage.setItem('token', token)
     localStorage.setItem('userId', userId)
     localStorage.setItem('email', email)
@@ -176,6 +191,9 @@ function App() {
     localStorage.removeItem('userId')
     localStorage.removeItem('email')
     localStorage.removeItem(SELECTED_CLIENT_KEY)
+    // La empresa activa también se olvida al salir: si en este navegador entra
+    // otra persona, no debe heredar la empresa de la sesión anterior.
+    localStorage.removeItem(SELECTED_ORG_KEY)
     setUser(null)
   }
 
@@ -237,6 +255,7 @@ function App() {
               <Route path="/odoo-facturacion/procesadas" element={<FacturasProcesadas />} />
               <Route path="/admin/acceso-clientes" element={<RequireSuperAdmin><AdminClientAccess /></RequireSuperAdmin>} />
               <Route path="/admin/permisos" element={<RequireSuperAdmin><AdminPermisos /></RequireSuperAdmin>} />
+              <Route path="/admin/empresas" element={<RequireOrgAdmin><AdminEmpresas /></RequireOrgAdmin>} />
               <Route path="/movimientos" element={<RequireSuperAdmin><Movimientos /></RequireSuperAdmin>} />
               <Route path="/sin-acceso" element={<SinAcceso onLogout={handleLogout} />} />
               <Route path="*" element={<HomeRedirect />} />

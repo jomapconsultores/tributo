@@ -7,6 +7,7 @@ from auth import get_current_user
 from database import get_supabase_client, fetch_all, fetch_in
 from services.compradores import sync_desde_ventas
 from tenancy import visible_clients, can_access_identificacion
+import orgs
 
 router = APIRouter(prefix="/api/compradores", tags=["compradores"])
 
@@ -19,7 +20,10 @@ def _compradores_visibles(supabase, user_id, identificacion):
         if not can_access_identificacion(user_id, identificacion):
             return []
         return supabase.table("compradores").select(COLUMNS).eq("identificacion", identificacion).order("nombre").execute().data or []
-    if rol_de(user_id) == "admin":
+    # El atajo "admin ve todos los compradores" solo vale sin multiempresa: con
+    # una empresa activa hay que pasar por los RUC visibles, porque `compradores`
+    # se guarda por identificación y traerlos todos mezclaría los de otro despacho.
+    if rol_de(user_id) == "admin" and not orgs.org_activa():
         return fetch_all(lambda: supabase.table("compradores").select(COLUMNS).order("nombre"))
     idents = sorted({c.get("identificacion") for c in visible_clients(user_id, "identificacion") if c.get("identificacion")})
     if not idents:
@@ -130,7 +134,9 @@ async def listar(identificacion: Optional[str] = Query(None), user_id: str = Dep
             rows = supabase.table("compradores").select(COLUMNS)\
                 .eq("identificacion", identificacion).order("nombre").execute().data or []
             return {"data": rows}
-        if rol_de(user_id) == "admin":
+        # Mismo motivo que en _compradores_visibles: con empresa activa, el admin
+        # tampoco recibe la lista completa, sino la de los RUC de su empresa.
+        if rol_de(user_id) == "admin" and not orgs.org_activa():
             return {"data": fetch_all(lambda: supabase.table("compradores").select(COLUMNS).order("nombre"))}
         idents = sorted({c.get("identificacion") for c in visible_clients(user_id, "identificacion") if c.get("identificacion")})
         if not idents:

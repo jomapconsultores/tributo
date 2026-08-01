@@ -13,7 +13,7 @@ from services.declaracion import declaracion_iva, declaracion_ice, declaracion_1
 from services.declaracion_oficial import llenar_oficial
 from services.periodo import (etiqueta_periodo, mes_anio_de_fecha, rango_semestre,
                               semestre_de_mes)
-from tenancy import assert_client_owner, visible_client_ids, visible_clients
+from tenancy import assert_client_owner, visible_client_ids, visible_clients, filtro_org
 from routers.access import es_admin, es_data_admin, modulos_de, puede_submodulo
 
 # Cada tipo de declaración es un submódulo distinto (el admin puede habilitar
@@ -444,7 +444,9 @@ async def credenciales_cliente(client_id: str = Query(...), user_id: str = Depen
         # sin restricción de dueño: se recogen todos los períodos con esa
         # identificación, aunque estén bajo otro user_id (p.ej. datos del despacho
         # bajo otra cuenta). Socio/cliente siguen limitados a su propio dueño.
-        hq = supabase.table("clients").select("id").eq("identificacion", ident)
+        # El admin recoge los períodos de cualquier dueño, pero nunca de otra
+        # EMPRESA: su excepción es sobre el dueño, no sobre el despacho.
+        hq = filtro_org(supabase.table("clients").select("id").eq("identificacion", ident))
         if not data_admin:
             hq = hq.eq("user_id", owner_uid)
         hermanos = hq.execute().data or []

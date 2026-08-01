@@ -8,8 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from config import get_settings
-from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router, retenciones_efectuadas, devoluciones_iva, diagnostico
-from routers.access import require_module, require_submodule
+from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router, retenciones_efectuadas, devoluciones_iva, diagnostico, organizations
+from routers.access import require_module, require_submodule, es_super_admin
+import orgs as _orgs
 import os
 import sentry_sdk
 from dotenv import load_dotenv
@@ -188,6 +189,33 @@ def _audit_uid(request: Request):
         return None
 
 
+# --- MULTIEMPRESA: fija la empresa activa de la petición -------------------
+# El frontend manda la cabecera `X-Org-Id`. Aquí se valida contra las membresías
+# reales del usuario y se deja en un ContextVar, del que luego leen access.py
+# (permisos) y tenancy.py (visibilidad de contribuyentes). Hacerlo en un
+# middleware evita tener que pasar la empresa a mano por los ~30 routers ya
+# escritos, y —más importante— hace imposible olvidarse de aplicarla en uno.
+#
+# Una cabecera con una empresa a la que el usuario NO pertenece no da error: se
+# ignora y se cae a su empresa por defecto (resolver_org). Así un X-Org-Id viejo
+# guardado en el navegador no deja la sesión inutilizable, y tampoco abre nada.
+@app.middleware("http")
+async def empresa_activa(request: Request, call_next):
+    _orgs.set_org_activa(None)
+    if request.headers.get("authorization"):
+        try:
+            uid = _audit_uid(request)   # verifica firma del JWT, no solo lo lee
+            if uid:
+                solicitada = request.headers.get("x-org-id") or None
+                _orgs.set_org_activa(_orgs.resolver_org(uid, solicitada, es_super_admin(uid)))
+        except Exception as e:
+            # Sin empresa resuelta se cae a modo heredado (permisos globales),
+            # nunca a "ve todo": tenancy sigue filtrando por rol igualmente.
+            print(f"[empresa_activa] {e}")
+            _orgs.set_org_activa(None)
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def audit_mutaciones(request: Request, call_next):
     response = await call_next(request)
@@ -224,6 +252,7 @@ async def audit_mutaciones(request: Request, call_next):
 # Include routers — núcleo (sin restricción de módulo)
 app.include_router(auth.router)
 app.include_router(access.router)
+app.include_router(organizations.router)  # MULTIEMPRESA: empresas y sus miembros
 app.include_router(admin.router)
 app.include_router(credentials.router)
 app.include_router(contacto.router)

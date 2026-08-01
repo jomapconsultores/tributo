@@ -14,7 +14,8 @@ from database import get_supabase_client, fetch_all, fetch_in, es_error_duplicad
 from routers.admin import require_admin
 from auth import get_current_user
 from routers.access import es_admin, es_data_admin, rol_de
-from tenancy import assert_client_owner, visible_client_ids
+from tenancy import assert_client_owner, visible_client_ids, filtro_org
+import orgs
 from services.credentials_crypto import encrypt, decrypt, can_decrypt
 
 # Roles que pueden MARCAR qué declaraciones hace cada contribuyente (sin ver claves).
@@ -25,11 +26,20 @@ router = APIRouter(prefix="/api/credentials", tags=["credentials"])
 
 def _autorizar_ver_credencial(user_id: str, client_id: str):
     """Autoriza VER/REVELAR la clave SRI de un contribuyente:
-      - admin (data_admin): cualquier credencial, sin restricción de dueño.
+      - admin (data_admin): cualquier credencial de SU EMPRESA, sin restricción
+        de dueño.
       - socio: solo la de contribuyentes que puede ver (assert_client_owner).
       - cliente: no autorizado.
-    Devuelve el rol efectivo ('admin' | 'socio') o lanza 403/404."""
+    Devuelve el rol efectivo ('admin' | 'socio') o lanza 403/404.
+
+    Con multiempresa, "sin restricción de dueño" no significa "sin restricción de
+    empresa": son claves del portal del SRI, lo más sensible que guarda el
+    sistema, y un administrador de un despacho no puede poder revelar las de
+    otro. assert_client_owner deja pasar al admin dentro de su empresa, así que
+    su poder ahí no cambia; solo se corta el salto entre empresas."""
     if es_data_admin(user_id):
+        if orgs.org_activa():
+            assert_client_owner(client_id, user_id)
         return "admin"
     if es_admin(user_id):  # socio
         assert_client_owner(client_id, user_id)  # 404 si no puede acceder
@@ -183,7 +193,9 @@ async def toggle_servicio(
 
     # El servicio afecta a TODO el contribuyente: se aplica a TODOS sus períodos
     # (todos los client_id que comparten la identificación), no solo a uno.
-    hermanos = sb.table("clients").select("id").eq("identificacion", ident).execute().data if ident else None
+    # …pero solo los períodos de la EMPRESA ACTIVA: el mismo RUC puede estar
+    # registrado en otro despacho y marcar sus servicios no es cosa de este.
+    hermanos = filtro_org(sb.table("clients").select("id").eq("identificacion", ident)).execute().data if ident else None
     ids = [h["id"] for h in (hermanos or [])] or [client_id]
     # Socio/trabajador: no tocar períodos que no le son visibles (aunque compartan RUC).
     if not data_admin:
