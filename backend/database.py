@@ -15,6 +15,40 @@ def get_supabase_client_anon() -> Client:
     return create_client(settings.supabase_url, settings.supabase_anon_key)
 
 
+import time as _time
+
+# Errores de CONEXIÓN (no de datos) al hablar con Supabase. El proxy que tiene
+# delante multiplexa las peticiones sobre una sola conexión HTTP/2 y, cuando se
+# le acumulan muchas cabeceras grandes —una lista larga de client_id en la query
+# string las hace enormes—, corta con GOAWAY / PROTOCOL_ERROR. Se manifestaba
+# como 500 intermitentes: "ConnectionTerminated error_code:1" o, si la petición
+# alcanzaba a salir, un HTML de 400 de Cloudflare que supabase-py no puede
+# parsear ("JSON could not be generated"). Reintentar basta: httpx abre una
+# conexión nueva y la siguiente pasa.
+_ERRORES_CONEXION = ("connectionterminated", "remoteprotocolerror", "protocol_error",
+                     "server disconnected", "connection reset", "json could not be generated")
+
+
+def _es_error_de_conexion(e: Exception) -> bool:
+    m = (str(e) or "").lower()
+    return any(s in m for s in _ERRORES_CONEXION)
+
+
+def _ejecutar_con_reintento(consulta, intentos: int = 3):
+    """Ejecuta una consulta de LECTURA reintentando los cortes de conexión.
+
+    Solo se usa desde fetch_all/fetch_in, que son de solo lectura: reintentar es
+    seguro porque un GET repetido no cambia nada. Un error de datos (columna
+    inexistente, permisos) NO se reintenta: se propaga tal cual."""
+    for intento in range(intentos):
+        try:
+            return consulta().execute()
+        except Exception as e:
+            if intento == intentos - 1 or not _es_error_de_conexion(e):
+                raise
+            _time.sleep(0.15 * (intento + 1))
+
+
 def fetch_all(query_factory, chunk: int = 1000):
     """Trae TODAS las filas de una consulta en bloques (paginación), para que
     los conteos y sumas no se trunquen cuando hay más de ~1000 registros.
@@ -25,7 +59,8 @@ def fetch_all(query_factory, chunk: int = 1000):
     filas = []
     inicio = 0
     while True:
-        res = query_factory().range(inicio, inicio + chunk - 1).execute()
+        res = _ejecutar_con_reintento(
+            lambda: query_factory().range(inicio, inicio + chunk - 1))
         bloque = res.data or []
         filas.extend(bloque)
         if len(bloque) < chunk:
