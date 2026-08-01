@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from pydantic import BaseModel
 from auth import get_current_user
-from database import get_supabase_client, fetch_all
+from database import get_supabase_client, fetch_all, fetch_in
 from services.sri_ruc import consultar_ruc
 from services.periodo import (periodo_a_declarar, periodo_anterior,
                               semestre_a_declarar, semestre_anterior,
@@ -198,7 +198,15 @@ async def contribuyentes(user_id: str = Depends(get_current_user)):
         def counts(table):
             if not client_ids:
                 return {}
-            rows = fetch_all(lambda: supabase.table(table).select("client_id").in_("client_id", client_ids))
+            # TROCEADO y en SERIE. Mandar los 126 client_id en una sola URL son
+            # unos 5 KB de query string; cuatro de esas seguidas contra el mismo
+            # Supabase hacían que el proxy de delante contestara 400, y supabase-py
+            # lo convierte en "JSON could not be generated" -> 500 intermitente que
+            # dejaba la pantalla Base de Datos vacía. Con trozos de 40 cada URL
+            # baja a ~1,5 KB. fetch_in ya existe justo para esto (su tamaño por
+            # defecto, 150, no llegaba a partir una lista de 126).
+            rows = fetch_in(lambda: supabase.table(table).select("client_id"),
+                            client_ids, "client_id", 40)
             m = {}
             for r in rows:
                 cid = r.get("client_id")
@@ -206,13 +214,6 @@ async def contribuyentes(user_id: str = Depends(get_current_user)):
                     m[cid] = m.get(cid, 0) + 1
             return m
 
-        # En SERIE, no en paralelo. Estas cuatro consultas llevan la lista entera
-        # de client_id en la URL (con 126 contribuyentes son ~5 KB de query
-        # string); lanzadas a la vez sobre el mismo cliente de Supabase, el proxy
-        # que tiene delante devolvía 400 y supabase-py lo reportaba como
-        # "JSON could not be generated" -> 500 intermitente que dejaba la pantalla
-        # Base de Datos vacía. Medido contra producción: la misma consulta suelta
-        # responde 5 de 5 veces; las cuatro juntas fallaban 4 de 5.
         inv = counts("invoices")
         ret = counts("retentions")
         ice = counts("ice_sales")
