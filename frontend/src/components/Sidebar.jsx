@@ -402,6 +402,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
 
       <div className="sidebar-footer">
         <div className="user-email" title={userEmail}>{userEmail}</div>
+        {/* Mi cuenta: datos propios y cambio de clave (disponible para todo rol) */}
+        <button className="logout-link" onClick={() => navigate('/mi-cuenta')}>Mi cuenta</button>
         <button className="logout-link" onClick={onLogout}>Cerrar sesión</button>
       </div>
 

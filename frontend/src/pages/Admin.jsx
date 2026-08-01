@@ -149,6 +149,25 @@ export default function Admin() {
     try { await adminAPI.resetIps(uid); await load(); alert('✔ IPs restablecidas.') }
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy(false) }
   }
+  // Recuperación de clave olvidada: alternativa al enlace por correo, para
+  // cuando el usuario ya no tiene acceso al correo registrado. La clave temporal
+  // se muestra UNA sola vez.
+  const resetClave = async (u) => {
+    if (!window.confirm(
+      `¿Restablecer la clave de ${u.email}?\n\n` +
+      `Se generará una clave temporal de un solo uso que deberás entregarle en persona.\n` +
+      `Su clave actual dejará de funcionar y tendrá que cambiarla al entrar.`
+    )) return
+    setBusy(true)
+    try {
+      const r = await adminAPI.resetPassword(u.user_id)
+      window.prompt(
+        `Clave temporal de ${u.email}\n\n` +
+        `Cópiala ahora: no se volverá a mostrar. Caduca en 72 horas.`,
+        r.data.clave_temporal,
+      )
+    } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy(false) }
+  }
   const eliminarUsuario = async (u) => {
     if (!window.confirm(
       `¿ELIMINAR la cuenta de ${u.email}?\n\n` +
@@ -272,6 +291,7 @@ export default function Admin() {
                       <button className="adm-btn" disabled={u.role === 'admin'} title="Módulos, pantallas y contribuyentes que puede ver/trabajar" onClick={() => navigate(`/admin/acceso-clientes?uid=${u.user_id}`)}>🔐 Permisos</button>
                       <button className="adm-btn pay" disabled={busy || u.role === 'admin'} onClick={() => registrarPago(u.user_id)}>💵 Pago</button>
                       <button className="adm-btn" disabled={busy || u.role === 'admin'} title="Restablecer IPs" onClick={() => resetIps(u.user_id)}>🔓 IPs</button>
+                      <button className="adm-btn" disabled={busy} title="Olvidó su clave: genera una clave temporal de un solo uso" onClick={() => resetClave(u)}>🔑 Clave</button>
                       <button className="adm-btn danger" disabled={busy || u.role === 'admin' || u.user_id === MI_UID} title="Eliminar usuario" onClick={() => eliminarUsuario(u)}>🗑</button>
                     </td>
                   </tr>

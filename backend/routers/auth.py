@@ -25,6 +25,9 @@ class AuthResponse(BaseModel):
     access_token: str
     user_id: str
     email: str
+    # true cuando el administrador restableció la clave: el frontend lleva al
+    # usuario directo a Mi cuenta y no lo deja operar hasta que defina la suya.
+    debe_cambiar_clave: bool = False
 
 
 class ForgotRequest(BaseModel):
@@ -36,11 +39,43 @@ class ResetRequest(BaseModel):
     password: str
 
 
+# ── Módulo de cuenta ─────────────────────────────────────────────────────────
+# Longitud mínima al DEFINIR una clave nueva. El login sigue aceptando las
+# claves cortas ya existentes; solo se exige al cambiarlas.
+MIN_CLAVE = 8
+
+
+class PerfilRequest(BaseModel):
+    """Datos que el propio usuario mantiene. Viven en user_metadata de Supabase
+    Auth; el email es la credencial de acceso y exige confirmar la clave."""
+    nombre: str = ""
+    telefono: str = ""
+    cargo: str = ""
+    email: str = ""
+    clave_actual: str = ""
+
+
+class CambiarClaveRequest(BaseModel):
+    clave_actual: str
+    clave_nueva: str
+
+
 def client_ip(request: Request) -> str:
     xff = request.headers.get("x-forwarded-for")
     if xff:
         return xff.split(",")[0].strip()
     return request.client.host if request.client else "desconocida"
+
+
+def _temporal_vencida(expira) -> bool:
+    """True si la marca de caducidad de una clave temporal ya pasó."""
+    if not expira:
+        return False
+    try:
+        from datetime import datetime, timezone
+        return datetime.fromisoformat(str(expira).replace("Z", "+00:00")) < datetime.now(timezone.utc)
+    except ValueError:
+        return False
 
 
 def _es_admin(user_id: str) -> bool:
@@ -83,10 +118,20 @@ async def login(request: LoginRequest, req: Request):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
     # Control de IPs (máximo permitido por usuario; admins exentos)
     _control_ip(str(response.user.id), client_ip(req))
+    meta = dict(getattr(response.user, "user_metadata", None) or {})
+    # Una clave temporal caducada no sirve: hay que pedir al administrador que
+    # la restablezca de nuevo.
+    if meta.get("debe_cambiar_clave") and _temporal_vencida(meta.get("clave_temporal_expira")):
+        raise HTTPException(
+            status_code=403,
+            detail="La clave temporal que te entregó el administrador ya caducó. "
+                   "Pídele que la restablezca nuevamente.",
+        )
     return AuthResponse(
         access_token=response.session.access_token,
         user_id=str(response.user.id),
         email=response.user.email,
+        debe_cambiar_clave=bool(meta.get("debe_cambiar_clave")),
     )
 
 
@@ -145,6 +190,98 @@ async def reset(request: ResetRequest):
         return {"message": "Contraseña actualizada. Ya puedes iniciar sesión."}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/perfil")
+async def obtener_perfil(user_id: str = Depends(get_current_user)):
+    """Datos del usuario actual para la pantalla Mi cuenta."""
+    try:
+        u = get_supabase_client().auth.admin.get_user_by_id(user_id).user
+    except Exception:
+        raise HTTPException(status_code=404, detail="No se pudo leer tu cuenta")
+    meta = dict(getattr(u, "user_metadata", None) or {})
+    return {
+        "user_id": user_id,
+        "email": u.email or "",
+        "nombre": meta.get("nombre", ""),
+        "telefono": meta.get("telefono", ""),
+        "cargo": meta.get("cargo", ""),
+        "debe_cambiar_clave": bool(meta.get("debe_cambiar_clave")),
+        "es_admin": _es_admin(user_id),
+    }
+
+
+@router.put("/perfil")
+async def actualizar_perfil(body: PerfilRequest, user_id: str = Depends(get_current_user)):
+    """El propio usuario actualiza sus datos. Cambiar el email —que es la
+    credencial de acceso— exige confirmar la clave actual."""
+    sb = get_supabase_client()
+    try:
+        actual = sb.auth.admin.get_user_by_id(user_id).user
+    except Exception:
+        raise HTTPException(status_code=404, detail="No se pudo leer tu cuenta")
+
+    meta = dict(getattr(actual, "user_metadata", None) or {})
+    meta.update({
+        "nombre": body.nombre.strip(),
+        "telefono": body.telefono.strip(),
+        "cargo": body.cargo.strip(),
+    })
+    cambios = {"user_metadata": meta}
+
+    email_nuevo = (body.email or "").strip().lower()
+    if email_nuevo and email_nuevo != (actual.email or "").lower():
+        # Verifica la identidad reautenticando con la clave actual antes de
+        # mover la credencial de acceso.
+        try:
+            get_supabase_client_anon().auth.sign_in_with_password({
+                "email": actual.email, "password": body.clave_actual,
+            })
+        except Exception:
+            raise HTTPException(status_code=403,
+                                detail="Para cambiar el email debes confirmar tu clave actual")
+        cambios["email"] = email_nuevo
+
+    try:
+        sb.auth.admin.update_user_by_id(user_id, cambios)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"message": "Datos actualizados"}
+
+
+@router.post("/cambiar-clave")
+async def cambiar_clave(body: CambiarClaveRequest, user_id: str = Depends(get_current_user)):
+    """Cambio de clave propia: exige la anterior (o la temporal que entregó el
+    administrador). Al guardarla se levanta el bloqueo de clave temporal."""
+    if len(body.clave_nueva or "") < MIN_CLAVE:
+        raise HTTPException(status_code=400,
+                            detail=f"La nueva clave debe tener al menos {MIN_CLAVE} caracteres")
+    if body.clave_nueva == body.clave_actual:
+        raise HTTPException(status_code=400, detail="La nueva clave debe ser distinta de la anterior")
+
+    sb = get_supabase_client()
+    try:
+        u = sb.auth.admin.get_user_by_id(user_id).user
+    except Exception:
+        raise HTTPException(status_code=404, detail="No se pudo leer tu cuenta")
+
+    # Supabase no expone "verificar clave": se reautentica con la actual.
+    try:
+        get_supabase_client_anon().auth.sign_in_with_password({
+            "email": u.email, "password": body.clave_actual,
+        })
+    except Exception:
+        raise HTTPException(status_code=403, detail="La clave actual no es correcta")
+
+    meta = dict(getattr(u, "user_metadata", None) or {})
+    meta.pop("debe_cambiar_clave", None)
+    meta.pop("clave_temporal_expira", None)
+    try:
+        sb.auth.admin.update_user_by_id(
+            user_id, {"password": body.clave_nueva, "user_metadata": meta})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"message": "Clave actualizada correctamente"}
 
 
 @router.post("/logout")

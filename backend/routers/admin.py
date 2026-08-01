@@ -276,6 +276,53 @@ async def reset_ips(uid: str, _: str = Depends(require_admin)):
     return {"ok": True}
 
 
+def _generar_clave_temporal(largo: int = 12) -> str:
+    """Clave temporal legible: sin caracteres ambiguos (0/O, 1/l/I) para poder
+    dictarla por teléfono sin errores. Aleatoriedad criptográfica."""
+    import secrets
+    alfabeto = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+    return "".join(secrets.choice(alfabeto) for _ in range(largo))
+
+
+@router.post("/users/{uid}/reset-password")
+async def reset_password(uid: str, admin_id: str = Depends(require_admin)):
+    """Recuperación de clave olvidada: el administrador genera una clave temporal
+    de un solo uso. Se devuelve UNA vez (no queda almacenada en claro), caduca a
+    las 72 h y el usuario está obligado a cambiarla al entrar.
+
+    Alternativa al enlace por correo (POST /auth/forgot) para cuando el usuario
+    ya no tiene acceso al correo registrado."""
+    from datetime import datetime, timedelta, timezone
+
+    sb = get_supabase_client()
+    try:
+        u = sb.auth.admin.get_user_by_id(uid).user
+    except Exception:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    temporal = _generar_clave_temporal()
+    expira = datetime.now(timezone.utc) + timedelta(hours=72)
+    meta = dict(getattr(u, "user_metadata", None) or {})
+    meta.update({
+        "debe_cambiar_clave": True,
+        "clave_temporal_expira": expira.isoformat(),
+        "clave_reseteada_por": admin_id,
+    })
+    try:
+        sb.auth.admin.update_user_by_id(uid, {"password": temporal, "user_metadata": meta})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "ok": True,
+        "email": u.email,
+        "clave_temporal": temporal,
+        "expira": expira.isoformat(),
+        "mensaje": (f"Entrega esta clave a {u.email} en persona. Caduca en 72 horas "
+                    f"y deberá cambiarla al entrar. No se volverá a mostrar."),
+    }
+
+
 @router.get("/permisos")
 async def resumen_permisos(_: str = Depends(require_admin)):
     """Resumen de módulos activos y clientes autorizados por usuario."""

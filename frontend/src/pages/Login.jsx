@@ -47,7 +47,15 @@ export default function Login({ onLogin }) {
     try {
       const endpoint = phase === 'signup' ? authAPI.signup : authAPI.login
       const response = await endpoint(email, password)
-      const { access_token, user_id, email: userEmail } = response.data
+      const { access_token, user_id, email: userEmail, debe_cambiar_clave } = response.data
+
+      // Clave temporal puesta por el administrador: hay que definir la propia
+      // antes que nada, así que se salta la propuesta de biometría.
+      if (debe_cambiar_clave) {
+        onLogin(access_token, user_id, userEmail)
+        window.location.replace('/mi-cuenta')
+        return
+      }
 
       // ¿Hay que proponer la biometría?
       if (

@@ -15,6 +15,7 @@ import './App.css'
 const Login                    = lazy(() => import('./pages/Login'))
 const Landing                  = lazy(() => import('./pages/Landing'))
 const ResetPassword            = lazy(() => import('./pages/ResetPassword'))
+const MiCuenta                 = lazy(() => import('./pages/MiCuenta'))
 const Database                 = lazy(() => import('./pages/Database'))
 const Classifier               = lazy(() => import('./pages/Classifier'))
 const SavedData                = lazy(() => import('./pages/SavedData'))
@@ -219,6 +220,9 @@ function App() {
               <Route path="/catalogo-productos" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_catalogo"><CatalogoProductos /></RequireSubmodule>} />
               <Route path="/compradores" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_compradores"><Compradores /></RequireSubmodule>} />
               <Route path="/rebajas-exenciones" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_rebajas"><RebajasExenciones /></RequireSubmodule>} />
+              {/* Mi cuenta: datos propios y cambio de clave. Sin restricción de
+                  módulo: todo usuario con sesión debe poder administrar su cuenta. */}
+              <Route path="/mi-cuenta" element={<MiCuenta />} />
               <Route path="/normativa" element={<Normativa />} />
               <Route path="/reportes" element={<Reportes modo="faltantes" />} />
               <Route path="/reportes/faltantes" element={<Reportes modo="faltantes" />} />

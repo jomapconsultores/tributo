@@ -52,6 +52,11 @@ export const authAPI = {
   logout: () => api.post('/auth/logout'),
   forgot: (email) => api.post('/auth/forgot', { email }),
   reset: (access_token, password) => api.post('/auth/reset', { access_token, password }),
+  // Mi cuenta: datos propios y cambio de clave con verificación de la anterior
+  perfil: () => api.get('/auth/perfil'),
+  guardarPerfil: (data) => api.put('/auth/perfil', data),
+  cambiarClave: (clave_actual, clave_nueva) =>
+    api.post('/auth/cambiar-clave', { clave_actual, clave_nueva }),
 }
 
 // Acceso por módulos contratados
@@ -87,6 +92,8 @@ export const adminAPI = {
   descuentos: () => api.get('/api/admin/descuentos'),
   contactos: () => api.get('/api/admin/contactos'),
   resetIps: (uid) => api.delete(`/api/admin/users/${uid}/ips`),
+  // Recuperación de clave olvidada: genera una clave temporal de un solo uso
+  resetPassword: (uid) => api.post(`/api/admin/users/${uid}/reset-password`),
   permisos: () => api.get('/api/admin/permisos'),
 }
 

@@ -1,0 +1,118 @@
+/* ------------------------------------------------------------
+ * Desarrollado por Marco Antonio Posligua San Martín
+ * ------------------------------------------------------------ */
+
+.mc-wrap {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+.mc-wrap h1 {
+  font-size: 1.6rem;
+  margin: 0 0 6px;
+}
+
+.mc-sub {
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  margin: 0 0 22px;
+}
+
+.mc-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 18px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+.mc-card h2 {
+  font-size: 1.05rem;
+  margin: 0 0 16px;
+}
+
+.mc-card label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 12px;
+}
+
+.mc-card input {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  font-size: 0.95rem;
+  font-weight: 400;
+}
+
+.mc-card input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+/* Teléfono y cargo lado a lado; apilados en pantallas angostas. */
+.mc-row {
+  display: flex;
+  gap: 12px;
+}
+.mc-row label { flex: 1; }
+
+@media (max-width: 520px) {
+  .mc-row { flex-direction: column; gap: 0; }
+}
+
+.mc-card button {
+  width: 100%;
+  padding: 11px;
+  border: none;
+  border-radius: 9px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.mc-card button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.mc-hint {
+  color: #64748b;
+  font-size: 0.78rem;
+  margin: -6px 0 12px;
+  line-height: 1.5;
+}
+
+.mc-aviso {
+  margin: 12px 0 0;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+.mc-aviso.ok  { background: #ecfdf5; color: #065f46; }
+.mc-aviso.err { background: #fef2f2; color: #991b1b; }
+
+.mc-alert {
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  margin-bottom: 18px;
+}
+.mc-alert-warn {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  color: #78350f;
+}
