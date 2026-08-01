@@ -504,7 +504,12 @@ async def set_role(uid: str, body: RoleIn, admin_id: str = Depends(require_super
 # contribuyentes/datos tributarios (clients y tablas de datos) ni la bitácora
 # de auditoría (activity_log) — eso es historial que debe conservarse.
 _TABLAS_USER_ID = ["app_admins", "user_roles", "user_modules", "user_submodules",
-                   "subscriptions", "pagos", "user_ips"]
+                   "subscriptions", "pagos", "user_ips",
+                   # Multiempresa: sin estas tres, borrar un usuario dejaba su
+                   # membresía y sus permisos colgando de un user_id inexistente
+                   # —basura que además reaparecería si Supabase reutilizara el id—.
+                   "organization_members", "organization_member_modules",
+                   "organization_member_submodules"]
 
 
 @router.delete("/users/{uid}")
