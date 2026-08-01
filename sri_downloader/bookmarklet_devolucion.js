@@ -20,11 +20,15 @@
  *   - "copiar TODAS las claves" y "bajar TXT", cuando el portal acepta la lista;
  *   - "bajar CSV", para el anexo cuando pide el detalle en archivo.
  *
- * QUÉ NO HACE (todavía): llenar el formulario del portal por sí solo. Los IDs de
- * esa pantalla no están fijados acá a propósito: el formulario de devoluciones no
- * es el mismo de comprobantes (que sí está automatizado en bookmarklet_recibidos.js)
- * y hay que verlo en vivo antes de escribir selectores. Cuando estén confirmados,
- * se agrega el llenado automático abajo, donde dice AUTOMATIZACIÓN.
+ * COMPARAR CON EL PORTAL: en la pantalla de "Facturas electrónicas" recorre mes a
+ * mes la solicitud, la consulta en el portal y avisa qué comprobantes tuyos el SRI
+ * no muestra. Es la revisión que hay que hacer ANTES de presentar: si el SRI no ve
+ * un comprobante, no lo va a devolver por más que esté marcado en el sistema.
+ *
+ * Los controles de esa pantalla se buscan por ETIQUETA y por CONTENIDO de las
+ * opciones, no por id: el portal los renombra cada tanto y un id fijo deja el
+ * marcador inservible sin decir por qué. Si aun así no los encuentra, el panel
+ * ofrece "¿Por qué no puedo comparar?", que copia un diagnóstico de lo que ve.
  *
  * NOTA: a propósito no se usa el carácter de porcentaje en el código — el
  * bookmarklet viaja como URL "javascript:" y ahí ese carácter se lee como escape.
@@ -214,6 +218,17 @@
         String(i.proveedor || '').replace(/;/g, ' '), i.rubro_label || i.rubro, i.base, i.iva, i.total]));
       bajarArchivo(nombreBase + '_detalle.csv', filas.map((f) => f.join(';')).join('\n'), 'text/csv');
     }, CSS_GRIS));
+    // Comparar contra el portal. Solo tiene sentido en la pantalla que trae los
+    // combos Año/Periodo y el botón Buscar; en cualquier otra página no habría
+    // dónde consultar, así que ahí se ofrece el diagnóstico —qué ve el marcador
+    // y qué no— en vez de un botón que fallaría sin explicar por qué.
+    if (hayFormulario()) {
+      acciones.appendChild(boton('Comparar con el portal', compararConElPortal, CSS_GRIS));
+    } else {
+      acciones.appendChild(boton('¿Por qué no puedo comparar?', function () {
+        copiar(diagnostico(), this);
+      }, CSS_GRIS));
+    }
     cuerpo.appendChild(acciones);
 
     // Progreso
@@ -258,10 +273,156 @@
       'aunque cierres el panel.', 'margin:6px 0 0;color:#777;font-size:11px;line-height:1.4');
   };
 
-  pintar();
+  // --- El formulario del portal --------------------------------------------
+  // Pantalla "Devolución de IVA personas adultos mayores > Facturas electrónicas":
+  // combos Año solicitado / Periodo solicitado y botón Buscar. Los controles se
+  // buscan por ETIQUETA y por CONTENIDO de las opciones, no por id: el portal los
+  // renombra cada tanto y un id fijo deja el marcador inservible sin decir por qué.
+  const visibles = (sel) => [...document.querySelectorAll(sel)].filter((e) => e.offsetParent !== null);
 
-  // --- AUTOMATIZACIÓN (pendiente) ------------------------------------------
-  // Acá va el llenado del formulario del portal cuando estén confirmados sus
-  // selectores reales (mismo criterio que bookmarklet_recibidos.js: buscar por id
-  // exacto y, de reserva, por sufijo del id).
+  const etiquetaDe = (e) => {
+    let t = '';
+    if (e.id) {
+      const lab = document.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(e.id) : e.id) + '"]');
+      if (lab) t += ' ' + (lab.textContent || '');
+    }
+    const cont = e.closest ? e.closest('label,td,div') : null;
+    if (cont) t += ' ' + (cont.textContent || '').slice(0, 90);
+    const celda = e.closest ? e.closest('td') : null;
+    if (celda && celda.previousElementSibling) t += ' ' + (celda.previousElementSibling.textContent || '');
+    return t.toLowerCase();
+  };
+
+  const opciones = (s) => [...s.options].map((o) => (o.textContent || '').trim());
+
+  const buscarSelect = (reEtiqueta, cumpleOpciones) => {
+    const lista = visibles('select');
+    return lista.find((s) => reEtiqueta.test(etiquetaDe(s))) ||
+      lista.find((s) => cumpleOpciones(opciones(s))) || null;
+  };
+
+  const cbAnio = () => buscarSelect(/a(ñ|n)o/, (ops) => ops.filter((o) => /^(19|20)\d\d$/.test(o)).length >= 2);
+  const cbPeriodo = () => buscarSelect(/per[ií]odo/,
+    (ops) => /ene|enero/i.test(ops.join(' ')) && /dic|diciembre/i.test(ops.join(' ')));
+  const btnBuscar = () => visibles('button,input[type="submit"],input[type="button"]')
+    .find((b) => /^(buscar|consultar)$/i.test(((b.value || b.textContent) || '').trim())) || null;
+
+  const hayFormulario = () => !!(cbAnio() && cbPeriodo() && btnBuscar());
+
+  const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+  const elegir = (sel, valor, re) => {
+    if (!sel) return false;
+    let op = [...sel.options].find((o) => String(o.value) === String(valor));
+    if (!op && re) op = [...sel.options].find((o) => re.test((o.textContent || '').trim()));
+    if (!op) return false;
+    if (String(sel.value) !== String(op.value)) {
+      sel.value = op.value;
+      sel.dispatchEvent(new Event('input', { bubbles: true }));
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    return true;
+  };
+
+  const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // Claves de acceso que el portal muestra (49 dígitos, delimitados y fuera de los
+  // combos: un combo con muchas opciones numéricas concatena más de 49 dígitos).
+  const clavesEnPantalla = () => {
+    const encontradas = new Set();
+    document.querySelectorAll('td').forEach((td) => {
+      if (td.querySelector('select,input,textarea,option')) return;
+      const m = (td.textContent || '').match(/(?:^|\D)(\d{49})(?:\D|$)/);
+      if (m) encontradas.add(m[1]);
+    });
+    return encontradas;
+  };
+
+  const mesDeFecha = (f) => {
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(f || '').trim());
+    return m ? parseInt(m[2], 10) : null;
+  };
+
+  // Compara, mes a mes, lo que el portal ya tiene contra la solicitud guardada.
+  // Es la comprobación que hay que hacer antes de presentar: si el SRI no ve un
+  // comprobante, no lo va a devolver por más que esté marcado en el sistema.
+  const compararConElPortal = async () => {
+    limpiar();
+    linea('Comparando con el portal', 'font-weight:700;color:#1e6b33;margin-bottom:6px');
+    const estado = el('div', 'margin:6px 0;font-weight:600');
+    cuerpo.appendChild(estado);
+
+    const meses = (paquete.detalle_meses || []).map((d) => d.mes);
+    const lista = meses.length ? meses : [paquete.periodo.mes];
+    const anio = paquete.periodo.anio;
+    const resultado = [];
+
+    for (const mes of lista) {
+      estado.textContent = 'Consultando ' + (MESES[mes - 1] || mes) + ' ' + anio + '…';
+      if (!elegir(cbAnio(), anio, new RegExp('^\\s*' + anio + '\\s*$'))) {
+        resultado.push({ mes, error: 'el combo Año no tiene ' + anio });
+        continue;
+      }
+      if (!elegir(cbPeriodo(), mes, new RegExp('^\\s*' + MESES[mes - 1], 'i'))) {
+        resultado.push({ mes, error: 'el combo Periodo no tiene ' + MESES[mes - 1] });
+        continue;
+      }
+      const b = btnBuscar();
+      if (!b) { resultado.push({ mes, error: 'no encontré el botón Buscar' }); continue; }
+      b.click();
+      await dormir(3500);                     // el portal responde por ajax
+      const enPortal = clavesEnPantalla();
+      const mios = items.filter((i) => mesDeFecha(i.fecha) === mes);
+      const faltan = mios.filter((i) => !enPortal.has(i.clave_acceso));
+      resultado.push({ mes, portal: enPortal.size, mios: mios.length, faltan });
+    }
+
+    limpiar();
+    linea('Tu solicitud contra el portal', 'font-weight:700;color:#1e6b33;margin-bottom:6px');
+    let faltantes = 0;
+    resultado.forEach((r) => {
+      if (r.error) {
+        linea('⚠ ' + (MESES[r.mes - 1] || r.mes) + ': ' + r.error, 'margin:3px 0;color:#8b1e1e');
+        return;
+      }
+      faltantes += r.faltan.length;
+      const ok = r.faltan.length === 0;
+      linea((MESES[r.mes - 1] || r.mes) + ': el portal muestra ' + r.portal +
+        ' · en tu solicitud ' + r.mios + (ok ? '  ✔' : '  · faltan ' + r.faltan.length),
+        'margin:3px 0;color:' + (ok ? '#1e6b33' : '#8b6b1e'));
+      r.faltan.slice(0, 8).forEach((i) => {
+        linea('   · ' + (i.fecha || '') + '  ' + (i.proveedor || '') + '  ' + money(i.iva),
+          'margin:1px 0;color:#8b1e1e;font-size:11px');
+      });
+    });
+    linea(faltantes === 0
+      ? 'Todos los comprobantes de tu solicitud están en el portal: podés presentarla.'
+      : 'Hay ' + faltantes + ' comprobante(s) de tu solicitud que el portal no muestra en ese ' +
+        'período. Revisá la fecha, o que el SRI ya los tenga.',
+      'margin:8px 0;font-weight:600;color:' + (faltantes === 0 ? '#1e6b33' : '#8b6b1e'));
+    cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
+  };
+
+  // Diagnóstico: qué ve el marcador en esta pantalla, para ajustarlo sin adivinar.
+  const diagnostico = () => {
+    const p = [];
+    p.push('URL: ' + location.href.split('?')[0]);
+    p.push('Año: ' + (cbAnio() ? (cbAnio().id || '(sin id)') : 'NO ENCONTRADO'));
+    p.push('Periodo: ' + (cbPeriodo() ? (cbPeriodo().id || '(sin id)') : 'NO ENCONTRADO'));
+    p.push('Buscar: ' + (btnBuscar() ? (btnBuscar().id || '(sin id)') : 'NO ENCONTRADO'));
+    p.push('Selects visibles:');
+    visibles('select').forEach((s, i) => {
+      p.push('  [' + i + '] id=' + (s.id || '-') + ' | ' + s.options.length + ' opciones: ' +
+        opciones(s).slice(0, 4).join(' / '));
+    });
+    p.push('Botones visibles:');
+    visibles('button,input[type="submit"],input[type="button"]').slice(0, 12).forEach((b, i) => {
+      p.push('  [' + i + '] id=' + (b.id || '-') + ' | ' + (((b.value || b.textContent) || '').trim().slice(0, 30)));
+    });
+    return p.join(String.fromCharCode(10));
+  };
+
+  // El panel se pinta al final: usa lo definido arriba.
+  pintar();
 })();
