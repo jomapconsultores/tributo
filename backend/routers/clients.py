@@ -1,7 +1,6 @@
 # ------------------------------------------------------------
 # Desarrollado por Marco Antonio Posligua San Martín
 # ------------------------------------------------------------
-from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from pydantic import BaseModel
@@ -207,15 +206,17 @@ async def contribuyentes(user_id: str = Depends(get_current_user)):
                     m[cid] = m.get(cid, 0) + 1
             return m
 
-        with ThreadPoolExecutor(max_workers=4) as ex:
-            f_inv = ex.submit(counts, "invoices")
-            f_ret = ex.submit(counts, "retentions")
-            f_ice = ex.submit(counts, "ice_sales")
-            f_cal = ex.submit(counts, "ice_calc")
-            inv = f_inv.result()
-            ret = f_ret.result()
-            ice = f_ice.result()
-            cal = f_cal.result()
+        # En SERIE, no en paralelo. Estas cuatro consultas llevan la lista entera
+        # de client_id en la URL (con 126 contribuyentes son ~5 KB de query
+        # string); lanzadas a la vez sobre el mismo cliente de Supabase, el proxy
+        # que tiene delante devolvía 400 y supabase-py lo reportaba como
+        # "JSON could not be generated" -> 500 intermitente que dejaba la pantalla
+        # Base de Datos vacía. Medido contra producción: la misma consulta suelta
+        # responde 5 de 5 veces; las cuatro juntas fallaban 4 de 5.
+        inv = counts("invoices")
+        ret = counts("retentions")
+        ice = counts("ice_sales")
+        cal = counts("ice_calc")
 
         ag = {}
         for c in clients:
