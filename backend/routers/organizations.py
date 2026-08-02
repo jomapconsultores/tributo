@@ -76,6 +76,24 @@ class AsignarContribuyentesIn(BaseModel):
     identificaciones: List[str]
 
 
+class ExportarIn(BaseModel):
+    """Convertir un contribuyente en EMPRESA propia.
+
+    `conservar_acceso` decide qué pasa con el despacho que lo venía trabajando:
+    con True se crea la autorización de vuelta (revocable en cualquier momento),
+    con False el contribuyente se lleva sus datos y el despacho deja de verlo."""
+    identificacion: str
+    nombre: Optional[str] = None          # por defecto, el del contribuyente
+    conservar_acceso: bool = True
+
+
+class AutorizacionIn(BaseModel):
+    """La empresa DUEÑA autoriza a otra a ver datos suyos."""
+    grantee_org_id: str
+    identificacion: Optional[str] = None  # None = toda la cartera
+    nota: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Guardas de permiso
 # ---------------------------------------------------------------------------
@@ -480,6 +498,161 @@ async def contribuyentes_de_empresa(org_id: str, user_id: str = Depends(get_curr
             g["nombre"] = c["nombre"]
     out = sorted(grupos.values(), key=lambda x: (x["nombre"] or "").upper())
     return {"data": out}
+
+
+# ---------------------------------------------------------------------------
+# Exportar un contribuyente a EMPRESA propia
+# ---------------------------------------------------------------------------
+
+@router.post("/exportar-contribuyente")
+async def exportar_contribuyente(body: ExportarIn, admin_id: str = Depends(require_plataforma)):
+    """Convierte un contribuyente en una empresa con su propia cartera.
+
+    Sirve para cuando el cliente necesita entrar a ver lo suyo: se le crea la
+    empresa, se le mueven TODOS los períodos de ese RUC —con sus facturas,
+    declaraciones y anexos, que cuelgan del contribuyente y viajan con él— y se
+    deja al administrador como miembro para que pueda dar de alta a su gente.
+
+    Por defecto se crea la autorización de vuelta hacia la empresa de origen: si
+    no, el despacho que lo venía trabajando dejaría de verlo de un momento a
+    otro. Esa autorización es revocable y se puede afinar después."""
+    _asegurar_tablas()
+    ident = (body.identificacion or "").strip()
+    if not ident:
+        raise HTTPException(status_code=400, detail="Indica la identificación del contribuyente")
+
+    sb = _sb()
+    filas = sb.table("clients").select("id,nombre,org_id").eq("identificacion", ident).execute().data or []
+    if not filas:
+        raise HTTPException(status_code=404, detail=f"No hay ningún contribuyente con la identificación {ident}")
+
+    origen = next((f["org_id"] for f in filas if f.get("org_id")), None)
+    nombre = (body.nombre or "").strip() or max(
+        (f.get("nombre") or "" for f in filas), key=len, default=ident) or ident
+
+    try:
+        creada = sb.table("organizations").insert({
+            "nombre": nombre, "identificacion": ident, "created_by": admin_id,
+        }).execute().data
+    except Exception as e:
+        from database import es_error_duplicado
+        if es_error_duplicado(e):
+            raise HTTPException(status_code=409, detail=f"Ya existe una empresa llamada «{nombre}»")
+        raise HTTPException(status_code=400, detail=str(e))
+    nueva = creada[0]
+
+    sb.table("organization_members").insert({
+        "org_id": nueva["id"], "user_id": admin_id, "role": "admin", "granted_by": admin_id,
+    }).execute()
+
+    # Los períodos se mueven por identificación: un contribuyente es el RUC, y
+    # sus períodos son filas del mismo. Mover solo uno lo partiría en dos empresas.
+    sb.table("clients").update({"org_id": nueva["id"]}).eq("identificacion", ident).execute()
+
+    autorizacion = None
+    if body.conservar_acceso and origen and origen != nueva["id"]:
+        sb.table("organization_grants").insert({
+            "owner_org_id": nueva["id"], "grantee_org_id": origen,
+            "identificacion": ident, "granted_by": admin_id,
+            "nota": "Creada al exportar el contribuyente a empresa propia",
+        }).execute()
+        autorizacion = {"hacia": origen, "identificacion": ident}
+
+    from tenancy import invalidate_clients_cache
+    invalidate_clients_cache()
+    orgs.invalidar()
+    invalidar_cache_rol()
+    return {"ok": True, "org_id": nueva["id"], "nombre": nueva["nombre"],
+            "periodos_movidos": len(filas), "origen": origen,
+            "autorizacion_de_vuelta": autorizacion}
+
+
+# ---------------------------------------------------------------------------
+# Autorizaciones entre empresas
+# ---------------------------------------------------------------------------
+
+@router.get("/{org_id}/autorizaciones")
+async def listar_autorizaciones(org_id: str, user_id: str = Depends(get_current_user)):
+    """Las que esta empresa OTORGA (sobre sus datos) y las que RECIBE."""
+    _exigir_admin_de_org(org_id, user_id)
+    sb = _sb()
+    todas = sb.table("organizations").select("id,nombre").execute().data or []
+    nombre_de = {o["id"]: o["nombre"] for o in todas}
+
+    def _pinta(filas, campo):
+        return [{
+            "id": f["id"],
+            "org_id": f[campo],
+            "empresa": nombre_de.get(f[campo], "(empresa eliminada)"),
+            "identificacion": f.get("identificacion"),
+            "alcance": "Toda la cartera" if not f.get("identificacion") else f["identificacion"],
+            "nota": f.get("nota"),
+        } for f in filas]
+
+    otorgadas = sb.table("organization_grants").select("id,grantee_org_id,identificacion,nota")\
+        .eq("owner_org_id", org_id).execute().data or []
+    recibidas = sb.table("organization_grants").select("id,owner_org_id,identificacion,nota")\
+        .eq("grantee_org_id", org_id).execute().data or []
+    return {"otorgadas": _pinta(otorgadas, "grantee_org_id"),
+            "recibidas": _pinta(recibidas, "owner_org_id"),
+            "empresas": [o for o in todas if o["id"] != org_id]}
+
+
+@router.post("/{org_id}/autorizaciones")
+async def crear_autorizacion(org_id: str, body: AutorizacionIn,
+                             admin_id: str = Depends(get_current_user)):
+    """La empresa DUEÑA (org_id) autoriza a otra a ver datos suyos.
+
+    Lo decide quien administra la empresa dueña: es su información. Autorizar
+    'toda la cartera' es un cheque en blanco sobre todo lo que tenga y llegue a
+    tener, así que lo normal es hacerlo por RUC."""
+    _exigir_admin_de_org(org_id, admin_id)
+    destino = (body.grantee_org_id or "").strip()
+    if destino == org_id:
+        raise HTTPException(status_code=400, detail="Una empresa no necesita autorizarse a sí misma")
+    _org_o_404(destino)
+    ident = (body.identificacion or "").strip() or None
+    if ident:
+        hay = _sb().table("clients").select("id").eq("identificacion", ident)\
+            .eq("org_id", org_id).limit(1).execute().data
+        if not hay:
+            raise HTTPException(status_code=404, detail=f"{ident} no pertenece a esta empresa")
+    try:
+        _sb().table("organization_grants").insert({
+            "owner_org_id": org_id, "grantee_org_id": destino,
+            "identificacion": ident, "nota": (body.nota or "").strip() or None,
+            "granted_by": admin_id,
+        }).execute()
+    except Exception as e:
+        from database import es_error_duplicado
+        if es_error_duplicado(e):
+            raise HTTPException(status_code=409, detail="Esa autorización ya existe")
+        raise HTTPException(status_code=400, detail=str(e))
+    from tenancy import invalidate_clients_cache
+    invalidate_clients_cache()
+    orgs.invalidar()
+    return {"ok": True}
+
+
+@router.delete("/{org_id}/autorizaciones/{grant_id}")
+async def revocar_autorizacion(org_id: str, grant_id: str,
+                               admin_id: str = Depends(get_current_user)):
+    """Revoca una autorización. Solo puede hacerlo la empresa DUEÑA: la que
+    recibe el acceso no debe poder quitárselo a sí misma ni, sobre todo,
+    conservarlo en contra de quien se lo dio."""
+    _exigir_admin_de_org(org_id, admin_id)
+    sb = _sb()
+    fila = sb.table("organization_grants").select("id,owner_org_id")\
+        .eq("id", grant_id).limit(1).execute().data
+    if not fila:
+        raise HTTPException(status_code=404, detail="Autorización no encontrada")
+    if fila[0]["owner_org_id"] != org_id:
+        raise HTTPException(status_code=403, detail="Solo la empresa dueña de los datos puede revocarla")
+    sb.table("organization_grants").delete().eq("id", grant_id).execute()
+    from tenancy import invalidate_clients_cache
+    invalidate_clients_cache()
+    orgs.invalidar()
+    return {"ok": True}
 
 
 @router.put("/{org_id}/contribuyentes")

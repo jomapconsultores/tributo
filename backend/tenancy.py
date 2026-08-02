@@ -24,15 +24,24 @@ import orgs
 
 
 def _cliente_en_org(cli: dict, org_id, es_plataforma: bool) -> bool:
-    """¿El contribuyente pertenece a la empresa activa?
+    """¿El contribuyente es alcanzable desde la empresa activa?
 
-    Los contribuyentes sin org_id (huérfanos: creados antes de la migración por
-    un camino que no la fijó) solo los ve el administrador de plataforma. Así
-    nunca se filtran a la empresa equivocada, pero tampoco quedan inaccesibles
-    para siempre: quien administra puede verlos y reasignarlos."""
+    Tres formas de serlo, y ninguna más:
+      1. pertenece a la empresa activa;
+      2. su empresa dueña AUTORIZÓ a la activa (migración 052), sea abriendo su
+         cartera entera o ese RUC concreto;
+      3. es huérfano (sin org_id) y quien mira es el administrador de plataforma
+         — así nunca se filtran a la empresa equivocada, pero tampoco quedan
+         inaccesibles para siempre: quien administra puede verlos y reasignarlos.
+    """
     if not org_id:
         return True
     if cli.get("org_id") == org_id:
+        return True
+    aut = orgs.autorizaciones_recibidas(org_id)
+    if cli.get("org_id") in aut["carteras"]:
+        return True
+    if cli.get("identificacion") and cli["identificacion"] in aut["identificaciones"]:
         return True
     return es_plataforma and cli.get("org_id") is None
 
@@ -52,7 +61,8 @@ def assert_client_owner(client_id, user_id):
     # La columna org_id solo se pide si hay empresa activa, lo que implica que la
     # migración 051 está aplicada. Pedirla siempre haría fallar TODAS las
     # comprobaciones de acceso mientras el SQL no se haya ejecutado.
-    columnas = "id,user_id,org_id" if org_id else "id,user_id"
+    # identificacion hace falta para resolver las autorizaciones por RUC (052).
+    columnas = "id,user_id,org_id,identificacion" if org_id else "id,user_id"
     r = supabase.table("clients").select(columnas).eq("id", client_id).execute().data
     if not r:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -179,6 +189,27 @@ def _compute_visible_clients_full(user_id: str) -> list:
             seen = {c["id"] for c in propios}
             compartidos = fetch_all(lambda: _base().in_("id", sids))
             rows = propios + [c for c in compartidos if c["id"] not in seen]
+
+    # Contribuyentes de OTRAS empresas que autorizaron a esta (migración 052).
+    # Se suman solo para quien tiene acceso operativo a la cartera —admin y
+    # socio—; a trabajador y cliente les siguen llegando únicamente por
+    # client_access, que es individual y ya está contemplado arriba. La consulta
+    # solo se hace si existe alguna autorización, que es lo excepcional.
+    if org_id and role in ("admin", "socio") and orgs.hay_autorizaciones(org_id):
+        aut = orgs.autorizaciones_recibidas(org_id)
+        vistos = {c["id"] for c in rows}
+        prestados = []
+        if aut["carteras"]:
+            prestados += fetch_in(lambda: supabase.table("clients").select("*"),
+                                  list(aut["carteras"]), "org_id", 40)
+        if aut["identificaciones"]:
+            prestados += fetch_in(lambda: supabase.table("clients").select("*"),
+                                  list(aut["identificaciones"]), "identificacion", 40)
+        for c in prestados:
+            if c["id"] not in vistos:
+                vistos.add(c["id"])
+                c["es_prestado"] = True   # el frontend lo marca como venido de otra empresa
+                rows.append(c)
 
     # Frontera de empresa: se aplica SIEMPRE al final, por encima del rol.
     return [c for c in rows if _cliente_en_org(c, org_id, plataforma)]

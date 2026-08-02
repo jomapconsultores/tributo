@@ -43,6 +43,7 @@ _cache_membresias: dict = {}   # user_id            -> (list, ts)
 _cache_modulos: dict = {}      # (org_id, user_id)  -> (list|None, ts)
 _cache_submodulos: dict = {}   # (org_id, user_id)  -> (set, ts)
 _cache_admins_org: dict = {}   # org_id             -> (set, ts)
+_cache_grants: dict = {}       # org_id (receptora) -> (dict, ts)
 
 # Sondeo de existencia de las tablas: None = sin comprobar, True = existen.
 # Si da False se reintenta pasado _TTL (puede haber sido un fallo de red, no
@@ -298,6 +299,44 @@ def admins_de_org(org_id: Optional[str]) -> set:
     return ids
 
 
+def autorizaciones_recibidas(org_id: Optional[str]) -> dict:
+    """Lo que OTRAS empresas autorizaron a ver a `org_id` (migración 052).
+
+    Devuelve {"carteras": set(owner_org_id), "identificaciones": set(RUC)}:
+      · carteras         → empresas que abrieron su cartera COMPLETA
+      · identificaciones → contribuyentes sueltos autorizados, por RUC
+    Sin autorizaciones (o sin la tabla creada) devuelve conjuntos vacíos, con lo
+    que la frontera entre empresas queda tal cual la dejó la 051."""
+    if not org_id or not hay_multiempresa():
+        return {"carteras": set(), "identificaciones": set()}
+    hit = _cache_grants.get(org_id)
+    if hit and (_ahora() - hit[1]) < _TTL:
+        return hit[0]
+    try:
+        filas = get_supabase_client().table("organization_grants")\
+            .select("owner_org_id,identificacion").eq("grantee_org_id", org_id)\
+            .execute().data or []
+    except Exception:
+        # Tabla aún no creada: sin autorizaciones, que es el lado seguro.
+        return {"carteras": set(), "identificaciones": set()}
+    out = {"carteras": set(), "identificaciones": set()}
+    for f in filas:
+        if f.get("identificacion"):
+            out["identificaciones"].add(f["identificacion"])
+        else:
+            out["carteras"].add(f["owner_org_id"])
+    _cache_grants[org_id] = (out, _ahora())
+    return out
+
+
+def hay_autorizaciones(org_id: Optional[str]) -> bool:
+    """True si la empresa activa recibió alguna autorización. Sirve para no
+    pagar el coste de la consulta extra de contribuyentes cuando no hay ninguna,
+    que es el caso normal."""
+    a = autorizaciones_recibidas(org_id)
+    return bool(a["carteras"] or a["identificaciones"])
+
+
 def suscripcion_de_org(org_id: Optional[str]) -> Optional[dict]:
     """Suscripción contratada por la EMPRESA, o None si no tiene una propia
     (en ese caso manda la del usuario, como hasta ahora)."""
@@ -326,7 +365,11 @@ def invalidar(user_id: str = None, org_id: str = None) -> None:
         _cache_modulos.clear()
         _cache_submodulos.clear()
         _cache_admins_org.clear()
+        _cache_grants.clear()
         return
+    # Una autorización cambia lo que ve la empresa RECEPTORA, que no es la que
+    # se está tocando: se limpian todas para no dejar a nadie con una vista vieja.
+    _cache_grants.clear()
     if user_id:
         _cache_membresias.pop(user_id, None)
         for clave in [k for k in _cache_modulos if k[1] == user_id]:

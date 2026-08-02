@@ -57,6 +57,9 @@ DB = {
     "user_submodules": [],
     "subscriptions": [],
     "client_access": [],
+    # Autorizaciones entre empresas (migración 052). Empieza vacío: la frontera
+    # por defecto es dura y solo se abre con una fila explícita aquí.
+    "organization_grants": [],
     "clients": [
         {"id": "c1", "user_id": ANA,   "org_id": MAP_ID,  "identificacion": "0911", "nombre": "PANADERIA"},
         {"id": "c2", "user_id": MARCO, "org_id": MAP_ID,  "identificacion": "0922", "nombre": "FERRETERIA"},
@@ -198,6 +201,34 @@ try:
 except HTTPException as e:
     check("Ana en VERA accede a su propio contribuyente de MAP (dueña, pero otra empresa)",
           e.status_code, 404)
+
+print("\n6) Autorizaciones entre empresas (052): la frontera solo se abre a propósito")
+# VERA autoriza a MAP el RUC 0933 (el contribuyente c3, que es de VERA).
+DB["organization_grants"].append(
+    {"owner_org_id": VERA_ID, "grantee_org_id": MAP_ID, "identificacion": "0933"})
+con_empresa(MAP_ID)
+check("Ana (admin en MAP) ahora alcanza el contribuyente autorizado de VERA",
+      sorted(c["id"] for c in tenancy.visible_clients(ANA)), ["c1", "c2", "c3"])
+con_empresa(MAP_ID)
+check("…y assert_client_owner deja de dar 404 para ese",
+      tenancy.assert_client_owner("c3", ANA), True)
+con_empresa(MAP_ID)
+try:
+    tenancy.assert_client_owner("c4", ANA)   # c4 es de VERA y NO fue autorizado
+    check("El resto de la cartera de VERA sigue cerrada", "PERMITIDO", "404")
+except HTTPException as e:
+    check("El resto de la cartera de VERA sigue cerrada", e.status_code, 404)
+
+# La autorización es de ida, no de vuelta: VERA no gana acceso a MAP por ello.
+con_empresa(VERA_ID)
+check("Autorizar no da acceso recíproco: Beto sigue viendo solo lo de VERA",
+      sorted(c["id"] for c in tenancy.visible_clients(BETO)), ["c3", "c4"])
+
+# Al revocarla, el acceso desaparece.
+DB["organization_grants"].clear()
+con_empresa(MAP_ID)
+check("Revocada la autorización, vuelve a cerrarse",
+      sorted(c["id"] for c in tenancy.visible_clients(ANA)), ["c1", "c2"])
 
 print("\n" + ("FALLOS: " + ", ".join(fallos) if fallos else "TODO CORRECTO"))
 sys.exit(1 if fallos else 0)

@@ -50,6 +50,14 @@ export default function AdminEmpresas() {
   const [huerfanos, setHuerfanos] = useState([])
   const [seleccionHuerfanos, setSeleccionHuerfanos] = useState(new Set())
 
+  // Exportar un contribuyente a empresa propia + autorizaciones entre empresas
+  const [expIdent, setExpIdent] = useState('')
+  const [expConservar, setExpConservar] = useState(true)
+  const [exportando, setExportando] = useState(false)
+  const [autor, setAutor] = useState({ otorgadas: [], recibidas: [], empresas: [] })
+  const [autDestino, setAutDestino] = useState('')
+  const [autIdent, setAutIdent] = useState('')
+
   const mostrarError = (e, fallback) => {
     const d = e?.response?.data?.detail
     setError(typeof d === 'string' ? d : (d ? JSON.stringify(d) : (e?.message || fallback)))
@@ -95,7 +103,77 @@ export default function AdminEmpresas() {
     if (!selectedOrg) { setCandidatos([]); setContribuyentes([]); return }
     orgsAPI.candidatos(selectedOrg).then((r) => setCandidatos(r.data?.data || [])).catch(() => setCandidatos([]))
     orgsAPI.contribuyentes(selectedOrg).then((r) => setContribuyentes(r.data?.data || [])).catch(() => setContribuyentes([]))
+    cargarAutorizaciones(selectedOrg)
+    setExpIdent(''); setAutDestino(''); setAutIdent('')
   }, [selectedOrg, cargarMiembros])
+
+  const cargarAutorizaciones = useCallback((orgId) => {
+    if (!orgId) { setAutor({ otorgadas: [], recibidas: [], empresas: [] }); return }
+    orgsAPI.autorizaciones(orgId)
+      .then((r) => setAutor({
+        otorgadas: r.data?.otorgadas || [], recibidas: r.data?.recibidas || [],
+        empresas: r.data?.empresas || [],
+      }))
+      .catch(() => setAutor({ otorgadas: [], recibidas: [], empresas: [] }))
+  }, [])
+
+  const exportar = async (e) => {
+    e.preventDefault()
+    if (!expIdent || exportando) return
+    const c = contribuyentes.find((x) => x.identificacion === expIdent)
+    const msg = `¿Convertir «${c?.nombre || expIdent}» en una empresa propia?\n\n` +
+      `Se le mueven sus ${c?.periodos || '?'} período(s) con todos sus datos.\n` +
+      (expConservar
+        ? 'Esta empresa conservará el acceso mediante una autorización revocable.'
+        : 'ATENCIÓN: esta empresa DEJARÁ de ver ese contribuyente.')
+    if (!window.confirm(msg)) return
+    setExportando(true)
+    try {
+      const r = await orgsAPI.exportarContribuyente(expIdent, expConservar)
+      setExpIdent('')
+      await cargarEmpresas()
+      const [ctb, aut] = await Promise.all([
+        orgsAPI.contribuyentes(selectedOrg), orgsAPI.autorizaciones(selectedOrg),
+      ])
+      setContribuyentes(ctb.data?.data || [])
+      setAutor({ otorgadas: aut.data?.otorgadas || [], recibidas: aut.data?.recibidas || [], empresas: aut.data?.empresas || [] })
+      setAviso(`«${r.data?.nombre}» es ahora una empresa con ${r.data?.periodos_movidos} período(s).` +
+        (r.data?.autorizacion_de_vuelta ? ' Se creó la autorización de vuelta.' : ''))
+      setError('')
+    } catch (e2) {
+      mostrarError(e2, 'No se pudo exportar')
+    } finally {
+      setExportando(false)
+    }
+  }
+
+  const autorizar = async (e) => {
+    e.preventDefault()
+    if (!autDestino) return
+    try {
+      await orgsAPI.autorizar(selectedOrg, {
+        grantee_org_id: autDestino, identificacion: autIdent || null,
+      })
+      setAutDestino(''); setAutIdent('')
+      cargarAutorizaciones(selectedOrg)
+      setAviso('Autorización creada.')
+      setError('')
+    } catch (e2) {
+      mostrarError(e2, 'No se pudo autorizar')
+    }
+  }
+
+  const revocar = async (g) => {
+    if (!window.confirm(`¿Revocar el acceso de «${g.empresa}» a ${g.alcance}?`)) return
+    try {
+      await orgsAPI.revocar(selectedOrg, g.id)
+      cargarAutorizaciones(selectedOrg)
+      setAviso('Autorización revocada.')
+      setError('')
+    } catch (e2) {
+      mostrarError(e2, 'No se pudo revocar')
+    }
+  }
 
   useEffect(() => {
     if (!isPlatformAdmin) return
@@ -436,6 +514,104 @@ export default function AdminEmpresas() {
                   </tbody>
                 </table>
               )}
+
+              {/* ── Exportar un contribuyente a empresa propia ──────────── */}
+              {isPlatformAdmin && contribuyentes.length > 0 && (
+                <div className="bloque">
+                  <h3>Exportar un contribuyente a empresa</h3>
+                  <p>
+                    Convierte un contribuyente de esta cartera en una empresa con vida propia,
+                    para poder darle acceso a su propia gente. Se lleva todos sus períodos y sus datos.
+                  </p>
+                  <form className="fila-form" onSubmit={exportar}>
+                    <select value={expIdent} onChange={(ev) => setExpIdent(ev.target.value)}>
+                      <option value="">Elige un contribuyente…</option>
+                      {contribuyentes.map((c) => (
+                        <option key={c.identificacion} value={c.identificacion}>
+                          {c.nombre} — {c.identificacion} ({c.periodos} período{c.periodos !== 1 ? 's' : ''})
+                        </option>
+                      ))}
+                    </select>
+                    <label className="check">
+                      <input
+                        type="checkbox" checked={expConservar}
+                        onChange={(ev) => setExpConservar(ev.target.checked)}
+                      />
+                      Conservar el acceso de {empresaSel?.nombre}
+                    </label>
+                    <button type="submit" disabled={!expIdent || exportando}>
+                      {exportando ? 'Exportando…' : 'Exportar'}
+                    </button>
+                  </form>
+                  {!expConservar && (
+                    <p className="aviso-rojo">
+                      Sin conservar el acceso, esta empresa dejará de ver ese contribuyente
+                      en cuanto se exporte. Se puede volver a autorizar después, desde la empresa nueva.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* ── Autorizaciones entre empresas ───────────────────────── */}
+              <div className="bloque">
+                <h3>Autorizaciones</h3>
+                <p>
+                  Por defecto ninguna empresa ve los datos de otra. Aquí se abre esa puerta,
+                  y solo para lo que se indique. Revocarla la vuelve a cerrar.
+                </p>
+
+                <form className="fila-form" onSubmit={autorizar}>
+                  <select value={autDestino} onChange={(ev) => setAutDestino(ev.target.value)}>
+                    <option value="">Autorizar a la empresa…</option>
+                    {autor.empresas.map((e) => (
+                      <option key={e.id} value={e.id}>{e.nombre}</option>
+                    ))}
+                  </select>
+                  <select value={autIdent} onChange={(ev) => setAutIdent(ev.target.value)}>
+                    <option value="">Toda la cartera</option>
+                    {contribuyentes.map((c) => (
+                      <option key={c.identificacion} value={c.identificacion}>
+                        Solo {c.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="submit" disabled={!autDestino}>Autorizar</button>
+                </form>
+                {autDestino && !autIdent && (
+                  <p className="aviso-rojo">
+                    «Toda la cartera» es un cheque en blanco: incluye también los contribuyentes
+                    que esta empresa registre en el futuro. Lo habitual es autorizar RUC por RUC.
+                  </p>
+                )}
+
+                <h4>Acceso que esta empresa da sobre sus datos</h4>
+                {autor.otorgadas.length === 0 ? (
+                  <p className="vacio">Ninguno. Sus datos no los ve ninguna otra empresa.</p>
+                ) : (
+                  <ul className="lista-grants">
+                    {autor.otorgadas.map((g) => (
+                      <li key={g.id}>
+                        <span><strong>{g.empresa}</strong> puede ver: {g.alcance}</span>
+                        <button className="peligro" onClick={() => revocar(g)}>Revocar</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <h4>Acceso que esta empresa recibe de otras</h4>
+                {autor.recibidas.length === 0 ? (
+                  <p className="vacio">Ninguno.</p>
+                ) : (
+                  <ul className="lista-grants">
+                    {autor.recibidas.map((g) => (
+                      <li key={g.id}>
+                        <span>De <strong>{g.empresa}</strong>: {g.alcance}</span>
+                        <em className="solo-dueno">solo {g.empresa} puede revocarlo</em>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
 
               {isPlatformAdmin && huerfanos.length > 0 && (
                 <div className="huerfanos">

@@ -89,6 +89,13 @@ export const orgsAPI = {
   addMember: (id, data) => api.post(`/api/organizations/${id}/members`, data),
   updateMember: (id, uid, data) => api.put(`/api/organizations/${id}/members/${uid}`, data),
   removeMember: (id, uid) => api.delete(`/api/organizations/${id}/members/${uid}`),
+  // Convertir un contribuyente en empresa propia (se lleva todos sus períodos)
+  exportarContribuyente: (identificacion, conservar_acceso = true, nombre = null) =>
+    api.post('/api/organizations/exportar-contribuyente', { identificacion, conservar_acceso, nombre }),
+  // Autorizaciones entre empresas: la dueña abre el acceso, y solo ella lo revoca
+  autorizaciones: (id) => api.get(`/api/organizations/${id}/autorizaciones`),
+  autorizar: (id, data) => api.post(`/api/organizations/${id}/autorizaciones`, data),
+  revocar: (id, grantId) => api.delete(`/api/organizations/${id}/autorizaciones/${grantId}`),
   // Reparto de la cartera entre empresas
   contribuyentes: (id) => api.get(`/api/organizations/${id}/contribuyentes`),
   huerfanos: () => api.get('/api/organizations/sin-empresa/contribuyentes'),
