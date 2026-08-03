@@ -19,7 +19,9 @@ jobs:
       - name: Enviar recordatorio de cobros a Johanna
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          BACKEND_URL: ${{ vars.BACKEND_URL }}
+          # La API en Coolify. La variable BACKEND_URL solo hace falta para
+          # apuntar a otro sitio; sin ella se usa el dominio de producción.
+          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://app-tributos.pensamiento-libre.org' }}
         run: |
           for i in 1 2 3; do
             if curl -fsS --max-time 120 -X POST \
