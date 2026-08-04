@@ -14,6 +14,21 @@ from services.activity import registrar
 router = APIRouter(prefix="/api/anexos", tags=["anexos"])
 
 
+def _asegurar_acceso(supabase, anexo_id: str, user_id: str):
+    """404 si el usuario no alcanza el contribuyente del que cuelga el anexo.
+
+    Los anexos sueltos (sin client_id, solo datos antiguos) siguen siendo de su
+    autor: no hay contribuyente contra el que comprobar el rol."""
+    r = supabase.table("anexos").select("id,client_id,user_id").eq("id", anexo_id).execute().data
+    if not r:
+        raise HTTPException(status_code=404, detail="Anexo no encontrado")
+    fila = r[0]
+    if fila.get("client_id"):
+        assert_client_owner(fila["client_id"], user_id)
+    elif fila.get("user_id") != user_id:
+        raise HTTPException(status_code=404, detail="Anexo no encontrado")
+
+
 class AnexoIn(BaseModel):
     client_id: str
     tipo: str
@@ -44,7 +59,12 @@ async def listar(client_id: Optional[str] = Query(None), user_id: str = Depends(
             if vis is None:
                 data = fetch_all(lambda: supabase.table("anexos").select(cols).order("created_at", desc=True))
             else:
-                own = supabase.table("anexos").select(cols).eq("user_id", user_id).order("created_at", desc=True).execute().data or []
+                # Solo las SUELTAS (sin contribuyente): lo que cuelga de un
+                # contribuyente visible ya viene abajo por client_id. Traerlas
+                # todas por user_id arrastraría a la empresa activa los anexos
+                # que el usuario creó en OTRA (mismo user_id, cartera ajena).
+                own = supabase.table("anexos").select(cols).eq("user_id", user_id)\
+                    .is_("client_id", "null").order("created_at", desc=True).execute().data or []
                 sh = fetch_in(lambda: supabase.table("anexos").select(cols), vis, "client_id")
                 seen, data = set(), []
                 for r in own + sh:
@@ -85,7 +105,12 @@ async def actualizar(anexo_id: str, entry: AnexoUpdate, user_id: str = Depends(g
             data["datos"] = entry.datos
         if not data:
             raise HTTPException(status_code=400, detail="Nada que actualizar")
-        res = supabase.table("anexos").update(data).eq("id", anexo_id).eq("user_id", user_id).execute()
+        # Autorización por CONTRIBUYENTE, no por quien lo creó (igual que al
+        # guardarlo). Exigir user_id dejaba el anexo en manos de su autor: la
+        # funcionaria que abría el que había guardado el administrador y volvía
+        # a guardarlo recibía un 404 y perdía el trabajo en silencio.
+        _asegurar_acceso(supabase, anexo_id, user_id)
+        res = supabase.table("anexos").update(data).eq("id", anexo_id).execute()
         if not res.data:
             raise HTTPException(status_code=404, detail="Anexo no encontrado")
         return res.data[0]
@@ -126,7 +151,10 @@ async def export_pdf(payload: AnexoExport, _: str = Depends(get_current_user)):
 async def eliminar(anexo_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("anexos").delete().eq("id", anexo_id).eq("user_id", user_id).execute()
+        _asegurar_acceso(supabase, anexo_id, user_id)   # por contribuyente, no por autor
+        supabase.table("anexos").delete().eq("id", anexo_id).execute()
         return {"message": "Eliminado"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -11,7 +11,8 @@ from services.periodo import (periodo_a_declarar, periodo_anterior,
                               semestre_a_declarar, semestre_anterior,
                               mes_ancla_semestre, semestre_de_mes)
 from services.periodicidad import plan_cambio, aplicar_cambio
-from tenancy import visible_clients, assert_client_owner, invalidate_clients_cache, can_access_identificacion
+from tenancy import (visible_clients, assert_client_owner, invalidate_clients_cache,
+                     can_access_identificacion, shared_identificaciones)
 from services.activity import registrar, _email_de
 import orgs
 
@@ -46,10 +47,14 @@ class ClientUpdate(BaseModel):
     periodo_semestre: Optional[int] = None
 
 
-def _shared_ids(supabase, user_id: str) -> list:
-    """Client IDs que otro usuario compartió explícitamente con user_id."""
-    rows = supabase.table("client_access").select("client_id").eq("granted_to", user_id).execute().data or []
-    return [r["client_id"] for r in rows]
+def _shared_ids(clients: list, user_id: str) -> set:
+    """De los contribuyentes visibles, los que le llegaron por acceso compartido.
+
+    Se resuelve por identificación y no por client_id: el acceso se otorga al
+    CONTRIBUYENTE y alcanza a todos sus períodos, incluidos los que se abran
+    después (ver tenancy.shared_identificaciones)."""
+    idents = shared_identificaciones(user_id)
+    return {c["id"] for c in clients if c.get("identificacion") in idents} if idents else set()
 
 
 @router.get("/")
@@ -60,7 +65,7 @@ async def list_clients(user_id: str = Depends(get_current_user)):
         # Visibles según rol (admin: todos; socio: clientes+propios; cliente: propios+compartidos).
         clients = visible_clients(user_id, "*")
         # Marcar/enriquecer los que llegaron por acceso compartido (client_access).
-        shared_set = set(_shared_ids(supabase, user_id))
+        shared_set = _shared_ids(clients, user_id)
         if shared_set:
             owner_uids = list({c["user_id"] for c in clients if c["id"] in shared_set and c.get("user_id")})
             owner_map = {}

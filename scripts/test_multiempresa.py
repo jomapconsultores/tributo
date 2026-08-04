@@ -230,5 +230,51 @@ con_empresa(MAP_ID)
 check("Revocada la autorización, vuelve a cerrarse",
       sorted(c["id"] for c in tenancy.visible_clients(ANA)), ["c1", "c2"])
 
+print("\n7) Lo compartido es el CONTRIBUYENTE, no el período")
+# El caso real que rompía: el acceso se otorga por RUC pero se guardaba como una
+# fila de client_access por período. Al abrir el período siguiente —una fila NUEVA
+# de `clients`— nacía sin fila y el contribuyente desaparecía de la vista de
+# trabajadores y socios hasta que el administrador volviera a marcarlo.
+CRIS, SOC = "u-cris", "u-soc"
+DB["organization_members"] += [
+    {"org_id": MAP_ID, "user_id": CRIS, "role": "trabajador"},
+    {"org_id": MAP_ID, "user_id": SOC,  "role": "socio"},
+]
+# c2 (RUC 0922) lo creó MARCO, que es administrador: sin compartirlo, ni la
+# trabajadora ni la socia lo verían.
+DB["client_access"] += [{"client_id": "c2", "granted_to": CRIS},
+                        {"client_id": "c2", "granted_to": SOC}]
+con_empresa(MAP_ID)
+check("Trabajadora ve el contribuyente compartido",
+      sorted(c["id"] for c in tenancy.visible_clients(CRIS)), ["c2"])
+con_empresa(MAP_ID)
+check("Socia ve el contribuyente compartido",
+      sorted(c["id"] for c in tenancy.visible_clients(SOC)), ["c2"])
+
+# Se abre el período siguiente: misma identificación, fila nueva, SIN client_access.
+DB["clients"].append({"id": "c2b", "user_id": MARCO, "org_id": MAP_ID,
+                      "identificacion": "0922", "nombre": "FERRETERIA"})
+con_empresa(MAP_ID)
+check("El período nuevo del mismo RUC no se pierde (trabajadora)",
+      sorted(c["id"] for c in tenancy.visible_clients(CRIS)), ["c2", "c2b"])
+con_empresa(MAP_ID)
+check("El período nuevo del mismo RUC no se pierde (socia)",
+      sorted(c["id"] for c in tenancy.visible_clients(SOC)), ["c2", "c2b"])
+con_empresa(MAP_ID)
+check("…y assert_client_owner también lo deja pasar",
+      tenancy.assert_client_owner("c2b", CRIS), True)
+
+con_empresa(MAP_ID)
+try:
+    tenancy.assert_client_owner("c1", CRIS)   # de ANA, nunca compartido
+    check("Lo NO compartido sigue cerrado para la trabajadora", "PERMITIDO", "404")
+except HTTPException as e:
+    check("Lo NO compartido sigue cerrado para la trabajadora", e.status_code, 404)
+
+DB["client_access"] = [a for a in DB["client_access"] if a["granted_to"] != CRIS]
+con_empresa(MAP_ID)
+check("Al revocar, se cierran TODOS los períodos",
+      sorted(c["id"] for c in tenancy.visible_clients(CRIS)), [])
+
 print("\n" + ("FALLOS: " + ", ".join(fallos) if fallos else "TODO CORRECTO"))
 sys.exit(1 if fallos else 0)

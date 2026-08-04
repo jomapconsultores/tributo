@@ -163,7 +163,19 @@ async def sincronizar(user_id: str = Depends(get_current_user)):
 async def eliminar(comprador_id: str, user_id: str = Depends(get_current_user)):
     try:
         supabase = get_supabase_client()
-        supabase.table("compradores").delete().eq("id", comprador_id).eq("user_id", user_id).execute()
+        # Autorización por CONTRIBUYENTE, como en el listado: `compradores` se
+        # guarda por identificación y lo comparten todos los usuarios
+        # autorizados de ese RUC. Filtrar por user_id borraba solo lo cargado
+        # por uno mismo y devolvía «Eliminado» sin haber borrado nada.
+        fila = supabase.table("compradores").select("id,identificacion")\
+            .eq("id", comprador_id).execute().data
+        if not fila:
+            raise HTTPException(status_code=404, detail="Comprador no encontrado")
+        if not can_access_identificacion(user_id, fila[0].get("identificacion")):
+            raise HTTPException(status_code=404, detail="Comprador no encontrado")
+        supabase.table("compradores").delete().eq("id", comprador_id).execute()
         return {"message": "Eliminado"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

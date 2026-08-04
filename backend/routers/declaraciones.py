@@ -504,7 +504,10 @@ async def listar(client_id: Optional[str] = Query(None), tipo: Optional[str] = Q
             if vis is None:
                 data = fetch_all(lambda: _base().order("created_at", desc=True))
             else:
-                oq = _base().eq("user_id", user_id)
+                # Solo las SUELTAS (sin contribuyente): las que cuelgan de uno
+                # visible ya vienen por client_id, y filtrar solo por user_id
+                # arrastraría a esta empresa lo que el usuario hizo en otra.
+                oq = _base().eq("user_id", user_id).is_("client_id", "null")
                 own = oq.order("created_at", desc=True).execute().data or []
                 sh = fetch_in(_base, vis, "client_id")
                 seen, data = set(), []
@@ -876,7 +879,8 @@ async def listar_aplazados(
             if vis is None:
                 data = fetch_all(lambda: _ord(_base()))
             else:
-                own = _ord(_base().eq("user_id", user_id)).execute().data or []
+                # Solo los SUELTOS: ver la nota del listado de declaraciones.
+                own = _ord(_base().eq("user_id", user_id).is_("client_id", "null")).execute().data or []
                 sh = fetch_in(_base, vis, "client_id")
                 seen, data = set(), []
                 for d in own + sh:

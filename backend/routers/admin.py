@@ -645,11 +645,19 @@ async def set_plan(uid: str, body: PlanIn, _: str = Depends(require_admin)):
 
 @router.get("/client-access")
 async def listar_acceso_clientes(uid: str = Query(...), _: str = Depends(require_admin)):
-    """Devuelve todos los contribuyentes agrupados por identificacion (RUC/cédula),
+    """Contribuyentes de la EMPRESA ACTIVA agrupados por identificacion (RUC/cédula),
     sin duplicados aunque el mismo RUC exista en varios propietarios."""
     from database import fetch_all
+    import orgs
     sb = get_supabase_client()
-    todos = fetch_all(lambda: sb.table("clients").select("id,identificacion,nombre"))
+    org_id = orgs.org_activa()
+    # Acotado a la empresa activa: repartir acceso sobre la cartera de OTRA
+    # empresa no serviría de nada (la frontera de tenancy.py lo bloquea al leer)
+    # y de paso enseñaría aquí sus contribuyentes.
+    def _q():
+        q = sb.table("clients").select("id,identificacion,nombre")
+        return q.eq("org_id", org_id) if org_id else q
+    todos = fetch_all(_q)
     access = sb.table("client_access").select("client_id").eq("granted_to", uid).execute().data or []
     granted_ids = {r["client_id"] for r in access}
 
@@ -668,22 +676,45 @@ async def listar_acceso_clientes(uid: str = Query(...), _: str = Depends(require
 
     result = []
     for g in grupos.values():
-        ids = g["client_ids"]
-        g["con_acceso"] = all(cid in granted_ids for cid in ids)
-        g["parcial"] = any(cid in granted_ids for cid in ids) and not g["con_acceso"]
+        # Basta UN período otorgado: lo que se comparte es el CONTRIBUYENTE y
+        # alcanza a todos sus períodos, también los que se abran después
+        # (tenancy.shared_identificaciones). Con `all` la casilla se apagaba sola
+        # cada vez que se abría un período nuevo, aunque el acceso siguiera dado.
+        g["con_acceso"] = any(cid in granted_ids for cid in g["client_ids"])
+        g["parcial"] = False
         result.append(g)
 
     result.sort(key=lambda x: (x.get("nombre") or "").upper())
     return {"data": result}
 
 
+def _client_ids_de(sb, identificaciones: list, acotar_a_org: bool) -> list:
+    """Filas de `clients` de esos contribuyentes, para escribir client_access.
+
+    Al OTORGAR se acota a la empresa activa: dar acceso a la cartera de otra
+    empresa no tendría efecto (tenancy.py la bloquea al leer) y dejaría filas
+    engañosas. Al REVOCAR se barre sin acotar, a propósito: como la visibilidad
+    se resuelve por identificación, dejar una sola fila viva en otra empresa
+    mantendría el RUC dentro de lo compartido y el acceso no se cerraría."""
+    import orgs
+    from database import fetch_in
+    org_id = orgs.org_activa()
+
+    def _q():
+        q = sb.table("clients").select("id")
+        return q.eq("org_id", org_id) if (acotar_a_org and org_id) else q
+
+    return [c["id"] for c in fetch_in(_q, identificaciones, "identificacion", 40)]
+
+
 @router.put("/client-access")
 async def set_acceso_cliente(body: ClientAccessIn, admin_id: str = Depends(require_admin)):
     """Otorga o revoca acceso a TODOS los períodos de un contribuyente (por RUC)
-    para un usuario, sin importar quién los creó."""
+    para un usuario, sin importar quién los creó. El acceso alcanza además a los
+    períodos que se abran DESPUÉS: se resuelve por identificación al leer
+    (tenancy.shared_identificaciones), no por la lista de filas de este momento."""
     sb = get_supabase_client()
-    clients = sb.table("clients").select("id").eq("identificacion", body.identificacion).execute().data or []
-    ids = [c["id"] for c in clients]
+    ids = _client_ids_de(sb, [body.identificacion], acotar_a_org=body.grant)
     if not ids:
         raise HTTPException(status_code=404, detail="Contribuyente no encontrado")
 
@@ -721,14 +752,15 @@ async def set_acceso_cliente_bulk(body: ClientAccessBulkIn, admin_id: str = Depe
     idents = [i for i in (body.identificaciones or []) if i]
     if not idents:
         return {"ok": True, "count": 0, "grant": body.grant}
-    clients = sb.table("clients").select("id,identificacion").in_("identificacion", idents).execute().data or []
-    for c in clients:
+    # in_ suelto se quedaba en las primeras 1000 filas y con muchos RUC armaba una
+    # URL enorme; fetch_in trocea y pagina. Mismo criterio de alcance que arriba.
+    for cid in _client_ids_de(sb, idents, acotar_a_org=body.grant):
         if body.grant:
             sb.table("client_access").upsert({
-                "client_id": c["id"], "granted_to": body.granted_to, "granted_by": admin_id,
+                "client_id": cid, "granted_to": body.granted_to, "granted_by": admin_id,
             }, on_conflict="client_id,granted_to").execute()
         else:
-            sb.table("client_access").delete().eq("client_id", c["id"]).eq("granted_to", body.granted_to).execute()
+            sb.table("client_access").delete().eq("client_id", cid).eq("granted_to", body.granted_to).execute()
     try:
         from tenancy import invalidate_clients_cache
         invalidate_clients_cache(body.granted_to)

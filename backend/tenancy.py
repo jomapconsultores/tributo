@@ -17,6 +17,14 @@ Con multiempresa (migración 051) hay DOS filtros encadenados:
 
 Sin empresa activa —migración 051 aún sin aplicar, o usuario sin membresías—
 solo se aplica el filtro 2 y el comportamiento es idéntico al anterior.
+
+Lo compartido se cuenta por CONTRIBUYENTE
+-----------------------------------------
+client_access guarda una fila por período, pero lo que el administrador otorga
+es el contribuyente entero. La visibilidad se resuelve por identificación
+(`shared_identificaciones`), no por la lista de filas: así el período que se abre
+el mes que viene ya nace compartido, en vez de desaparecer de la vista hasta que
+alguien lo vuelva a marcar a mano.
 """
 from fastapi import HTTPException
 from database import get_supabase_client, fetch_all, fetch_in
@@ -61,8 +69,9 @@ def assert_client_owner(client_id, user_id):
     # La columna org_id solo se pide si hay empresa activa, lo que implica que la
     # migración 051 está aplicada. Pedirla siempre haría fallar TODAS las
     # comprobaciones de acceso mientras el SQL no se haya ejecutado.
-    # identificacion hace falta para resolver las autorizaciones por RUC (052).
-    columnas = "id,user_id,org_id,identificacion" if org_id else "id,user_id"
+    # identificacion hace falta para resolver las autorizaciones por RUC (052) y
+    # el acceso compartido, que también es por contribuyente y no por período.
+    columnas = "id,user_id,org_id,identificacion" if org_id else "id,user_id,identificacion"
     r = supabase.table("clients").select(columnas).eq("id", client_id).execute().data
     if not r:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -74,8 +83,7 @@ def assert_client_owner(client_id, user_id):
 
     if cli.get("user_id") == user_id:
         return True
-    g = supabase.table("client_access").select("client_id").eq("client_id", client_id).eq("granted_to", user_id).execute()
-    if g.data:
+    if _esta_compartido(cli, user_id):
         return True
     role = rol_de(user_id)
     if role == "admin":
@@ -98,10 +106,47 @@ def filtro_org(q, col: str = "org_id"):
 
 
 def shared_client_ids(user_id: str) -> list:
-    """IDs de clientes explícitamente otorgados a user_id por un administrador."""
+    """IDs de clientes explícitamente otorgados a user_id por un administrador.
+
+    OJO: son ids de FILA, o sea contribuyente + período. Para decidir visibilidad
+    hay que usar `shared_identificaciones`, no esta lista — ver allí el porqué."""
     supabase = get_supabase_client()
     rows = supabase.table("client_access").select("client_id").eq("granted_to", user_id).execute().data or []
     return [r["client_id"] for r in rows]
+
+
+def shared_identificaciones(user_id: str) -> set:
+    """CONTRIBUYENTES (por identificación) compartidos con `user_id`.
+
+    El acceso se otorga por RUC —la pantalla del administrador dice "todos los
+    períodos de este contribuyente"— pero se GUARDA como una fila de
+    client_access por cada período existente en ese momento. Como cada período es
+    una fila nueva de `clients`, todo período abierto DESPUÉS de otorgar el
+    acceso nacía sin fila y quedaba invisible: cada mes, al abrir el período
+    nuevo, los trabajadores y socios perdían de golpe toda su cartera hasta que
+    el administrador volviera a marcar uno por uno.
+
+    Por eso la visibilidad se resuelve aquí por identificación: lo otorgado es el
+    contribuyente, y sus períodos —los de ayer y los de mañana— viajan con él.
+    La frontera de empresa NO se toca: la sigue aplicando `_cliente_en_org`."""
+    hit = _si_cache.get(user_id)
+    if hit and (_time.monotonic() - hit[1]) < _VC_TTL:
+        return hit[0]
+    supabase = get_supabase_client()
+    ids = shared_client_ids(user_id)
+    idents = set()
+    if ids:
+        filas = fetch_in(lambda: supabase.table("clients").select("identificacion"),
+                         ids, "id", 40)
+        idents = {f["identificacion"] for f in filas if f.get("identificacion")}
+    _si_cache[user_id] = (idents, _time.monotonic())
+    return idents
+
+
+def _esta_compartido(cli: dict, user_id: str) -> bool:
+    """¿Le compartieron a `user_id` este contribuyente? Por RUC, no por período."""
+    ident = cli.get("identificacion")
+    return bool(ident) and ident in shared_identificaciones(user_id)
 
 
 def _admin_user_ids(org_id=None) -> set:
@@ -137,15 +182,21 @@ _VC_TTL = 30  # seg: cache de clientes visibles por usuario (evita viajes repeti
 # Clave (user_id, org_id): el mismo usuario ve conjuntos distintos según la
 # empresa activa, así que cachear solo por usuario mezclaría las carteras.
 _vc_cache: dict = {}  # (user_id, org_id) -> (rows_full, ts)
+# Contribuyentes compartidos, por RUC. No depende de la empresa activa (la
+# frontera la aplica después _cliente_en_org), así que basta la clave user_id.
+_si_cache: dict = {}  # user_id -> (set(identificacion), ts)
 
 
 def invalidate_clients_cache(user_id: str = None):
-    """Limpia el cache de clientes visibles (al crear/editar/borrar un cliente)."""
+    """Limpia el cache de clientes visibles (al crear/editar/borrar un cliente,
+    y al otorgar o revocar un acceso compartido)."""
     if user_id is None:
         _vc_cache.clear()
+        _si_cache.clear()
     else:
         for clave in [k for k in _vc_cache if k[0] == user_id]:
             _vc_cache.pop(clave, None)
+        _si_cache.pop(user_id, None)
 
 
 def _consulta_clients(supabase, org_id, es_plataforma: bool):
@@ -172,22 +223,31 @@ def _compute_visible_clients_full(user_id: str) -> list:
     def _base():
         return _consulta_clients(supabase, org_id, plataforma)
 
+    # Lo compartido se resuelve por CONTRIBUYENTE, no por período: ver
+    # `shared_identificaciones`. Antes, cada período nuevo (que es una fila nueva
+    # de `clients`) nacía fuera de lo compartido y desaparecía de la vista.
+    idents_compartidos = shared_identificaciones(user_id)
+
     if role == "admin":
         rows = fetch_all(_base)
     elif role == "socio":
         todos = fetch_all(_base)
         admin_uids = _admin_user_ids(org_id)
-        compartidos = set(shared_client_ids(user_id))
         rows = [c for c in todos
-                if c.get("user_id") not in admin_uids or c["id"] in compartidos]
+                if c.get("user_id") not in admin_uids
+                or c.get("identificacion") in idents_compartidos]
     else:
         # trabajador / cliente: propios + compartidos
         propios = fetch_all(lambda: _base().eq("user_id", user_id))
-        sids = shared_client_ids(user_id)
         rows = propios
-        if sids:
+        if idents_compartidos:
             seen = {c["id"] for c in propios}
-            compartidos = fetch_all(lambda: _base().in_("id", sids))
+            # SIN filtrar por empresa en la BD a propósito: un contribuyente
+            # compartido puede vivir en otra empresa que autorizó a esta (052), y
+            # a estos dos roles los prestados solo les llegan por client_access.
+            # Quien cierra la frontera es `_cliente_en_org`, al final.
+            compartidos = fetch_in(lambda: supabase.table("clients").select("*"),
+                                   list(idents_compartidos), "identificacion", 40)
             rows = propios + [c for c in compartidos if c["id"] not in seen]
 
     # Contribuyentes de OTRAS empresas que autorizaron a esta (migración 052).
