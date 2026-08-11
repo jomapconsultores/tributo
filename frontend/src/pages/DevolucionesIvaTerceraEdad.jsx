@@ -453,8 +453,11 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
       const extra = r.data.excedente > 0
         ? ` OJO: el IVA marcado supera el tope en ${fmtMoney(r.data.excedente)}; se solicita el tope.`
         : ''
+      // Primero la recarga y DESPUÉS el aviso: cargar() limpia los mensajes al
+      // arrancar, así que anunciar antes deja al usuario sin confirmación de
+      // que guardó —que es justo lo que vino a hacer a esta pantalla—.
+      await cargar()
       setMsg({ tipo: 'ok', texto: `Solicitud guardada: ${fmtMoney(r.data.monto_solicitado)} a solicitar.${extra}` })
-      cargar()
     } catch (e) {
       setMsg({ tipo: 'err', texto: e.response?.data?.detail || 'No se pudo guardar la solicitud.' })
     } finally {
