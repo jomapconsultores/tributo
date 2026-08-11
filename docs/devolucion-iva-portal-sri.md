@@ -67,6 +67,31 @@ envío ocurre en la sesión del contribuyente.
 4. **Los comprobantes se identifican por serie** (`003-301-000089145`), no por
    clave de acceso: es la llave para casar cada fila con `invoices.factura_numero`.
 
+## Qué automatiza el enviador
+
+`sri_downloader/bookmarklet_devolucion.js`, botón **"Llenar y presentar en el
+portal"**, parado en *Ingresar facturas electrónicas*:
+
+1. Elige año y mes y toca *Buscar*.
+2. Recorre la grilla (y sus páginas) casando cada fila por **serie**: marca la
+   casilla, espera el ajax, elige el tipo de gasto y corrige el *IVA solicitado*
+   solo cuando el acumulado del mes pasaría el tope.
+3. Informa lo que no pudo: comprobantes de la solicitud que el portal no lista
+   (no califican), filas del portal ajenas a la solicitud, y los que quedaron
+   fuera por tope.
+4. *Procesar facturas seleccionadas* → *Guardar selección realizada*.
+5. **El envío final va aparte**: *Cargar Información* queda detrás de una
+   confirmación con los números a la vista, porque es irreversible.
+6. Lee la constancia y la copia como JSON para pegarla en la app
+   (`comprobantes`, `monto`, `fecha_carga`, `mensaje`).
+
+La tabla se repinta en cada ajax, así que el script vuelve a buscar la fila por
+serie antes de cada paso; los controles se ubican por etiqueta propia y por el
+patrón de la serie, nunca por ids `j_idt…`. Probado contra un portal simulado
+(`scripts` de prueba no versionados) con tope excedido, comprobante ausente y
+comprobante ajeno; contra el portal real hay que probarlo con una solicitud
+verdadera.
+
 ## Tipo de gasto — catálogo cerrado del SRI
 
 | Código | Etiqueta en el portal |

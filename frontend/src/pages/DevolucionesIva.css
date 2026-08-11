@@ -138,31 +138,21 @@
 
 .dv-vacio-meses .dv-btn { font-size: .8rem; padding: 5px 10px; }
 
-.dv-vacio-pasos {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.4fr);
-  gap: 18px;
-  align-items: start;
+.dv-vacio-carga { max-width: 620px; }
+
+.dv-modal-pegar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0 4px;
 }
 
-@media (max-width: 780px) {
-  .dv-vacio-pasos { grid-template-columns: 1fr; }
-}
+.dv-modal-pegar em { font-style: normal; font-size: .78rem; line-height: 1.4; }
+.dv-modal-pegar em.ok { color: #047857; }
+.dv-modal-pegar em.err { color: #b91c1c; }
 
-.dv-vacio-pasos h3 {
-  margin: 0 0 6px;
-  font-size: .92rem;
-  color: #92400e;
-}
-
-.dv-vacio-pasos p {
-  color: #475569;
-  line-height: 1.5;
-  font-size: .84rem;
-  margin: 0 0 10px;
-}
-
-.dv-vacio-nota { margin: 8px 0 0 !important; color: #64748b !important; font-size: .78rem !important; }
+.dv-vacio-nota { margin: 8px 0 0; color: #64748b; font-size: .78rem; line-height: 1.5; }
 
 .dv-vacio-avanzado {
   margin-top: 16px;

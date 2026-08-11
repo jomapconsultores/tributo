@@ -397,8 +397,10 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
         (copiado
           ? 'El paquete de la solicitud quedó COPIADO en el portapapeles.\n\n'
           : '⚠ No se pudo copiar automáticamente: exportá el Excel y usalo como respaldo.\n\n') +
-        'En el portal del SRI (Devoluciones → Devolución de IVA), tocá el marcador\n' +
-        '"📤 Enviador-DEVOLUCIÓN" y pegá el paquete en el panel que se abre.\n\n' +
+        'En el portal del SRI: Devoluciones → Devolución de IVA → "Ingresar facturas\n' +
+        'electrónicas", hasta ver los combos Año y Período. Ahí tocá el marcador\n' +
+        '"📤 Enviador-DEVOLUCIÓN" y después "Llenar y presentar en el portal":\n' +
+        'marca los comprobantes, pone el tipo de gasto y presenta la solicitud.\n\n' +
         '¿Abrir ahora el portal del SRI en otra pestaña?'
       )
       if (seguir) window.open(SRI_DEVOLUCION_URL, '_blank', 'noopener')
@@ -525,11 +527,6 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
               onChange={(e) => setPorcentaje(e.target.value)} style={{ width: 70 }} />
           </label>
         )}
-        <button
-          className="dv-btn"
-          onClick={() => setPanelSri('gastos')}
-          title="Bajar del SRI las facturas de compra del mes o semestre que elijas"
-        >📥 Bajador-GASTOS (SRI)</button>
         <a
           ref={setEnviadorDevolucionHref}
           className="dv-enviador"
@@ -618,7 +615,6 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
           anio={anio}
           conGasto={periodosDisp}
           onElegirPeriodo={(p) => setPeriodoSel({ mes: p.mes, anio: p.anio })}
-          onBajador={() => setPanelSri('gastos')}
           onTxt={subirTxt}
           onXml={subirXml}
         />
@@ -756,7 +752,7 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
 // El trámite se hace acá: si el mes está vacío, la pantalla tiene que resolver
 // la carga en el momento (bajar del SRI o soltar el TXT/XML) y quedar lista para
 // marcar y enviar, en vez de mandar al usuario a otra pantalla o a una consola.
-function SinComprobantes({ cliente, periodo, anio, conGasto, onElegirPeriodo, onBajador, onTxt, onXml }) {
+function SinComprobantes({ cliente, periodo, anio, conGasto, onElegirPeriodo, onTxt, onXml }) {
   return (
     <div className="dv-vacio">
       <h2>No hay comprobantes en {periodo}</h2>
@@ -778,23 +774,13 @@ function SinComprobantes({ cliente, periodo, anio, conGasto, onElegirPeriodo, on
         </div>
       )}
 
-      <div className="dv-vacio-pasos">
-        <section>
-          <h3>1 · Bajar del SRI</h3>
-          <p>
-            El bajador corre dentro de tu sesión del SRI y trae el TXT de claves del mes
-            o del semestre que elijas.
-          </p>
-          <button className="dv-btn primary" onClick={onBajador}>📥 Bajador-GASTOS (SRI)</button>
-        </section>
-        <section>
-          <h3>2 · Soltar el TXT o los XML acá</h3>
-          <UploadPanel onProcessTxt={onTxt} onProcessXml={onXml} />
-          <p className="dv-vacio-nota">
-            Se cargan en los gastos de {cliente.identificacion}, igual que si los subieras
-            en la pantalla de Gastos.
-          </p>
-        </section>
+      <div className="dv-vacio-carga">
+        <UploadPanel onProcessTxt={onTxt} onProcessXml={onXml} />
+        <p className="dv-vacio-nota">
+          Se cargan en los gastos de {cliente.identificacion}, igual que si los subieras en
+          Gastos. El TXT de claves del mes sale del SRI con el Bajador-GASTOS, que vive en
+          esa pantalla: acá el único trámite con el SRI es enviar la solicitud.
+        </p>
       </div>
 
       <details className="dv-vacio-avanzado">
@@ -815,9 +801,26 @@ function ConstanciaEnvio({ paquete, onCancel, onConfirm }) {
   const [monto, setMonto] = useState(String(paquete.totales.solicitado))
   const [fecha, setFecha] = useState('')
   const [mensaje, setMensaje] = useState('Carga de archivo realizada exitosamente')
+  const [pegado, setPegado] = useState('')
 
   const distinto = Number(comprobantes) !== paquete.items.length ||
     Math.abs(Number(monto) - paquete.totales.solicitado) > 0.005
+
+  // El enviador deja la constancia copiada al terminar en el portal: se pega
+  // acá en vez de volver a tipear lo que el SRI ya contestó.
+  const pegarConstancia = async () => {
+    try {
+      const d = JSON.parse(await navigator.clipboard.readText())
+      if (d.comprobantes == null && d.monto == null) throw new Error('otra cosa')
+      if (d.comprobantes != null) setComprobantes(String(d.comprobantes))
+      if (d.monto != null) setMonto(String(d.monto))
+      if (d.fecha_carga) setFecha(d.fecha_carga)
+      if (d.mensaje) setMensaje(d.mensaje)
+      setPegado('ok')
+    } catch {
+      setPegado('err')
+    }
+  }
 
   return (
     <div className="dv-modal-fondo" onClick={onCancel}>
@@ -827,10 +830,22 @@ function ConstanciaEnvio({ paquete, onCancel, onConfirm }) {
           {paquete.contribuyente.nombre} · {paquete.periodo.etiqueta}
         </p>
         <p className="dv-modal-ayuda">
-          Copiá lo que muestra la pantalla de confirmación del portal. En el sistema
-          se marcaron <strong>{paquete.items.length}</strong> comprobante(s) por{' '}
+          Lo que muestra la pantalla de confirmación del portal. En el sistema se
+          marcaron <strong>{paquete.items.length}</strong> comprobante(s) por{' '}
           <strong>{fmtMoney(paquete.totales.solicitado)}</strong>.
         </p>
+        <div className="dv-modal-pegar">
+          <button className="dv-btn" onClick={pegarConstancia}>
+            📋 Pegar constancia del enviador
+          </button>
+          {pegado === 'ok' && <em className="ok">Constancia cargada.</em>}
+          {pegado === 'err' && (
+            <em className="err">
+              En el portapapeles no hay una constancia: copiala en el enviador con
+              «Copiar constancia para la app».
+            </em>
+          )}
+        </div>
         <label>
           Comprobantes que procesó el SRI
           <input type="number" min="0" value={comprobantes}

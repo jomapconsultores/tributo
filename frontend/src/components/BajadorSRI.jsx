@@ -61,14 +61,15 @@ const BAJADORES = {
     codigo: ENVIADOR_DEVOLUCION_CODIGO,
     setHref: setEnviadorDevolucionHref,
     url: SRI_DEVOLUCION_URL,
-    donde: 'Devoluciones (TAX refund) → Devolución de IVA - Adultos mayores, hasta la pantalla de la solicitud del período.',
+    donde: 'Devoluciones (TAX refund) → Devolución de IVA, hasta "Ingresar facturas electrónicas" (la pantalla con Año, Período y Buscar).',
     hace: [
       'Carga el paquete de la solicitud que la app dejó copiado (botón "Enviar al SRI").',
-      'Muestra el detalle por mes con su tope y deja copiar la clave de acceso de cada comprobante.',
-      'Baja el TXT de claves o el CSV del detalle si el portal pide el anexo.',
-      'Va marcando lo ya ingresado; el avance se guarda aunque cierres el panel.',
+      'Consulta el período en el portal y recorre la grilla: marca cada comprobante de la solicitud, le pone el tipo de gasto y ajusta el IVA solicitado si el mes pasa el tope.',
+      'Avisa qué comprobantes tuyos el SRI no lista (esos no se pueden presentar) y cuáles del portal quedaron fuera.',
+      'Procesa y guarda la selección, y deja el envío definitivo detrás de una confirmación aparte.',
+      'Al terminar copia la constancia del portal para pegarla en la app.',
     ],
-    despues: 'Cuando el SRI confirme el envío, volvé a la app y marcá la solicitud como PRESENTADA.',
+    despues: 'Volvé a la app, tocá "Pegar constancia del enviador" en la ventana de envío y guardá la solicitud como PRESENTADA.',
   },
 }
 
