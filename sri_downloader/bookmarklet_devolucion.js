@@ -140,16 +140,18 @@
       if (!valido(p)) { aviso.textContent = 'Eso no es el paquete de una solicitud.'; return; }
       resolve(p);
     }));
+    cuerpo.appendChild(boton('Volver', () => resolve(null), CSS_GRIS));
     ta.focus();
   });
 
   limpiar();
   linea('Leyendo el paquete de la solicitud...');
+  // Puede quedar en null y está bien: TRAER la grilla al sistema es el primer
+  // paso del trámite y ocurre antes de que el sistema tenga solicitud alguna.
   let paquete = await leerDelPortapapeles();
-  if (!paquete) paquete = await pedirPegado();
 
   // --- 2) Avance guardado (se puede cerrar el panel y seguir después) -------
-  const CLAVE_LS = 'jomapDevIva:' + (paquete.solicitud_id || 'sin-id');
+  let CLAVE_LS = 'jomapDevIva:sin-id';
   const leerMarcas = () => {
     try { return new Set(JSON.parse(localStorage.getItem(CLAVE_LS)) || []); }
     catch (e) { return new Set(); }
@@ -157,16 +159,34 @@
   const guardarMarcas = (set) => {
     try { localStorage.setItem(CLAVE_LS, JSON.stringify([...set])); } catch (e) { /* sin espacio */ }
   };
-  let marcadas = leerMarcas();
+  let marcadas = new Set();
 
   // --- 3) Panel de trabajo --------------------------------------------------
-  const items = paquete.items || [];
-  const claves = items.map((i) => i.clave_acceso).filter(Boolean);
-  const nombreBase = 'DevolucionIVA_' + (paquete.contribuyente.identificacion || '') + '_' +
-    (paquete.periodo.anio || '') + '-' + String(paquete.periodo.mes || '').padStart(2, '0');
+  let items = [];
+  let claves = [];
+  let nombreBase = '';
+
+  const adoptarPaquete = (p) => {
+    paquete = p;
+    items = p.items || [];
+    claves = items.map((i) => i.clave_acceso).filter(Boolean);
+    nombreBase = 'DevolucionIVA_' + (p.contribuyente.identificacion || '') + '_' +
+      (p.periodo.anio || '') + '-' + String(p.periodo.mes || '').padStart(2, '0');
+    CLAVE_LS = 'jomapDevIva:' + (p.solicitud_id || 'sin-id');
+    marcadas = leerMarcas();
+  };
+  if (paquete) adoptarPaquete(paquete);
+
+  // Identificación del contribuyente segun la propia pantalla del SRI: sirve
+  // para que el sistema no cargue los comprobantes de uno en la ficha de otro.
+  const identificacionEnPantalla = () => {
+    const m = /\b(\d{10}(\d{3})?)\b/.exec((document.body.innerText || '').slice(0, 400));
+    return m ? m[1] : '';
+  };
 
   const pintar = () => {
     limpiar();
+    if (!paquete) return pintarSinSolicitud();
 
     // Cabecera de datos
     const info = el('div', 'background:#f3f8f4;border:1px solid #cfe3d4;border-radius:8px;padding:8px;line-height:1.5');
@@ -222,10 +242,12 @@
     // combos Año/Periodo y el botón Buscar; en cualquier otra página no habría
     // dónde consultar, así que ahí se ofrece el diagnóstico —qué ve el marcador
     // y qué no— en vez de un botón que fallaría sin explicar por qué.
-    if (hayFormulario()) {
+    if (hayFormulario() || enlaceIngresarFacturas()) {
       acciones.appendChild(boton('Llenar y presentar en el portal', elegirMes,
         'padding:8px 10px;margin:3px;border:1px solid #1e6b33;border-radius:6px;' +
         'background:#1e6b33;color:#fff;font-weight:700;font-size:12px;cursor:pointer'));
+      acciones.appendChild(boton('Traer comprobantes al sistema',
+        () => elegirAnioYMes(traerComprobantes), CSS_GRIS));
       acciones.appendChild(boton('Comparar con el portal', compararConElPortal, CSS_GRIS));
     } else {
       acciones.appendChild(boton('¿Por qué no puedo comparar?', function () {
@@ -332,6 +354,12 @@
 
   const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+  // El acordeon "Ingresar facturas electronicas" es un commandLink, no un boton:
+  // si el panel se abre en el menu de dos pasos, hay que entrar por ahi para que
+  // aparezcan los combos. (Verificado en el portal el 2026-08-11.)
+  const enlaceIngresarFacturas = () => visibles('a').find((a) =>
+    /ingresar facturas electr/i.test((a.textContent || '').trim())) || null;
 
   const elegir = (sel, valor, re) => {
     if (!sel) return false;
@@ -514,12 +542,19 @@
     return !!(i && i.checked);
   };
 
+  // Marcar dispara un ajax que REPINTA la fila, así que la confirmación tiene
+  // que leerse sobre el nodo nuevo: mirando el viejo la casilla siempre parece
+  // sin marcar y se pierde el comprobante creyendo que falló.
   const marcar = async (f) => {
     if (marcada(f)) return true;
     if (!f.chk) return false;
+    const serie = f.serie;
     clickReal(f.chk);
     await esperarPortal();
-    return esperar(() => marcada(f), 8000);
+    return esperar(() => {
+      const g = filaPorSerie(serie);
+      return !!g && marcada(g);
+    }, 10000);
   };
 
   // El combo del tipo de gasto de la fila. El portal lo renderiza como un select
@@ -547,7 +582,10 @@
       if (lab) lab.textContent = (op.textContent || '').trim();
     }
     await esperarPortal();
-    return String(sel.value) === String(op.value) ? '' : 'el portal no aceptó el tipo de gasto';
+    // Otra vez: si el portal repintó, el select de antes ya no es el de la fila.
+    const ahora = comboDeFila(filaPorSerie(f.serie) || f);
+    return ahora && String(ahora.value) === String(op.value)
+      ? '' : 'el portal no aceptó el tipo de gasto';
   };
 
   // Campo "IVA solicitado" de la fila: es el único editable de texto que queda.
@@ -578,6 +616,144 @@
 
   const botonSiguientePagina = () => [...document.querySelectorAll('.ui-paginator-next')]
     .find((e) => e.offsetParent !== null && !e.classList.contains('ui-state-disabled')) || null;
+
+  // Consulta un mes y deja la grilla en pantalla.
+  //
+  // OJO con el orden: el combo "Periodo solicitado" NACE VACIO —una sola opcion,
+  // "Seleccione un periodo"— y el portal lo llena por ajax recien cuando se
+  // elige el año. Llenar los dos seguidos falla siempre. (Verificado en el
+  // portal el 2026-08-11.) Los meses vienen con value = numero de mes y solo
+  // hasta el ultimo mes CERRADO.
+  const consultarPeriodo = async (mes, anio) => {
+    if (!hayFormulario()) {
+      const link = enlaceIngresarFacturas();
+      if (!link) return 'no encontré la pantalla de facturas electrónicas: entrá por ' +
+        'Devolución de IVA y abrí "Ingresar facturas electrónicas"';
+      link.click();
+      await esperarPortal();
+      await esperar(hayFormulario, 15000);
+      if (!hayFormulario()) return 'no se abrió "Ingresar facturas electrónicas"';
+    }
+    if (!elegir(cbAnio(), anio, new RegExp('^\\s*' + anio + '\\s*$'))) {
+      return 'el combo Año no tiene ' + anio;
+    }
+    await esperarPortal();
+    const reMes = new RegExp('^\\s*' + MESES[mes - 1], 'i');
+    const hayMes = await esperar(() => {
+      const c = cbPeriodo();
+      return c && [...c.options].some((o) => String(o.value) === String(mes) ||
+        reMes.test((o.textContent || '').trim()));
+    }, 15000);
+    if (!hayMes) {
+      return 'el portal no ofrece ' + MESES[mes - 1] + ' ' + anio +
+        ' (solo lista meses ya cerrados)';
+    }
+    if (!elegir(cbPeriodo(), mes, reMes)) return 'no pude elegir ' + MESES[mes - 1];
+    await esperarPortal();
+    const b = btnBuscar();
+    if (!b) return 'no encontré el botón Buscar';
+    b.click();
+    await esperarPortal();
+    await esperar(() => filasGrilla().length > 0, 15000);
+    return '';
+  };
+
+  // La fecha del portal viene ISO (2026-07-01); el sistema trabaja en dd/mm/aaaa.
+  const fechaDePortal = (t) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(t || '').trim());
+    return m ? m[3] + '/' + m[2] + '/' + m[1] : String(t || '').trim();
+  };
+
+  // Lee la grilla entera, pagina por pagina. Es el listado que el SRI reconoce:
+  // proveedor, serie, fecha y monto IVA (la base imponible no la muestra).
+  const leerGrilla = async (avisar) => {
+    const filas = [];
+    const vistas = new Set();
+    for (let p = 1; p <= 40; p++) {
+      if (avisar) avisar('Página ' + p + '…');
+      filasGrilla().forEach((f) => {
+        if (vistas.has(f.serie)) return;
+        vistas.add(f.serie);
+        const celdas = [...f.tr.cells].map((td) => (td.textContent || '').trim().replace(/\s+/g, ' '));
+        // El IVA es la ultima celda con pinta de importe ANTES de los controles:
+        // se toma la primera columna numerica posterior a la fecha.
+        let fecha = '', iva = null;
+        celdas.forEach((c, i) => {
+          if (!fecha && /^\d{4}-\d{2}-\d{2}$|^\d{2}\/\d{2}\/\d{4}$/.test(c)) fecha = c;
+          else if (fecha && iva === null && /^\d+([.,]\d+)?$/.test(c)) iva = leerNumero(c);
+        });
+        const prov = celdas.find((c, i) => i > 0 && c.length > 6 && !/^\d/.test(c) &&
+          !/^factura/i.test(c) && !/^ride$/i.test(c)) || '';
+        filas.push({ serie: f.serie, fecha: fechaDePortal(fecha), proveedor: prov, iva: iva || 0 });
+      });
+      const sig = botonSiguientePagina();
+      if (!sig) break;
+      const antes = filasGrilla().map((x) => x.serie).join('|');
+      clickReal(sig);
+      await esperarPortal();
+      // Igual que al llenar: se comprueba que la página cambió de verdad, o el
+      // recorrido se quedaría releyendo la misma y faltarían comprobantes.
+      if (!(await esperar(() => filasGrilla().map((x) => x.serie).join('|') !== antes, 10000))) break;
+    }
+    return filas;
+  };
+
+  // --- Traer la grilla al sistema ------------------------------------------
+  // El SRI ya no pide cargar facturas: muestra el listado que califica y el
+  // tramite es marcar, clasificar y enviar. Asi que el listado se lleva al
+  // sistema, que es donde se decide el tipo de gasto y se controla el tope.
+  const traerComprobantes = async (mes, anio) => {
+    limpiar();
+    linea('Trayendo los comprobantes del portal',
+      'font-weight:700;color:#1e6b33;margin-bottom:4px');
+    const est = el('div', 'margin:6px 0;color:#555');
+    cuerpo.appendChild(est);
+    est.textContent = 'Consultando ' + (MESES[mes - 1] || mes) + ' ' + anio + '…';
+    const err = await consultarPeriodo(mes, anio);
+    if (err) {
+      linea('✖ ' + err, 'color:#8b1e1e;font-weight:700');
+      cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
+      cuerpo.appendChild(boton('Copiar diagnostico', function () { copiar(diagnostico(), this); }, CSS_GRIS));
+      return;
+    }
+    const filas = await leerGrilla((t) => { est.textContent = t; });
+    if (!filas.length) {
+      limpiar();
+      linea('El portal no muestra comprobantes en ' + (MESES[mes - 1] || mes) + ' ' + anio + '.',
+        'color:#8b6b1e;font-weight:600');
+      linea('Solo lista bienes y servicios de primera necesidad de establecimientos ' +
+        'verificados, y deja fuera las facturas con devolución automática total.',
+        'color:#777;font-size:11px;line-height:1.4');
+      cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
+      return;
+    }
+    const total = filas.reduce((s, f) => s + (Number(f.iva) || 0), 0);
+    const bulto = {
+      tipo: 'devolucion-iva-portal',
+      identificacion: (paquete && paquete.contribuyente.identificacion) || identificacionEnPantalla(),
+      mes, anio,
+      filas,
+    };
+    limpiar();
+    linea('Listos para el sistema', 'font-weight:700;color:#1e6b33;margin-bottom:4px');
+    linea(filas.length + ' comprobante(s) de ' + (MESES[mes - 1] || mes) + ' ' + anio +
+      '  ·  IVA ' + money(total), 'font-weight:600;color:#333');
+    cuerpo.appendChild(boton('Copiar para el sistema', function () {
+      copiar(JSON.stringify(bulto), this);
+    }));
+    linea('En el sistema, entrá a Devolución IVA y tocá "📥 Pegar comprobantes del portal". ' +
+      'Ahí marcás, clasificás y se controla el tope del mes; después volvés acá a presentar.',
+      'margin:6px 0;color:#777;font-size:11px;line-height:1.45');
+    const lista = el('div', 'margin-top:6px;max-height:30vh;overflow:auto;border:1px solid #e2e8e4;border-radius:6px');
+    filas.forEach((f) => {
+      const fila = el('div', 'padding:3px 6px;border-bottom:1px solid #f0f3f1;font-size:11px;color:#444');
+      fila.textContent = f.fecha + '  ' + f.serie + '  ' + money(f.iva) + '  ' +
+        String(f.proveedor || '').slice(0, 30);
+      lista.appendChild(fila);
+    });
+    cuerpo.appendChild(lista);
+    cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
+  };
 
   // --- El recorrido completo ------------------------------------------------
   const llenarYEnviar = async (mes) => {
@@ -614,17 +790,8 @@
 
     // 1) Consultar el período en el portal
     paso('Consultando ' + (MESES[mes - 1] || mes) + ' ' + anio + '…');
-    if (!elegir(cbAnio(), anio, new RegExp('^\\s*' + anio + '\\s*$'))) {
-      return fallar('el combo Año no tiene ' + anio);
-    }
-    if (!elegir(cbPeriodo(), mes, new RegExp('^\\s*' + MESES[mes - 1], 'i'))) {
-      return fallar('el combo Periodo no tiene ' + MESES[mes - 1]);
-    }
-    const bBuscar = btnBuscar();
-    if (!bBuscar) return fallar('no encontré el botón Buscar');
-    bBuscar.click();
-    await esperarPortal();
-    await esperar(() => filasGrilla().length > 0, 12000);
+    const errConsulta = await consultarPeriodo(mes, anio);
+    if (errConsulta) return fallar(errConsulta);
 
     if (!filasGrilla().length) {
       return fallar('el portal no muestra ningún comprobante en ese período. Ojo: solo lista ' +
@@ -638,6 +805,7 @@
     const ajenas = [];
     const vistas = new Set();
     let pagina = 1;
+    let reintentos = 0;
     while (pagina <= 40) {
       const filas = filasGrilla();
       paso('Página ' + pagina + ': ' + filas.length + ' comprobante(s) en pantalla');
@@ -670,10 +838,28 @@
         paso('  ✔ ' + serie + '  ' + (item.rubro_label || '') + '  ' + money(pedir),
           'color:#1e6b33;font-size:11px');
       }
+      // Pasar de página, COMPROBANDO que pasó: marcar repinta la grilla entera
+      // y el click en "siguiente" se puede perder en ese repintado. A ciegas,
+      // el recorrido se queda en la misma página y los comprobantes de las
+      // siguientes se informan como "no están en el portal", que es mentira.
       const sig = botonSiguientePagina();
       if (!sig) break;
+      const antes = filas.map((x) => x.serie).join('|');
       clickReal(sig);
       await esperarPortal();
+      const cambio = await esperar(
+        () => filasGrilla().map((x) => x.serie).join('|') !== antes, 10000);
+      if (!cambio) {
+        if (reintentos >= 2) {
+          problemas.push('el portal no pasó de la página ' + pagina +
+            ': quedaron comprobantes sin revisar');
+          break;
+        }
+        reintentos += 1;
+        await dormir(1200);
+        continue;
+      }
+      reintentos = 0;
       pagina += 1;
     }
 
@@ -776,6 +962,86 @@
       'guardado lo que el SRI aceptó, que no siempre es lo que se marcó.',
       'margin:6px 0;color:#777;font-size:11px;line-height:1.4');
     cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
+  };
+
+  // Elegir año y mes con lo que el propio portal ofrece: los años del combo y,
+  // recién después del ajax del año, los meses (que son solo los ya cerrados).
+  const elegirAnioYMes = async (accion) => {
+    limpiar();
+    linea('¿Qué mes traigo?', 'font-weight:700;color:#1e6b33;margin-bottom:6px');
+    const est = el('div', 'margin:4px 0;color:#555');
+    cuerpo.appendChild(est);
+    if (!hayFormulario()) {
+      const link = enlaceIngresarFacturas();
+      if (!link) {
+        est.textContent = '✖ Entrá primero a Devolución de IVA → "Ingresar facturas electrónicas".';
+        cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
+        return;
+      }
+      est.textContent = 'Abriendo "Ingresar facturas electrónicas"…';
+      link.click();
+      await esperarPortal();
+      await esperar(hayFormulario, 15000);
+    }
+    const cA = cbAnio();
+    if (!cA) {
+      est.textContent = '✖ No encontré el combo de Año en esta pantalla.';
+      cuerpo.appendChild(boton('Copiar diagnostico', function () { copiar(diagnostico(), this); }, CSS_GRIS));
+      cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
+      return;
+    }
+    est.textContent = 'Elegí el año:';
+    const zonaA = el('div', 'margin:4px 0');
+    cuerpo.appendChild(zonaA);
+    const zonaM = el('div', 'margin:8px 0');
+    cuerpo.appendChild(zonaM);
+    [...cA.options]
+      .filter((o) => /^(19|20)\d\d$/.test((o.textContent || '').trim()))
+      .forEach((o) => {
+        const anio = parseInt((o.textContent || '').trim(), 10);
+        zonaA.appendChild(boton(String(anio), async () => {
+          zonaM.textContent = '';
+          zonaM.appendChild(el('div', 'color:#555', 'Cargando los meses de ' + anio + '…'));
+          elegir(cbAnio(), anio, new RegExp('^\\s*' + anio + '\\s*$'));
+          await esperarPortal();
+          await esperar(() => cbPeriodo() && cbPeriodo().options.length > 1, 15000);
+          const cP = cbPeriodo();
+          zonaM.textContent = '';
+          const ops = cP ? [...cP.options].filter((x) => /^[1-9]\d?$/.test(String(x.value))) : [];
+          if (!ops.length) {
+            zonaM.appendChild(el('div', 'color:#8b6b1e', 'El portal no ofrece meses para ' + anio + '.'));
+            return;
+          }
+          zonaM.appendChild(el('div', 'color:#555;margin-bottom:4px', 'Elegí el mes:'));
+          ops.forEach((x) => {
+            const mes = parseInt(x.value, 10);
+            zonaM.appendChild(boton((x.textContent || '').trim(), () => accion(mes, anio)));
+          });
+        }, CSS_GRIS));
+      });
+    cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
+  };
+
+  // Sin solicitud cargada, lo único que se puede hacer —y lo primero del
+  // trámite— es traer al sistema el listado que el SRI reconoce.
+  const pintarSinSolicitud = () => {
+    linea('Traer los comprobantes al sistema', 'font-weight:700;color:#1e6b33;margin-bottom:4px');
+    linea('El SRI muestra los comprobantes que califican para la devolución. Traelos al ' +
+      'sistema: ahí se marcan, se les pone el tipo de gasto y se controla el tope del mes. ' +
+      'Después volvés acá con la solicitud y se presenta.',
+      'margin:4px 0;color:#555;line-height:1.45');
+    const ident = identificacionEnPantalla();
+    if (ident) {
+      linea('Contribuyente en pantalla: ' + ident, 'margin:6px 0;color:#1e6b33;font-weight:600');
+    }
+    cuerpo.appendChild(boton('Traer comprobantes al sistema', () => elegirAnioYMes(traerComprobantes)));
+    linea('¿Ya tenés la solicitud armada en el sistema? Copiala con "Enviar al SRI" y:',
+      'margin:10px 0 2px;color:#777;font-size:11px');
+    cuerpo.appendChild(boton('Pegar el paquete de una solicitud', async () => {
+      const p = await pedirPegado();
+      if (p) adoptarPaquete(p);
+      pintar();
+    }, CSS_GRIS));
   };
 
   // Un mes por solicitud: si el período abarca varios (semestral), se elige cuál.

@@ -176,6 +176,63 @@ def _resumen_comprobante(inv: dict) -> dict:
     }
 
 
+# Comprobantes que vienen de la GRILLA DEL PORTAL, no de Gastos.
+#
+# El SRI ya no pide cargar las facturas: en "Ingresar facturas electrónicas"
+# muestra él mismo el listado que califica —bienes de primera necesidad de
+# establecimientos verificados— y el trámite es marcarlo, clasificarlo y
+# enviarlo. Ese listado entra al sistema tal cual y no tiene invoice_id: no es
+# una factura de Gastos, es lo que el portal reconoce. Se distinguen por el
+# prefijo del id, que es sintético (la grilla no da id, da la serie).
+PORTAL_PREFIJO = "portal:"
+
+
+def _es_portal(id_) -> bool:
+    return str(id_ or "").startswith(PORTAL_PREFIJO)
+
+
+def _serie_de_id(id_) -> str:
+    return str(id_ or "")[len(PORTAL_PREFIJO):]
+
+
+def _resumen_portal(row: dict) -> dict:
+    """Comprobante tal como lo lista el portal.
+
+    La grilla trae proveedor, serie, fecha y monto IVA; NO trae la base
+    imponible ni el total, así que van en cero: lo que se devuelve es el IVA y
+    es lo único que el portal informa. Tampoco trae el RUC del proveedor."""
+    serie = str(row.get("serie") or row.get("factura_numero") or "").strip()
+    return {
+        "id": PORTAL_PREFIJO + serie,
+        "unique_id": row.get("unique_id"),
+        "factura_numero": serie,
+        "fecha": str(row.get("fecha") or "").strip(),
+        "ruc_proveedor": (row.get("ruc_proveedor") or None),
+        "nombre_proveedor": str(row.get("proveedor") or row.get("nombre_proveedor") or "").strip(),
+        "clasificacion": row.get("clasificacion"),
+        "base": _num(row.get("base")),
+        "iva": round(_num(row.get("iva")), 2),
+        "total": _num(row.get("total")),
+        "origen": "portal",
+    }
+
+
+def _clasif_por_proveedor(sb, client_id: str) -> Dict[str, str]:
+    """Clasificación que ya tiene cada proveedor en Gastos, por NOMBRE.
+
+    La grilla del portal no da el RUC, así que el nombre es lo único con lo que
+    se puede reusar el trabajo de clasificación ya hecho para ese proveedor."""
+    filas = fetch_all(lambda: sb.table("invoices").select(
+        "nombre_proveedor,clasificacion").eq("client_id", client_id))
+    mapa: Dict[str, str] = {}
+    for f in filas:
+        nom = str(f.get("nombre_proveedor") or "").strip().upper()
+        cla = str(f.get("clasificacion") or "").strip()
+        if nom and cla and cla != "SIN CLASIFICAR":
+            mapa.setdefault(nom, cla)
+    return mapa
+
+
 def _meses_del_periodo(pmes, pfreq, psem) -> List[int]:
     """Meses que cubre el período del cliente: uno si es mensual, los seis del
     semestre si es semestral (la devolución también se pide por el semestre)."""
@@ -316,9 +373,26 @@ async def periodos(
         d["iva"] += r["iva"]
 
     sols = sb.table("devoluciones_iva_solicitudes").select(
-        "id,mes,anio,estado,monto_solicitado,comprobantes_enviados,monto_enviado"
+        "id,mes,anio,estado,monto_solicitado,comprobantes_enviados,monto_enviado,total_base,total_iva"
     ).eq("client_id", client_id).execute().data or []
     por_periodo = {(int(s["anio"]), int(s["mes"])): s for s in sols}
+
+    # Meses que solo existen como solicitud: los que entraron desde la grilla
+    # del portal no tienen gasto cargado en el sistema y, sin esto, el mes no
+    # aparecería para elegirlo aunque la solicitud ya esté armada.
+    solo_solicitud = [s for (a, m), s in por_periodo.items() if (a, m) not in acc]
+    if solo_solicitud:
+        filas = fetch_all(lambda: sb.table("devoluciones_iva_items").select(
+            "solicitud_id").in_("solicitud_id", [s["id"] for s in solo_solicitud]))
+        cuenta: Dict[str, int] = {}
+        for f in filas:
+            cuenta[f["solicitud_id"]] = cuenta.get(f["solicitud_id"], 0) + 1
+        for s in solo_solicitud:
+            acc[(int(s["anio"]), int(s["mes"]))] = {
+                "anio": int(s["anio"]), "mes": int(s["mes"]),
+                "comprobantes": cuenta.get(s["id"], 0),
+                "base": _num(s.get("total_base")), "iva": _num(s.get("total_iva")),
+            }
 
     salida = []
     for (a, m), d in sorted(acc.items(), reverse=True):
@@ -359,6 +433,9 @@ async def comprobantes(
     if mes and anio:
         comps = [c for c in comps if mes_anio_de_fecha(c.get("fecha")) == (int(mes), int(anio))]
 
+    for c in comps:
+        c["origen"] = "gastos"
+
     solicitud = _solicitud_de_periodo(sb, client_id, pmes, panio)
     seleccionados = []
     rubros_guardados = {}
@@ -367,11 +444,28 @@ async def comprobantes(
         solicitud["items"] = items
         seleccionados = [it["invoice_id"] for it in items if it.get("invoice_id")]
         rubros_guardados = {it["invoice_id"]: it.get("rubro") for it in items if it.get("invoice_id")}
+        # Los comprobantes que entraron desde la grilla del SRI no están en
+        # Gastos: viven en la solicitud y son los únicos que los tienen, así que
+        # salen de ahí para poder marcarlos y clasificarlos en la pantalla.
+        vistas = {c.get("factura_numero") for c in comps if c.get("factura_numero")}
+        for it in items:
+            if it.get("invoice_id"):
+                continue
+            serie = str(it.get("factura_numero") or "").strip()
+            if not serie or serie in vistas:
+                continue
+            vistas.add(serie)
+            c = _resumen_portal({**it, "serie": serie, "proveedor": it.get("nombre_proveedor")})
+            comps.append(c)
+            seleccionados.append(c["id"])
+            rubros_guardados[c["id"]] = it.get("rubro")
+        comps.sort(key=lambda c: str(c.get("fecha") or ""), reverse=True)
 
     # Rubro de cada comprobante: el ya guardado en la solicitud manda; si no, se
     # propone uno según la clasificación del proveedor (el usuario puede cambiarlo).
+    # Para los del portal no hay clasificación, así que se propone por el nombre.
     for c in comps:
-        sugerido = _rubro_sugerido(c.get("clasificacion"))
+        sugerido = _rubro_sugerido(c.get("clasificacion") or c.get("nombre_proveedor"))
         c["rubro_sugerido"] = sugerido
         c["rubro"] = rubros_guardados.get(c["id"]) or sugerido
 
@@ -400,6 +494,10 @@ class SolicitudIn(BaseModel):
     # Mes/año a validar. Si no vienen, se usa el período del cliente.
     mes: Optional[int] = None
     anio: Optional[int] = None
+    # Datos de los comprobantes traídos del portal que siguen marcados. Los
+    # manda la pantalla porque no están en Gastos: si un id `portal:` no viene
+    # acá, se recupera de la solicitud anterior.
+    portal_filas: Optional[List[dict]] = None
 
 
 def _validar_beneficiario(tipo: str, porcentaje):
@@ -410,33 +508,70 @@ def _validar_beneficiario(tipo: str, porcentaje):
                             detail="Para discapacidad indica el porcentaje (30 a 100).")
 
 
+def _items_del_portal(sb, client_id: str, mes, anio, series: List[str],
+                      filas: Optional[List[dict]] = None) -> List[dict]:
+    """Datos de los comprobantes de la grilla del SRI que se están marcando.
+
+    Vienen en el pedido —el navegador los tiene en pantalla— o, si no, de la
+    solicitud que ya los tenía guardados: como no están en Gastos, esa es la
+    única copia que existe de lo que mostró el portal."""
+    por_serie: Dict[str, dict] = {}
+    for f in (filas or []):
+        r = _resumen_portal(f)
+        if r["factura_numero"]:
+            por_serie[r["factura_numero"]] = r
+    faltan = [s for s in series if s not in por_serie]
+    if faltan:
+        previa = _solicitud_de_periodo(sb, client_id, mes, anio)
+        if previa:
+            for it in _items_de(sb, previa["id"]):
+                serie = str(it.get("factura_numero") or "").strip()
+                if serie in faltan and not it.get("invoice_id"):
+                    por_serie[serie] = _resumen_portal(
+                        {**it, "serie": serie, "proveedor": it.get("nombre_proveedor")})
+    return [por_serie[s] for s in series if s in por_serie]
+
+
 def _guardar_solicitud(sb, user_id: str, client_id: str, tipo: str, porcentaje,
                        invoice_ids: List[str], rubros_pedidos: Optional[Dict[str, str]],
-                       observaciones=None, mes=None, anio=None) -> dict:
+                       observaciones=None, mes=None, anio=None,
+                       portal_filas: Optional[List[dict]] = None,
+                       exigir_rubro: bool = True) -> dict:
     """Crea/reemplaza la solicitud de UN período con los comprobantes marcados.
 
     Lo usa tanto el guardado de una sola pantalla como el procesamiento en lote
-    de varios meses; por eso vive aparte del endpoint."""
+    de varios meses; por eso vive aparte del endpoint. Los marcados pueden venir
+    de Gastos (invoice_id) o de la grilla del portal (prefijo `portal:`)."""
     pmes, panio, pfreq, psem, meses = _periodo_pedido(sb, client_id, mes, anio)
     if not pmes or not panio:
         raise HTTPException(status_code=400,
                             detail="El cliente no tiene período (mes/año) definido.")
 
-    invs = fetch_all(lambda: sb.table("invoices").select(
-        "id,unique_id,factura_numero,fecha,ruc_proveedor,nombre_proveedor,clasificacion,"
-        "base_15,iva_15,base_8,iva_8,base_5,iva_5,total"
-    ).eq("client_id", client_id).in_("id", invoice_ids))
-    if not invs:
+    ids_gastos = [i for i in invoice_ids if not _es_portal(i)]
+    series = [_serie_de_id(i) for i in invoice_ids if _es_portal(i)]
+
+    items: List[dict] = []
+    if ids_gastos:
+        invs = fetch_all(lambda: sb.table("invoices").select(
+            "id,unique_id,factura_numero,fecha,ruc_proveedor,nombre_proveedor,clasificacion,"
+            "base_15,iva_15,base_8,iva_8,base_5,iva_5,total"
+        ).eq("client_id", client_id).in_("id", ids_gastos))
+        items += [_resumen_comprobante(i) for i in invs]
+    if series:
+        items += _items_del_portal(sb, client_id, pmes, panio, series, portal_filas)
+    if not items:
         raise HTTPException(status_code=400, detail="Los comprobantes marcados no existen en este cliente.")
 
-    items = [_resumen_comprobante(i) for i in invs]
     pedidos = rubros_pedidos or {}
     for it in items:
-        it["rubro"] = _rubro_valido(pedidos.get(it["id"]), it.get("clasificacion"))
+        it["rubro"] = _rubro_valido(pedidos.get(it["id"]),
+                                    it.get("clasificacion") or it.get("nombre_proveedor"))
 
     # El tipo de gasto es obligatorio: es un dato que se declara al SRI y su
     # combo no admite vacío, así que no tiene sentido dejar pasar la solicitud.
-    faltantes = _rubros_faltantes(items)
+    # Solo se exige al guardar: al traer la grilla del portal la solicitud nace
+    # para clasificarla acá, y ahí todavía puede faltar.
+    faltantes = _rubros_faltantes(items) if exigir_rubro else []
     if faltantes:
         raise HTTPException(status_code=400, detail=(
             f"Falta el tipo de gasto en {len(faltantes)} comprobante(s): "
@@ -474,7 +609,9 @@ def _guardar_solicitud(sb, user_id: str, client_id: str, tipo: str, porcentaje,
     sb.table("devoluciones_iva_items").insert([
         {
             "solicitud_id": solicitud["id"],
-            "invoice_id": it["id"],
+            # Los del portal no son facturas de Gastos: van sin invoice_id y su
+            # identidad es la serie, que es como los nombra el SRI.
+            "invoice_id": None if _es_portal(it["id"]) else it["id"],
             "unique_id": it["unique_id"],
             "factura_numero": it["factura_numero"],
             "fecha": it["fecha"],
@@ -507,7 +644,76 @@ async def guardar_solicitud(body: SolicitudIn, user_id: str = Depends(get_curren
         raise HTTPException(status_code=400, detail="Marca al menos un comprobante.")
     return _guardar_solicitud(
         sb, user_id, body.client_id, body.tipo_beneficiario, body.porcentaje_discapacidad,
-        body.invoice_ids, body.rubros, body.observaciones, body.mes, body.anio)
+        body.invoice_ids, body.rubros, body.observaciones, body.mes, body.anio,
+        portal_filas=body.portal_filas)
+
+
+class PortalFila(BaseModel):
+    """Una fila de la grilla "Listado de comprobantes recibidos" del SRI."""
+    serie: str
+    fecha: Optional[str] = None
+    proveedor: Optional[str] = None
+    iva: float = 0
+
+
+class PortalIn(BaseModel):
+    client_id: str
+    mes: int
+    anio: int
+    tipo_beneficiario: str = "tercera_edad"
+    porcentaje_discapacidad: Optional[float] = None
+    # Identificación que el portal mostraba: se compara con la del contribuyente
+    # para no cargarle a uno los comprobantes de otro.
+    identificacion: Optional[str] = None
+    filas: List[PortalFila]
+
+
+@router.post("/portal")
+async def ingresar_del_portal(body: PortalIn, user_id: str = Depends(get_current_user)):
+    """Ingresa al sistema el listado que el portal del SRI muestra del período.
+
+    El trámite dejó de ser "cargar facturas": el SRI lista él mismo lo que
+    califica —bienes de primera necesidad de establecimientos verificados— y lo
+    que hay que hacer es marcar, clasificar y enviar. Así que la grilla entra
+    tal cual y la solicitud nace de ahí, sin depender de que esas facturas estén
+    en Gastos (muchas no van a estar: el portal deja fuera las de devolución
+    automática total y suma las que el contribuyente no cargó).
+
+    Queda en borrador y con el tipo de gasto PROPUESTO —por la clasificación que
+    el proveedor ya tenga en Gastos, o por su nombre—, para revisarlo en la
+    pantalla antes de presentar."""
+    sb = get_supabase_client()
+    assert_client_owner(body.client_id, user_id)
+    _validar_beneficiario(body.tipo_beneficiario, body.porcentaje_discapacidad)
+    if not body.filas:
+        raise HTTPException(status_code=400, detail="El portal no devolvió ningún comprobante.")
+
+    cl = sb.table("clients").select("identificacion,nombre").eq("id", body.client_id).execute().data
+    ident = str((cl[0] if cl else {}).get("identificacion") or "").strip()
+    pedida = str(body.identificacion or "").strip()
+    if pedida and ident and pedida != ident:
+        raise HTTPException(status_code=400, detail=(
+            f"Esos comprobantes son de {pedida} y el contribuyente abierto es {ident}. "
+            "Abrí el contribuyente correcto y volvé a pegarlos."))
+
+    clasif = _clasif_por_proveedor(sb, body.client_id)
+    filas, rubros, vistas = [], {}, set()
+    for f in body.filas:
+        serie = str(f.serie or "").strip()
+        if not serie or serie in vistas:
+            continue          # el portal pagina: una serie repetida es la misma fila
+        vistas.add(serie)
+        fila = {"serie": serie, "fecha": f.fecha, "proveedor": f.proveedor, "iva": f.iva}
+        filas.append(fila)
+        nombre = str(f.proveedor or "").strip().upper()
+        rubros[PORTAL_PREFIJO + serie] = _rubro_sugerido(clasif.get(nombre) or nombre)
+
+    sol = _guardar_solicitud(
+        sb, user_id, body.client_id, body.tipo_beneficiario, body.porcentaje_discapacidad,
+        [PORTAL_PREFIJO + f["serie"] for f in filas], rubros,
+        None, body.mes, body.anio, portal_filas=filas, exigir_rubro=False)
+    sin_rubro = sum(1 for k in rubros.values() if not k)
+    return {**sol, "comprobantes": len(filas), "sin_rubro": sin_rubro}
 
 
 class LoteIn(BaseModel):

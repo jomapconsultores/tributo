@@ -485,6 +485,9 @@ export const devolucionesIvaAPI = {
     }),
   // Meses con gasto cargado y en qué estado está la devolución de cada uno
   periodos: (clientId) => api.get('/api/devoluciones-iva/periodos', { params: { client_id: clientId } }),
+  // Ingresa el listado que el portal del SRI muestra del período (lo trae el
+  // enviador). Es el camino normal: el SRI ya sabe qué comprobantes califican.
+  portal: (body) => api.post('/api/devoluciones-iva/portal', body),
   // Prepara de una sola vez la solicitud de varios meses: [{mes, anio}, ...]
   lote: (body) => api.post('/api/devoluciones-iva/solicitudes/lote', body),
   // Reporte de lo procesado y presentado (sin client_id: consolidado del rol)

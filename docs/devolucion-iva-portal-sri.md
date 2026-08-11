@@ -58,14 +58,48 @@ envío ocurre en la sesión del contribuyente.
 
 ## Reglas que condicionan el enviador
 
+0. **El combo `Período` nace VACÍO.** Trae una sola opción ("Seleccione un
+   período") y el portal lo llena por AJAX **recién cuando se elige el año**;
+   solo ofrece meses ya cerrados y sus `value` son el número de mes
+   (`julio=7`). Llenar año y período seguidos falla siempre.
+   *Verificado en el portal el 2026-08-11.*
 1. **`IVA solicitado` y `Tipo de gasto` nacen deshabilitados.** Se habilitan al
    marcar la casilla de la fila. El orden es: marcar → esperar el AJAX → llenar.
+   Marcar **repinta la fila**: la confirmación y los pasos siguientes hay que
+   leerlos sobre el nodo nuevo, buscándolo otra vez por serie.
+1bis. **La grilla pagina de a 10** (`Filas por página` 10/15/20). Hay que
+   recorrer las páginas y **comprobar que la página cambió**: el repintado de
+   las marcas se come el click en "siguiente", y a ciegas el recorrido se queda
+   releyendo la misma página e informa como ausentes comprobantes que sí están.
+   *Verificado con 21 comprobantes de julio 2026.*
 2. **Al marcar, el portal auto-rellena el IVA solicitado** con el monto completo
    de la factura. Solo hay que corregirlo cuando el mes supera el tope.
 3. **El período es mensual.** Un contribuyente semestral necesita seis
    solicitudes, una por mes.
 4. **Los comprobantes se identifican por serie** (`003-301-000089145`), no por
    clave de acceso: es la llave para casar cada fila con `invoices.factura_numero`.
+
+## El listado sale del portal, no de Gastos
+
+La consecuencia de fondo del rediseño del trámite: **no hay que llevarle
+facturas al SRI**. El portal muestra las que él reconoce y el trabajo es
+marcar, clasificar y enviar. Así que el módulo ya no depende de que esos
+comprobantes estén cargados en Gastos:
+
+- El enviador tiene **"Traer comprobantes al sistema"**: recorre la grilla del
+  mes y copia el listado (serie, fecha, proveedor, monto IVA).
+- En la app, **"Pegar comprobantes del portal"** (`POST /devoluciones-iva/portal`)
+  crea la solicitud del mes con esas filas, proponiendo el tipo de gasto por la
+  clasificación que el proveedor ya tenga en Gastos o, si no, por su nombre.
+- Esos items van **sin `invoice_id`** —no son facturas de Gastos— y se
+  distinguen en la pantalla con el chip `SRI`. Como la grilla no informa la
+  base imponible, van con base y total en cero y la pantalla muestra "—".
+- La copia local de la grilla queda en `localStorage` por período, para poder
+  desmarcar y volver a marcar sin regresar al portal.
+
+Sigue funcionando el camino viejo (subir TXT/XML a Gastos), pero es secundario:
+el SRI puede listar comprobantes que el contribuyente nunca cargó, y deja fuera
+los de devolución automática total aunque estén en Gastos.
 
 ## Qué automatiza el enviador
 

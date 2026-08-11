@@ -68,6 +68,7 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
   const [comps, setComps] = useState([])
   const [periodo, setPeriodo] = useState('')
   const [anio, setAnio] = useState(null)
+  const [mesPeriodo, setMesPeriodo] = useState(null)   // mes resuelto del período en pantalla
   const [meses, setMeses] = useState([])          // meses que cubre el período (6 si es semestral)
   const [rubros, setRubros] = useState([])        // catálogo de tipos de gasto
   const [rubroDe, setRubroDe] = useState({})      // invoice_id → rubro elegido
@@ -101,6 +102,49 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
   const clientId = selectedClient?.id
   const clave = (p) => `${p.anio}-${p.mes}`
 
+  // Copia local de la grilla que trajo el portal, por período. Esos
+  // comprobantes no están en Gastos: viven en la solicitud, así que si se
+  // desmarca uno y se guarda, desaparecería del sistema y habría que volver al
+  // SRI a buscarlo. Guardada acá, la fila sigue en pantalla para re-marcarla.
+  const clavePortal = (mes, anio) => `devIvaPortal:${clientId}:${anio}-${mes}`
+  const guardarPortal = (mes, anio, filas) => {
+    try { localStorage.setItem(clavePortal(mes, anio), JSON.stringify(filas)) } catch { /* sin espacio */ }
+  }
+  const leerPortal = (mes, anio) => {
+    try { return JSON.parse(localStorage.getItem(clavePortal(mes, anio))) || [] } catch { return [] }
+  }
+
+  const filaDePortal = (f) => ({
+    id: `portal:${f.serie}`,
+    unique_id: null,
+    factura_numero: f.serie,
+    fecha: f.fecha || '',
+    ruc_proveedor: null,
+    nombre_proveedor: f.proveedor || '',
+    clasificacion: null,
+    base: 0,
+    iva: Number(f.iva) || 0,
+    total: 0,
+    origen: 'portal',
+    rubro_sugerido: '',
+    rubro: '',
+  })
+
+  const mezclarPortal = (lista, mes, anio) => {
+    const guardadas = leerPortal(mes, anio)
+    if (!guardadas.length) return lista
+    const vistas = new Set(lista.map((c) => c.factura_numero).filter(Boolean))
+    const extra = guardadas.filter((f) => f.serie && !vistas.has(f.serie)).map(filaDePortal)
+    if (!extra.length) return lista
+    return [...lista, ...extra].sort((a, b) => {
+      const k = (c) => {
+        const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(c.fecha || ''))
+        return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : String(c.fecha || '')
+      }
+      return k(b).localeCompare(k(a))
+    })
+  }
+
   const cargar = useCallback(async () => {
     if (!clientId) return
     setCargando(true)
@@ -112,8 +156,12 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
         devolucionesIvaAPI.reporte(clientId).catch(() => null),
       ])
       setResumen(rr?.data?.totales || null)
-      const lista = rc.data.comprobantes || []
+      // A lo que responde el servidor se le suman los comprobantes del portal
+      // que se hayan desmarcado: el servidor solo devuelve los que están en la
+      // solicitud, y sin esto una fila desmarcada ya no se podría recuperar.
+      const lista = mezclarPortal(rc.data.comprobantes || [], rc.data.mes, rc.data.anio)
       setComps(lista)
+      setMesPeriodo(rc.data.mes)
       setPeriodo(rc.data.periodo || '')
       setAnio(rc.data.anio)
       setMeses(rc.data.meses || [])
@@ -192,6 +240,52 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
       await trasCargar(d)
     } catch (e) {
       setAvisoSubida({ tipo: 'err', texto: e.response?.data?.detail || 'No se pudo procesar el TXT.' })
+    }
+  }
+
+  // --- Traer al sistema lo que el portal del SRI lista --------------------
+  // El trámite no es cargar facturas: el SRI muestra él mismo los comprobantes
+  // que califican y lo que hay que hacer es marcarlos, clasificarlos y
+  // enviarlos. El enviador copia esa grilla y acá entra tal cual, sin pasar por
+  // Gastos. Se guarda además en el navegador para poder desmarcar y volver a
+  // marcar sin tener que ir a buscarla de nuevo al portal.
+  const pegarPortal = async () => {
+    setMsg(null)
+    let d = null
+    try {
+      d = JSON.parse(await navigator.clipboard.readText())
+    } catch {
+      setAvisoSubida({ tipo: 'err', texto: 'En el portapapeles no hay comprobantes del portal. En el SRI, tocá «Traer comprobantes al sistema» en el enviador.' })
+      return
+    }
+    if (!d || !Array.isArray(d.filas) || !d.filas.length) {
+      setAvisoSubida({ tipo: 'err', texto: 'Eso no es el listado del portal: falta el detalle de comprobantes.' })
+      return
+    }
+    setAvisoSubida({ tipo: 'work', texto: `Ingresando ${d.filas.length} comprobante(s) del portal…` })
+    try {
+      const r = await devolucionesIvaAPI.portal({
+        client_id: clientId,
+        mes: d.mes,
+        anio: d.anio,
+        identificacion: d.identificacion || null,
+        tipo_beneficiario: tipo,
+        porcentaje_discapacidad: tipo === 'discapacidad' ? Number(porcentaje) || null : null,
+        filas: d.filas,
+      })
+      guardarPortal(d.mes, d.anio, d.filas)
+      const faltan = r.data.sin_rubro || 0
+      setAvisoSubida({
+        tipo: 'ok',
+        texto: `${r.data.comprobantes} comprobante(s) del portal ingresados en ${r.data.periodo}. ` +
+          (faltan > 0
+            ? `Revisá el tipo de gasto: quedaron ${faltan} sin clasificar (el SRI no admite enviarlos vacíos).`
+            : 'Todos quedaron con tipo de gasto propuesto: revisalo y guardá.'),
+      })
+      setPeriodoSel({ mes: d.mes, anio: d.anio })
+      cargarPeriodos()
+    } catch (e) {
+      setAvisoSubida({ tipo: 'err', texto: e.response?.data?.detail || 'No se pudieron ingresar los comprobantes del portal.' })
     }
   }
 
@@ -336,6 +430,16 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
     setGuardando(true)
     setMsg(null)
     try {
+      // Los del portal no están en Gastos: se mandan con su detalle, porque el
+      // servidor no tiene de dónde sacarlos si no es de la solicitud anterior.
+      const portalFilas = ids
+        .filter((id) => String(id).startsWith('portal:'))
+        .map((id) => comps.find((c) => c.id === id))
+        .filter(Boolean)
+        .map((c) => ({
+          serie: c.factura_numero, fecha: c.fecha,
+          proveedor: c.nombre_proveedor, iva: c.iva,
+        }))
       const r = await devolucionesIvaAPI.guardar({
         client_id: clientId,
         tipo_beneficiario: tipo,
@@ -344,6 +448,7 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
         rubros: Object.fromEntries(ids.map((id) => [id, rubroDe[id] ?? ''])),
         mes: periodoSel?.mes ?? null,
         anio: periodoSel?.anio ?? null,
+        portal_filas: portalFilas.length ? portalFilas : null,
       })
       const extra = r.data.excedente > 0
         ? ` OJO: el IVA marcado supera el tope en ${fmtMoney(r.data.excedente)}; se solicita el tope.`
@@ -527,6 +632,11 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
               onChange={(e) => setPorcentaje(e.target.value)} style={{ width: 70 }} />
           </label>
         )}
+        <button
+          className="dv-btn primary"
+          onClick={pegarPortal}
+          title="Ingresar el listado que el portal del SRI muestra del período (copialo con el enviador, en el SRI)"
+        >📥 Pegar comprobantes del portal</button>
         <a
           ref={setEnviadorDevolucionHref}
           className="dv-enviador"
@@ -615,6 +725,7 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
           anio={anio}
           conGasto={periodosDisp}
           onElegirPeriodo={(p) => setPeriodoSel({ mes: p.mes, anio: p.anio })}
+          onPegarPortal={pegarPortal}
           onTxt={subirTxt}
           onXml={subirXml}
         />
@@ -650,10 +761,14 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
                       {rubros.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
                     </select>
                   </td>
-                  <td>{c.clasificacion || 'SIN CLASIFICAR'}</td>
-                  <td className="num">{fmtMoney(c.base)}</td>
+                  <td>
+                    {c.origen === 'portal'
+                      ? <span className="dv-chip-portal" title="Lo lista el portal del SRI; no está en Gastos">SRI</span>
+                      : (c.clasificacion || 'SIN CLASIFICAR')}
+                  </td>
+                  <td className="num">{c.origen === 'portal' ? '—' : fmtMoney(c.base)}</td>
                   <td className="num">{fmtMoney(c.iva)}</td>
-                  <td className="num">{fmtMoney(c.total)}</td>
+                  <td className="num">{c.origen === 'portal' ? '—' : fmtMoney(c.total)}</td>
                 </tr>
               ))}
             </tbody>
@@ -752,14 +867,27 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
 // El trámite se hace acá: si el mes está vacío, la pantalla tiene que resolver
 // la carga en el momento (bajar del SRI o soltar el TXT/XML) y quedar lista para
 // marcar y enviar, en vez de mandar al usuario a otra pantalla o a una consola.
-function SinComprobantes({ cliente, periodo, anio, conGasto, onElegirPeriodo, onTxt, onXml }) {
+function SinComprobantes({ cliente, periodo, anio, conGasto, onElegirPeriodo, onPegarPortal, onTxt, onXml }) {
   return (
     <div className="dv-vacio">
       <h2>No hay comprobantes en {periodo}</h2>
       <p className="dv-vacio-intro">
-        Para marcar y enviar la solicitud, las facturas del mes tienen que estar cargadas.
-        Traelas desde acá y la pantalla se para sola en el mes que entre.
+        La devolución se arma con <strong>el listado que muestra el propio SRI</strong>: solo
+        bienes y servicios de primera necesidad de establecimientos verificados. Traelo del
+        portal y acá lo marcás, lo clasificás y lo enviás.
       </p>
+
+      <div className="dv-vacio-portal">
+        <ol>
+          <li>En el SRI, entrá a <em>Devolución de IVA → Ingresar facturas electrónicas</em>.</li>
+          <li>Tocá el marcador <strong>📤 Enviador-DEVOLUCIÓN</strong> y después
+            <strong> «Traer comprobantes al sistema»</strong>: elige el mes y copia la grilla.</li>
+          <li>Volvé acá y pegala:</li>
+        </ol>
+        <button className="dv-btn primary" onClick={onPegarPortal}>
+          📥 Pegar comprobantes del portal
+        </button>
+      </div>
 
       {conGasto.length > 0 && (
         <div className="dv-vacio-otros">
@@ -774,14 +902,16 @@ function SinComprobantes({ cliente, periodo, anio, conGasto, onElegirPeriodo, on
         </div>
       )}
 
-      <div className="dv-vacio-carga">
+      <details className="dv-vacio-carga">
+        <summary>Otra vía: cargar las facturas del mes (TXT del SRI o XML)</summary>
         <UploadPanel onProcessTxt={onTxt} onProcessXml={onXml} />
         <p className="dv-vacio-nota">
-          Se cargan en los gastos de {cliente.identificacion}, igual que si los subieras en
-          Gastos. El TXT de claves del mes sale del SRI con el Bajador-GASTOS, que vive en
-          esa pantalla: acá el único trámite con el SRI es enviar la solicitud.
+          Van a los gastos de {cliente.identificacion}, igual que en Gastos. Sirve para
+          contabilidad, pero para la devolución manda el listado del portal: el SRI solo
+          devuelve lo que él reconoce, y ahí puede haber comprobantes que no cargaste
+          —y faltar otros que sí tenés.
         </p>
-      </div>
+      </details>
 
       <details className="dv-vacio-avanzado">
         <summary>Otra vía: descargador local (equipo con Python instalado)</summary>
