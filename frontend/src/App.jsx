@@ -35,6 +35,7 @@ const Compradores              = lazy(() => import('./pages/Compradores'))
 const RebajasExenciones        = lazy(() => import('./pages/RebajasExenciones'))
 const Normativa                = lazy(() => import('./pages/Normativa'))
 const Reportes                 = lazy(() => import('./pages/Reportes'))
+const InformeGeneral           = lazy(() => import('./pages/InformeGeneral'))
 const Capacitaciones           = lazy(() => import('./pages/Capacitaciones'))
 const Admin                    = lazy(() => import('./pages/Admin'))
 const AdminCredentials         = lazy(() => import('./pages/AdminCredentials'))
@@ -228,7 +229,8 @@ function App() {
               <Route path="/declaracion-iva" element={<RequireSubmodule modulo="declaraciones" sub="decl_iva"><Declaraciones tipo="IVA" /></RequireSubmodule>} />
               <Route path="/declaracion-ice" element={<RequireSubmodule modulo="declaraciones" sub="decl_ice"><Declaraciones tipo="ICE" /></RequireSubmodule>} />
               <Route path="/declaracion-103" element={<RequireSubmodule modulo="agente_retencion" sub="agret_103"><Declaraciones tipo="103" /></RequireSubmodule>} />
-              <Route path="/devoluciones-iva/tercera-edad" element={<RequireSubmodule modulo="declaraciones" sub="decl_devoluciones"><DevolucionesIvaTerceraEdad /></RequireSubmodule>} />
+              <Route path="/devoluciones-iva/tercera-edad" element={<RequireSubmodule modulo="declaraciones" sub="decl_devoluciones"><DevolucionesIvaTerceraEdad beneficiario="tercera_edad" /></RequireSubmodule>} />
+              <Route path="/devoluciones-iva/discapacidad" element={<RequireSubmodule modulo="declaraciones" sub="decl_devoluciones"><DevolucionesIvaTerceraEdad beneficiario="discapacidad" /></RequireSubmodule>} />
               <Route path="/clientes-pendientes" element={<RequireAnyModule modulos={['declaraciones', 'agente_retencion']}><ClientesPendientes /></RequireAnyModule>} />
               <Route path="/ingresos-iva" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_ingresos_iva"><IngresosIva /></RequireSubmodule>} />
               <Route path="/calculo-ice" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_calculo"><CalculoICE /></RequireSubmodule>} />
@@ -245,6 +247,7 @@ function App() {
               <Route path="/reportes" element={<Reportes modo="faltantes" />} />
               <Route path="/reportes/faltantes" element={<Reportes modo="faltantes" />} />
               <Route path="/reportes/realizados" element={<Reportes modo="realizados" />} />
+              <Route path="/informe-general" element={<InformeGeneral />} />
               <Route path="/capacitaciones" element={<Capacitaciones />} />
               <Route path="/admin" element={<RequireSuperAdmin><Admin /></RequireSuperAdmin>} />
               <Route path="/admin/credenciales" element={<RequireCredenciales><AdminCredentials /></RequireCredenciales>} />

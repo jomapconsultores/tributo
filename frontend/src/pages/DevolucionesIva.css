@@ -96,46 +96,92 @@
   font-size: 0.8rem;
 }
 
-.dv-stub-box {
+/* --- Período sin comprobantes: se resuelve la carga acá mismo --- */
+.dv-vacio {
   background: #fffbeb;
   border: 1px solid #fde68a;
   border-radius: 12px;
-  padding: 24px;
+  padding: 22px 24px;
   margin-top: 20px;
 }
 
-.dv-stub-box h2 {
+.dv-vacio h2 {
   color: #92400e;
-  margin-top: 0;
-  margin-bottom: 12px;
+  margin: 0 0 6px;
+  font-size: 1.05rem;
 }
 
-.dv-stub-box p {
+.dv-vacio-intro {
   color: #475569;
   line-height: 1.55;
+  margin: 0 0 14px;
+  font-size: .9rem;
 }
 
-.dv-stub-box ol {
-  margin: 14px 0;
-  padding-left: 20px;
-  color: #334155;
-  line-height: 1.7;
+.dv-vacio-otros {
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #fde68a;
 }
 
-.dv-stub-box code {
+.dv-vacio-otros > span {
+  color: #64748b;
+  font-size: .82rem;
+}
+
+.dv-vacio-meses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.dv-vacio-meses .dv-btn { font-size: .8rem; padding: 5px 10px; }
+
+.dv-vacio-pasos {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.4fr);
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 780px) {
+  .dv-vacio-pasos { grid-template-columns: 1fr; }
+}
+
+.dv-vacio-pasos h3 {
+  margin: 0 0 6px;
+  font-size: .92rem;
+  color: #92400e;
+}
+
+.dv-vacio-pasos p {
+  color: #475569;
+  line-height: 1.5;
+  font-size: .84rem;
+  margin: 0 0 10px;
+}
+
+.dv-vacio-nota { margin: 8px 0 0 !important; color: #64748b !important; font-size: .78rem !important; }
+
+.dv-vacio-avanzado {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #fde68a;
+  font-size: .82rem;
+  color: #64748b;
+}
+
+.dv-vacio-avanzado summary { cursor: pointer; }
+
+.dv-vacio-avanzado code {
+  display: inline-block;
+  margin-top: 8px;
   background: #fef3c7;
-  padding: 1px 6px;
+  padding: 3px 8px;
   border-radius: 4px;
   font-size: 0.85em;
   color: #92400e;
-}
-
-.dv-roadmap {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid #fde68a;
-  font-size: 0.88rem;
-  color: #64748b;
 }
 
 /* --- Módulo funcional: toolbar, resumen, tabla, historial --- */
@@ -144,6 +190,9 @@
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 0.9rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
 }
 .dv-msg.ok { background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; }
 .dv-msg.err { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
@@ -245,3 +294,83 @@
 .dv-historial select { padding: 4px 6px; border: 1px solid #cbd5e1; border-radius: 6px; }
 .dv-acciones { display: flex; gap: 6px; }
 .dv-acciones .dv-btn { padding: 4px 10px; font-size: 0.8rem; }
+
+/* --- SelecciÃ³n del mes a validar ---------------------------------------- */
+.dv-periodos {
+  margin: 14px 0;
+  padding: 14px 16px;
+  background: #f7fbff;
+  border: 1px solid #d6e6f5;
+  border-radius: 10px;
+}
+.dv-periodos-head h2 { margin: 0 0 4px; font-size: 1.05rem; }
+.dv-periodos-head p { margin: 0 0 10px; font-size: .85rem; color: #5a6b7a; }
+.dv-periodos-lista { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.dv-periodo-card {
+  display: flex; align-items: stretch;
+  border: 1px solid #cfe0ee; border-radius: 8px; background: #fff; overflow: hidden;
+}
+.dv-periodo-check { display: flex; align-items: center; padding: 0 6px; background: #eef5fb; }
+.dv-periodo {
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+  padding: 7px 12px; border: 1px solid #cfe0ee; border-radius: 8px;
+  background: #fff; cursor: pointer; font-size: .82rem; text-align: left;
+}
+.dv-periodo-card .dv-periodo { border: 0; border-radius: 0; }
+.dv-periodo:hover { background: #eef5fb; }
+.dv-periodo.activo { background: #007bff; color: #fff; border-color: #007bff; }
+.dv-periodo.activo span, .dv-periodo.activo em { color: #eaf3ff; }
+.dv-periodo span { color: #5a6b7a; font-size: .76rem; }
+.dv-periodo em { font-style: normal; font-size: .72rem; color: #8a97a4; }
+.dv-periodo-card.estado-presentada { border-color: #a9d3b3; }
+.dv-periodo-card.estado-presentada .dv-periodo-check { background: #eaf6ec; }
+.dv-lote-barra {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 10px; padding-top: 10px; border-top: 1px dashed #cfe0ee; font-size: .85rem;
+}
+
+/* --- Tipo de gasto sin asignar ------------------------------------------ */
+.dv-rubro.sin-asignar { border-color: #e0a800; background: #fff8e1; }
+
+/* --- Modales (constancia, reporte, lote) -------------------------------- */
+.dv-modal-fondo {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .45);
+  display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px;
+}
+.dv-modal {
+  background: #fff; border-radius: 12px; padding: 20px 22px;
+  width: min(560px, 100%); max-height: 90vh; overflow: auto;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .25);
+}
+.dv-modal h2 { margin: 0 0 4px; font-size: 1.1rem; }
+.dv-modal-sub { margin: 0 0 10px; color: #5a6b7a; font-size: .88rem; }
+.dv-modal-ayuda { margin: 8px 0; font-size: .82rem; color: #5a6b7a; }
+.dv-modal-alerta {
+  margin: 10px 0; padding: 9px 11px; border-radius: 8px;
+  background: #fff8e1; border: 1px solid #ffe08a; color: #7a5b00; font-size: .82rem;
+}
+.dv-modal label { display: block; margin: 9px 0; font-size: .84rem; font-weight: 600; }
+.dv-modal label input {
+  display: block; width: 100%; margin-top: 4px; padding: 7px 9px;
+  border: 1px solid #ccd6e0; border-radius: 6px; font-size: .9rem; font-weight: 400;
+}
+.dv-modal-botones { display: flex; gap: 8px; margin-top: 16px; }
+.dv-reporte-cifras { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.dv-reporte-cifras div {
+  flex: 1 1 130px; padding: 10px 12px; border-radius: 8px;
+  background: #f4f8fb; border: 1px solid #dbe7f0;
+}
+.dv-reporte-cifras span { display: block; font-size: .74rem; color: #5a6b7a; }
+.dv-reporte-cifras strong { font-size: 1.15rem; }
+.dv-lote-lista { margin: 8px 0; padding-left: 18px; font-size: .85rem; }
+.dv-lote-lista li { margin: 3px 0; }
+
+/* Avisos propios de cada beneficiario (requisitos del portal del SRI) */
+.dv-avisos {
+  margin: 12px 0;
+  padding: 10px 14px;
+  background: #fff8e1;
+  border: 1px solid #ffe08a;
+  border-radius: 8px;
+}
+.dv-avisos p { margin: 4px 0; font-size: .83rem; color: #7a5b00; }

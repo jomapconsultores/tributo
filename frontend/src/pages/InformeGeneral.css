@@ -1,0 +1,86 @@
+/* Informe general: consolidado del período (realizado, declarado, cobros) */
+
+.ig-page { padding: 18px 22px; }
+
+.ig-header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.ig-header h1 { margin: 0 0 4px; font-size: 1.35rem; }
+.ig-sub { margin: 0; color: #5a6b7a; font-size: .86rem; max-width: 640px; }
+
+.ig-filtros { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.ig-filtros label { display: flex; flex-direction: column; font-size: .74rem; color: #5a6b7a; gap: 3px; }
+.ig-filtros select {
+  padding: 6px 9px; border: 1px solid #ccd6e0; border-radius: 6px; font-size: .88rem;
+}
+.ig-btn {
+  padding: 7px 13px; border: 1px solid #ccd6e0; border-radius: 6px;
+  background: #f5f8fa; cursor: pointer; font-size: .85rem;
+}
+.ig-btn:hover { background: #e9eff4; }
+
+.ig-msg { padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; font-size: .88rem; }
+.ig-msg.err { background: #fdecea; border: 1px solid #f5c2c0; color: #8a1c14; }
+
+.ig-nota { font-size: .8rem; color: #7a8794; margin: 0 0 12px; }
+
+/* --- Cifras del período -------------------------------------------------- */
+.ig-kpis { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.ig-kpi {
+  flex: 1 1 150px; padding: 11px 14px; border-radius: 10px;
+  background: #f4f8fb; border: 1px solid #dbe7f0;
+}
+.ig-kpi span { display: block; font-size: .74rem; color: #5a6b7a; }
+.ig-kpi strong { font-size: 1.3rem; }
+.ig-kpi em { display: block; font-style: normal; font-size: .72rem; color: #5a6b7a; }
+.ig-kpi.dinero { background: #eaf6ec; border-color: #a9d3b3; }
+.ig-kpi.alerta { background: #fff8e1; border-color: #ffe08a; }
+
+/* --- Cuadro principal ---------------------------------------------------- */
+.ig-tabla-wrap { overflow-x: auto; }
+.ig-tabla { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.ig-tabla th {
+  background: #007bff; color: #fff; padding: 8px 10px; text-align: left;
+  font-size: .78rem; white-space: nowrap;
+}
+.ig-tabla td { padding: 8px 10px; border-bottom: 1px solid #e6ecf1; vertical-align: top; }
+.ig-tabla .num { text-align: right; }
+.ig-fila { cursor: pointer; }
+.ig-fila:hover { background: #f4f8fb; }
+.ig-ruc { display: block; font-size: .74rem; color: #7a8794; }
+
+.ig-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.ig-chip {
+  font-style: normal; font-size: .72rem; padding: 2px 7px; border-radius: 10px;
+  background: #eef5fb; border: 1px solid #cfe0ee; color: #1a5276;
+}
+
+.ig-dev { display: block; font-size: .8rem; }
+.ig-dev em { font-style: normal; color: #7a8794; font-size: .74rem; }
+.ig-dev.presentada, .ig-dev.aprobada { color: #1e6b33; }
+.ig-dev.borrador { color: #7a5b00; }
+
+.ig-fact { font-size: .8rem; }
+.ig-fact.ok { color: #1e6b33; }
+.ig-fact.pend { color: #7a5b00; }
+.ig-fact.no { color: #a0aab4; }
+.ig-alerta { color: #a3541a; font-weight: 600; }
+
+/* --- Detalle desplegable ------------------------------------------------- */
+.ig-detalle td { background: #fafcfe; padding: 10px 14px; }
+.ig-subtabla { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.ig-subtabla th {
+  background: #eef5fb; color: #1a5276; padding: 5px 8px; text-align: left; font-size: .74rem;
+}
+.ig-subtabla td { padding: 5px 8px; border-bottom: 1px solid #edf2f6; }
+.ig-subtabla .num { text-align: right; }
+
+.ig-plataforma { margin-top: 22px; }
+.ig-plataforma h2 { margin: 0 0 3px; font-size: 1.05rem; }
+
+.ig-vacio {
+  padding: 26px; text-align: center; color: #5a6b7a;
+  background: #f7fbff; border: 1px dashed #cfe0ee; border-radius: 10px;
+}
+.ig-vacio h2 { margin: 0 0 6px; font-size: 1.05rem; }

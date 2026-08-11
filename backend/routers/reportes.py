@@ -639,3 +639,207 @@ async def export_pdf(iva_incluido: bool = False, user_id: str = Depends(get_curr
     return StreamingResponse(
         iter([out.getvalue()]), media_type="application/pdf",
         headers={"Content-Disposition": "attachment; filename=Reporte_Honorarios.pdf"})
+
+
+# ===========================================================================
+# INFORME GENERAL â€” todo lo realizado en la plataforma, por perÃ­odo
+# ===========================================================================
+# Junta en un solo cuadro las tres preguntas que hoy hay que ir a responder a
+# tres mÃ³dulos distintos:
+#   1. QUÃ‰ SE HIZO y CUÃNDO  â†’ bitÃ¡cora (activity_log)
+#   2. QUÃ‰ SE DECLARÃ“        â†’ declaraciones, anexos y devoluciones de IVA
+#   3. QUÃ‰ SE COBRA          â†’ honorarios guardados vs. lo facturado en Odoo,
+#                              de donde sale lo que falta facturar/cobrar
+# El alcance lo fija el ROL: cada quien ve los contribuyentes que puede ver
+# (visible_clients) y los valores solo los ven administrador y socio.
+
+# Procesos de la bitÃ¡cora que cuentan como "trabajo realizado" en el informe.
+MODULOS_INFORME = {
+    "gastos": "Gastos", "ingresos_iva": "Ingresos IVA", "ingresos_ice": "Ingresos ICE",
+    "retenciones": "Retenciones", "declaraciones": "Declaraciones", "anexos": "Anexos",
+    "clientes": "Contribuyentes",
+}
+
+
+def _rango_mes(mes: int, anio: int):
+    """[inicio, fin) del mes en ISO, para filtrar por fecha."""
+    ini = f"{anio:04d}-{mes:02d}-01T00:00:00"
+    fin = (f"{anio + 1:04d}-01-01T00:00:00" if mes == 12
+           else f"{anio:04d}-{mes + 1:02d}-01T00:00:00")
+    return ini, fin
+
+
+@router.get("/general")
+async def informe_general(mes: Optional[int] = None, anio: Optional[int] = None,
+                          user_id: str = Depends(get_current_user)):
+    """Informe consolidado del perÃ­odo: realizado, declarado y cobros."""
+    from tenancy import visible_clients
+    from routers.access import rol_de
+    from routers.odoo_factura import facturas_periodo_por_ruc
+
+    sb = get_supabase_client()
+    cur_mes, cur_anio = _periodo_actual()
+    mes = int(mes or cur_mes)
+    anio = int(anio or cur_anio)
+    ini, fin = _rango_mes(mes, anio)
+
+    rol = rol_de(user_id)
+    # Los valores de honorarios son informaciÃ³n interna del estudio: el
+    # contribuyente y el trabajador ven su trabajo, no lo que se le cobra.
+    ve_valores = rol in ("admin", "socio")
+
+    clientes = visible_clients(user_id, "id,identificacion,nombre")
+    id_to_ruc = {str(c["id"]): c["identificacion"] for c in clientes}
+    nombre_por_ruc = {c["identificacion"]: (c.get("nombre") or "") for c in clientes}
+    ids = list(id_to_ruc)
+    if not ids:
+        return {"periodo": {"mes": mes, "anio": anio, "etiqueta": f"{MESES_ES[mes]} {anio}"},
+                "rol": rol, "ve_valores": ve_valores, "filas": [],
+                "sin_contribuyente": [], "totales": {}}
+
+    def _q_actividad():
+        rows = _fetch_in_chunks(
+            sb, "activity_log",
+            "action,module,entity,client_id,identificacion,contribuyente,cantidad,actor_email,occurred_at",
+            "client_id", ids)
+        return [r for r in rows if ini <= str(r.get("occurred_at") or "") < fin]
+
+    def _q_decls():
+        rows = _fetch_in_chunks(sb, "declaraciones", "client_id,tipo,created_at", "client_id", ids)
+        return [r for r in rows if ini <= str(r.get("created_at") or "") < fin]
+
+    def _q_anexos():
+        rows = _fetch_in_chunks(sb, "anexos", "client_id,created_at", "client_id", ids)
+        return [r for r in rows if ini <= str(r.get("created_at") or "") < fin]
+
+    def _q_devol():
+        return _fetch_in_chunks(
+            sb, "devoluciones_iva_solicitudes",
+            "client_id,mes,anio,estado,monto_solicitado,comprobantes_enviados,"
+            "monto_enviado,presentada_at,fecha_carga_sri", "client_id", ids)
+
+    def _q_honorarios():
+        return fetch_all(lambda: sb.table("reportes_honorarios").select(
+            "identificacion,producto,cobrar,valor,iva_incluido,mes,anio").eq("user_id", user_id))
+
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        f_act, f_dec = ex.submit(_q_actividad), ex.submit(_q_decls)
+        f_anx, f_dev = ex.submit(_q_anexos), ex.submit(_q_devol)
+        f_hon = ex.submit(_q_honorarios) if ve_valores else None
+        actividad, decls = f_act.result(), f_dec.result()
+        anexos_r, devol = f_anx.result(), f_dev.result()
+        honorarios = f_hon.result() if f_hon else []
+
+    # Lo facturado en Odoo en el mes (tolerante a fallos: si Odoo no responde,
+    # el informe igual sale, con la facturaciÃ³n en blanco).
+    facturado = facturas_periodo_por_ruc(set(nombre_por_ruc), mes, anio,
+                                         cache_key=user_id) if ve_valores else {}
+
+    filas = {}
+
+    def _fila(ruc):
+        return filas.setdefault(ruc, {
+            "identificacion": ruc, "contribuyente": nombre_por_ruc.get(ruc, ""),
+            "procesos": [], "declarado": [], "devoluciones": [],
+            "a_cobrar": 0.0, "facturado": None, "falta_facturar": 0.0,
+        })
+
+    for a in actividad:
+        ruc = a.get("identificacion") or id_to_ruc.get(str(a.get("client_id")))
+        if not ruc:
+            continue
+        _fila(ruc)["procesos"].append({
+            "modulo": MODULOS_INFORME.get(a.get("module"), a.get("module") or "â€”"),
+            "proceso": a.get("entity"), "accion": a.get("action"),
+            "cantidad": a.get("cantidad"), "por": a.get("actor_email"),
+            "fecha": a.get("occurred_at"),
+        })
+
+    for d in decls:
+        ruc = id_to_ruc.get(str(d.get("client_id")))
+        if ruc:
+            _fila(ruc)["declarado"].append({"tipo": d.get("tipo") or "IVA",
+                                            "fecha": d.get("created_at")})
+    for x in anexos_r:
+        ruc = id_to_ruc.get(str(x.get("client_id")))
+        if ruc:
+            _fila(ruc)["declarado"].append({"tipo": "Anexo", "fecha": x.get("created_at")})
+
+    # Devoluciones: las del perÃ­odo informado (su mes/aÃ±o es el de las compras),
+    # con lo que efectivamente procesÃ³ el SRI.
+    for s in devol:
+        ruc = id_to_ruc.get(str(s.get("client_id")))
+        if not ruc or int(s.get("anio") or 0) != anio or int(s.get("mes") or 0) != mes:
+            continue
+        _fila(ruc)["devoluciones"].append({
+            "estado": s.get("estado"),
+            "comprobantes": s.get("comprobantes_enviados"),
+            "monto_solicitado": float(s.get("monto_solicitado") or 0),
+            "monto_procesado": (float(s["monto_enviado"])
+                                if s.get("monto_enviado") is not None else None),
+            "fecha_carga": s.get("fecha_carga_sri") or s.get("presentada_at"),
+        })
+
+    for h in honorarios:
+        if not h.get("cobrar") or h.get("identificacion") not in nombre_por_ruc:
+            continue
+        # Los honorarios sin perÃ­odo guardado son los del mes en curso.
+        hm, ha = h.get("mes"), h.get("anio")
+        if hm and ha and (int(hm), int(ha)) != (mes, anio):
+            continue
+        neto = float(h.get("valor") or 0)
+        total = neto if h.get("iva_incluido") else round(neto * (1 + IVA_RATE), 2)
+        _fila(h["identificacion"])["a_cobrar"] += total
+
+    for ruc, f in filas.items():
+        f["a_cobrar"] = round(f["a_cobrar"], 2)
+        fac = facturado.get(re.sub(r"\D", "", ruc))
+        f["facturado"] = fac
+        # Falta facturar = lo acordado a cobrar que todavÃ­a no tiene factura
+        # emitida en Odoo dentro del mes.
+        f["falta_facturar"] = 0.0 if fac else f["a_cobrar"]
+        # Cobrado vs. por cobrar salen del estado de pago de la factura en Odoo:
+        # facturar no es cobrar, y el informe tiene que distinguirlo.
+        f["cobrado"] = round(float(fac.get("total") or 0), 2) if (fac and fac.get("pagada")) else 0.0
+        f["falta_cobrar"] = round(float(fac.get("por_cobrar") or 0), 2) if fac else 0.0
+
+    orden = sorted(filas.values(), key=lambda x: (x["contribuyente"] or x["identificacion"]))
+
+    # Movimientos de plataforma sin contribuyente (altas de usuarios, permisos):
+    # solo tienen sentido para quien administra.
+    sin_contribuyente = []
+    if rol == "admin":
+        rows = fetch_all(lambda: sb.table("activity_log").select(
+            "action,module,entity,cantidad,actor_email,occurred_at"
+        ).is_("client_id", "null").gte("occurred_at", ini).lt("occurred_at", fin))
+        sin_contribuyente = [{
+            "modulo": MODULOS_INFORME.get(r.get("module"), r.get("module") or "â€”"),
+            "proceso": r.get("entity"), "accion": r.get("action"),
+            "cantidad": r.get("cantidad"), "por": r.get("actor_email"),
+            "fecha": r.get("occurred_at"),
+        } for r in rows]
+
+    presentadas = [d for f in orden for d in f["devoluciones"]
+                   if d["estado"] in ("presentada", "aprobada")]
+    return {
+        "periodo": {"mes": mes, "anio": anio, "etiqueta": f"{MESES_ES[mes]} {anio}"},
+        "rol": rol,
+        "ve_valores": ve_valores,
+        "filas": orden,
+        "sin_contribuyente": sin_contribuyente,
+        "totales": {
+            "contribuyentes": len(orden),
+            "procesos": sum(len(f["procesos"]) for f in orden),
+            "declaraciones": sum(len(f["declarado"]) for f in orden),
+            "devoluciones": len(presentadas),
+            "devolucion_monto": round(sum(
+                (d["monto_procesado"] if d["monto_procesado"] is not None
+                 else d["monto_solicitado"]) for d in presentadas), 2),
+            "a_cobrar": round(sum(f["a_cobrar"] for f in orden), 2) if ve_valores else None,
+            "facturado": round(sum(float((f["facturado"] or {}).get("total") or 0)
+                                   for f in orden), 2) if ve_valores else None,
+            "falta_facturar": round(sum(f["falta_facturar"] for f in orden), 2) if ve_valores else None,
+            "cobrado": round(sum(f["cobrado"] for f in orden), 2) if ve_valores else None,
+            "falta_cobrar": round(sum(f["falta_cobrar"] for f in orden), 2) if ve_valores else None,
+        },
+    }

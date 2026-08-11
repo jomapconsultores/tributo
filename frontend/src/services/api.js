@@ -410,6 +410,10 @@ export const reportesAPI = {
   enviarCorreo: (iva_incluido = false) => api.post('/api/reportes/enviar-correo', null, { params: { iva_incluido } }),
   exportExcel: (iva_incluido = false) => api.get('/api/reportes/export/excel', { params: { iva_incluido }, responseType: 'blob' }),
   exportPdf: (iva_incluido = false) => api.get('/api/reportes/export/pdf', { params: { iva_incluido }, responseType: 'blob' }),
+  // Informe consolidado del período: lo realizado, lo declarado y los cobros.
+  // El alcance y las columnas de valores dependen del rol del usuario.
+  general: (mes = null, anio = null) =>
+    api.get('/api/reportes/general', { params: { mes: mes ?? undefined, anio: anio ?? undefined } }),
 }
 
 // CAPACITACIONES: el cliente solicita una hora ($50+IVA); socio/admin autoriza
@@ -474,8 +478,20 @@ export const declaracionesAPI = {
 
 // Devolución de IVA (adultos mayores / personas con discapacidad)
 export const devolucionesIvaAPI = {
-  // Comprobantes del período del cliente + solicitud guardada (si hay)
-  comprobantes: (clientId) => api.get('/api/devoluciones-iva/comprobantes', { params: { client_id: clientId } }),
+  // Comprobantes del período pedido (mes/anio) o, si no se indica, el del cliente
+  comprobantes: (clientId, mes = null, anio = null) =>
+    api.get('/api/devoluciones-iva/comprobantes', {
+      params: { client_id: clientId, mes: mes ?? undefined, anio: anio ?? undefined },
+    }),
+  // Meses con gasto cargado y en qué estado está la devolución de cada uno
+  periodos: (clientId) => api.get('/api/devoluciones-iva/periodos', { params: { client_id: clientId } }),
+  // Prepara de una sola vez la solicitud de varios meses: [{mes, anio}, ...]
+  lote: (body) => api.post('/api/devoluciones-iva/solicitudes/lote', body),
+  // Reporte de lo procesado y presentado (sin client_id: consolidado del rol)
+  reporte: (clientId = null, anio = null) =>
+    api.get('/api/devoluciones-iva/reporte', {
+      params: { client_id: clientId ?? undefined, anio: anio ?? undefined },
+    }),
   // Historial de solicitudes del contribuyente (todos sus períodos)
   solicitudes: (clientId) => api.get('/api/devoluciones-iva/solicitudes', { params: { client_id: clientId } }),
   // Tope mensual y parámetros vigentes. porcentaje solo aplica a discapacidad.
@@ -491,8 +507,9 @@ export const devolucionesIvaAPI = {
   rubros: () => api.get('/api/devoluciones-iva/rubros'),
   // Paquete listo para llevar la solicitud al portal del SRI (lo usa el enviador)
   envio: (id) => api.get(`/api/devoluciones-iva/solicitudes/${id}/envio`),
-  // Deja constancia de que se envió al SRI (estado presentada + fecha)
-  marcarEnviada: (id) => api.post(`/api/devoluciones-iva/solicitudes/${id}/enviar`),
+  // Deja constancia de lo presentado al SRI y devuelve el reporte del envío.
+  // `envio` = { comprobantes, monto, fecha_carga, mensaje } según lo que confirmó el portal.
+  marcarEnviada: (id, envio = {}) => api.post(`/api/devoluciones-iva/solicitudes/${id}/enviar`, envio),
 }
 
 // Recursos (Códigos ICE reemplazable)

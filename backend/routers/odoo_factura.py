@@ -331,6 +331,7 @@ def facturas_periodo_por_ruc(idents: set, mes: int, anio: int, cache_key=None) -
                  {"order": "invoice_date desc, id desc", "limit": 2000})
         rows = _x(models, db, uid, key, "account.move", "read", [ids],
                   {"fields": ["name", "invoice_date", "partner_id", "amount_total",
+                              "amount_residual", "payment_state",
                               "l10n_ec_authorization_number"]}) if ids else []
         pids = list({r["partner_id"][0] for r in rows if r.get("partner_id")})
         vat = {}
@@ -341,12 +342,18 @@ def facturas_periodo_por_ruc(idents: set, mes: int, anio: int, cache_key=None) -
             v = vat.get((r.get("partner_id") or [None])[0], "")
             if not v or v not in norm or v in out:
                 continue
+            # payment_state: 'paid'/'in_payment' = cobrada; 'partial' = a medias.
+            # amount_residual es lo que queda por cobrar de esa factura.
+            pstate = r.get("payment_state") or ""
             out[v] = {
                 "numero": r.get("name"),
                 "fecha": r.get("invoice_date"),
                 "total": r.get("amount_total"),
                 "autorizada": bool(r.get("l10n_ec_authorization_number")),
                 "autorizacion": r.get("l10n_ec_authorization_number") or None,
+                "pagada": pstate in ("paid", "in_payment"),
+                "estado_pago": pstate or "not_paid",
+                "por_cobrar": float(r.get("amount_residual") or 0),
             }
     except Exception as e:
         print(f"[odoo] facturas_periodo_por_ruc: {e}")

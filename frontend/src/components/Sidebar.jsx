@@ -139,14 +139,18 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
       {
         key: 'devoluciones', ico: '💰', rail: 'Devoluciones IVA', title: 'Devoluciones IVA',
         color: 'devoluciones', visible: has('declaraciones') && hasSub('decl_devoluciones'),
-        items: [L('👵', 'Adultos mayores', '/devoluciones-iva/tercera-edad')],
+        items: [
+          L('👵', 'Adultos mayores', '/devoluciones-iva/tercera-edad'),
+          L('♿', 'Discapacidad', '/devoluciones-iva/discapacidad'),
+        ],
       },
       {
         key: 'reportes', ico: '📑', rail: 'Reportes', title: 'Reportes',
-        visible: true, match: (p) => p.startsWith('/reportes'),
+        visible: true, match: (p) => p.startsWith('/reportes') || p.startsWith('/informe-general'),
         items: [
           L('🟠', 'Faltantes', '/reportes/faltantes'),
           L('✅', 'Realizados', '/reportes/realizados'),
+          L('📊', 'Informe general', '/informe-general'),
         ],
       },
       {

@@ -15,6 +15,7 @@ Base legal (parámetros abajo, revisar cada enero):
   = 2 RBU, proporcional al porcentaje de discapacidad.
 """
 import io
+from datetime import datetime
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -47,51 +48,76 @@ _NOMBRE_MES = {1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "
 
 # --- Rubros de gasto ---------------------------------------------------------
 # A qué tipo de gasto se direcciona cada comprobante que entra a la solicitud.
-# Es un catálogo CERRADO (a diferencia de la clasificación de Gastos, que es
-# texto libre por proveedor) para que el detalle y los totales sean comparables.
+# El catálogo es EXACTAMENTE el del portal del SRI (combo "Tipo de gasto" de la
+# pantalla de facturas electrónicas), con su código, porque este dato termina
+# cargándose allá: si acá ofreciéramos rubros que el SRI no tiene (turismo,
+# servicios básicos, otros), al momento de presentar no habría dónde ponerlos.
+# Verificado en el portal el 2026-08-06.
 RUBROS = [
-    {"key": "vivienda",           "label": "Vivienda"},
-    {"key": "salud",              "label": "Salud"},
-    {"key": "alimentacion",       "label": "Alimentación"},
-    {"key": "vestimenta",         "label": "Vestimenta"},
-    {"key": "educacion",          "label": "Educación"},
-    {"key": "turismo",            "label": "Turismo"},
-    {"key": "servicios_basicos",  "label": "Servicios básicos"},
-    {"key": "otros",              "label": "Otros"},
+    {"key": "vestimenta",   "label": "Vestimenta",   "sri": "1"},
+    {"key": "vivienda",     "label": "Vivienda",     "sri": "2"},
+    {"key": "salud",        "label": "Salud",        "sri": "3"},
+    {"key": "alimentacion", "label": "Alimentación", "sri": "4"},
+    {"key": "educacion",    "label": "Educación",    "sri": "5"},
 ]
 RUBRO_KEYS = {r["key"] for r in RUBROS}
 RUBRO_LABEL = {r["key"]: r["label"] for r in RUBROS}
-RUBRO_DEFECTO = "otros"
+RUBRO_SRI = {r["key"]: r["sri"] for r in RUBROS}
+# Sin rubro: el comprobante NO se puede presentar así. Se usa cuando la
+# clasificación del proveedor no alcanza para proponer uno y el usuario todavía
+# no eligió; `guardar_solicitud` lo rechaza (ver _rubros_faltantes).
+RUBRO_VACIO = ""
+
+# Rubros viejos (catálogo anterior de 8) que quedaron guardados en solicitudes
+# ya creadas. Los que tienen equivalente en el SRI se traducen; turismo y otros
+# no lo tienen, así que caen en vacío y hay que reasignarlos a mano.
+RUBROS_LEGACY = {"servicios_basicos": "vivienda", "turismo": RUBRO_VACIO, "otros": RUBRO_VACIO}
 
 # Pistas para PROPONER el rubro a partir de la clasificación que ya tiene el
 # proveedor en Gastos. Es solo una sugerencia: el usuario la puede cambiar.
+# Los servicios básicos (luz, agua, teléfono) van a Vivienda, que es donde el
+# SRI los admite.
 _PISTAS_RUBRO = [
-    ("salud",             ("SALUD", "MEDIC", "FARMAC", "CLINIC", "HOSPITAL", "LABORATORIO", "ODONT", "OPTIC")),
-    ("alimentacion",      ("ALIMENT", "SUPERMERCAD", "COMISARIAT", "VIVER", "PANADER", "RESTAURANT", "COMIDA")),
-    ("vivienda",          ("VIVIENDA", "ARRIEND", "ALQUILER", "CONDOMIN", "FERRETER", "MUEBL", "HOGAR")),
-    ("vestimenta",        ("VESTIMENTA", "ROPA", "CALZAD", "TEXTIL", "BOUTIQUE")),
-    ("educacion",         ("EDUCAC", "COLEGIO", "ESCUELA", "UNIVERSID", "CAPACITAC", "LIBRER", "UTILES")),
-    ("turismo",           ("TURISM", "HOTEL", "HOSPEDAJ", "AGENCIA DE VIAJ", "PASAJE")),
-    ("servicios_basicos", ("SERVICIO", "LUZ", "ELECTRIC", "AGUA", "TELEFON", "INTERNET", "TELECOM", "GAS")),
+    ("salud",        ("SALUD", "MEDIC", "FARMAC", "CLINIC", "HOSPITAL", "LABORATORIO", "ODONT", "OPTIC")),
+    # Los hipermercados (Coral, comisariatos) van a alimentación aunque vendan de
+    # todo: es el rubro con el que se presentan sus compras.
+    ("alimentacion", ("ALIMENT", "SUPERMERCAD", "HIPERMERC", "COMISARIAT", "ABARROTE",
+                      "MINIMARKET", "VIVER", "PANADER", "RESTAURANT", "COMIDA")),
+    ("vivienda",     ("VIVIENDA", "ARRIEND", "ALQUILER", "CONDOMIN", "FERRETER", "MUEBL", "HOGAR",
+                      "LUZ", "ELECTRIC", "AGUA", "TELEFON", "INTERNET", "TELECOM", "GAS")),
+    ("vestimenta",   ("VESTIMENTA", "ROPA", "CALZAD", "TEXTIL", "BOUTIQUE")),
+    ("educacion",    ("EDUCAC", "COLEGIO", "ESCUELA", "UNIVERSID", "CAPACITAC", "LIBRER", "UTILES")),
 ]
 
 
 def _rubro_sugerido(clasificacion) -> str:
-    """Rubro propuesto según la clasificación del proveedor en Gastos."""
+    """Rubro propuesto según la clasificación del proveedor en Gastos.
+
+    Devuelve vacío cuando no hay con qué decidir: es preferible que el usuario
+    elija a mandar todo a un cajón por defecto, porque el tipo de gasto es un
+    dato que se declara al SRI."""
     texto = str(clasificacion or "").strip().upper()
     if not texto:
-        return RUBRO_DEFECTO
+        return RUBRO_VACIO
     for rubro, pistas in _PISTAS_RUBRO:
         if any(p in texto for p in pistas):
             return rubro
-    return RUBRO_DEFECTO
+    return RUBRO_VACIO
 
 
 def _rubro_valido(valor, clasificacion=None) -> str:
     v = str(valor or "").strip().lower()
     if v in RUBRO_KEYS:
         return v
+    if v in RUBROS_LEGACY:
+        return RUBROS_LEGACY[v]
     return _rubro_sugerido(clasificacion)
+
+
+def _rubros_faltantes(items: List[dict]) -> List[str]:
+    """Comprobantes marcados a los que todavía no se les asignó tipo de gasto."""
+    return [f"{it.get('fecha') or '?'} · {it.get('nombre_proveedor') or it.get('ruc_proveedor') or '?'}"
+            for it in items if not it.get("rubro")]
 
 
 def _rbu(anio) -> float:
@@ -137,6 +163,9 @@ def _resumen_comprobante(inv: dict) -> dict:
     return {
         "id": inv.get("id"),
         "unique_id": inv.get("unique_id"),
+        # Serie del comprobante (estab-ptoEmi-secuencial): es como lo muestra el
+        # portal del SRI, y por lo tanto la llave para casar cada fila de su grilla.
+        "factura_numero": inv.get("factura_numero"),
         "fecha": inv.get("fecha"),
         "ruc_proveedor": inv.get("ruc_proveedor"),
         "nombre_proveedor": inv.get("nombre_proveedor"),
@@ -219,8 +248,8 @@ def _items_de(sb, solicitud_id: str) -> List[dict]:
 
 @router.get("/rubros")
 async def rubros(_: str = Depends(get_current_user)):
-    """Catálogo de tipos de gasto a los que se direcciona cada comprobante."""
-    return {"rubros": RUBROS, "defecto": RUBRO_DEFECTO}
+    """Catálogo de tipos de gasto (el mismo del portal del SRI, con su código)."""
+    return {"rubros": RUBROS, "defecto": RUBRO_VACIO}
 
 
 @router.get("/parametros")
@@ -243,22 +272,92 @@ async def parametros(
     }
 
 
-@router.get("/comprobantes")
-async def comprobantes(
+def _periodo_pedido(sb, client_id: str, mes=None, anio=None):
+    """Período sobre el que se trabaja: el que se pide, o el del cliente.
+
+    La devolución en el portal del SRI se presenta MES A MES (el combo "Período
+    solicitado" son los meses del año), así que cuando se pide un mes concreto
+    el período es mensual aunque el contribuyente declare semestral: un semestre
+    se resuelve con seis solicitudes, no con una."""
+    if mes and anio:
+        return int(mes), int(anio), "mensual", None, [int(mes)]
+    pmes, panio, pfreq, psem = periodo_cliente_ext(sb, client_id)
+    return pmes, panio, pfreq, psem, _meses_del_periodo(pmes, pfreq, psem)
+
+
+@router.get("/periodos")
+async def periodos(
     client_id: str = Query(...),
     user_id: str = Depends(get_current_user),
 ):
-    """Comprobantes del período del cliente + la solicitud guardada (si hay)."""
+    """Meses con comprobantes y en qué estado está la devolución de cada uno.
+
+    Es lo que responde «¿qué mes valido?»: lista los meses que tienen gasto
+    cargado, con el IVA disponible y si ya hay solicitud (y su estado). Los que
+    quedan en `pendiente` son los que se pueden marcar para procesarlos en lote."""
     sb = get_supabase_client()
     assert_client_owner(client_id, user_id)
-    pmes, panio, pfreq, psem = periodo_cliente_ext(sb, client_id)
-    meses = _meses_del_periodo(pmes, pfreq, psem)
 
     invs = fetch_all(lambda: sb.table("invoices").select(
-        "id,unique_id,estado,fecha,ruc_proveedor,nombre_proveedor,clasificacion,"
+        "id,estado,fecha,base_15,iva_15,base_8,iva_8,base_5,iva_5"
+    ).eq("client_id", client_id))
+
+    acc: Dict[tuple, dict] = {}
+    for i in invs:
+        if (i.get("estado") or "OK") != "OK":
+            continue
+        m, a = mes_anio_de_fecha(i.get("fecha"))
+        if not m or not a:
+            continue
+        r = _resumen_comprobante(i)
+        d = acc.setdefault((a, m), {"anio": a, "mes": m, "comprobantes": 0, "base": 0.0, "iva": 0.0})
+        d["comprobantes"] += 1
+        d["base"] += r["base"]
+        d["iva"] += r["iva"]
+
+    sols = sb.table("devoluciones_iva_solicitudes").select(
+        "id,mes,anio,estado,monto_solicitado,comprobantes_enviados,monto_enviado"
+    ).eq("client_id", client_id).execute().data or []
+    por_periodo = {(int(s["anio"]), int(s["mes"])): s for s in sols}
+
+    salida = []
+    for (a, m), d in sorted(acc.items(), reverse=True):
+        sol = por_periodo.get((a, m))
+        salida.append({
+            **d,
+            "base": round(d["base"], 2),
+            "iva": round(d["iva"], 2),
+            "etiqueta": f"{_NOMBRE_MES.get(m, m)} {a}",
+            "solicitud_id": sol["id"] if sol else None,
+            "estado": (sol or {}).get("estado") or "pendiente",
+            "monto_solicitado": _num((sol or {}).get("monto_solicitado")),
+            "comprobantes_enviados": (sol or {}).get("comprobantes_enviados"),
+            "monto_enviado": _num((sol or {}).get("monto_enviado")) if sol and sol.get("monto_enviado") is not None else None,
+        })
+    return {"periodos": salida}
+
+
+@router.get("/comprobantes")
+async def comprobantes(
+    client_id: str = Query(...),
+    mes: Optional[int] = None,
+    anio: Optional[int] = None,
+    user_id: str = Depends(get_current_user),
+):
+    """Comprobantes del período pedido (o el del cliente) + la solicitud guardada."""
+    sb = get_supabase_client()
+    assert_client_owner(client_id, user_id)
+    pmes, panio, pfreq, psem, meses = _periodo_pedido(sb, client_id, mes, anio)
+
+    invs = fetch_all(lambda: sb.table("invoices").select(
+        "id,unique_id,factura_numero,estado,fecha,ruc_proveedor,nombre_proveedor,clasificacion,"
         "base_0,base_15,iva_15,base_8,iva_8,base_5,iva_5,total"
     ).eq("client_id", client_id).order("fecha", desc=True))
     comps = [_resumen_comprobante(i) for i in invs if (i.get("estado") or "OK") == "OK"]
+    # Cuando se pide un mes concreto se acota a ese mes: si no, al validar un mes
+    # viejo aparecería el gasto de todos los períodos cargados del contribuyente.
+    if mes and anio:
+        comps = [c for c in comps if mes_anio_de_fecha(c.get("fecha")) == (int(mes), int(anio))]
 
     solicitud = _solicitud_de_periodo(sb, client_id, pmes, panio)
     seleccionados = []
@@ -298,63 +397,77 @@ class SolicitudIn(BaseModel):
     # invoice_id → rubro de gasto. Lo que no venga se propone por la clasificación.
     rubros: Optional[Dict[str, str]] = None
     observaciones: Optional[str] = None
+    # Mes/año a validar. Si no vienen, se usa el período del cliente.
+    mes: Optional[int] = None
+    anio: Optional[int] = None
 
 
-@router.post("/solicitudes")
-async def guardar_solicitud(body: SolicitudIn, user_id: str = Depends(get_current_user)):
-    """Crea/reemplaza la solicitud del período del cliente (queda en borrador)."""
-    sb = get_supabase_client()
-    assert_client_owner(body.client_id, user_id)
-    if body.tipo_beneficiario not in BASE_MAX_RBU:
+def _validar_beneficiario(tipo: str, porcentaje):
+    if tipo not in BASE_MAX_RBU:
         raise HTTPException(status_code=400, detail=f"Tipo inválido: {sorted(BASE_MAX_RBU)}")
-    if body.tipo_beneficiario == "discapacidad":
-        if not body.porcentaje_discapacidad or not (30 <= float(body.porcentaje_discapacidad) <= 100):
-            raise HTTPException(status_code=400,
-                                detail="Para discapacidad indica el porcentaje (30 a 100).")
-    if not body.invoice_ids:
-        raise HTTPException(status_code=400, detail="Marca al menos un comprobante.")
+    if tipo == "discapacidad" and (not porcentaje or not (30 <= float(porcentaje) <= 100)):
+        raise HTTPException(status_code=400,
+                            detail="Para discapacidad indica el porcentaje (30 a 100).")
 
-    pmes, panio, pfreq, psem = periodo_cliente_ext(sb, body.client_id)
+
+def _guardar_solicitud(sb, user_id: str, client_id: str, tipo: str, porcentaje,
+                       invoice_ids: List[str], rubros_pedidos: Optional[Dict[str, str]],
+                       observaciones=None, mes=None, anio=None) -> dict:
+    """Crea/reemplaza la solicitud de UN período con los comprobantes marcados.
+
+    Lo usa tanto el guardado de una sola pantalla como el procesamiento en lote
+    de varios meses; por eso vive aparte del endpoint."""
+    pmes, panio, pfreq, psem, meses = _periodo_pedido(sb, client_id, mes, anio)
     if not pmes or not panio:
         raise HTTPException(status_code=400,
                             detail="El cliente no tiene período (mes/año) definido.")
-    meses = _meses_del_periodo(pmes, pfreq, psem)
 
     invs = fetch_all(lambda: sb.table("invoices").select(
-        "id,unique_id,fecha,ruc_proveedor,nombre_proveedor,clasificacion,"
+        "id,unique_id,factura_numero,fecha,ruc_proveedor,nombre_proveedor,clasificacion,"
         "base_15,iva_15,base_8,iva_8,base_5,iva_5,total"
-    ).eq("client_id", body.client_id).in_("id", body.invoice_ids))
+    ).eq("client_id", client_id).in_("id", invoice_ids))
     if not invs:
         raise HTTPException(status_code=400, detail="Los comprobantes marcados no existen en este cliente.")
 
     items = [_resumen_comprobante(i) for i in invs]
-    pedidos = body.rubros or {}
+    pedidos = rubros_pedidos or {}
     for it in items:
         it["rubro"] = _rubro_valido(pedidos.get(it["id"]), it.get("clasificacion"))
 
+    # El tipo de gasto es obligatorio: es un dato que se declara al SRI y su
+    # combo no admite vacío, así que no tiene sentido dejar pasar la solicitud.
+    faltantes = _rubros_faltantes(items)
+    if faltantes:
+        raise HTTPException(status_code=400, detail=(
+            f"Falta el tipo de gasto en {len(faltantes)} comprobante(s): "
+            + "; ".join(faltantes[:5]) + ("…" if len(faltantes) > 5 else "")))
+
     # El tope es MENSUAL: se aplica mes a mes (un período semestral lleva seis).
-    calc = _detalle_por_mes(items, meses, panio, body.tipo_beneficiario,
-                            body.porcentaje_discapacidad)
+    calc = _detalle_por_mes(items, meses, panio, tipo, porcentaje)
 
     # Reemplazo total: la solicitud del período es una sola (UNIQUE client+mes+anio).
-    previa = _solicitud_de_periodo(sb, body.client_id, pmes, panio)
+    previa = _solicitud_de_periodo(sb, client_id, pmes, panio)
     if previa:
+        if previa.get("estado") == "presentada":
+            raise HTTPException(status_code=409, detail=(
+                f"{etiqueta_periodo(pmes, panio, pfreq, psem)} ya está presentada al SRI. "
+                "Elimínala del historial si necesitás rehacerla."))
         sb.table("devoluciones_iva_solicitudes").delete().eq("id", previa["id"]).execute()
 
     res = sb.table("devoluciones_iva_solicitudes").insert({
         "user_id": user_id,
-        "client_id": body.client_id,
+        "client_id": client_id,
         "mes": int(pmes),
         "anio": int(panio),
-        "tipo_beneficiario": body.tipo_beneficiario,
-        "porcentaje_discapacidad": body.porcentaje_discapacidad,
+        "tipo_beneficiario": tipo,
+        "porcentaje_discapacidad": porcentaje,
         "total_base": calc["total_base"],
         "total_iva": calc["total_iva"],
         "tope_mensual": calc["tope_periodo"],
         "monto_solicitado": calc["monto"],
         "detalle_meses": calc["detalle"],
         "estado": "borrador",
-        "observaciones": body.observaciones,
+        "observaciones": observaciones,
     }).execute()
     solicitud = res.data[0]
 
@@ -363,6 +476,7 @@ async def guardar_solicitud(body: SolicitudIn, user_id: str = Depends(get_curren
             "solicitud_id": solicitud["id"],
             "invoice_id": it["id"],
             "unique_id": it["unique_id"],
+            "factura_numero": it["factura_numero"],
             "fecha": it["fecha"],
             "ruc_proveedor": it["ruc_proveedor"],
             "nombre_proveedor": it["nombre_proveedor"],
@@ -376,10 +490,88 @@ async def guardar_solicitud(body: SolicitudIn, user_id: str = Depends(get_curren
     ]).execute()
 
     registrar(actor_user_id=user_id, action="create", module="declaraciones",
-              entity="Solicitud devolución IVA", client_id=body.client_id,
+              entity="Solicitud devolución IVA", client_id=client_id,
               cantidad=len(items))
     return {**solicitud, "items_count": len(items), "excedente": calc["excedente"],
-            "detalle_meses": calc["detalle"], "tope_mes": calc["tope_mes"]}
+            "detalle_meses": calc["detalle"], "tope_mes": calc["tope_mes"],
+            "periodo": etiqueta_periodo(pmes, panio, pfreq, psem)}
+
+
+@router.post("/solicitudes")
+async def guardar_solicitud(body: SolicitudIn, user_id: str = Depends(get_current_user)):
+    """Crea/reemplaza la solicitud del período pedido (queda en borrador)."""
+    sb = get_supabase_client()
+    assert_client_owner(body.client_id, user_id)
+    _validar_beneficiario(body.tipo_beneficiario, body.porcentaje_discapacidad)
+    if not body.invoice_ids:
+        raise HTTPException(status_code=400, detail="Marca al menos un comprobante.")
+    return _guardar_solicitud(
+        sb, user_id, body.client_id, body.tipo_beneficiario, body.porcentaje_discapacidad,
+        body.invoice_ids, body.rubros, body.observaciones, body.mes, body.anio)
+
+
+class LoteIn(BaseModel):
+    client_id: str
+    tipo_beneficiario: str = "tercera_edad"
+    porcentaje_discapacidad: Optional[float] = None
+    # Meses a preparar de una: [{"mes": 1, "anio": 2026}, ...]
+    periodos: List[Dict[str, int]]
+
+
+@router.post("/solicitudes/lote")
+async def guardar_lote(body: LoteIn, user_id: str = Depends(get_current_user)):
+    """Prepara de una sola vez la solicitud de VARIOS meses anteriores.
+
+    Toma todos los comprobantes de cada mes y les asigna el tipo de gasto que
+    sugiere la clasificación del proveedor. Los meses en los que algún
+    comprobante quede sin tipo de gasto NO se guardan: se devuelven como
+    `revisar` para que el usuario los complete a mano, porque el tipo de gasto
+    es un dato que se declara y no se puede adivinar."""
+    sb = get_supabase_client()
+    assert_client_owner(body.client_id, user_id)
+    _validar_beneficiario(body.tipo_beneficiario, body.porcentaje_discapacidad)
+    if not body.periodos:
+        raise HTTPException(status_code=400, detail="Marca al menos un mes.")
+
+    invs = fetch_all(lambda: sb.table("invoices").select(
+        "id,estado,fecha,clasificacion"
+    ).eq("client_id", body.client_id))
+    por_mes: Dict[tuple, List[dict]] = {}
+    for i in invs:
+        if (i.get("estado") or "OK") != "OK":
+            continue
+        m, a = mes_anio_de_fecha(i.get("fecha"))
+        if m and a:
+            por_mes.setdefault((a, m), []).append(i)
+
+    hechas, revisar = [], []
+    for p in body.periodos:
+        mes, anio = int(p.get("mes") or 0), int(p.get("anio") or 0)
+        etiqueta = f"{_NOMBRE_MES.get(mes, mes)} {anio}"
+        lote = por_mes.get((anio, mes)) or []
+        if not lote:
+            revisar.append({"mes": mes, "anio": anio, "etiqueta": etiqueta,
+                            "motivo": "No hay comprobantes cargados en ese mes."})
+            continue
+        try:
+            sol = _guardar_solicitud(
+                sb, user_id, body.client_id, body.tipo_beneficiario,
+                body.porcentaje_discapacidad, [i["id"] for i in lote],
+                {i["id"]: _rubro_sugerido(i.get("clasificacion")) for i in lote},
+                mes=mes, anio=anio)
+            hechas.append({"mes": mes, "anio": anio, "etiqueta": etiqueta,
+                           "solicitud_id": sol["id"], "comprobantes": sol["items_count"],
+                           "monto_solicitado": sol["monto_solicitado"]})
+        except HTTPException as e:
+            revisar.append({"mes": mes, "anio": anio, "etiqueta": etiqueta,
+                            "motivo": str(e.detail)})
+
+    return {
+        "preparadas": hechas,
+        "revisar": revisar,
+        "total_comprobantes": sum(h["comprobantes"] for h in hechas),
+        "total_solicitado": round(sum(_num(h["monto_solicitado"]) for h in hechas), 2),
+    }
 
 
 @router.get("/solicitudes")
@@ -466,11 +658,16 @@ async def payload_envio(solicitud_id: str, user_id: str = Depends(get_current_us
         "items": [
             {
                 "clave_acceso": it.get("unique_id"),
+                # El portal lista los comprobantes por serie, no por clave: es
+                # con esto que el enviador encuentra la fila que le corresponde.
+                "serie": it.get("factura_numero"),
                 "fecha": it.get("fecha"),
                 "ruc_proveedor": it.get("ruc_proveedor"),
                 "proveedor": it.get("nombre_proveedor"),
-                "rubro": it.get("rubro") or RUBRO_DEFECTO,
-                "rubro_label": RUBRO_LABEL.get(it.get("rubro") or RUBRO_DEFECTO, ""),
+                "rubro": it.get("rubro") or RUBRO_VACIO,
+                "rubro_label": RUBRO_LABEL.get(it.get("rubro") or "", "Sin asignar"),
+                # Código del combo "Tipo de gasto" del portal (1..5).
+                "rubro_sri": RUBRO_SRI.get(it.get("rubro") or "", ""),
                 "base": _num(it.get("base")),
                 "iva": _num(it.get("iva")),
                 "total": _num(it.get("total")),
@@ -480,22 +677,157 @@ async def payload_envio(solicitud_id: str, user_id: str = Depends(get_current_us
     }
 
 
+class EnvioIn(BaseModel):
+    """Lo que confirmó el portal del SRI al presentar la solicitud.
+
+    Todo es opcional: si no se informa, se asume que el SRI procesó lo mismo que
+    se marcó acá. Pero conviene cargarlo, porque el portal trabaja con su propio
+    listado filtrado y puede haber procesado menos comprobantes de los marcados."""
+    comprobantes: Optional[int] = None
+    monto: Optional[float] = None
+    fecha_carga: Optional[str] = None   # "06-08-2026 13:52:14" o ISO
+    mensaje: Optional[str] = None       # constancia textual del portal
+
+
+def _fecha_carga_iso(txt) -> Optional[str]:
+    """Normaliza la fecha/hora de carga del SRI (dd-mm-aaaa hh:mm:ss) a ISO."""
+    s = str(txt or "").strip()
+    if not s:
+        return None
+    for fmt in ("%d-%m-%Y %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%d-%m-%Y %H:%M", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(s, fmt).isoformat()
+        except ValueError:
+            continue
+    return s  # ya venía en ISO (o algo que Postgres sepa leer)
+
+
 @router.post("/solicitudes/{solicitud_id}/enviar")
-async def marcar_enviada(solicitud_id: str, user_id: str = Depends(get_current_user)):
-    """Deja constancia de que la solicitud se envió al SRI: estado `presentada`
-    con la fecha. El envío en sí ocurre en el portal (sesión del contribuyente)."""
+async def marcar_enviada(solicitud_id: str, body: Optional[EnvioIn] = None,
+                         user_id: str = Depends(get_current_user)):
+    """Deja constancia de lo PRESENTADO al SRI y devuelve el reporte del envío.
+
+    El envío en sí ocurre en el portal (sesión del contribuyente); acá se guarda
+    qué aceptó: cuántos comprobantes procesó y por cuánto, con la fecha de carga
+    y el mensaje del portal. Eso es lo que después alimenta el reporte."""
     sb = get_supabase_client()
     sol = _solicitud_propia(sb, solicitud_id, user_id)
     if not (sol.get("detalle_meses") is not None or sol.get("monto_solicitado")):
         raise HTTPException(status_code=400, detail="La solicitud no tiene monto a solicitar.")
+
+    items = _items_de(sb, solicitud_id)
+    b = body or EnvioIn()
+    enviados = int(b.comprobantes) if b.comprobantes is not None else len(items)
+    monto = _num(b.monto) if b.monto is not None else _num(sol.get("monto_solicitado"))
+
     sb.table("devoluciones_iva_solicitudes").update({
         "estado": "presentada",
         "presentada_at": "now()",
+        "comprobantes_enviados": enviados,
+        "monto_enviado": monto,
+        "fecha_carga_sri": _fecha_carga_iso(b.fecha_carga),
+        "sri_mensaje": b.mensaje,
     }).eq("id", solicitud_id).execute()
+
     registrar(actor_user_id=user_id, action="update", module="declaraciones",
               entity="Devolución IVA enviada al SRI", client_id=sol["client_id"],
-              metadata={"monto": _num(sol.get("monto_solicitado"))})
-    return {"ok": True, "estado": "presentada"}
+              cantidad=enviados,
+              metadata={"monto": monto, "mes": sol.get("mes"), "anio": sol.get("anio"),
+                        "marcados": len(items), "mensaje": b.mensaje})
+
+    # Reporte del envío: qué se marcó acá vs. qué procesó el SRI, y a qué tipo
+    # de gasto se direccionó cada dólar (que es lo que el portal pide fila a fila).
+    por_rubro = {}
+    for it in items:
+        k = it.get("rubro") or RUBRO_VACIO
+        acc = por_rubro.setdefault(k, {"rubro": k, "label": RUBRO_LABEL.get(k, "Sin asignar"),
+                                       "comprobantes": 0, "iva": 0.0})
+        acc["comprobantes"] += 1
+        acc["iva"] += _num(it.get("iva"))
+    return {
+        "ok": True,
+        "estado": "presentada",
+        "reporte": {
+            "periodo": {"mes": sol.get("mes"), "anio": sol.get("anio"),
+                        "etiqueta": f"{_NOMBRE_MES.get(int(sol.get('mes') or 0), '')} {sol.get('anio')}"},
+            "comprobantes_marcados": len(items),
+            "comprobantes_procesados": enviados,
+            "monto_solicitado": _num(sol.get("monto_solicitado")),
+            "monto_procesado": monto,
+            "diferencia": round(_num(sol.get("monto_solicitado")) - monto, 2),
+            "fecha_carga": b.fecha_carga,
+            "mensaje": b.mensaje,
+            "por_rubro": [{**v, "iva": round(v["iva"], 2)} for v in por_rubro.values()],
+        },
+    }
+
+
+@router.get("/reporte")
+async def reporte(
+    client_id: Optional[str] = None,
+    anio: Optional[int] = None,
+    user_id: str = Depends(get_current_user),
+):
+    """Reporte de devoluciones: qué se procesó y presentó, y por cuánto.
+
+    Sin `client_id` sale el consolidado de todos los contribuyentes que el
+    usuario puede ver según su rol; con `client_id`, el de ese contribuyente."""
+    from tenancy import visible_clients
+    sb = get_supabase_client()
+
+    if client_id:
+        assert_client_owner(client_id, user_id)
+        cl = sb.table("clients").select("id,identificacion,nombre").eq(
+            "id", client_id).execute().data or []
+    else:
+        cl = visible_clients(user_id, "id,identificacion,nombre")
+    por_id = {str(c["id"]): c for c in cl}
+    if not por_id:
+        return {"filas": [], "totales": {"solicitudes": 0, "comprobantes": 0, "monto": 0.0}}
+
+    q = sb.table("devoluciones_iva_solicitudes").select("*").in_("client_id", list(por_id))
+    if anio:
+        q = q.eq("anio", int(anio))
+    sols = q.order("anio", desc=True).order("mes", desc=True).execute().data or []
+
+    filas = []
+    for s in sols:
+        c = por_id.get(str(s["client_id"])) or {}
+        presentada = s.get("estado") in ("presentada", "aprobada")
+        procesados = s.get("comprobantes_enviados")
+        filas.append({
+            "solicitud_id": s["id"],
+            "identificacion": c.get("identificacion", ""),
+            "contribuyente": c.get("nombre", ""),
+            "mes": s.get("mes"),
+            "anio": s.get("anio"),
+            "periodo": f"{_NOMBRE_MES.get(int(s.get('mes') or 0), '')} {s.get('anio')}",
+            "beneficiario": ("Discapacidad" if s.get("tipo_beneficiario") == "discapacidad"
+                             else "Adulto mayor"),
+            "estado": s.get("estado"),
+            "total_iva": _num(s.get("total_iva")),
+            "tope": _num(s.get("tope_mensual")),
+            "monto_solicitado": _num(s.get("monto_solicitado")),
+            "comprobantes_procesados": procesados,
+            "monto_procesado": _num(s.get("monto_enviado")) if s.get("monto_enviado") is not None else None,
+            "fecha_carga_sri": s.get("fecha_carga_sri"),
+            "presentada_at": s.get("presentada_at"),
+            "mensaje": s.get("sri_mensaje"),
+            "presentada": presentada,
+        })
+
+    presentadas = [f for f in filas if f["presentada"]]
+    return {
+        "filas": filas,
+        "totales": {
+            "solicitudes": len(filas),
+            "presentadas": len(presentadas),
+            "comprobantes": sum(int(f["comprobantes_procesados"] or 0) for f in presentadas),
+            "monto": round(sum(_num(f["monto_procesado"] if f["monto_procesado"] is not None
+                                    else f["monto_solicitado"]) for f in presentadas), 2),
+            "pendiente": round(sum(f["monto_solicitado"] for f in filas if not f["presentada"]), 2),
+        },
+    }
 
 
 @router.delete("/solicitudes/{solicitud_id}")
@@ -576,7 +908,7 @@ async def exportar_excel(solicitud_id: str, user_id: str = Depends(get_current_u
     r += 1
     por_rubro = {}
     for it in items:
-        acc = por_rubro.setdefault(it.get("rubro") or RUBRO_DEFECTO, {"n": 0, "base": 0.0, "iva": 0.0})
+        acc = por_rubro.setdefault(it.get("rubro") or RUBRO_VACIO, {"n": 0, "base": 0.0, "iva": 0.0})
         acc["n"] += 1
         acc["base"] += _num(it.get("base"))
         acc["iva"] += _num(it.get("iva"))
