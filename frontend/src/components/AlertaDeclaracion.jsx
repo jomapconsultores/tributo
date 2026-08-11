@@ -68,7 +68,7 @@ export default function AlertaDeclaracion() {
       <span>
         Declaración {e.semestral ? 'semestral' : ''} de <strong>{periodoTexto}</strong>
         {' '}· fecha máxima: <strong>{e.limiteTexto}</strong>
-        {' '}(día {e.dia} por el 9no dígito) · <strong>{e.mensaje}</strong>
+        {' '}(día {e.dia} por el 9no dígito{e.traslado ? `, ${e.traslado}` : ''}) · <strong>{e.mensaje}</strong>
         {estado?.presentadas?.length ? <span> · ya presentada: {estado.presentadas.join(', ')}</span> : null}
       </span>
     </div>

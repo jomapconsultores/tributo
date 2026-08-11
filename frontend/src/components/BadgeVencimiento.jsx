@@ -33,7 +33,9 @@ export default function BadgeVencimiento({ ruc, client = null, presentada = fals
   const periodoTit = e.semestral
     ? `${e.nombrePeriodo}`
     : `${e.nombreMes} ${e.anioADeclarar}`
-  const titulo = `Declaración de ${periodoTit} — fecha máxima ${e.limiteTexto} · ${e.mensaje}`
+  const titulo = `Declaración de ${periodoTit} — fecha máxima ${e.limiteTexto}`
+    + (e.traslado ? ` (${e.traslado})` : '')
+    + ` · ${e.mensaje}`
 
   return (
     <span

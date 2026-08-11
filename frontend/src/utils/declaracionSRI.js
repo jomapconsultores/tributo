@@ -9,12 +9,16 @@
 //     4 -> 16      9 -> 26
 //     5 -> 18      0 -> 28
 //
-// Nota: si el día cae en fin de semana, el SRI lo traslada al siguiente día
-// hábil (sábado/domingo -> lunes). Aquí se aplica ese traslado a la fecha
-// concreta; `dia`/`diaDeclaracion` conservan el día base del 9no dígito
-// (10-28) para agrupar/filtrar contribuyentes.
+// Nota: si el día cae en fin de semana O en feriado (descanso obligatorio), el
+// SRI lo traslada al siguiente día hábil. Aquí se aplica ese traslado a la fecha
+// concreta —el calendario de feriados vive en `feriadosEC.js`—; `dia`/
+// `diaDeclaracion` conservan el día base del 9no dígito (10-28) para
+// agrupar/filtrar contribuyentes.
 
 import { nombreMes } from './periodo'
+import { siguienteDiaHabil, trasladoDiaHabil } from './feriadosEC'
+
+export { siguienteDiaHabil }
 
 const DIA_POR_DIGITO = {
   1: 10, 2: 12, 3: 14, 4: 16, 5: 18,
@@ -24,18 +28,14 @@ const DIA_POR_DIGITO = {
 // nombre de mes en minúscula (para insertar en frases: "10 de mayo de 2026")
 const nombreMesMin = (mes) => nombreMes(mes).toLowerCase()
 
-// Traslada una fecha al siguiente día hábil si cae en fin de semana.
-// getDay(): 0 = domingo, 6 = sábado. Devuelve una nueva Date (no muta la original).
-export function siguienteDiaHabil(fecha) {
-  const d = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate())
-  const dow = d.getDay()
-  if (dow === 6) d.setDate(d.getDate() + 2)      // sábado -> lunes
-  else if (dow === 0) d.setDate(d.getDate() + 1) // domingo -> lunes
-  return d
-}
-
 // Texto "10 de mayo de 2026" a partir de una Date.
 const fechaTextoLargo = (d) => `${d.getDate()} de ${nombreMesMin(d.getMonth() + 1)} de ${d.getFullYear()}`
+
+// Explicación del corrimiento cuando el día del 9no dígito no es hábil.
+// Ej: "corrido desde el 10 de agosto de 2026 (Primer Grito de Independencia)".
+// null si el día base ya era hábil.
+const textoTraslado = (t) =>
+  t.dias === 0 ? null : `corrido desde el ${fechaTextoLargo(t.original)} (${t.motivo})`
 
 // Noveno dígito del RUC (índice 8). Devuelve null si el RUC no es válido.
 export function novenoDigito(ruc) {
@@ -85,8 +85,9 @@ export function estadoDeclaracion(ruc, hoy = new Date()) {
   const dia = diaDeclaracion(ruc)
   if (dia === null) return { valido: false }
   const per = periodoADeclarar(hoy)
-  // Día base del 9no dígito, trasladado al siguiente día hábil si cae en fin de semana.
-  const limite = siguienteDiaHabil(new Date(hoy.getFullYear(), hoy.getMonth(), dia))
+  // Día base del 9no dígito, corrido al siguiente día hábil si cae en fin de semana o feriado.
+  const tras = trasladoDiaHabil(new Date(hoy.getFullYear(), hoy.getMonth(), dia))
+  const limite = tras.fecha
   const base = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
   const dias = Math.round((limite - base) / 86400000)
   let nivel, mensaje
@@ -98,6 +99,7 @@ export function estadoDeclaracion(ruc, hoy = new Date()) {
     valido: true, dia, nivel, mensaje, dias, limite,
     mesADeclarar: per.mes, anioADeclarar: per.anio, nombreMes: per.nombre,
     limiteTexto: fechaTextoLargo(limite),
+    traslado: textoTraslado(tras),
   }
 }
 
@@ -126,7 +128,8 @@ export function estadoDeclaracionSemestral(ruc, client, hoy = new Date()) {
   if (dia === null || !client?.periodo_anio) return { valido: false }
   const sem = _semestreCliente(client)
   const { mes, anio } = mesDeclaracionSemestre(sem, client.periodo_anio)
-  const limite = siguienteDiaHabil(new Date(anio, mes - 1, dia))
+  const tras = trasladoDiaHabil(new Date(anio, mes - 1, dia))
+  const limite = tras.fecha
   const base = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
   const dias = Math.round((limite - base) / 86400000)
   let nivel, mensaje
@@ -141,6 +144,7 @@ export function estadoDeclaracionSemestral(ruc, client, hoy = new Date()) {
     nombrePeriodo: `${sem === 1 ? '1er' : '2do'} semestre ${client.periodo_anio}`,
     rangoMeses: rango,
     limiteTexto: fechaTextoLargo(limite),
+    traslado: textoTraslado(tras),
   }
 }
 
@@ -169,5 +173,6 @@ export function infoDeclaracion(ruc, hoy = new Date()) {
     dia,
     proximaFecha: f,
     proximaFechaTexto: fechaTextoLargo(f),
+    traslado: textoTraslado(trasladoDiaHabil(new Date(f.getFullYear(), f.getMonth(), dia))),
   }
 }
