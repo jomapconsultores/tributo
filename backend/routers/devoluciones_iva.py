@@ -15,7 +15,9 @@ Base legal (parámetros abajo, revisar cada enero):
   = 2 RBU, proporcional al porcentaje de discapacidad.
 """
 import io
-from datetime import datetime
+import re
+import unicodedata
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -24,6 +26,7 @@ from pydantic import BaseModel
 
 from auth import get_current_user
 from database import get_supabase_client, fetch_all
+import orgs
 from tenancy import assert_client_owner
 from services.periodo import (periodo_cliente_ext, etiqueta_periodo, rango_semestre,
                               semestre_de_mes, mes_anio_de_fecha)
@@ -227,6 +230,88 @@ def _resumen_portal(row: dict) -> dict:
         "total": _num(row.get("total")),
         "origen": "portal",
     }
+
+
+# --- Memoria del tipo de gasto por proveedor --------------------------------
+# El portal no da el RUC del proveedor, solo la razón social, así que lo que se
+# recuerda va por NOMBRE. Y el portal suele pegar razón social + nombre
+# comercial repitiendo lo mismo ("CORPORACION FAVORITA C.A. CORPORACION
+# FAVORITA C.A."), así que la clave se queda con una sola copia: si no, el mismo
+# proveedor se aprendería dos veces según cómo lo escriba el SRI ese día.
+def _nombre_clave(nombre) -> str:
+    t = unicodedata.normalize("NFD", str(nombre or ""))
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    t = re.sub(r"[^A-Z0-9 ]+", " ", t.upper())
+    palabras = t.split()
+    if palabras and len(palabras) % 2 == 0:
+        mitad = len(palabras) // 2
+        if palabras[:mitad] == palabras[mitad:]:
+            palabras = palabras[:mitad]
+    return " ".join(palabras)[:200]
+
+
+def _ambito_aprendizaje(user_id: str) -> tuple:
+    """(columna, valor) del dueño del aprendizaje: la empresa activa, o el usuario.
+
+    Clasificar es trabajo del estudio, no de cada persona: cuando hay empresa
+    activa lo aprendido se comparte dentro de ella."""
+    try:
+        org = orgs.org_activa()
+    except Exception:
+        org = None
+    return ("org_id", org) if org else ("user_id", user_id)
+
+
+def _rubros_aprendidos(sb, user_id: str) -> Dict[str, str]:
+    col, val = _ambito_aprendizaje(user_id)
+    try:
+        filas = fetch_all(lambda: sb.table("devoluciones_iva_rubro_proveedor")
+                          .select("nombre_clave,rubro").eq(col, val))
+    except Exception as e:            # la tabla puede no estar todavía en la base
+        print(f"[devoluciones_iva] sin memoria de rubros: {e}")
+        return {}
+    return {f["nombre_clave"]: f["rubro"] for f in filas if f.get("rubro")}
+
+
+def _aprender_rubros(sb, user_id: str, items: List[dict]) -> int:
+    """Guarda lo que el usuario decidió, para imputarlo solo la próxima vez.
+
+    Se llama al GUARDAR la solicitud, que es cuando el tipo de gasto es una
+    decisión y no una propuesta."""
+    col, val = _ambito_aprendizaje(user_id)
+    decididos: Dict[str, dict] = {}
+    for it in items:
+        clave = _nombre_clave(it.get("nombre_proveedor"))
+        rubro = it.get("rubro")
+        if clave and rubro:
+            decididos[clave] = {"rubro": rubro, "visto": it.get("nombre_proveedor")}
+    if not decididos:
+        return 0
+    try:
+        previas = fetch_all(lambda: sb.table("devoluciones_iva_rubro_proveedor")
+                            .select("id,nombre_clave,rubro,veces").eq(col, val)
+                            .in_("nombre_clave", list(decididos)))
+        por_clave = {p["nombre_clave"]: p for p in previas}
+        nuevas = []
+        for clave, d in decididos.items():
+            vieja = por_clave.get(clave)
+            if not vieja:
+                nuevas.append({col: val, "user_id": user_id, "nombre_clave": clave,
+                               "nombre_visto": d["visto"], "rubro": d["rubro"], "veces": 1})
+                continue
+            # Si cambió de opinión, manda lo último y el contador vuelve a empezar.
+            cambio = vieja.get("rubro") != d["rubro"]
+            sb.table("devoluciones_iva_rubro_proveedor").update({
+                "rubro": d["rubro"], "nombre_visto": d["visto"],
+                "veces": 1 if cambio else int(vieja.get("veces") or 1) + 1,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", vieja["id"]).execute()
+        if nuevas:
+            sb.table("devoluciones_iva_rubro_proveedor").insert(nuevas).execute()
+        return len(decididos)
+    except Exception as e:            # aprender no puede romper el guardado
+        print(f"[devoluciones_iva] no pude aprender los rubros: {e}")
+        return 0
 
 
 def _clasif_por_proveedor(sb, client_id: str) -> Dict[str, str]:
@@ -473,11 +558,14 @@ async def comprobantes(
             rubros_guardados[c["id"]] = it.get("rubro")
         comps.sort(key=lambda c: str(c.get("fecha") or ""), reverse=True)
 
-    # Rubro de cada comprobante: el ya guardado en la solicitud manda; si no, se
-    # propone uno según la clasificación del proveedor (el usuario puede cambiarlo).
-    # Para los del portal no hay clasificación, así que se propone por el nombre.
+    # Rubro de cada comprobante. Manda el ya guardado en la solicitud; si no,
+    # lo APRENDIDO de ese proveedor en solicitudes anteriores; y recién después
+    # la pista por palabra clave. Para los del portal no hay clasificación de
+    # Gastos, así que ahí la pista se busca en el nombre.
+    aprendidos = _rubros_aprendidos(sb, user_id)
     for c in comps:
-        sugerido = _rubro_sugerido(c.get("clasificacion") or c.get("nombre_proveedor"))
+        sugerido = (aprendidos.get(_nombre_clave(c.get("nombre_proveedor")))
+                    or _rubro_sugerido(c.get("clasificacion") or c.get("nombre_proveedor")))
         c["rubro_sugerido"] = sugerido
         c["rubro"] = rubros_guardados.get(c["id"]) or sugerido
 
@@ -638,6 +726,12 @@ def _guardar_solicitud(sb, user_id: str, client_id: str, tipo: str, porcentaje,
         for it in items
     ]).execute()
 
+    # Lo que se guardó es una DECISIÓN del usuario sobre el tipo de gasto de
+    # cada proveedor: se aprende para imputarlo solo la próxima vez. En la
+    # ingesta del portal no, que ahí los rubros todavía son una propuesta.
+    if exigir_rubro:
+        _aprender_rubros(sb, user_id, items)
+
     registrar(actor_user_id=user_id, action="create", module="declaraciones",
               entity="Solicitud devolución IVA", client_id=client_id,
               cantidad=len(items))
@@ -709,6 +803,7 @@ async def ingresar_del_portal(body: PortalIn, user_id: str = Depends(get_current
             "Abrí el contribuyente correcto y volvé a pegarlos."))
 
     clasif = _clasif_por_proveedor(sb, body.client_id)
+    aprendidos = _rubros_aprendidos(sb, user_id)
     filas, rubros, vistas = [], {}, set()
     for f in body.filas:
         serie = str(f.serie or "").strip()
@@ -718,7 +813,10 @@ async def ingresar_del_portal(body: PortalIn, user_id: str = Depends(get_current
         fila = {"serie": serie, "fecha": f.fecha, "proveedor": f.proveedor, "iva": f.iva}
         filas.append(fila)
         nombre = str(f.proveedor or "").strip().upper()
-        rubros[PORTAL_PREFIJO + serie] = _rubro_sugerido(clasif.get(nombre) or nombre)
+        # Primero lo que ya se decidió antes para ese proveedor; después la
+        # clasificación que tenga en Gastos; y por último la pista del nombre.
+        rubros[PORTAL_PREFIJO + serie] = (aprendidos.get(_nombre_clave(f.proveedor))
+                                          or _rubro_sugerido(clasif.get(nombre) or nombre))
 
     sol = _guardar_solicitud(
         sb, user_id, body.client_id, body.tipo_beneficiario, body.porcentaje_discapacidad,
