@@ -617,6 +617,37 @@
   const botonSiguientePagina = () => [...document.querySelectorAll('.ui-paginator-next')]
     .find((e) => e.offsetParent !== null && !e.classList.contains('ui-state-disabled')) || null;
 
+  // Volver a la PRIMERA página antes de leer nada.
+  //
+  // Buscar no reinicia el paginador: la grilla se queda en la página en la que
+  // estaba de la consulta anterior. Como el recorrido va hacia adelante, si
+  // quedó en la última se lee un puñado de filas y el resto se informa como
+  // "no está en el portal", que es falso. (Verificado en el portal el
+  // 2026-08-11: tras una búsqueda nueva seguía en la página 3 de 3.)
+  // "(3 of 3)" del paginador -> en qué página quedó la grilla.
+  const paginaActual = () => {
+    const t = ((document.querySelector('.ui-paginator-current') || {}).textContent || '');
+    const m = /\((\d+)\s*(?:of|de)\s*(\d+)\)/i.exec(t);
+    return m ? { pagina: parseInt(m[1], 10), de: parseInt(m[2], 10) } : null;
+  };
+
+  const irAPrimeraPagina = async () => {
+    for (let i = 0; i < 6; i++) {
+      const p = paginaActual();
+      if (!p || p.pagina <= 1) return true;
+      const primera = [...document.querySelectorAll('.ui-paginator-first,.ui-paginator-page')]
+        .find((e) => e.offsetParent !== null && !e.classList.contains('ui-state-disabled') &&
+          (e.classList.contains('ui-paginator-first') || (e.textContent || '').trim() === '1'));
+      if (!primera) return false;
+      const antes = filasGrilla().map((x) => x.serie).join('|');
+      clickReal(primera);
+      await esperarPortal();
+      await esperar(() => filasGrilla().map((x) => x.serie).join('|') !== antes, 8000);
+    }
+    const p = paginaActual();
+    return !p || p.pagina <= 1;
+  };
+
   // Consulta un mes y deja la grilla en pantalla.
   //
   // OJO con el orden: el combo "Periodo solicitado" NACE VACIO —una sola opcion,
@@ -655,6 +686,21 @@
     b.click();
     await esperarPortal();
     await esperar(() => filasGrilla().length > 0, 15000);
+
+    // Buscar NO reinicia el paginador: la grilla se queda en la página de la
+    // consulta anterior. Y cuando eso pasa, el paginador deja de responder
+    // —verificado el 2026-08-11: ni "primera", ni el número de página, ni
+    // cambiar "filas por página" hacen nada—, así que no hay forma de volver
+    // desde el script. Leer igual daría una solicitud incompleta sin avisar,
+    // que es lo peor que puede pasar acá: se corta y se explica la salida, que
+    // según el propio portal es volver a entrar por el menú (nunca recargar).
+    if (!(await irAPrimeraPagina())) {
+      const p = paginaActual();
+      return 'la grilla quedó en la página ' + (p ? p.pagina + ' de ' + p.de : '?') +
+        ' de una consulta anterior y el portal no la devuelve a la primera. ' +
+        'Volvé a entrar por el menú lateral (Devoluciones → Devolución de IVA), ' +
+        'sin recargar la página, y corré esto de nuevo.';
+    }
     return '';
   };
 

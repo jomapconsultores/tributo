@@ -37,6 +37,12 @@ envío ocurre en la sesión del contribuyente.
 > **no** es recargar: es entrar de nuevo por el menú lateral
 > *Devoluciones (TAX refund) → Devolución de IVA - Adultos mayores*, que
 > reinicia el asistente conservando la sesión.
+>
+> Cuidado: eso vale tocando el menú a mano. El 2026-08-11, **navegando por ese
+> mismo enlace desde código la sesión se cayó igual**: el enlace apunta a
+> `tuportal-internet/accederAplicacion.jspa`, que rebota a Keycloak con
+> `login=true`. O sea que un script no puede reiniciar el asistente por su
+> cuenta; cuando hace falta reiniciar, tiene que pedirlo.
 
 ## Pasos
 
@@ -72,6 +78,14 @@ envío ocurre en la sesión del contribuyente.
    las marcas se come el click en "siguiente", y a ciegas el recorrido se queda
    releyendo la misma página e informa como ausentes comprobantes que sí están.
    *Verificado con 21 comprobantes de julio 2026.*
+1ter. **`Buscar` NO reinicia el paginador, y si quedó en una página posterior el
+   paginador se muere.** Tras una consulta nueva la grilla sigue en la página en
+   la que estaba; en ese estado no responde **nada**: ni *primera*, ni el número
+   de página, ni cambiar *Filas por página*. El recorrido va hacia adelante, así
+   que leer ahí devuelve solo la última página y da por ausente todo lo anterior.
+   El enviador lo detecta —lee "(3 of 3)"— y **se corta pidiendo volver a entrar**
+   en vez de armar una solicitud incompleta en silencio.
+   *Verificado el 2026-08-11.*
 2. **Al marcar, el portal auto-rellena el IVA solicitado** con el monto completo
    de la factura. Solo hay que corregirlo cuando el mes supera el tope.
 3. **El período es mensual.** Un contribuyente semestral necesita seis
