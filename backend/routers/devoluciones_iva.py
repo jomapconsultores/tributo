@@ -81,8 +81,20 @@ _PISTAS_RUBRO = [
     ("salud",        ("SALUD", "MEDIC", "FARMAC", "CLINIC", "HOSPITAL", "LABORATORIO", "ODONT", "OPTIC")),
     # Los hipermercados (Coral, comisariatos) van a alimentación aunque vendan de
     # todo: es el rubro con el que se presentan sus compras.
+    # Con el listado del portal la única pista suele ser la RAZÓN SOCIAL, que no
+    # dice el giro: "GERARDO ORTIZ E HIJOS CIA LTDA CORAL" es un hipermercado y
+    # "ORTEGA BERMEO NANCY CUMANDA PIZZA HOUSE" es una pizzería. Por eso van
+    # también los nombres comerciales de las cadenas de acá. Sigue siendo una
+    # PROPUESTA: el tipo de gasto se declara al SRI y se revisa en pantalla.
     ("alimentacion", ("ALIMENT", "SUPERMERCAD", "HIPERMERC", "COMISARIAT", "ABARROTE",
-                      "MINIMARKET", "VIVER", "PANADER", "RESTAURANT", "COMIDA")),
+                      "MINIMARKET", "VIVER", "PANADER", "RESTAURANT", "COMIDA",
+                      # Nada de siglas cortas acá: "TIA" o "AKI" sueltas caen
+                      # dentro de nombres de personas (CRISTIAN, SEBASTIAN) y
+                      # mandarían a alimentación a cualquiera. Van completas.
+                      "FAVORITA", "SUPERMAXI", "MEGAMAXI", "CORAL",
+                      "ALMACENES TIA", "SANTA MARIA", "DELICAT", "PIZZ",
+                      "BURGER", "POLLO", "CAFE", "CAFETER", "HELAD", "CHUZO",
+                      "ASADERO", "MARISQU", "CEVICH", "SANDUCH", "FRUT", "CARNIC")),
     ("vivienda",     ("VIVIENDA", "ARRIEND", "ALQUILER", "CONDOMIN", "FERRETER", "MUEBL", "HOGAR",
                       "LUZ", "ELECTRIC", "AGUA", "TELEFON", "INTERNET", "TELECOM", "GAS")),
     ("vestimenta",   ("VESTIMENTA", "ROPA", "CALZAD", "TEXTIL", "BOUTIQUE")),
