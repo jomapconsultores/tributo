@@ -249,6 +249,9 @@
       acciones.appendChild(boton('Traer comprobantes al sistema',
         () => elegirAnioYMes(traerComprobantes), CSS_GRIS));
       acciones.appendChild(boton('Comparar con el portal', compararConElPortal, CSS_GRIS));
+      acciones.appendChild(boton('Copiar diagnostico', function () {
+        copiar(diagnostico(), this);
+      }, CSS_GRIS));
     } else {
       acciones.appendChild(boton('¿Por qué no puedo comparar?', function () {
         copiar(diagnostico(), this);
@@ -524,37 +527,101 @@
         if (m) serie = m[0];
       });
       if (!serie) return;
-      filas.push({
-        tr,
-        serie,
-        chk: tr.querySelector('.ui-chkbox-box') || tr.querySelector('input[type="checkbox"]'),
-      });
+      filas.push({ tr, serie });
     });
     return filas;
   };
 
   const filaPorSerie = (s) => filasGrilla().find((f) => f.serie === s) || null;
 
+  // Marcada: el portal lo dice de más de una manera según la versión —la caja
+  // del widget en activo, el icono de tilde, la fila resaltada o el checkbox
+  // nativo—. Se miran todas: leer una sola deja el script creyendo que no marcó
+  // algo que sí quedó marcado, y entonces lo vuelve a tocar y lo desmarca.
   const marcada = (f) => {
     const caja = f.tr.querySelector('.ui-chkbox-box');
-    if (caja) return caja.classList.contains('ui-state-active');
+    if (caja && (caja.classList.contains('ui-state-active') ||
+      caja.querySelector('.ui-icon-check'))) return true;
+    if (f.tr.classList.contains('ui-state-highlight')) return true;
     const i = f.tr.querySelector('input[type="checkbox"]');
     return !!(i && i.checked);
   };
 
+  const escId = (s) => (window.CSS && CSS.escape ? CSS.escape(s) : s);
+
+  // Formas de tocar la casilla, de la más fiel a la menos. El portal la dibuja
+  // como widget —un div .ui-chkbox-box con el checkbox nativo escondido detrás—
+  // y, según la versión, escucha el click en uno o en el otro. Probar una sola
+  // forma es lo que hace que el recorrido no marque nada sin poder decir por qué.
+  // Cada una recibe la fila del momento: el ajax repinta y el nodo viejo queda
+  // huérfano, así que clickear ahí es tocar algo que ya no está en la pantalla.
+  const FORMAS_DE_MARCAR = [
+    { como: 'la casilla del portal', donde: (tr) => tr.querySelector('.ui-chkbox-box') },
+    { como: 'el checkbox interno', nativo: true,
+      donde: (tr) => tr.querySelector('input[type="checkbox"]') },
+    { como: 'la etiqueta de la casilla',
+      donde: (tr) => {
+        const i = tr.querySelector('input[type="checkbox"]');
+        return i && i.id ? document.querySelector('label[for="' + escId(i.id) + '"]') : null;
+      } },
+  ];
+
   // Marcar dispara un ajax que REPINTA la fila, así que la confirmación tiene
   // que leerse sobre el nodo nuevo: mirando el viejo la casilla siempre parece
   // sin marcar y se pierde el comprobante creyendo que falló.
-  const marcar = async (f) => {
-    if (marcada(f)) return true;
-    if (!f.chk) return false;
+  // La forma que el portal aceptó la primera vez se prueba primero en todas las
+  // demás: sin esto, cada fila vuelve a pagar los segundos del intento que ya se
+  // sabe que no sirve, y veinte comprobantes se hacen eternos.
+  let formaQueSirve = '';
+
+  // Cómo está la fila PARA EL PORTAL: 0 sin marcar, 1 marcada pero sin el ajax
+  // que habilita sus controles, 2 marcada y lista para llenar.
+  //
+  // El 1 es el estado traicionero. La casilla se pone en activo al toque, y el
+  // checkbox interno se marca solo con el click aunque el portal no lo escuche:
+  // dar eso por bueno deja filas marcadas sin tipo de gasto —que el portal no
+  // procesa— o, peor, filas que el portal nunca registró. Lo único que prueba
+  // que la marca llegó es que "IVA solicitado" y "Tipo de gasto" se habiliten.
+  const estadoFila = (serie) => {
+    const h = filaPorSerie(serie);
+    if (!h || !marcada(h)) return 0;
+    const s = comboDeFila(h);
+    return (!s || !s.disabled) ? 2 : 1;
+  };
+
+  const marcar = async (f, avisar) => {
     const serie = f.serie;
-    clickReal(f.chk);
-    await esperarPortal();
-    return esperar(() => {
-      const g = filaPorSerie(serie);
-      return !!g && marcada(g);
-    }, 10000);
+    if (estadoFila(serie) === 2) return '';
+    let probadas = 0;
+    const orden = FORMAS_DE_MARCAR.filter((x) => x.como === formaQueSirve)
+      .concat(FORMAS_DE_MARCAR.filter((x) => x.como !== formaQueSirve));
+    for (const forma of orden) {
+      // Releer antes de insistir: si la forma anterior funcionó y el portal
+      // tardó en repintar, volver a tocar la casilla la desmarcaría.
+      if (estadoFila(serie) === 2) return '';
+      const g = filaPorSerie(serie) || f;
+      const nodo = forma.donde(g.tr);
+      if (!nodo) continue;
+      probadas += 1;
+      if (avisar && probadas > 1) avisar('probando con ' + forma.como);
+      if (forma.nativo) nodo.click(); else clickReal(nodo);
+      if (!(await esperarPortal(12000)) && avisar) {
+        avisar('el portal sigue en "Espere por favor"');
+      }
+      if (await esperar(() => estadoFila(serie) === 2, 8000)) {
+        formaQueSirve = forma.como;
+        return '';
+      }
+      if (!filaPorSerie(serie)) return 'la fila desapareció de la grilla al marcarla';
+      // Marcada a medias: no se prueba otra forma —volver a tocarla la
+      // desmarcaría— y se informa, que es lo que permite darse cuenta a tiempo.
+      if (estadoFila(serie) === 1) {
+        return 'la casilla quedó marcada pero el portal no habilitó la fila';
+      }
+    }
+    return probadas
+      ? 'la casilla no responde (probé ' + probadas + ' forma(s) de tocarla)'
+      : 'la fila no trae casilla que tocar';
   };
 
   // El combo del tipo de gasto de la fila. El portal lo renderiza como un select
@@ -562,9 +629,14 @@
   const comboDeFila = (f) => f.tr.querySelector('select');
 
   const ponerTipoGasto = async (f, codigo, etiqueta) => {
-    const sel = comboDeFila(f);
+    // Siempre contra la fila del momento: esperar sobre el nodo que se recibió
+    // es esperar a un huérfano —el repintado ya lo reemplazó— y ese nunca se
+    // habilita, así que se gastan los ocho segundos y se escribe en el aire.
+    const vivo = () => comboDeFila(filaPorSerie(f.serie) || f);
+    await esperar(() => { const s = vivo(); return !!s && !s.disabled; }, 8000);
+    const sel = vivo();
     if (!sel) return 'no hay combo de tipo de gasto en la fila';
-    await esperar(() => !sel.disabled, 8000);
+    if (sel.disabled) return 'el combo de tipo de gasto sigue deshabilitado';
     const ops = [...sel.options];
     let op = codigo ? ops.find((o) => String(o.value) === String(codigo)) : null;
     if (!op && etiqueta) op = ops.find((o) => norm(o.textContent) === norm(etiqueta));
@@ -599,9 +671,11 @@
   };
 
   const ponerMonto = async (f, valor) => {
-    const inp = montoDeFila(f);
+    const vivo = () => montoDeFila(filaPorSerie(f.serie) || f);
+    await esperar(() => { const i = vivo(); return !!i && !i.disabled; }, 8000);
+    const inp = vivo();
     if (!inp) return 'no hay campo de IVA solicitado en la fila';
-    await esperar(() => !inp.disabled, 8000);
+    if (inp.disabled) return 'el campo de IVA solicitado sigue deshabilitado';
     const actual = leerNumero(inp.value);
     if (actual !== null && Math.abs(actual - valor) < 0.005) return '';   // ya lo puso el portal
     inp.focus();
@@ -614,8 +688,16 @@
     return '';
   };
 
-  const botonSiguientePagina = () => [...document.querySelectorAll('.ui-paginator-next')]
-    .find((e) => e.offsetParent !== null && !e.classList.contains('ui-state-disabled')) || null;
+  // El paginador dice "(2 of 2)" cuando ya no hay más: se le cree a eso además
+  // de a la clase de deshabilitado, porque si el botón queda habilitado en la
+  // última página se le clickea al pedo y el recorrido termina avisando que
+  // "quedaron comprobantes sin revisar" cuando en realidad no faltaba ninguno.
+  const botonSiguientePagina = () => {
+    const p = paginaActual();
+    if (p && p.pagina >= p.de) return null;
+    return [...document.querySelectorAll('.ui-paginator-next')]
+      .find((e) => e.offsetParent !== null && !e.classList.contains('ui-state-disabled')) || null;
+  };
 
   // Volver a la PRIMERA página antes de leer nada.
   //
@@ -655,20 +737,27 @@
   // elige el año. Llenar los dos seguidos falla siempre. (Verificado en el
   // portal el 2026-08-11.) Los meses vienen con value = numero de mes y solo
   // hasta el ultimo mes CERRADO.
-  const consultarPeriodo = async (mes, anio) => {
+  //
+  // `avisar` va contando cada paso: entre uno y otro el portal se toma sus
+  // segundos, y un panel quieto no se distingue de uno colgado.
+  const consultarPeriodo = async (mes, anio, avisar) => {
+    const contar = (t) => { if (avisar) avisar(t); };
     if (!hayFormulario()) {
       const link = enlaceIngresarFacturas();
       if (!link) return 'no encontré la pantalla de facturas electrónicas: entrá por ' +
         'Devolución de IVA y abrí "Ingresar facturas electrónicas"';
+      contar('Abriendo "Ingresar facturas electrónicas"…');
       link.click();
       await esperarPortal();
       await esperar(hayFormulario, 15000);
       if (!hayFormulario()) return 'no se abrió "Ingresar facturas electrónicas"';
     }
+    contar('Eligiendo el año ' + anio + '…');
     if (!elegir(cbAnio(), anio, new RegExp('^\\s*' + anio + '\\s*$'))) {
       return 'el combo Año no tiene ' + anio;
     }
     await esperarPortal();
+    contar('Esperando que el portal cargue los meses…');
     const reMes = new RegExp('^\\s*' + MESES[mes - 1], 'i');
     const hayMes = await esperar(() => {
       const c = cbPeriodo();
@@ -679,10 +768,12 @@
       return 'el portal no ofrece ' + MESES[mes - 1] + ' ' + anio +
         ' (solo lista meses ya cerrados)';
     }
+    contar('Eligiendo ' + MESES[mes - 1] + '…');
     if (!elegir(cbPeriodo(), mes, reMes)) return 'no pude elegir ' + MESES[mes - 1];
     await esperarPortal();
     const b = btnBuscar();
     if (!b) return 'no encontré el botón Buscar';
+    contar('Buscando los comprobantes…');
     b.click();
     await esperarPortal();
     await esperar(() => filasGrilla().length > 0, 15000);
@@ -755,7 +846,7 @@
     const est = el('div', 'margin:6px 0;color:#555');
     cuerpo.appendChild(est);
     est.textContent = 'Consultando ' + (MESES[mes - 1] || mes) + ' ' + anio + '…';
-    const err = await consultarPeriodo(mes, anio);
+    const err = await consultarPeriodo(mes, anio, (t) => { est.textContent = t; });
     if (err) {
       linea('✖ ' + err, 'color:#8b1e1e;font-weight:700');
       cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
@@ -807,9 +898,15 @@
     linea('Llenando el portal', 'font-weight:700;color:#1e6b33;margin-bottom:4px');
     const bitacora = el('div', 'margin:6px 0;max-height:40vh;overflow:auto;line-height:1.5');
     cuerpo.appendChild(bitacora);
+    // Devuelve la línea para poder reescribirla: cada comprobante se anuncia
+    // ANTES de tocarlo y la misma línea se cierra con el resultado. Sin eso, el
+    // panel se queda mudo los segundos que el portal se toma por fila y no hay
+    // cómo distinguir "trabajando" de "colgado".
     const paso = (txt, css) => {
-      bitacora.appendChild(el('div', css || 'color:#555', txt));
+      const d = el('div', css || 'color:#555', txt);
+      bitacora.appendChild(d);
       bitacora.scrollTop = bitacora.scrollHeight;
+      return d;
     };
     const fallar = (txt) => {
       paso('✖ ' + txt, 'color:#8b1e1e;font-weight:700');
@@ -835,9 +932,10 @@
     mios.forEach((i) => { if (i.serie) porSerie.set(i.serie.trim(), i); });
 
     // 1) Consultar el período en el portal
-    paso('Consultando ' + (MESES[mes - 1] || mes) + ' ' + anio + '…');
-    const errConsulta = await consultarPeriodo(mes, anio);
+    const lConsulta = paso('Consultando ' + (MESES[mes - 1] || mes) + ' ' + anio + '…');
+    const errConsulta = await consultarPeriodo(mes, anio, (t) => { lConsulta.textContent = t; });
     if (errConsulta) return fallar(errConsulta);
+    lConsulta.textContent = (MESES[mes - 1] || mes) + ' ' + anio + ': grilla en pantalla';
 
     if (!filasGrilla().length) {
       return fallar('el portal no muestra ningún comprobante en ese período. Ojo: solo lista ' +
@@ -852,6 +950,7 @@
     const vistas = new Set();
     let pagina = 1;
     let reintentos = 0;
+    let seguidas = 0;      // marcas fallidas seguidas: si son todas, se corta
     while (pagina <= 40) {
       const filas = filasGrilla();
       paso('Página ' + pagina + ': ' + filas.length + ' comprobante(s) en pantalla');
@@ -867,22 +966,45 @@
           problemas.push(serie + ': se llegó al tope del mes, queda sin marcar');
           continue;
         }
+        const lin = paso('  · ' + serie + ' — marcando…', 'color:#777;font-size:11px');
         let f = filaPorSerie(serie);
-        if (!f || !(await marcar(f))) {
-          problemas.push(serie + ': no se pudo marcar la casilla');
+        const errMarca = f ? await marcar(f, (t) => {
+          lin.textContent = '  · ' + serie + ' — ' + t + '…';
+        }) : 'la fila ya no está en la grilla';
+        if (errMarca) {
+          // Que el portal no acepte una marca es un problema del comprobante;
+          // que no acepte ninguna es un problema del recorrido, y entonces no
+          // tiene sentido gastar diez segundos por fila en las veinte que
+          // faltan: se corta acá y se explica, con el diagnóstico a mano.
+          lin.textContent = '  ✖ ' + serie + ': ' + errMarca;
+          lin.style.color = '#8b1e1e';
+          problemas.push(serie + ': ' + errMarca);
+          seguidas += 1;
+          if (!hechas.length && seguidas >= 3) {
+            return fallar('el portal no está aceptando las marcas: probé con ' + seguidas +
+              ' comprobantes y ninguno quedó marcado. Marcalos a mano, o mandame el ' +
+              'diagnóstico para ajustar el marcador a esta versión del portal.');
+          }
           continue;
         }
+        seguidas = 0;
+        lin.textContent = '  · ' + serie + ' — poniendo el tipo de gasto…';
         f = filaPorSerie(serie) || f;
         const err = await ponerTipoGasto(f, item.rubro_sri, item.rubro_label);
         if (err) problemas.push(serie + ': ' + err);
         const pedir = Math.min(Number(item.iva) || 0, restante);
+        lin.textContent = '  · ' + serie + ' — confirmando el monto…';
         f = filaPorSerie(serie) || f;
         const err2 = await ponerMonto(f, Math.round(pedir * 100) / 100);
         if (err2) problemas.push(serie + ': ' + err2);
         restante -= pedir;
         hechas.push({ serie, iva: pedir });
-        paso('  ✔ ' + serie + '  ' + (item.rubro_label || '') + '  ' + money(pedir),
-          'color:#1e6b33;font-size:11px');
+        // Marcado pero sin tipo de gasto no sirve: el portal no deja procesar la
+        // selección. Se dice en la misma línea, no al final entre los avisos.
+        const flojo = err || err2;
+        lin.textContent = (flojo ? '  ⚠ ' : '  ✔ ') + serie + '  ' +
+          (item.rubro_label || '') + '  ' + money(pedir) + (flojo ? '  — ' + flojo : '');
+        lin.style.color = flojo ? '#8b6b1e' : '#1e6b33';
       }
       // Pasar de página, COMPROBANDO que pasó: marcar repinta la grilla entera
       // y el click en "siguiente" se puede perder en ese repintado. A ciegas,
@@ -1105,6 +1227,21 @@
     cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
   };
 
+  // Etiquetas, ids y clases de un nodo y sus hijos, sin una letra del contenido.
+  const esqueleto = (nodo, nivel) => {
+    const n = nivel || 0;
+    if (n > 4) return '';
+    const partes = [...nodo.children].map((h) => {
+      const tag = h.tagName.toLowerCase() +
+        (h.id ? '#' + h.id.split(':').pop() : '') +
+        (h.className && typeof h.className === 'string'
+          ? '.' + h.className.trim().split(/\s+/).slice(0, 3).join('.') : '');
+      const dentro = esqueleto(h, n + 1);
+      return tag + (dentro ? '(' + dentro + ')' : '');
+    });
+    return partes.join(' ');
+  };
+
   // Diagnóstico: qué ve el marcador en esta pantalla, para ajustarlo sin adivinar.
   const diagnostico = () => {
     const p = [];
@@ -1121,6 +1258,32 @@
     visibles('button,input[type="submit"],input[type="button"]').slice(0, 12).forEach((b, i) => {
       p.push('  [' + i + '] id=' + (b.id || '-') + ' | ' + (((b.value || b.textContent) || '').trim().slice(0, 30)));
     });
+    // Anatomía de una fila: es lo que hace falta para saber por qué el portal no
+    // acepta una marca. Va el ESQUELETO (etiquetas, ids y clases), no el texto:
+    // alcanza para ajustar el marcador y no arrastra datos del contribuyente.
+    const filas = filasGrilla();
+    p.push('Filas de la grilla: ' + filas.length);
+    if (filas.length) {
+      const f = filas[0];
+      p.push('Primera fila: serie ' + f.serie + ' | clases tr: ' + (f.tr.className || '-'));
+      p.push('  marcada segun el marcador: ' + (marcada(f) ? 'si' : 'no'));
+      FORMAS_DE_MARCAR.forEach((forma) => {
+        const n = forma.donde(f.tr);
+        p.push('  ' + forma.como + ': ' + (n
+          ? n.tagName.toLowerCase() + ' id=' + (n.id || '-') + ' class=' + (n.className || '-')
+          : 'NO ESTA'));
+      });
+      const sel = comboDeFila(f);
+      p.push('  combo tipo de gasto: ' + (sel
+        ? 'id=' + (sel.id || '-') + ' deshabilitado=' + sel.disabled + ' opciones=' + sel.options.length
+        : 'NO ESTA'));
+      const inp = montoDeFila(f);
+      p.push('  campo IVA solicitado: ' + (inp
+        ? 'id=' + (inp.id || '-') + ' deshabilitado=' + inp.disabled : 'NO ESTA'));
+      p.push('  esqueleto de la fila: ' + esqueleto(f.tr));
+    }
+    p.push('Paginador: ' + (paginaActual()
+      ? paginaActual().pagina + ' de ' + paginaActual().de : 'sin paginador'));
     return p.join(String.fromCharCode(10));
   };
 

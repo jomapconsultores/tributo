@@ -73,6 +73,14 @@ envío ocurre en la sesión del contribuyente.
    marcar la casilla de la fila. El orden es: marcar → esperar el AJAX → llenar.
    Marcar **repinta la fila**: la confirmación y los pasos siguientes hay que
    leerlos sobre el nodo nuevo, buscándolo otra vez por serie.
+1a. **La casilla en activo NO prueba que la marca llegó.** El widget se pinta
+   activo en el acto y el checkbox interno se marca solo con el click, escuche o
+   no el portal; el AJAX que registra la selección viene después. Lo único que
+   prueba que llegó es que **`IVA solicitado` y `Tipo de gasto` queden
+   habilitados**: hasta entonces la fila está a medias, y llenarla ahí es
+   escribir sobre un nodo que el repintado ya va a reemplazar —queda marcada, sin
+   tipo de gasto, y el portal no la procesa—. Era esto lo que hacía que "Llenar y
+   presentar" pareciera no hacer nada. *Corregido el 2026-08-12.*
 1bis. **La grilla pagina de a 10** (`Filas por página` 10/15/20). Hay que
    recorrer las páginas y **comprobar que la página cambió**: el repintado de
    las marcas se come el click en "siguiente", y a ciegas el recorrido se queda
@@ -135,10 +143,23 @@ portal"**, parado en *Ingresar facturas electrónicas*:
 
 La tabla se repinta en cada ajax, así que el script vuelve a buscar la fila por
 serie antes de cada paso; los controles se ubican por etiqueta propia y por el
-patrón de la serie, nunca por ids `j_idt…`. Probado contra un portal simulado
-(`scripts` de prueba no versionados) con tope excedido, comprobante ausente y
-comprobante ajeno; contra el portal real hay que probarlo con una solicitud
-verdadera.
+patrón de la serie, nunca por ids `j_idt…`.
+
+**Cuando el portal no coopera** (2026-08-12): marcar se intenta de tres maneras
+—la caja del widget, el checkbox interno, la etiqueta— porque el SRI cambia el
+control entre versiones y probar una sola es quedarse sin marcar nada sin poder
+decir por qué. La que funciona se recuerda para las demás filas. Cada comprobante
+se anuncia en el panel ANTES de tocarlo y la línea se cierra con el resultado: un
+panel quieto no se distingue de uno colgado, y esperar por fila son segundos. Si
+los tres primeros comprobantes no quedan marcados, **corta** en vez de gastar diez
+segundos por fila en veinte filas, y ofrece *Copiar diagnóstico*, que ahora
+incluye la anatomía de la primera fila (esqueleto de etiquetas, ids y clases; sin
+texto, así no arrastra datos del contribuyente).
+
+Se prueba con `python scripts/test_enviador_devolucion.py`, que corre el marcador
+**minificado** contra `scripts/portal_devolucion_falso.html` en sus tres
+variantes (el widget escucha / solo escucha el checkbox interno / no escucha
+nadie). Contra el portal real hay que probarlo con una solicitud verdadera.
 
 ## Tipo de gasto — catálogo cerrado del SRI
 

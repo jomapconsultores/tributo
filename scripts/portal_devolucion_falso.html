@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><title>Portal SRI (simulado)</title>
+<style>
+ body{font-family:Arial;margin:20px}
+ table{border-collapse:collapse}
+ td,th{border:1px solid #ccc;padding:4px;font-size:12px}
+ .ui-chkbox-box{width:16px;height:16px;border:1px solid #888;display:inline-block;cursor:pointer}
+ .ui-chkbox-box.ui-state-active{background:#1e6b33}
+ .ui-blockui{position:fixed;inset:0;background:rgba(255,255,255,.6);z-index:9999}
+</style>
+</head>
+<body>
+<h3>Devolución de IVA - Adultos mayores</h3>
+<div id="menu"><a href="#" id="lnkIngresar">Ingresar facturas electronicas</a></div>
+
+<div id="form" style="display:none">
+<table>
+ <tr><td>Año solicitado</td><td><select id="cmbAnio_input"><option value="">Seleccione</option><option value="2025">2025</option><option value="2026">2026</option></select></td></tr>
+ <tr><td>Periodo solicitado</td><td><select id="cmbPeriodo_input"><option value="">Seleccione un periodo</option></select></td></tr>
+</table>
+<button id="btnBuscar">Buscar</button>
+<div id="grilla"></div>
+<div id="pag" style="display:none">
+  <span class="ui-paginator-current"></span>
+  <span class="ui-paginator-first">«</span>
+  <span class="ui-paginator-next">›</span>
+</div>
+<button id="btnProcesar" style="display:none">Procesar facturas seleccionadas</button>
+<button id="btnGuardar" style="display:none">Guardar seleccion realizada</button>
+<button id="btnCargar" style="display:none">Cargar Informacion</button>
+<div id="constancia"></div>
+</div>
+
+<script>
+// --- Datos del "portal": 12 comprobantes de julio 2026, paginados de a 10 ----
+const DATOS = [];
+for (let i = 1; i <= 12; i++) {
+  DATOS.push({
+    n: i,
+    serie: '003-301-0000891' + String(i + 10).padStart(2, '0'),
+    prov: 'COMERCIAL PRUEBA ' + i + ' SA',
+    fecha: '2026-07-' + String(i).padStart(2, '0'),
+    iva: 1.5 + i,
+  });
+}
+const TIPOS = [['1','VESTIMENTA'],['2','VIVIENDA'],['3','SALUD'],['4','ALIMENTACION'],['5','EDUCACION']];
+let pagina = 0, porPagina = 10, marcadas = {};
+
+const ajax = (ms, fn) => {
+  const tapa = document.createElement('div');
+  tapa.className = 'ui-blockui';
+  document.body.appendChild(tapa);
+  setTimeout(() => { tapa.remove(); fn(); }, ms);
+};
+
+function pintarGrilla() {
+  const desde = pagina * porPagina;
+  const filas = DATOS.slice(desde, desde + porPagina);
+  let h = '<table id="tblFacturas"><tr><th>No.</th><th>RIDE</th><th>Razon social</th><th>Tipo y serie</th>' +
+    '<th>Fecha</th><th>Monto IVA</th><th>IVA solicitado</th><th>Tipo de gasto</th><th>Seleccionar</th></tr>';
+  filas.forEach((f) => {
+    const m = marcadas[f.serie];
+    h += '<tr data-serie="' + f.serie + '">' +
+      '<td>' + f.n + '</td><td>RIDE</td><td>' + f.prov + '</td>' +
+      '<td>FACTURA 003-301-' + f.serie.split('-')[2] + '</td>' +
+      '<td>' + f.fecha + '</td><td>' + f.iva.toFixed(2) + '</td>' +
+      '<td><input type="text" class="ivaSol" ' + (m ? '' : 'disabled') + ' value="' + (m ? (m.monto !== undefined ? m.monto : f.iva.toFixed(2)) : '') + '"></td>' +
+      '<td><div class="ui-selectonemenu"><label class="ui-selectonemenu-label">Seleccione</label>' +
+      '<select class="tipoGasto" ' + (m ? '' : 'disabled') + '>' +
+      '<option value="">Seleccione</option>' +
+      TIPOS.map((t) => '<option value="' + t[0] + '"' + (m && m.tipo === t[0] ? ' selected' : '') + '>' + t[1] + '</option>').join('') +
+      '</select></div></td>' +
+      '<td><div class="ui-chkbox">' +
+      '<div class="ui-helper-hidden-accessible"><input type="checkbox" id="tbl:' + f.n + ':chk_input"' +
+      (m ? ' checked' : '') + '></div>' +
+      '<div class="ui-chkbox-box' + (m ? ' ui-state-active' : '') + '"></div></div></td>' +
+      '</tr>';
+  });
+  h += '</table>';
+  document.getElementById('grilla').innerHTML = h;
+  document.getElementById('pag').style.display = '';
+  document.querySelector('.ui-paginator-current').textContent =
+    '(' + (pagina + 1) + ' of ' + Math.ceil(DATOS.length / porPagina) + ')';
+  document.getElementById('btnProcesar').style.display = '';
+  // Marcar. MODO simula versiones del portal:
+  //   widget = escucha el click en la caja (lo normal)
+  //   nativo = la caja no escucha; solo el checkbox interno
+  //   muerto = no escucha nadie (para ver cómo informa el marcador)
+  const MODO = new URLSearchParams(location.search).get('modo') || 'widget';
+  const alternar = (serie) => {
+    const dato = DATOS.find((d) => d.serie === serie);
+    ajax(400, () => {
+      if (marcadas[serie]) delete marcadas[serie];
+      else marcadas[serie] = { monto: dato.iva.toFixed(2) };   // el portal auto-rellena
+      pintarGrilla();
+    });
+  };
+  if (MODO === 'widget') {
+    document.querySelectorAll('.ui-chkbox-box').forEach((b) => {
+      b.addEventListener('click', () => alternar(b.closest('tr').dataset.serie));
+    });
+  } else if (MODO === 'nativo') {
+    document.querySelectorAll('.ui-chkbox input[type="checkbox"]').forEach((i) => {
+      i.addEventListener('change', () => alternar(i.closest('tr').dataset.serie));
+    });
+  }
+  document.querySelectorAll('.tipoGasto').forEach((s) => {
+    s.addEventListener('change', () => {
+      const serie = s.closest('tr').dataset.serie;
+      ajax(300, () => { if (marcadas[serie]) marcadas[serie].tipo = s.value; pintarGrilla(); });
+    });
+  });
+  document.querySelectorAll('.ivaSol').forEach((i) => {
+    i.addEventListener('change', () => {
+      const serie = i.closest('tr').dataset.serie;
+      if (marcadas[serie]) marcadas[serie].monto = i.value;
+    });
+  });
+}
+
+document.getElementById('lnkIngresar').onclick = (e) => {
+  e.preventDefault();
+  ajax(500, () => { document.getElementById('form').style.display = ''; });
+};
+document.getElementById('cmbAnio_input').onchange = function () {
+  const v = this.value;
+  ajax(500, () => {
+    const cp = document.getElementById('cmbPeriodo_input');
+    cp.innerHTML = '<option value="">Seleccione un periodo</option>' +
+      ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio'].map((m, i) =>
+        '<option value="' + (i + 1) + '">' + m + '</option>').join('');
+  });
+};
+document.getElementById('btnBuscar').onclick = () => {
+  ajax(600, () => { pagina = 0; pintarGrilla(); });
+};
+document.querySelector('.ui-paginator-next').onclick = () => {
+  if ((pagina + 1) * porPagina >= DATOS.length) return;
+  ajax(400, () => { pagina += 1; pintarGrilla(); });
+};
+document.querySelector('.ui-paginator-first').onclick = () => {
+  ajax(400, () => { pagina = 0; pintarGrilla(); });
+};
+document.getElementById('btnProcesar').onclick = () => {
+  ajax(500, () => { document.getElementById('btnGuardar').style.display = ''; });
+};
+document.getElementById('btnGuardar').onclick = () => {
+  ajax(500, () => { document.getElementById('btnCargar').style.display = ''; });
+};
+document.getElementById('btnCargar').onclick = () => {
+  ajax(800, () => {
+    document.getElementById('constancia').textContent =
+      'Carga de archivo realizada exitosamente  12-08-2026 10:15:00   Total: ' +
+      Object.values(marcadas).reduce((s, m) => s + Number(m.monto || 0), 0).toFixed(2);
+  });
+};
+</script>
+</body>
+</html>
