@@ -44,6 +44,16 @@ def _normalizar(valor) -> str:
         # asignado), nunca por el último.
         _, _, resto = v.partition("=")
         v = resto.strip().strip('"').strip("'").strip()
+    # Reponer el relleno de base64. Una llave Fernet son 32 bytes que en
+    # base64url dan 44 caracteres terminados en '='. Ese '=' final es RELLENO:
+    # no lleva información, y se pierde con una facilidad pasmosa —al copiar, al
+    # pasar por un parser de variables de entorno, al recortar un espacio—.
+    # Reponerlo devuelve exactamente la llave que era; no adivina ni inventa
+    # nada. Sin esto, un carácter de relleno perdido en el panel del servidor
+    # deja ilegible TODO lo cifrado, que es justo lo que pasó acá: la llave
+    # estaba puesta, con 43 caracteres.
+    if v and len(v) % 4:
+        v += "=" * (4 - len(v) % 4)
     return v
 
 
