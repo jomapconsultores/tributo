@@ -99,6 +99,27 @@
     return ok;
   };
 
+  // El diagnóstico va A LA PANTALLA, no solo al portapapeles: en el portal la
+  // escritura al portapapeles falla seguido —permisos, foco, la propia página—
+  // y entonces el botón "copiar" deja sin nada que pegar justo cuando lo que
+  // hace falta es mandar lo que se ve. Con el texto a la vista, una captura de
+  // pantalla alcanza.
+  const mostrarTexto = (titulo, texto) => {
+    limpiar();
+    linea(titulo, 'font-weight:700;color:#1e6b33;margin-bottom:6px');
+    const ta = el('textarea', 'width:400px;height:250px;font-family:monospace;font-size:10px;' +
+      'line-height:1.35;border:1px solid #bbb;border-radius:6px;padding:6px');
+    ta.value = texto;
+    ta.readOnly = true;
+    cuerpo.appendChild(ta);
+    cuerpo.appendChild(boton('Copiar', function () { copiar(texto, this); }));
+    cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
+    linea('Si el copiar no anda, mandá una captura de este recuadro.',
+      'margin:6px 0;color:#777;font-size:11px');
+    ta.focus();
+    ta.select();
+  };
+
   const bajarArchivo = (nombre, contenido, tipo) => {
     const blob = new Blob([contenido], { type: (tipo || 'text/plain') + ';charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -249,13 +270,11 @@
       acciones.appendChild(boton('Traer comprobantes al sistema',
         () => elegirAnioYMes(traerComprobantes), CSS_GRIS));
       acciones.appendChild(boton('Comparar con el portal', compararConElPortal, CSS_GRIS));
-      acciones.appendChild(boton('Copiar diagnostico', function () {
-        copiar(diagnostico(), this);
-      }, CSS_GRIS));
+      acciones.appendChild(boton('Ver diagnostico',
+        () => mostrarTexto('Diagnostico del portal', diagnostico()), CSS_GRIS));
     } else {
-      acciones.appendChild(boton('¿Por qué no puedo comparar?', function () {
-        copiar(diagnostico(), this);
-      }, CSS_GRIS));
+      acciones.appendChild(boton('¿Por qué no puedo comparar?',
+        () => mostrarTexto('Diagnostico del portal', diagnostico()), CSS_GRIS));
     }
     cuerpo.appendChild(acciones);
 
@@ -850,7 +869,8 @@
     if (err) {
       linea('✖ ' + err, 'color:#8b1e1e;font-weight:700');
       cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
-      cuerpo.appendChild(boton('Copiar diagnostico', function () { copiar(diagnostico(), this); }, CSS_GRIS));
+      cuerpo.appendChild(boton('Ver diagnostico',
+        () => mostrarTexto('Diagnostico del portal', diagnostico()), CSS_GRIS));
       return;
     }
     const filas = await leerGrilla((t) => { est.textContent = t; });
@@ -911,7 +931,13 @@
     const fallar = (txt) => {
       paso('✖ ' + txt, 'color:#8b1e1e;font-weight:700');
       cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
-      cuerpo.appendChild(boton('Copiar diagnostico', function () { copiar(diagnostico(), this); }, CSS_GRIS));
+      // La bitácora va DENTRO del diagnóstico: lo que se intentó y lo que el
+      // portal muestra son la misma historia, y así se manda de una sola vez.
+      cuerpo.appendChild(boton('Ver diagnostico', () => mostrarTexto(
+        'Diagnostico del portal',
+        'LO QUE INTENTE' + String.fromCharCode(10) + (bitacora.innerText || '') +
+        String.fromCharCode(10, 10) + 'LO QUE VEO' + String.fromCharCode(10) + diagnostico()
+      ), CSS_GRIS));
     };
 
     const anio = paquete.periodo.anio;
@@ -1154,7 +1180,8 @@
     const cA = cbAnio();
     if (!cA) {
       est.textContent = '✖ No encontré el combo de Año en esta pantalla.';
-      cuerpo.appendChild(boton('Copiar diagnostico', function () { copiar(diagnostico(), this); }, CSS_GRIS));
+      cuerpo.appendChild(boton('Ver diagnostico',
+        () => mostrarTexto('Diagnostico del portal', diagnostico()), CSS_GRIS));
       cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
       return;
     }
