@@ -17,7 +17,7 @@ from auth import get_current_user
 from routers.access import es_data_admin, es_super_admin, rol_de
 from tenancy import assert_client_owner, visible_client_ids, filtro_org
 import orgs
-from services.credentials_crypto import encrypt, decrypt, can_decrypt, key_configured
+from services.credentials_crypto import encrypt, decrypt, can_decrypt, estado_llaves
 
 # Roles que pueden MARCAR qué declaraciones hace cada contribuyente (sin ver claves).
 ROLES_MARCADO = {"admin", "socio", "trabajador"}
@@ -105,9 +105,8 @@ def _cifrar(password: str):
     except Exception as e:
         raise HTTPException(
             status_code=503,
-            detail="No se puede guardar la clave: el servidor no tiene configurada la llave de "
-                   "cifrado (CREDENTIALS_MASTER_KEY). Avisale a quien administra el despliegue. "
-                   f"[{e.__class__.__name__}]",
+            detail="No se puede guardar la clave porque el servidor no tiene una llave de cifrado "
+                   f"utilizable. Motivo: {estado_llaves()['motivo'] or e}",
         )
 
 
@@ -164,8 +163,9 @@ async def listar(req: Request, admin_id: str = Depends(require_claves), q: Optio
         _log(credential_id=None, admin_user_id=admin_id, action="list", req=req, metadata={"count": 0, "q": q})
         # Con los contribuyentes igual: sin una fila por contribuyente no hay
         # dónde cargar la PRIMERA clave, y la pantalla quedaría vacía sin salida.
-        return {"data": [], "services_by_ruc": {}, "llave_ok": key_configured(),
-                "contribuyentes": _contribuyentes_de_la_empresa()}
+        est = estado_llaves()
+        return {"data": [], "services_by_ruc": {}, "llave_ok": est["configurada"],
+                "llave_motivo": est["motivo"], "contribuyentes": _contribuyentes_de_la_empresa()}
 
     client_ids = list({c["client_id"] for c in creds})
     clients = sb.table("clients").select("id, identificacion, nombre").in_("id", client_ids).execute().data or []
@@ -225,8 +225,10 @@ async def listar(req: Request, admin_id: str = Depends(require_claves), q: Optio
         "services_by_ruc": {k: sorted(v) for k, v in services_by_ruc.items()},
         "contribuyentes": _contribuyentes_de_la_empresa(),
         # Sin llave de cifrado no se puede guardar NI revelar: que la pantalla lo
-        # diga, en vez de dejar que cada intento muera con un error de red.
-        "llave_ok": key_configured(),
+        # diga —y por qué—, en vez de dejar que cada intento muera con un error
+        # de red. El motivo distingue "falta la variable" de "está mal pegada".
+        "llave_ok": estado_llaves()["configurada"],
+        "llave_motivo": estado_llaves()["motivo"],
     }
 
 
@@ -351,12 +353,13 @@ async def revelar(cred_id: int, req: Request, user_id: str = Depends(get_current
         # distingue el caso grave —el servidor no tiene NINGUNA llave— del
         # corriente, porque la salida no es la misma: uno se arregla en el
         # entorno del servidor y el otro reingresando la contraseña.
-        if not key_configured():
+        est = estado_llaves()
+        if not est["configurada"]:
             raise HTTPException(
                 status_code=503,
-                detail="El servidor no tiene configurada la llave de cifrado "
-                       "(CREDENTIALS_MASTER_KEY): no se puede descifrar ni guardar ninguna clave. "
-                       "Es configuración del despliegue, no hace falta reingresar nada.",
+                detail="El servidor no tiene una llave de cifrado utilizable, así que no puede "
+                       f"descifrar ni guardar ninguna clave. Motivo: {est['motivo']} "
+                       "Es configuración del despliegue: no hace falta reingresar nada.",
             )
         raise HTTPException(
             status_code=409,

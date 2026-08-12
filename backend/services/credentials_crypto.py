@@ -28,25 +28,69 @@ from cryptography.fernet import Fernet, InvalidToken
 CURRENT_KEY_VERSION = 1
 
 
+def _normalizar(valor) -> str:
+    """Limpia lo que rodea a la llave en la variable de entorno.
+
+    Pegar la llave en el panel del servidor con comillas ("abc…=") o con un
+    espacio o salto de línea al final es lo más fácil del mundo, y Fernet la
+    rechaza entera: el sistema se comporta como si NO hubiera llave y todo deja
+    de guardarse y de leerse. Un `strip` acá evita esa clase de tarde perdida.
+    También se acepta que hayan pegado "NOMBRE=llave" de más."""
+    if not isinstance(valor, str):
+        valor = (valor or b"").decode("utf-8", "ignore")
+    v = valor.strip().strip('"').strip("'").strip()
+    if v.upper().startswith("CREDENTIALS_MASTER_KEY"):
+        # La llave termina en '=', así que se corta por el PRIMER '=' (el del
+        # asignado), nunca por el último.
+        _, _, resto = v.partition("=")
+        v = resto.strip().strip('"').strip("'").strip()
+    return v
+
+
+def _fernet(valor, nombre: str) -> Fernet:
+    limpio = _normalizar(valor)
+    try:
+        return Fernet(limpio.encode())
+    except Exception as e:
+        # Sin filtrar la llave: solo lo que hace falta para corregirla.
+        raise RuntimeError(
+            f"{nombre} no es una llave válida ({len(limpio)} caracteres; se esperan 44 "
+            f"en base64url terminados en '='). Detalle: {e.__class__.__name__}"
+        )
+
+
 def _load_keys() -> dict:
     """Carga llaves desde env. V1 = CREDENTIALS_MASTER_KEY; V2 = CREDENTIALS_MASTER_KEY_V2; …"""
     keys: dict = {}
     primary = os.getenv("CREDENTIALS_MASTER_KEY")
-    if not primary:
+    if not primary or not _normalizar(primary):
         raise RuntimeError(
             "CREDENTIALS_MASTER_KEY no está configurada. Generala con: "
             "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\" "
             "y pégala en las env vars del backend."
         )
-    keys[1] = Fernet(primary.encode() if isinstance(primary, str) else primary)
+    keys[1] = _fernet(primary, "CREDENTIALS_MASTER_KEY")
     v = 2
     while True:
         k = os.getenv(f"CREDENTIALS_MASTER_KEY_V{v}")
-        if not k:
+        if not k or not _normalizar(k):
             break
-        keys[v] = Fernet(k.encode() if isinstance(k, str) else k)
+        keys[v] = _fernet(k, f"CREDENTIALS_MASTER_KEY_V{v}")
         v += 1
     return keys
+
+
+def estado_llaves() -> dict:
+    """Qué llaves ve el servidor y, si no ve ninguna, POR QUÉ.
+
+    Es lo que convierte "no se puede guardar" en algo accionable: distingue
+    "no está la variable" de "está pero mal pegada", que se arreglan distinto.
+    Nunca devuelve el valor de una llave."""
+    try:
+        llaves = _keys()
+        return {"configurada": True, "cantidad": len(llaves), "motivo": ""}
+    except Exception as e:
+        return {"configurada": False, "cantidad": 0, "motivo": str(e)}
 
 
 _KEYS = None

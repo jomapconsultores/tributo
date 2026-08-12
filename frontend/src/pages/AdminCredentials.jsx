@@ -75,6 +75,7 @@ export default function AdminCredentials() {
   // ¿El servidor tiene la llave de cifrado? Sin ella no se guarda ni se revela
   // nada, y el intento moría en un error de red que no explicaba por qué.
   const [llaveOk, setLlaveOk] = useState(true)
+  const [llaveMotivo, setLlaveMotivo] = useState('')
   const [editor, setEditor] = useState(null) // { mode: 'create'|'edit', credential?: {...} }
   const [busy, setBusy] = useState(false)
   // Filtro persistente por servicio (IVA, ICE, Renta, Dev.). Vacío = todos.
@@ -106,6 +107,7 @@ export default function AdminCredentials() {
         const credsRes = await credentialsAPI.list()
         setCreds(credsRes.data?.data || [])
         setLlaveOk(credsRes.data?.llave_ok !== false)
+        setLlaveMotivo(credsRes.data?.llave_motivo || '')
         setServicesByRuc(credsRes.data?.services_by_ruc || {})
         setContribs(dedupContribuyentes(credsRes.data?.contribuyentes || []))
         // Las contraseñas van aparte porque descifrarlas es otra operación (y
@@ -338,9 +340,10 @@ export default function AdminCredentials() {
 
       {puedeVerClaves && !llaveOk && (
         <div className="adm-cred-sinllave-banner">
-          ⛔ El servidor no tiene configurada la llave de cifrado
-          (<code>CREDENTIALS_MASTER_KEY</code>): no se pueden guardar ni revelar claves hasta que
-          se agregue en las variables de entorno del backend. Los datos guardados están intactos.
+          ⛔ El servidor no tiene una llave de cifrado utilizable: no se pueden guardar ni leer
+          claves hasta arreglarlo en las variables de entorno del backend. Los datos guardados
+          están intactos.
+          {llaveMotivo && <><br /><strong>Motivo:</strong> {llaveMotivo}</>}
         </div>
       )}
 
