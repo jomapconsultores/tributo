@@ -17,7 +17,7 @@ from auth import get_current_user
 from routers.access import es_data_admin, es_super_admin, rol_de
 from tenancy import assert_client_owner, visible_client_ids, filtro_org
 import orgs
-from services.credentials_crypto import encrypt, decrypt, can_decrypt
+from services.credentials_crypto import encrypt, decrypt, can_decrypt, key_configured
 
 # Roles que pueden MARCAR qué declaraciones hace cada contribuyente (sin ver claves).
 ROLES_MARCADO = {"admin", "socio", "trabajador"}
@@ -92,6 +92,25 @@ SERVICIOS = {"sri_portal"}
 CLIENT_SERVICES = {"declaracion_iva", "declaracion_ice", "declaracion_renta", "devolucion_iva"}
 
 
+
+def _cifrar(password: str):
+    """Cifra la contraseña diciendo QUÉ falta cuando no se puede.
+
+    Sin esto, si al servidor le falta CREDENTIALS_MASTER_KEY el guardado
+    revienta con una excepción cruda: el navegador recibe un 500 pelado y el
+    usuario ve "Network Error", que manda a buscar el problema en la red cuando
+    está en la configuración del servidor."""
+    try:
+        return encrypt(password)
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail="No se puede guardar la clave: el servidor no tiene configurada la llave de "
+                   "cifrado (CREDENTIALS_MASTER_KEY). Avisale a quien administra el despliegue. "
+                   f"[{e.__class__.__name__}]",
+        )
+
+
 def _client_ip(req: Request) -> str:
     fwd = req.headers.get("x-forwarded-for")
     if fwd:
@@ -145,7 +164,8 @@ async def listar(req: Request, admin_id: str = Depends(require_claves), q: Optio
         _log(credential_id=None, admin_user_id=admin_id, action="list", req=req, metadata={"count": 0, "q": q})
         # Con los contribuyentes igual: sin una fila por contribuyente no hay
         # dónde cargar la PRIMERA clave, y la pantalla quedaría vacía sin salida.
-        return {"data": [], "services_by_ruc": {}, "contribuyentes": _contribuyentes_de_la_empresa()}
+        return {"data": [], "services_by_ruc": {}, "llave_ok": key_configured(),
+                "contribuyentes": _contribuyentes_de_la_empresa()}
 
     client_ids = list({c["client_id"] for c in creds})
     clients = sb.table("clients").select("id, identificacion, nombre").in_("id", client_ids).execute().data or []
@@ -204,6 +224,9 @@ async def listar(req: Request, admin_id: str = Depends(require_claves), q: Optio
         "data": out,
         "services_by_ruc": {k: sorted(v) for k, v in services_by_ruc.items()},
         "contribuyentes": _contribuyentes_de_la_empresa(),
+        # Sin llave de cifrado no se puede guardar NI revelar: que la pantalla lo
+        # diga, en vez de dejar que cada intento muera con un error de red.
+        "llave_ok": key_configured(),
     }
 
 
@@ -341,7 +364,7 @@ async def crear(body: CredentialIn, req: Request, admin_id: str = Depends(requir
     # Mismo alcance que revelar: el contribuyente tiene que ser de la empresa.
     _autorizar_ver_credencial(admin_id, body.client_id)
     sb = get_supabase_client()
-    ciphertext, kv = encrypt(body.password)
+    ciphertext, kv = _cifrar(body.password)
     try:
         res = sb.table("service_credentials").insert({
             "client_id": body.client_id,
@@ -374,7 +397,7 @@ async def actualizar(cred_id: int, body: CredentialUpdate, req: Request, admin_i
     if body.notes is not None:
         updates["notes"] = body.notes
     if body.password is not None:
-        ciphertext, kv = encrypt(body.password)
+        ciphertext, kv = _cifrar(body.password)
         updates["ciphertext"] = ciphertext
         updates["key_version"] = kv
     sb.table("service_credentials").update(updates).eq("id", cred_id).execute()

@@ -44,7 +44,9 @@ app = FastAPI(
 settings = get_settings()
 
 # CORS
-allowed_origins = settings.cors_origins.split(",")
+# Se limpian los espacios: "a.com, b.com" en la env var dejaba " b.com" con el
+# espacio adelante y ese origen nunca coincidía.
+allowed_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -54,6 +56,37 @@ app.add_middleware(
 )
 
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts.split(","))
+
+
+# --- Que un error del servidor LLEGUE al navegador ---------------------------
+# Sin esto, una excepción no atrapada termina en un 500 SIN cabeceras CORS: el
+# navegador descarta la respuesta y el frontend muestra "Network Error", que no
+# dice nada y manda a buscar el problema en la red cuando está en el servidor.
+#
+# Y no alcanza con registrar el handler: Starlette atiende las excepciones no
+# previstas en ServerErrorMiddleware, que envuelve a TODO lo demás —el middleware
+# de CORS incluido—, así que la respuesta nunca lo atraviesa. Por eso las
+# cabeceras se ponen acá a mano, contra la misma lista de orígenes permitidos.
+#
+# El detalle es genérico a propósito (el mensaje real va al log del servidor, no
+# al cliente); se manda el TIPO de error, que es lo que permite distinguir
+# "falta una llave" de "se cayó la base" sin filtrar nada.
+@app.exception_handler(Exception)
+async def error_no_previsto(request: Request, exc: Exception):
+    import traceback
+    print(f"[500] {request.method} {request.url.path}: {exc.__class__.__name__}: {exc}", flush=True)
+    traceback.print_exc()
+    resp = JSONResponse(
+        status_code=500,
+        content={"detail": f"Error del servidor ({exc.__class__.__name__}). "
+                           "Quedó registrado en el log del servidor."},
+    )
+    origen = request.headers.get("origin")
+    if origen and (origen in allowed_origins or "*" in allowed_origins):
+        resp.headers["Access-Control-Allow-Origin"] = origen
+        resp.headers["Access-Control-Allow-Credentials"] = "true"
+        resp.headers["Vary"] = "Origin"
+    return resp
 
 
 # --- Endurecimiento: cabeceras de seguridad ---

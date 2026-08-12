@@ -67,6 +67,16 @@ export default function AdminCredentials() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [reveal, setReveal] = useState(null) // { id, ruc, nombre, password, ttl }
+  // Claves a la vista en la propia tabla: { [credential_id]: password }. Se
+  // piden todas de una sola vez (un único evento en auditoría) porque el
+  // trabajo del despacho es entrar a declarar por muchos contribuyentes
+  // seguidos; revelar de a una, con temporizador, era abrir y cerrar el modal
+  // treinta veces por mañana.
+  const [claves, setClaves] = useState(null)
+  const [cargandoClaves, setCargandoClaves] = useState(false)
+  // ¿El servidor tiene la llave de cifrado? Sin ella no se guarda ni se revela
+  // nada, y el intento moría en un error de red que no explicaba por qué.
+  const [llaveOk, setLlaveOk] = useState(true)
   const [editor, setEditor] = useState(null) // { mode: 'create'|'edit', credential?: {...} }
   const [busy, setBusy] = useState(false)
   // Filtro persistente por servicio (IVA, ICE, Renta, Dev.). Vacío = todos.
@@ -97,6 +107,7 @@ export default function AdminCredentials() {
         // alcanza los contribuyentes que cargó él.
         const credsRes = await credentialsAPI.list()
         setCreds(credsRes.data?.data || [])
+        setLlaveOk(credsRes.data?.llave_ok !== false)
         setServicesByRuc(credsRes.data?.services_by_ruc || {})
         setContribs(dedupContribuyentes(credsRes.data?.contribuyentes || []))
       } else {
@@ -192,6 +203,26 @@ export default function AdminCredentials() {
       })
     } catch (e) {
       alert('No se pudo revelar: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+
+  const verTodasLasClaves = async () => {
+    if (claves) { setClaves(null); return }   // segundo toque: se ocultan
+    setCargandoClaves(true)
+    try {
+      const res = await credentialsAPI.revealAll()
+      const mapa = {}
+      for (const c of res.data?.data || []) mapa[c.credential_id] = c.password
+      setClaves(mapa)
+      const fallidas = (res.data?.errors || []).length
+      if (fallidas) {
+        alert(`${fallidas} clave(s) no se pudieron descifrar: fueron guardadas con una llave ` +
+              'anterior. Editá cada una (✎) y volvé a ingresar la contraseña.')
+      }
+    } catch (e) {
+      alert('No se pudieron mostrar las claves: ' + (e.response?.data?.detail || e.message))
+    } finally {
+      setCargandoClaves(false)
     }
   }
 
@@ -333,7 +364,21 @@ export default function AdminCredentials() {
         <span className="adm-cred-count">
           {filtered.length} de {allRows.length}
         </span>
+        {puedeVerClaves && (
+          <button className="adm-cred-verclaves" onClick={verTodasLasClaves} disabled={cargandoClaves}
+            title="Muestra las contraseñas en la tabla. Queda registrado en auditoría.">
+            {cargandoClaves ? '…' : claves ? '🙈 Ocultar claves' : '👁 Ver todas las claves'}
+          </button>
+        )}
       </div>
+
+      {puedeVerClaves && !llaveOk && (
+        <div className="adm-cred-sinllave-banner">
+          ⛔ El servidor no tiene configurada la llave de cifrado
+          (<code>CREDENTIALS_MASTER_KEY</code>): no se pueden guardar ni revelar claves hasta que
+          se agregue en las variables de entorno del backend. Los datos guardados están intactos.
+        </div>
+      )}
 
       {creds.some((c) => c.needs_reentry) && (
         <div className="adm-cred-reentry-banner">
@@ -402,6 +447,7 @@ export default function AdminCredentials() {
                 <th title="Cada cuánto declara el IVA este contribuyente">Declara IVA</th>
                 <th>Próxima declaración</th>
                 {puedeVerClaves && <th>Usuario</th>}
+                {puedeVerClaves && claves && <th>Clave</th>}
                 {CLIENT_SERVICES.map((s) => (
                   <th key={s.key} className="adm-cred-svc-th" title={s.title}>{s.label}</th>
                 ))}
@@ -442,6 +488,19 @@ export default function AdminCredentials() {
                       : <span className="adm-cred-dim">—</span>}
                   </td>
                   {puedeVerClaves && <td>{c.username || <span className="adm-cred-dim">{c._sinClave ? '(sin clave)' : '(usa el RUC)'}</span>}</td>}
+                  {puedeVerClaves && claves && (
+                    <td className="adm-cred-clave-cell">
+                      {claves[c.id] ? (
+                        <>
+                          <span className="adm-cred-secret">{claves[c.id]}</span>
+                          <button className="adm-cred-copybtn" title="Copiar la clave"
+                            onClick={() => onCopy(claves[c.id], 'contraseña')}>📋</button>
+                        </>
+                      ) : (
+                        <span className="adm-cred-dim">{c._sinClave ? '(sin clave)' : '(no se pudo descifrar)'}</span>
+                      )}
+                    </td>
+                  )}
                   {CLIENT_SERVICES.map((s) => {
                     const checked = c.client_services?.includes(s.key) || false
                     return (
@@ -474,7 +533,7 @@ export default function AdminCredentials() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={puedeVerClaves ? 11 : 8} className="adm-cred-empty-row">
+                  <td colSpan={puedeVerClaves ? (claves ? 12 : 11) : 8} className="adm-cred-empty-row">
                     Ningún cliente coincide con el filtro seleccionado.
                   </td>
                 </tr>
