@@ -44,6 +44,10 @@ def _normalizar(valor) -> str:
         # asignado), nunca por el último.
         _, _, resto = v.partition("=")
         v = resto.strip().strip('"').strip("'").strip()
+    # base64 común -> base64url. Los generadores y los paneles a veces devuelven
+    # la variante con '+' y '/', que Fernet no acepta. La conversión es uno a uno
+    # y no cambia los bytes de la llave.
+    v = v.replace("+", "-").replace("/", "_")
     # Reponer el relleno de base64. Una llave Fernet son 32 bytes que en
     # base64url dan 44 caracteres terminados en '='. Ese '=' final es RELLENO:
     # no lleva información, y se pierde con una facilidad pasmosa —al copiar, al
@@ -57,6 +61,33 @@ def _normalizar(valor) -> str:
     return v
 
 
+def _diagnostico(limpio: str) -> str:
+    """Qué tiene de malo la llave, sin decir cuál es.
+
+    "No es válida" no alcanza para arreglarla: hay que saber si le sobran o
+    faltan caracteres, si trae basura, o si decodifica pero no da 32 bytes
+    —cada caso se corrige distinto—. Nada de esto revela la llave: son largos y
+    recuentos."""
+    import base64
+    import string
+
+    alfabeto = set(string.ascii_letters + string.digits + "-_=")
+    raros = [c for c in limpio if c not in alfabeto]
+    partes = [f"{len(limpio)} caracteres"]
+    if raros:
+        partes.append(f"{len(raros)} carácter(es) fuera del alfabeto base64url")
+        if any(c in "+/" for c in raros):
+            partes.append("tiene '+' o '/' (es base64 común, no base64url)")
+        if any(c.isspace() for c in raros):
+            partes.append("tiene espacios o saltos de línea en el medio")
+    try:
+        crudo = base64.urlsafe_b64decode(limpio.encode())
+        partes.append(f"decodifica a {len(crudo)} bytes (se esperan 32)")
+    except Exception:
+        partes.append("no decodifica como base64url")
+    return "; ".join(partes)
+
+
 def _fernet(valor, nombre: str) -> Fernet:
     limpio = _normalizar(valor)
     try:
@@ -64,8 +95,9 @@ def _fernet(valor, nombre: str) -> Fernet:
     except Exception as e:
         # Sin filtrar la llave: solo lo que hace falta para corregirla.
         raise RuntimeError(
-            f"{nombre} no es una llave válida ({len(limpio)} caracteres; se esperan 44 "
-            f"en base64url terminados en '='). Detalle: {e.__class__.__name__}"
+            f"{nombre} no es una llave utilizable. {_diagnostico(limpio)}. "
+            f"Una llave Fernet son 44 caracteres base64url que decodifican a 32 bytes. "
+            f"({e.__class__.__name__}: {e})"
         )
 
 
