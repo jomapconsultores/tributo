@@ -347,11 +347,23 @@ async def revelar(cred_id: int, req: Request, user_id: str = Depends(get_current
     except Exception as e:
         _log(credential_id=cred_id, admin_user_id=admin_id, action="reveal", req=req, metadata={"error": str(e), "rol": rol})
         # Caso típico: la credencial se cifró con una llave maestra anterior.
-        # Damos un mensaje accionable (409) en vez de un error técnico.
+        # Damos un mensaje accionable (409) en vez de un error técnico, y se
+        # distingue el caso grave —el servidor no tiene NINGUNA llave— del
+        # corriente, porque la salida no es la misma: uno se arregla en el
+        # entorno del servidor y el otro reingresando la contraseña.
+        if not key_configured():
+            raise HTTPException(
+                status_code=503,
+                detail="El servidor no tiene configurada la llave de cifrado "
+                       "(CREDENTIALS_MASTER_KEY): no se puede descifrar ni guardar ninguna clave. "
+                       "Es configuración del despliegue, no hace falta reingresar nada.",
+            )
         raise HTTPException(
             status_code=409,
-            detail="Esta credencial fue guardada con una llave anterior y no se puede descifrar. "
-                   "Vuelve a ingresar la contraseña (botón Editar) para guardarla con la llave actual.",
+            detail="Esta credencial se guardó con una llave de cifrado distinta de la que tiene hoy "
+                   "el servidor, así que no se puede descifrar. Dos salidas: agregar la llave "
+                   "original al entorno del backend (CREDENTIALS_MASTER_KEY_V2) y vuelve a abrirse "
+                   "sola, o volver a ingresar la contraseña acá (botón ✎).",
         )
     _log(credential_id=cred_id, admin_user_id=admin_id, action="reveal", req=req, metadata={"rol": rol})
     return {"id": cred_id, "service": row["service"], "username": row.get("username"), "password": password}

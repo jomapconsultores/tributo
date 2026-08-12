@@ -382,9 +382,11 @@ export default function AdminCredentials() {
 
       {creds.some((c) => c.needs_reentry) && (
         <div className="adm-cred-reentry-banner">
-          ⚠ {creds.filter((c) => c.needs_reentry).length} credencial(es) fueron cifradas con una llave anterior
-          y no se pueden descifrar. Editá cada una (✎) y volvé a ingresar la contraseña del portal SRI
-          para guardarla con la llave actual.
+          ⚠ {creds.filter((c) => c.needs_reentry).length} credencial(es) se guardaron con una llave de
+          cifrado distinta de la que tiene hoy el servidor, así que no se pueden descifrar. Hay dos
+          salidas: <strong>recuperar la llave original</strong> y agregarla al entorno del backend
+          (como <code>CREDENTIALS_MASTER_KEY_V2</code>), y vuelven a abrirse solas sin tocar nada; o
+          volver a ingresar cada contraseña acá (✎), que las regraba con la llave actual.
         </div>
       )}
 

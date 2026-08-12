@@ -9,6 +9,12 @@ Modelo de amenaza:
 - Atacante con el bundle JS del frontend → la MASTER_KEY NO está ahí, solo en el backend (env vars del servidor).
 - Atacante con la MASTER_KEY → puede descifrar todo. Por eso vive solo en env var y nunca en repo.
 
+Recuperación: al descifrar se prueban TODAS las llaves configuradas, no solo la de
+la key_version de la fila. Si alguna vez se cambió CREDENTIALS_MASTER_KEY sin migrar,
+las filas viejas siguen diciendo key_version=1 y con la llave nueva no abren; en vez de
+darlas por perdidas, basta con agregar la llave vieja al entorno (como V2, V3…) y
+vuelven a leerse sin tocar un registro.
+
 Rotación: cada ciphertext lleva su key_version. Para rotar:
   1) Generar CREDENTIALS_MASTER_KEY_V2 y agregarla a env (sin borrar V1).
   2) Actualizar CURRENT_KEY_VERSION abajo a 2 y deployar.
@@ -66,15 +72,34 @@ def encrypt(plaintext: str) -> tuple:
 
 
 def decrypt(ciphertext_ascii: str, key_version: int) -> str:
-    f = _keys().get(key_version)
-    if f is None:
-        raise RuntimeError(
-            f"No hay llave para key_version={key_version}. ¿Falta CREDENTIALS_MASTER_KEY_V{key_version} en env?"
-        )
-    try:
-        return f.decrypt(ciphertext_ascii.encode("ascii")).decode("utf-8")
-    except InvalidToken:
-        raise RuntimeError("Ciphertext corrupto o llave incorrecta")
+    """Descifra probando primero la llave declarada y, si no, TODAS las demás.
+
+    El key_version dice con cuál se cifró, pero es un dato de la fila y la fila
+    puede mentir: si alguna vez se cambió CREDENTIALS_MASTER_KEY sin migrar, las
+    filas siguen diciendo 1 y con la llave 1 de ahora ya no abren. Probar solo la
+    versión declarada convierte eso en pérdida total; probando todas, recuperar
+    el acceso es pegar la llave vieja en el entorno (como V2, V3…) y listo, sin
+    tocar un solo registro. No debilita nada: sin la llave correcta, ninguna
+    abre — Fernet autentica el mensaje, no hay forma de acertar por azar.
+    """
+    llaves = _keys()
+    datos = ciphertext_ascii.encode("ascii")
+    orden = [key_version] + [v for v in sorted(llaves) if v != key_version]
+    for v in orden:
+        f = llaves.get(v)
+        if f is None:
+            continue
+        try:
+            return f.decrypt(datos).decode("utf-8")
+        except InvalidToken:
+            continue
+    if not llaves:
+        raise RuntimeError("No hay ninguna llave de cifrado configurada en el servidor")
+    raise RuntimeError(
+        f"Ninguna de las {len(llaves)} llave(s) configuradas descifra esta credencial "
+        f"(se guardó con key_version={key_version}). Falta la llave con la que se cifró: "
+        "agregala al entorno como CREDENTIALS_MASTER_KEY_V2 y vuelve a abrirse sola."
+    )
 
 
 def key_configured() -> bool:
