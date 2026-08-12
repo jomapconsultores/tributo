@@ -114,10 +114,13 @@ _RATE_RULES = (
     # enumerar qué correos tienen biometría activada (responde distinto según
     # si el correo existe), sin ningún freno — el login con contraseña sí lo tenía.
     ("/api/webauthn/login", ("POST",), 12, 60),
-    # Revelar TODAS las claves SRI de golpe: debe ser MÁS restrictivo que una
-    # sola (era al revés: no tenía ningún límite). Se chequea antes que la regla
-    # general de "/reveal" porque la primera regla que matchea es la que aplica.
-    ("/api/credentials/", ("GET",), 3, 60, "/reveal-all"),
+    # Revelar TODAS las claves SRI de golpe. Dejó de ser una operación
+    # excepcional: la pantalla de Claves SRI muestra las contraseñas y las pide
+    # en cada carga, así que un tope de 3/min cortaba el uso normal (entrar,
+    # guardar, volver). Sigue habiendo tope —30/min frena una exfiltración
+    # automatizada— y cada llamada queda en auditoría. Se chequea antes que la
+    # regla general de "/reveal" porque la primera que matchea es la que aplica.
+    ("/api/credentials/", ("GET",), 30, 60, "/reveal-all"),
     # Acceso a credenciales SRI en plano: súper restrictivo (5/min) para detectar
     # exfiltración aún con sesión admin comprometida.
     ("/api/credentials/", ("GET",),  5, 60, "/reveal"),  # GET /api/credentials/{id}/reveal

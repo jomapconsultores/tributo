@@ -8,7 +8,6 @@ import BadgeVencimiento from '../components/BadgeVencimiento'
 import './AdminCredentials.css'
 
 const SERVICIOS = [{ key: 'sri_portal', label: 'Portal SRI' }]
-const REVEAL_TTL_SECONDS = 30
 
 // Servicios contratables que el admin marca por cliente (declaraciones SRI)
 const CLIENT_SERVICES = [
@@ -66,14 +65,13 @@ export default function AdminCredentials() {
   const [servicesByRuc, setServicesByRuc] = useState({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [reveal, setReveal] = useState(null) // { id, ruc, nombre, password, ttl }
-  // Claves a la vista en la propia tabla: { [credential_id]: password }. Se
-  // piden todas de una sola vez (un único evento en auditoría) porque el
-  // trabajo del despacho es entrar a declarar por muchos contribuyentes
-  // seguidos; revelar de a una, con temporizador, era abrir y cerrar el modal
-  // treinta veces por mañana.
-  const [claves, setClaves] = useState(null)
-  const [cargandoClaves, setCargandoClaves] = useState(false)
+  // Las claves se muestran, punto: { [credential_id]: password }. Vienen con el
+  // listado, en una sola llamada (un único evento en auditoría). No hay botón de
+  // revelar ni temporizador: esta pantalla ES la lista de claves del despacho, y
+  // preguntar "¿revelar?" treinta veces por mañana no protegía nada —quien entra
+  // acá ya tiene permiso— y solo estorbaba el trabajo.
+  const [claves, setClaves] = useState({})
+  const [clavesError, setClavesError] = useState('')
   // ¿El servidor tiene la llave de cifrado? Sin ella no se guarda ni se revela
   // nada, y el intento moría en un error de red que no explicaba por qué.
   const [llaveOk, setLlaveOk] = useState(true)
@@ -110,6 +108,21 @@ export default function AdminCredentials() {
         setLlaveOk(credsRes.data?.llave_ok !== false)
         setServicesByRuc(credsRes.data?.services_by_ruc || {})
         setContribs(dedupContribuyentes(credsRes.data?.contribuyentes || []))
+        // Las contraseñas van aparte porque descifrarlas es otra operación (y
+        // otro registro de auditoría), pero se piden acá mismo: la pantalla no
+        // sirve de nada sin ellas. Si fallan, la tabla igual se muestra.
+        try {
+          const cl = await credentialsAPI.revealAll()
+          const mapa = {}
+          for (const c of cl.data?.data || []) mapa[c.credential_id] = c.password
+          setClaves(mapa)
+          setClavesError('')
+        } catch (e) {
+          // Que la tabla se vea igual, pero diciendo por qué la columna de
+          // claves quedó vacía: si no, parece que ninguna clave está cargada.
+          setClaves({})
+          setClavesError(e.response?.data?.detail || e.message)
+        }
       } else {
         // Fuera del equipo del despacho: sin credenciales. Solo contribuyentes
         // visibles + el mapa de servicios (declaraciones marcadas) para marcarlas.
@@ -176,55 +189,6 @@ export default function AdminCredentials() {
     }
     return list
   }, [allRows, search, svcFilter, diaFilter, ordenFecha])
-
-  // Auto-ocultar la contraseña revelada después de REVEAL_TTL_SECONDS
-  useEffect(() => {
-    if (!reveal) return
-    if (reveal.ttl <= 0) { setReveal(null); return }
-    const t = setTimeout(() => setReveal((r) => r ? { ...r, ttl: r.ttl - 1 } : null), 1000)
-    return () => clearTimeout(t)
-  }, [reveal])
-
-  const onReveal = async (cred) => {
-    if (!confirm(
-      `Vas a revelar la contraseña del portal SRI de:\n\n${cred.nombre} (${cred.ruc})\n\n` +
-      `Esta acción quedará registrada en el log de auditoría con tu usuario, IP y fecha.\n\n` +
-      `¿Continuar?`
-    )) return
-    try {
-      const res = await credentialsAPI.reveal(cred.id)
-      setReveal({
-        id: cred.id,
-        ruc: cred.ruc,
-        nombre: cred.nombre,
-        username: res.data.username || '',
-        password: res.data.password,
-        ttl: REVEAL_TTL_SECONDS,
-      })
-    } catch (e) {
-      alert('No se pudo revelar: ' + (e.response?.data?.detail || e.message))
-    }
-  }
-
-  const verTodasLasClaves = async () => {
-    if (claves) { setClaves(null); return }   // segundo toque: se ocultan
-    setCargandoClaves(true)
-    try {
-      const res = await credentialsAPI.revealAll()
-      const mapa = {}
-      for (const c of res.data?.data || []) mapa[c.credential_id] = c.password
-      setClaves(mapa)
-      const fallidas = (res.data?.errors || []).length
-      if (fallidas) {
-        alert(`${fallidas} clave(s) no se pudieron descifrar: fueron guardadas con una llave ` +
-              'anterior. Editá cada una (✎) y volvé a ingresar la contraseña.')
-      }
-    } catch (e) {
-      alert('No se pudieron mostrar las claves: ' + (e.response?.data?.detail || e.message))
-    } finally {
-      setCargandoClaves(false)
-    }
-  }
 
   const onDelete = async (cred) => {
     if (!confirm(`Eliminar credencial SRI de "${cred.nombre}" (${cred.ruc})?\n\nEsta acción no se puede deshacer.`)) return
@@ -364,13 +328,13 @@ export default function AdminCredentials() {
         <span className="adm-cred-count">
           {filtered.length} de {allRows.length}
         </span>
-        {puedeVerClaves && (
-          <button className="adm-cred-verclaves" onClick={verTodasLasClaves} disabled={cargandoClaves}
-            title="Muestra las contraseñas en la tabla. Queda registrado en auditoría.">
-            {cargandoClaves ? '…' : claves ? '🙈 Ocultar claves' : '👁 Ver todas las claves'}
-          </button>
-        )}
       </div>
+
+      {puedeVerClaves && clavesError && (
+        <div className="adm-cred-sinllave-banner">
+          ⛔ No se pudieron traer las claves: {clavesError}
+        </div>
+      )}
 
       {puedeVerClaves && !llaveOk && (
         <div className="adm-cred-sinllave-banner">
@@ -449,7 +413,7 @@ export default function AdminCredentials() {
                 <th title="Cada cuánto declara el IVA este contribuyente">Declara IVA</th>
                 <th>Próxima declaración</th>
                 {puedeVerClaves && <th>Usuario</th>}
-                {puedeVerClaves && claves && <th>Clave</th>}
+                {puedeVerClaves && <th>Clave</th>}
                 {CLIENT_SERVICES.map((s) => (
                   <th key={s.key} className="adm-cred-svc-th" title={s.title}>{s.label}</th>
                 ))}
@@ -490,7 +454,7 @@ export default function AdminCredentials() {
                       : <span className="adm-cred-dim">—</span>}
                   </td>
                   {puedeVerClaves && <td>{c.username || <span className="adm-cred-dim">{c._sinClave ? '(sin clave)' : '(usa el RUC)'}</span>}</td>}
-                  {puedeVerClaves && claves && (
+                  {puedeVerClaves && (
                     <td className="adm-cred-clave-cell">
                       {claves[c.id] ? (
                         <>
@@ -524,7 +488,6 @@ export default function AdminCredentials() {
                         onClick={() => setEditor({ mode: 'create', presetClientId: c.client_id })}>＋ Clave</button>
                     ) : (
                       <>
-                        <button className="btn-reveal" onClick={() => onReveal(c)}>👁</button>
                         <button className="btn-edit" onClick={() => setEditor({ mode: 'edit', credential: c })}>✎</button>
                         <button className="btn-del" onClick={() => onDelete(c)} disabled={busy}>🗑</button>
                       </>
@@ -535,7 +498,7 @@ export default function AdminCredentials() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={puedeVerClaves ? (claves ? 12 : 11) : 8} className="adm-cred-empty-row">
+                  <td colSpan={puedeVerClaves ? 12 : 8} className="adm-cred-empty-row">
                     Ningún cliente coincide con el filtro seleccionado.
                   </td>
                 </tr>
@@ -543,14 +506,6 @@ export default function AdminCredentials() {
             </tbody>
           </table>
         </div>
-      )}
-
-      {reveal && (
-        <RevealModal
-          reveal={reveal}
-          onClose={() => setReveal(null)}
-          onCopy={onCopy}
-        />
       )}
 
       {editor && (
@@ -563,47 +518,6 @@ export default function AdminCredentials() {
           onSaved={() => { setEditor(null); load() }}
         />
       )}
-    </div>
-  )
-}
-
-function RevealModal({ reveal, onClose, onCopy }) {
-  return (
-    <div className="adm-cred-modal-bg" onClick={onClose}>
-      <div className="adm-cred-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="adm-cred-modal-head">
-          <strong>🔓 Credencial revelada</strong>
-          <span className="adm-cred-ttl" title="Se ocultará automáticamente">
-            {reveal.ttl}s
-          </span>
-        </div>
-        <div className="adm-cred-modal-body">
-          <div className="adm-cred-row">
-            <span className="adm-cred-lbl">Cliente</span>
-            <span>{reveal.nombre}</span>
-          </div>
-          <div className="adm-cred-row">
-            <span className="adm-cred-lbl">RUC</span>
-            <span className="mono">{reveal.ruc}</span>
-          </div>
-          {reveal.username && (
-            <div className="adm-cred-row">
-              <span className="adm-cred-lbl">Usuario</span>
-              <span className="mono">{reveal.username}</span>
-              <button className="adm-cred-copybtn" onClick={() => onCopy(reveal.username, 'usuario')}>📋</button>
-            </div>
-          )}
-          <div className="adm-cred-row">
-            <span className="adm-cred-lbl">Contraseña</span>
-            <span className="adm-cred-secret">{reveal.password}</span>
-            <button className="adm-cred-copybtn" onClick={() => onCopy(reveal.password, 'contraseña')}>📋</button>
-          </div>
-        </div>
-        <div className="adm-cred-modal-foot">
-          <small>Este acceso quedó registrado en el log de auditoría.</small>
-          <button onClick={onClose}>Cerrar</button>
-        </div>
-      </div>
     </div>
   )
 }
