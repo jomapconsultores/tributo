@@ -75,6 +75,16 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
     const L = (ico, label, to, visible = true) => ({ kind: 'link', ico, label, path: to, visible })
     const defs = [
       {
+        // Primera de la franja y sin grupo: las claves del SRI son lo que más se
+        // busca en el día a día —sin ellas no se entra a declarar— y estaban al
+        // final, dentro de Sistema. Es del equipo del despacho: administrador,
+        // socio y funcionario.
+        key: 'credenciales', ico: '🔐', rail: 'Claves SRI', title: 'Claves del SRI',
+        visible: isSuperAdmin || ['admin', 'socio', 'trabajador'].includes(role),
+        autoNav: true,
+        items: [L('🔐', 'Claves SRI', '/admin/credenciales')],
+      },
+      {
         key: 'ingresos_iva', ico: '📈', rail: 'Ingresos IVA', title: 'Ingresos IVA',
         color: 'ingresos', visible: has('ingresos_ice'),
         items: [
@@ -181,7 +191,6 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         items: [
           L('🛠️', 'Administración', '/admin'),
           { kind: 'link', ico: '📜', label: 'Movimientos', path: '/movimientos', visible: true, badge: movNuevos },
-          L('🔐', 'Credenciales SRI', '/admin/credenciales'),
           L('🔑', 'Acceso a clientes', '/admin/acceso-clientes'),
           L('🛡️', 'Permisos', '/admin/permisos'),
           L('🏢', 'Empresas', '/admin/empresas'),
@@ -195,11 +204,6 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         visible: !isSuperAdmin && role === 'admin', autoNav: true,
         items: [L('🏢', 'Empresas', '/admin/empresas')],
       },
-      {
-        key: 'credenciales', ico: '🔐', rail: 'Credenciales', title: 'Credenciales SRI',
-        visible: !isSuperAdmin && (role === 'socio' || role === 'trabajador'), autoNav: true,
-        items: [L('🔐', 'Credenciales SRI', '/admin/credenciales')],
-      },
     ]
     // Agrupación de la franja: da orden y hace el menú más fácil de recorrer.
     const GRUPOS = {
@@ -208,7 +212,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
       declaraciones: 'Tributario', pendientes: 'Tributario', devoluciones: 'Tributario',
       reportes: 'Gestión', odoo: 'Gestión', capacitaciones: 'Gestión',
       clientes: 'Datos', compradores: 'Datos',
-      admin: 'Sistema', credenciales: 'Sistema', empresas: 'Sistema',
+      admin: 'Sistema', empresas: 'Sistema',
     }
     return defs
       .filter((m) => m.visible)

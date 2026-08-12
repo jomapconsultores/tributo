@@ -14,7 +14,8 @@ from services.declaracion_oficial import llenar_oficial
 from services.periodo import (etiqueta_periodo, mes_anio_de_fecha, rango_semestre,
                               semestre_de_mes)
 from tenancy import assert_client_owner, visible_client_ids, visible_clients, filtro_org
-from routers.access import es_admin, es_data_admin, modulos_de, puede_submodulo
+from routers.access import es_admin, es_data_admin, modulos_de, puede_submodulo, rol_de
+from routers.credentials import ROLES_CLAVES
 
 # Cada tipo de declaración es un submódulo distinto (el admin puede habilitar
 # solo IVA sin ICE, etc.). Default = permitido si no hay restricción.
@@ -433,11 +434,15 @@ async def credenciales_cliente(client_id: str = Query(...), user_id: str = Depen
         supabase = get_supabase_client()
         admin = es_admin(user_id)
         data_admin = es_data_admin(user_id)
+        # La clave del SRI la ve todo el equipo del despacho (incluido el
+        # funcionario, que es quien declara): mismo criterio que la pantalla de
+        # Claves SRI, para que no dependa de por dónde se entre.
+        ve_clave = admin or rol_de(user_id) in ROLES_CLAVES
         if not data_admin:
             assert_client_owner(client_id, user_id)
         cl = supabase.table("clients").select("identificacion,nombre,user_id").eq("id", client_id).execute().data
         if not cl:
-            return {"servicios": [], "es_admin": admin, "credencial": None}
+            return {"servicios": [], "es_admin": admin, "puede_ver_clave": ve_clave, "credencial": None}
         ident = cl[0]["identificacion"]
         owner_uid = cl[0]["user_id"]
         # El ADMINISTRADOR (data_admin) ve la clave SRI de CUALQUIER contribuyente
@@ -454,16 +459,17 @@ async def credenciales_cliente(client_id: str = Query(...), user_id: str = Depen
         servicios = supabase.table("client_services").select("service,active").in_("client_id", ids).eq("active", True).execute().data or []
         servicios = sorted({s["service"] for s in servicios})
         credencial = None
-        # Admin Y socio ven la clave SRI. El admin sin restricción de dueño (arriba);
-        # el socio, limitado a los contribuyentes que puede ver (assert_client_owner
-        # ya se aplicó). El rol 'cliente' no ve credenciales.
-        if admin:
+        # El admin, sin restricción de dueño (arriba); socio y funcionario,
+        # limitados a los contribuyentes que pueden ver (assert_client_owner ya
+        # se aplicó). El rol 'cliente' no ve credenciales.
+        if ve_clave:
             cred = supabase.table("service_credentials").select("id,service,username").in_(
                 "client_id", ids).eq("service", "sri_portal").execute().data
             if cred:
                 c = cred[0]
                 credencial = {"id": c["id"], "service": c["service"], "username": c.get("username")}
-        return {"servicios": servicios, "es_admin": admin, "credencial": credencial}
+        return {"servicios": servicios, "es_admin": admin,
+                "puede_ver_clave": ve_clave, "credencial": credencial}
     except HTTPException:
         raise
     except Exception as e:

@@ -3,9 +3,10 @@
 # ------------------------------------------------------------
 """Gestión segura de credenciales de servicios externos (portal SRI, IESS, etc.).
 
-Solo accesible por administradores (tabla app_admins). Cada acción queda registrada en
+Accesible para el equipo del despacho —administrador, socio y funcionario— sobre los
+contribuyentes de SU empresa; nunca de otra. Cada acción queda registrada en
 credential_access_log con admin_user_id, IP y user_agent. Las contraseñas se descifran solo
-en el endpoint /reveal y nunca se devuelven en /list.
+en los endpoints /reveal y nunca se devuelven en /list.
 """
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -13,7 +14,7 @@ from pydantic import BaseModel, Field
 from database import get_supabase_client, fetch_all, fetch_in, es_error_duplicado
 from routers.admin import require_admin
 from auth import get_current_user
-from routers.access import es_admin, es_data_admin, rol_de
+from routers.access import es_data_admin, es_super_admin, rol_de
 from tenancy import assert_client_owner, visible_client_ids, filtro_org
 import orgs
 from services.credentials_crypto import encrypt, decrypt, can_decrypt
@@ -21,30 +22,69 @@ from services.credentials_crypto import encrypt, decrypt, can_decrypt
 # Roles que pueden MARCAR qué declaraciones hace cada contribuyente (sin ver claves).
 ROLES_MARCADO = {"admin", "socio", "trabajador"}
 
+# Roles que pueden VER y ACTUALIZAR las claves del portal del SRI: los del
+# despacho. El funcionario entra acá porque es quien declara: mandarlo a pedirle
+# la clave al socio cada vez no protege nada y frena el trabajo.
+ROLES_CLAVES = {"admin", "socio", "trabajador"}
+
 router = APIRouter(prefix="/api/credentials", tags=["credentials"])
 
 
-def _autorizar_ver_credencial(user_id: str, client_id: str):
-    """Autoriza VER/REVELAR la clave SRI de un contribuyente:
-      - admin (data_admin): cualquier credencial de SU EMPRESA, sin restricción
-        de dueño.
-      - socio: solo la de contribuyentes que puede ver (assert_client_owner).
-      - cliente: no autorizado.
-    Devuelve el rol efectivo ('admin' | 'socio') o lanza 403/404.
+async def require_claves(user_id: str = Depends(get_current_user)):
+    """Deja pasar a quien puede trabajar con las claves del SRI."""
+    if not (es_super_admin(user_id) or rol_de(user_id) in ROLES_CLAVES):
+        raise HTTPException(status_code=403, detail="No autorizado para ver las claves del SRI")
+    return user_id
 
-    Con multiempresa, "sin restricción de dueño" no significa "sin restricción de
-    empresa": son claves del portal del SRI, lo más sensible que guarda el
-    sistema, y un administrador de un despacho no puede poder revelar las de
-    otro. assert_client_owner deja pasar al admin dentro de su empresa, así que
-    su poder ahí no cambia; solo se corta el salto entre empresas."""
-    if es_data_admin(user_id):
-        if orgs.org_activa():
-            assert_client_owner(client_id, user_id)
-        return "admin"
-    if es_admin(user_id):  # socio
-        assert_client_owner(client_id, user_id)  # 404 si no puede acceder
-        return "socio"
-    raise HTTPException(status_code=403, detail="Solo administrador o socio pueden ver las claves SRI")
+
+def _clientes_de_la_empresa(user_id: str):
+    """IDs de contribuyentes de la EMPRESA ACTIVA, o None si no hay frontera que
+    aplicar (instalación de una sola empresa)."""
+    if not orgs.org_activa():
+        return None
+    sb = get_supabase_client()
+    return {c["id"] for c in fetch_all(lambda: filtro_org(sb.table("clients").select("id")))}
+
+
+def _contribuyentes_de_la_empresa():
+    """Todos los contribuyentes del despacho, para la pantalla de claves.
+
+    No se usa la cartera del usuario (`clients` visible por rol) a propósito: la
+    pantalla es el listado de claves del despacho y tiene que mostrar a TODOS,
+    también los que no tienen credencial cargada todavía —esa fila es la que
+    permite agregarla—. Ordenado por nombre y período descendente, que es lo que
+    espera el front para quedarse con el período más reciente de cada RUC."""
+    sb = get_supabase_client()
+    filas = fetch_all(lambda: filtro_org(sb.table("clients").select(
+        "id, identificacion, nombre, periodicidad, periodo_semestre, periodo_mes, periodo_anio")))
+    filas.sort(key=lambda c: (
+        (c.get("nombre") or "").lower(),
+        -(c.get("periodo_anio") or 0),
+        -(c.get("periodo_mes") or 0),
+    ))
+    return filas
+
+
+def _autorizar_ver_credencial(user_id: str, client_id: str):
+    """Autoriza VER/REVELAR/ACTUALIZAR la clave SRI de un contribuyente.
+
+    El alcance es la EMPRESA, no la cartera: admin, socio y funcionario ven la
+    clave de CUALQUIER contribuyente del despacho, no solo la de los que cargó
+    cada uno. Es a propósito y es lo que pide el trabajo —el que atiende declara
+    por el contribuyente que le toque ese día—; filtrar por cartera dejaba al
+    funcionario con una pantalla vacía.
+
+    Lo que no se toca es la frontera entre empresas: son las claves del portal
+    del SRI, lo más sensible que guarda el sistema, y un despacho no puede ver
+    las de otro. Devuelve el rol efectivo o lanza 403/404."""
+    rol = "admin" if es_super_admin(user_id) else rol_de(user_id)
+    if not (es_super_admin(user_id) or rol in ROLES_CLAVES):
+        raise HTTPException(status_code=403, detail="No autorizado para ver las claves del SRI")
+    sb = get_supabase_client()
+    # 404 y no 403: no se revela que el contribuyente existe en otra empresa.
+    if not filtro_org(sb.table("clients").select("id")).eq("id", client_id).execute().data:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    return rol
 
 SERVICIOS = {"sri_portal"}
 
@@ -89,16 +129,23 @@ class CredentialUpdate(BaseModel):
 
 
 @router.get("")
-async def listar(req: Request, admin_id: str = Depends(require_admin), q: Optional[str] = None):
+async def listar(req: Request, admin_id: str = Depends(require_claves), q: Optional[str] = None):
     """Listado con metadata + join a clients + servicios contratados.
     NO devuelve contraseñas (solo metadata + lista de servicios activos por cliente)."""
     sb = get_supabase_client()
     creds = sb.table("service_credentials").select(
         "id, client_id, service, username, key_version, ciphertext, notes, created_at, updated_at"
     ).order("updated_at", desc=True).execute().data or []
+    # La credencial vive colgada de un contribuyente: si el contribuyente es de
+    # otra empresa, su clave no se lista acá por más rol que se tenga.
+    de_la_empresa = _clientes_de_la_empresa(admin_id)
+    if de_la_empresa is not None:
+        creds = [c for c in creds if c.get("client_id") in de_la_empresa]
     if not creds:
         _log(credential_id=None, admin_user_id=admin_id, action="list", req=req, metadata={"count": 0, "q": q})
-        return {"data": []}
+        # Con los contribuyentes igual: sin una fila por contribuyente no hay
+        # dónde cargar la PRIMERA clave, y la pantalla quedaría vacía sin salida.
+        return {"data": [], "services_by_ruc": {}, "contribuyentes": _contribuyentes_de_la_empresa()}
 
     client_ids = list({c["client_id"] for c in creds})
     clients = sb.table("clients").select("id, identificacion, nombre").in_("id", client_ids).execute().data or []
@@ -109,7 +156,7 @@ async def listar(req: Request, admin_id: str = Depends(require_admin), q: Option
     # períodos/módulos). Se calcula para TODOS los contribuyentes —no solo los que
     # ya tienen credencial— para que un cliente nuevo (sin clave) también muestre
     # y permita marcar sus servicios.
-    todos = fetch_all(lambda: sb.table("clients").select("id, identificacion"))
+    todos = fetch_all(lambda: filtro_org(sb.table("clients").select("id, identificacion")))
     ruc_por_id = {}
     for r in todos:
         if r.get("identificacion"):
@@ -153,7 +200,11 @@ async def listar(req: Request, admin_id: str = Depends(require_admin), q: Option
     _log(credential_id=None, admin_user_id=admin_id, action="list", req=req, metadata={"count": len(out), "q": q})
     # services_by_ruc para que el frontend pinte los servicios de TODOS los
     # contribuyentes (incl. los que aún no tienen credencial).
-    return {"data": out, "services_by_ruc": {k: sorted(v) for k, v in services_by_ruc.items()}}
+    return {
+        "data": out,
+        "services_by_ruc": {k: sorted(v) for k, v in services_by_ruc.items()},
+        "contribuyentes": _contribuyentes_de_la_empresa(),
+    }
 
 
 @router.put("/services/{client_id}/{service}")
@@ -227,13 +278,16 @@ async def toggle_servicio(
 
 
 @router.get("/reveal-all")
-async def revelar_todos(req: Request, admin_id: str = Depends(require_admin)):
-    """Descifra todas las credenciales sri_portal en una sola llamada.
-    Auditado como un único evento 'reveal_all'. Solo admin."""
+async def revelar_todos(req: Request, admin_id: str = Depends(require_claves)):
+    """Descifra todas las credenciales sri_portal de la empresa en una sola
+    llamada. Auditado como un único evento 'reveal_all'."""
     sb = get_supabase_client()
     rows = sb.table("service_credentials").select(
         "id, client_id, service, username, ciphertext, key_version"
     ).eq("service", "sri_portal").execute().data or []
+    de_la_empresa = _clientes_de_la_empresa(admin_id)
+    if de_la_empresa is not None:
+        rows = [r for r in rows if r.get("client_id") in de_la_empresa]
 
     out = []
     errors = []
@@ -281,13 +335,12 @@ async def revelar(cred_id: int, req: Request, user_id: str = Depends(get_current
 
 
 @router.post("")
-async def crear(body: CredentialIn, req: Request, admin_id: str = Depends(require_admin)):
+async def crear(body: CredentialIn, req: Request, admin_id: str = Depends(require_claves)):
     if body.service not in SERVICIOS:
         raise HTTPException(status_code=400, detail=f"Servicio inválido. Permitidos: {sorted(SERVICIOS)}")
+    # Mismo alcance que revelar: el contribuyente tiene que ser de la empresa.
+    _autorizar_ver_credencial(admin_id, body.client_id)
     sb = get_supabase_client()
-    cl = sb.table("clients").select("id").eq("id", body.client_id).execute().data
-    if not cl:
-        raise HTTPException(status_code=404, detail="Cliente no existe")
     ciphertext, kv = encrypt(body.password)
     try:
         res = sb.table("service_credentials").insert({
@@ -309,11 +362,12 @@ async def crear(body: CredentialIn, req: Request, admin_id: str = Depends(requir
 
 
 @router.put("/{cred_id}")
-async def actualizar(cred_id: int, body: CredentialUpdate, req: Request, admin_id: str = Depends(require_admin)):
+async def actualizar(cred_id: int, body: CredentialUpdate, req: Request, admin_id: str = Depends(require_claves)):
     sb = get_supabase_client()
-    cur = sb.table("service_credentials").select("id").eq("id", cred_id).execute().data
+    cur = sb.table("service_credentials").select("id, client_id").eq("id", cred_id).execute().data
     if not cur:
         raise HTTPException(status_code=404, detail="Credencial no encontrada")
+    _autorizar_ver_credencial(admin_id, cur[0].get("client_id"))
     updates = {"updated_by": admin_id}
     if body.username is not None:
         updates["username"] = body.username
@@ -330,11 +384,12 @@ async def actualizar(cred_id: int, body: CredentialUpdate, req: Request, admin_i
 
 
 @router.delete("/{cred_id}")
-async def eliminar(cred_id: int, req: Request, admin_id: str = Depends(require_admin)):
+async def eliminar(cred_id: int, req: Request, admin_id: str = Depends(require_claves)):
     sb = get_supabase_client()
-    cur = sb.table("service_credentials").select("id").eq("id", cred_id).execute().data
+    cur = sb.table("service_credentials").select("id, client_id").eq("id", cred_id).execute().data
     if not cur:
         raise HTTPException(status_code=404, detail="Credencial no encontrada")
+    _autorizar_ver_credencial(admin_id, cur[0].get("client_id"))
     sb.table("service_credentials").delete().eq("id", cred_id).execute()
     _log(credential_id=cred_id, admin_user_id=admin_id, action="delete", req=req)
     return {"ok": True}

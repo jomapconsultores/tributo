@@ -2,7 +2,7 @@
  * Desarrollado por Marco Antonio Posligua San Martín
  * ------------------------------------------------------------ */
 import { useState, useEffect } from 'react'
-import { Outlet, useLocation } from 'react-router-dom'
+import { Link, Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import NewClientModal from './NewClientModal'
 import AlertaDeclaracion from './AlertaDeclaracion'
@@ -42,6 +42,11 @@ export default function Layout({ user, onLogout }) {
   const [modalOpen, setModalOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
+  // Acceso directo a las claves del SRI desde cualquier pantalla: es lo primero
+  // que se necesita para entrar a declarar, y buscarlo en el menú cada vez era
+  // el paso de más. Mismo alcance que la pantalla: el equipo del despacho.
+  const { isSuperAdmin, role } = useAccess()
+  const verClaves = isSuperAdmin || ['admin', 'socio', 'trabajador'].includes(role)
 
   const openNewClient = () => setModalOpen(true)
 
@@ -54,6 +59,9 @@ export default function Layout({ user, onLogout }) {
       <header className="layout-topbar">
         <button className="topbar-burger" onClick={() => setSidebarOpen((o) => !o)} aria-label="Menú">☰</button>
         <span className="topbar-title">📑 Gestor Tributario</span>
+        {user?.email && verClaves && (
+          <Link to="/admin/credenciales" className="topbar-claves" title="Claves del portal del SRI">🔐</Link>
+        )}
         {user?.email && <span className="topbar-user">👤 {user.email}</span>}
         {user?.email && <RoleSwitcher />}
       </header>
@@ -66,6 +74,10 @@ export default function Layout({ user, onLogout }) {
           <div className="user-topbar">
             <span className="user-topbar-ico">👤</span>
             <span className="user-topbar-email">{user.email}</span>
+            {verClaves && (
+              <Link to="/admin/credenciales" className="user-topbar-claves"
+                title="Claves del portal del SRI">🔐 Claves SRI</Link>
+            )}
             <RoleSwitcher />
             {/* Va DESPUÉS del selector de rol a propósito: .role-switcher lleva
                 margin-left:auto y es quien empuja el grupo a la derecha. */}

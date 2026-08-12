@@ -30,6 +30,26 @@
   color: #93c5fd;
   letter-spacing: 0.2px;
 }
+/* Acceso a las claves del SRI: se lo distingue del resto de la barra —es lo que
+   se busca a diario— sin robarle el ojo al selector de rol. */
+.user-topbar-claves {
+  border: 1px solid rgba(250, 204, 21, 0.45);
+  background: rgba(250, 204, 21, 0.12);
+  color: #fde68a;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 6px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.user-topbar-claves:hover { background: rgba(250, 204, 21, 0.22); }
+.topbar-claves {
+  margin-left: auto;
+  font-size: 1rem;
+  text-decoration: none;
+  padding: 0 6px;
+}
 .map-link-btn {
   margin-left: auto;
   border: 1px solid rgba(59, 130, 246, 0.45);

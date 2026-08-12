@@ -31,9 +31,10 @@ const periodicidadKey = (c) =>
     ? `semestral-${c.periodo_semestre || ((c.periodo_mes || 1) <= 6 ? 1 : 2)}`
     : 'mensual'
 
-// clientsAPI.list llega ordenado por nombre y período descendente, así que el
-// primer registro de cada identificación es su período MÁS RECIENTE: es sobre ese
-// sobre el que se cambia la periodicidad.
+// El listado llega ordenado por nombre y período descendente (lo garantizan
+// tanto clientsAPI.list como /api/credentials), así que el primer registro de
+// cada identificación es su período MÁS RECIENTE: es sobre ese sobre el que se
+// cambia la periodicidad.
 function dedupContribuyentes(clients) {
   const seen = new Set()
   const out = []
@@ -51,9 +52,12 @@ function dedupContribuyentes(clients) {
 }
 
 export default function AdminCredentials() {
-  // El admin (super) ve TODO (claves, revelar, editar). Socio/trabajador acceden
-  // a la vista LIMITADA: solo marcar qué declaraciones hace cada contribuyente.
-  const { isSuperAdmin } = useAccess()
+  // Las claves son del despacho: administrador, socio y funcionario ven, revelan
+  // y actualizan las de CUALQUIER contribuyente de la empresa. Quien no sea del
+  // equipo (cliente) entra a la vista LIMITADA: solo marcar qué declaraciones
+  // hace cada contribuyente. El backend aplica la misma regla.
+  const { isSuperAdmin, role } = useAccess()
+  const puedeVerClaves = isSuperAdmin || ['admin', 'socio', 'trabajador'].includes(role)
   const { estaPresentada } = useDeclPresentadas()
   const [creds, setCreds] = useState([])
   const [contribs, setContribs] = useState([])
@@ -86,17 +90,18 @@ export default function AdminCredentials() {
   const load = async () => {
     setLoading(true)
     try {
-      if (isSuperAdmin) {
-        const [credsRes, contribsRes] = await Promise.all([
-          credentialsAPI.list(),
-          clientsAPI.list(),
-        ])
+      if (puedeVerClaves) {
+        // Los contribuyentes vienen del mismo endpoint que las claves: son los
+        // del despacho entero, no la cartera de quien mira. Con clientsAPI.list
+        // un funcionario veía una pantalla casi vacía, porque su rol solo
+        // alcanza los contribuyentes que cargó él.
+        const credsRes = await credentialsAPI.list()
         setCreds(credsRes.data?.data || [])
         setServicesByRuc(credsRes.data?.services_by_ruc || {})
-        setContribs(dedupContribuyentes(contribsRes.data || []))
+        setContribs(dedupContribuyentes(credsRes.data?.contribuyentes || []))
       } else {
-        // Socio/trabajador: sin credenciales. Solo contribuyentes visibles + el
-        // mapa de servicios (declaraciones marcadas) para poder marcarlas.
+        // Fuera del equipo del despacho: sin credenciales. Solo contribuyentes
+        // visibles + el mapa de servicios (declaraciones marcadas) para marcarlas.
         const [contribsRes, svcRes] = await Promise.all([
           clientsAPI.list(),
           clientsAPI.servicesMap(),
@@ -118,7 +123,7 @@ export default function AdminCredentials() {
       setLoading(false)
     }
   }
-  useEffect(() => { load() }, [isSuperAdmin])
+  useEffect(() => { load() }, [puedeVerClaves])
 
   // Una fila por contribuyente (RUC): si ya tiene credencial se muestra tal cual;
   // si NO la tiene (p.ej. cliente recién creado), aparece igual con opción de
@@ -298,11 +303,12 @@ export default function AdminCredentials() {
     <div className="adm-cred">
       <header className="adm-cred-head">
         <div>
-          <h2>{isSuperAdmin ? '🔐 Credenciales de servicios externos' : '🗂️ Declaraciones por contribuyente'}</h2>
+          <h2>{puedeVerClaves ? '🔐 Credenciales de servicios externos' : '🗂️ Declaraciones por contribuyente'}</h2>
           <p className="adm-cred-sub">
-            {isSuperAdmin ? (
-              <>Acceso exclusivo del administrador. Las contraseñas están cifradas en base de datos
-              (AES + HMAC con llave fuera del repo). Cada revelado queda registrado en auditoría.</>
+            {puedeVerClaves ? (
+              <>Claves del portal del SRI de todos los contribuyentes del despacho. Están cifradas
+              en base de datos (AES + HMAC con llave fuera del repo) y cada revelado queda
+              registrado en auditoría con quién, cuándo y desde qué IP.</>
             ) : (
               <>Marca qué declaraciones hace cada contribuyente. Las que estén marcadas y aún no
               subidas al SRI aparecen en <strong>Clientes pendientes</strong>; al desmarcarlas, se
@@ -310,7 +316,7 @@ export default function AdminCredentials() {
             )}
           </p>
         </div>
-        {isSuperAdmin && (
+        {puedeVerClaves && (
           <button className="adm-cred-add" onClick={() => setEditor({ mode: 'create' })} disabled={busy}>
             + Nueva credencial
           </button>
@@ -395,12 +401,12 @@ export default function AdminCredentials() {
                 <th>RUC</th>
                 <th title="Cada cuánto declara el IVA este contribuyente">Declara IVA</th>
                 <th>Próxima declaración</th>
-                {isSuperAdmin && <th>Usuario</th>}
+                {puedeVerClaves && <th>Usuario</th>}
                 {CLIENT_SERVICES.map((s) => (
                   <th key={s.key} className="adm-cred-svc-th" title={s.title}>{s.label}</th>
                 ))}
-                {isSuperAdmin && <th>Modificada</th>}
-                {isSuperAdmin && <th>Acciones</th>}
+                {puedeVerClaves && <th>Modificada</th>}
+                {puedeVerClaves && <th>Acciones</th>}
               </tr>
             </thead>
             <tbody>
@@ -435,7 +441,7 @@ export default function AdminCredentials() {
                       ? <BadgeVencimiento ruc={c.ruc} client={c._periodo} presentada={estaPresentada(c.ruc)} />
                       : <span className="adm-cred-dim">—</span>}
                   </td>
-                  {isSuperAdmin && <td>{c.username || <span className="adm-cred-dim">{c._sinClave ? '(sin clave)' : '(usa el RUC)'}</span>}</td>}
+                  {puedeVerClaves && <td>{c.username || <span className="adm-cred-dim">{c._sinClave ? '(sin clave)' : '(usa el RUC)'}</span>}</td>}
                   {CLIENT_SERVICES.map((s) => {
                     const checked = c.client_services?.includes(s.key) || false
                     return (
@@ -449,8 +455,8 @@ export default function AdminCredentials() {
                       </td>
                     )
                   })}
-                  {isSuperAdmin && <td className="adm-cred-dim">{(c.updated_at || '').slice(0, 16).replace('T', ' ')}</td>}
-                  {isSuperAdmin && (
+                  {puedeVerClaves && <td className="adm-cred-dim">{(c.updated_at || '').slice(0, 16).replace('T', ' ')}</td>}
+                  {puedeVerClaves && (
                   <td className="adm-cred-actions">
                     {c._sinClave ? (
                       <button className="btn-add-clave" title="Agregar la clave del portal SRI de este contribuyente"
@@ -468,7 +474,7 @@ export default function AdminCredentials() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={isSuperAdmin ? 11 : 8} className="adm-cred-empty-row">
+                  <td colSpan={puedeVerClaves ? 11 : 8} className="adm-cred-empty-row">
                     Ningún cliente coincide con el filtro seleccionado.
                   </td>
                 </tr>

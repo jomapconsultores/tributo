@@ -14,7 +14,9 @@ export default function ClaveHeader({ clientId }) {
       .then((r) => {
         if (cancelled) return
         const d = r.data
-        if (!d?.es_admin || !d?.credencial?.id) return
+        // `puede_ver_clave` incluye al funcionario, que es quien declara;
+        // `es_admin` se mantiene por compatibilidad con respuestas viejas.
+        if (!(d?.puede_ver_clave ?? d?.es_admin) || !d?.credencial?.id) return
         setCred({ id: d.credencial.id, username: d.credencial.username || '' })
       })
       .catch(() => {})
