@@ -1451,5 +1451,18 @@
   };
 
   // El panel se pinta al final: usa lo definido arriba.
-  pintar();
+  //
+  // Y si la solicitud viene autorizada desde el sistema (`auto`), el recorrido
+  // arranca solo: la persona ya dijo que sí, con contribuyente, período,
+  // cantidad y monto delante, al tocar "Enviar al SRI". Volver a preguntar acá
+  // sería pedir dos veces lo mismo. Un período semestral es la excepción —hay
+  // que elegir qué mes se presenta— y ahí sí se muestra el panel.
+  const mesesConComprobantes = () => (paquete && paquete.detalle_meses || [])
+    .filter((d) => d.comprobantes > 0).map((d) => d.mes);
+  if (paquete && paquete.auto && (hayFormulario() || enlaceIngresarFacturas()) &&
+      mesesConComprobantes().length <= 1) {
+    llenarYEnviar(mesesConComprobantes()[0] || paquete.periodo.mes, true);
+  } else {
+    pintar();
+  }
 })();

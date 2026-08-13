@@ -493,25 +493,31 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
     setMsg(null)
     try {
       const r = await devolucionesIvaAPI.envio(sol.id)
-      const paquete = JSON.stringify(r.data)
+      // La autorización se da ACÁ, con los números delante. Si el usuario acepta,
+      // el paquete viaja marcado como `auto` y el marcador, al abrirse en el
+      // portal, hace el recorrido entero sin volver a preguntar nada. Preguntar
+      // dos veces lo mismo —una acá y otra allá— no agregaba control.
+      const seguir = window.confirm(
+        `📤 Presentar al SRI la devolución de ${r.data.periodo.etiqueta}\n` +
+        `${r.data.contribuyente.nombre} (${r.data.contribuyente.identificacion})\n` +
+        `${r.data.items.length} comprobante(s) · a solicitar ${fmtMoney(r.data.totales.solicitado)}\n\n` +
+        'Al ACEPTAR se abre el portal del SRI y, en cuanto toques el marcador\n' +
+        '"📤 Enviador-DEVOLUCIÓN", él solo marca los comprobantes, les pone el\n' +
+        'tipo de gasto, procesa, guarda y PRESENTA la solicitud, sin preguntar\n' +
+        'más. Presentar no se puede deshacer (art. 298 del COIP).\n\n' +
+        'CANCELAR también copia la solicitud, pero el marcador se detendrá\n' +
+        'antes de presentar para que revises el resumen del portal.'
+      )
+      const paquete = JSON.stringify({ ...r.data, auto: seguir })
       let copiado = true
       try {
         await navigator.clipboard.writeText(paquete)
       } catch { copiado = false }
-      const seguir = window.confirm(
-        `📤 Enviar al SRI la devolución de ${r.data.periodo.etiqueta}\n` +
-        `${r.data.contribuyente.nombre} (${r.data.contribuyente.identificacion})\n` +
-        `${r.data.items.length} comprobante(s) · a solicitar ${fmtMoney(r.data.totales.solicitado)}\n\n` +
-        (copiado
-          ? 'El paquete de la solicitud quedó COPIADO en el portapapeles.\n\n'
-          : '⚠ No se pudo copiar automáticamente: exportá el Excel y usalo como respaldo.\n\n') +
-        'En el portal del SRI: Devoluciones → Devolución de IVA → "Ingresar facturas\n' +
-        'electrónicas", hasta ver los combos Año y Período. Ahí tocá el marcador\n' +
-        '"📤 Enviador-DEVOLUCIÓN" y después "Llenar y presentar en el portal":\n' +
-        'marca los comprobantes, pone el tipo de gasto y presenta la solicitud.\n\n' +
-        '¿Abrir ahora el portal del SRI en otra pestaña?'
-      )
-      if (seguir) window.open(SRI_DEVOLUCION_URL, '_blank', 'noopener')
+      if (!copiado) {
+        alert('⚠ No se pudo copiar la solicitud al portapapeles. Abrí el marcador en el ' +
+          'portal y usá "Pegar el paquete de una solicitud", o exportá el Excel como respaldo.')
+      }
+      window.open(SRI_DEVOLUCION_URL, '_blank', 'noopener')
       // La constancia se toma de la pantalla de confirmación del portal, que es
       // la que dice cuántos comprobantes procesó y por cuánto. Puede no coincidir
       // con lo marcado acá: el SRI trabaja con su propio listado filtrado.

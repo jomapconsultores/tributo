@@ -16,9 +16,10 @@ no se ve en la fuente.
     python scripts/test_enviador_devolucion.py nativo src # y contra la fuente
 
 Variantes del portal (el SRI cambia el widget entre versiones):
-    widget  el click va a la caja del checkbox   -> tiene que marcar los 12
-    nativo  la caja no escucha, sí el checkbox   -> tiene que marcar los 12
-    muerto  no escucha nadie                     -> tiene que CORTAR y avisar
+    auto    solicitud autorizada desde el sistema -> corre SOLA, sin un click
+    widget  el click va a la caja del checkbox     -> tiene que marcar los 12
+    nativo  la caja no escucha, sí el checkbox     -> tiene que marcar los 12
+    muerto  no escucha nadie                       -> tiene que CORTAR y avisar
 
 Necesita Playwright (pip install playwright && playwright install chromium).
 """
@@ -46,8 +47,11 @@ def codigo_del_marcador(fuente: str) -> str:
     return unquote(url[len("javascript:"):])
 
 
-def paquete_de_prueba() -> dict:
-    """Lo mismo que entrega GET /devoluciones-iva/solicitudes/{id}/envio."""
+def paquete_de_prueba(auto: bool = False) -> dict:
+    """Lo mismo que entrega GET /devoluciones-iva/solicitudes/{id}/envio.
+
+    `auto` es la marca que pone la app cuando el usuario autoriza el envio
+    desde el sistema: con ella el marcador arranca solo, sin tocar nada."""
     items = []
     for n, serie in enumerate(SERIES, start=1):
         items.append({
@@ -70,6 +74,7 @@ def paquete_de_prueba() -> dict:
         "detalle_meses": [{"mes": 7, "comprobantes": len(items), "iva": iva,
                            "tope": 361.50, "solicitar": iva, "excedente": 0}],
         "estado": "borrador",
+        "auto": auto,
         "items": items,
     }
 
@@ -88,30 +93,35 @@ def correr(modo: str, fuente: str) -> bool:
         errores = []
         pg.on("pageerror", lambda e: errores.append("PAGEERROR: " + str(e)))
 
-        pg.goto(PORTAL.as_uri() + "?modo=" + modo)
+        # 'auto' no es una variante del portal sino del paquete: corre sobre el
+        # portal normal, pero con la solicitud ya autorizada desde el sistema.
+        auto = modo == "auto"
+        pg.goto(PORTAL.as_uri() + "?modo=" + ("widget" if auto else modo))
         pg.click("#lnkIngresar")
         pg.wait_for_timeout(800)
         # La app deja la solicitud en el portapapeles; el marcador la lee de ahí.
-        pg.evaluate("txt => navigator.clipboard.writeText(txt)", json.dumps(paquete_de_prueba()))
+        pg.evaluate("txt => navigator.clipboard.writeText(txt)", json.dumps(paquete_de_prueba(auto)))
         pg.evaluate(codigo)
         pg.wait_for_timeout(1500)
 
-        botones = pg.evaluate(BOTONES)
-        if "Llenar y presentar en el portal" not in botones:
-            print(f"  ✖ el panel no ofrece 'Llenar y presentar': {botones}")
-            nav.close()
-            return False
-        pg.evaluate(DEL_PANEL + ".find(b=>b.textContent==='Llenar y presentar en el portal').click()")
+        # Con la solicitud autorizada desde el sistema no se toca NADA: el
+        # marcador tiene que estar trabajando desde que se abrió.
+        if not auto:
+            botones = pg.evaluate(BOTONES)
+            if "Llenar y presentar en el portal" not in botones:
+                print(f"  ✖ el panel no ofrece 'Llenar y presentar': {botones}")
+                nav.close()
+                return False
+            pg.evaluate(DEL_PANEL + ".find(b=>b.textContent==='Llenar y presentar en el portal').click()")
 
-        # La autorización se pide UNA vez, antes de tocar el portal. Se acepta el
-        # recorrido completo: marcar, clasificar, procesar, guardar y presentar.
-        pg.wait_for_timeout(500)
-        autorizar = "Sí, presentar automáticamente"
-        if autorizar not in pg.evaluate(BOTONES):
-            print(f"  ✖ no apareció la autorización: {pg.evaluate(BOTONES)}")
-            nav.close()
-            return False
-        pg.evaluate(DEL_PANEL + f".find(b=>b.textContent==={json.dumps(autorizar)}).click()")
+            # Sin autorizar desde el sistema, la pide el propio marcador.
+            pg.wait_for_timeout(500)
+            autorizar = "Sí, presentar automáticamente"
+            if autorizar not in pg.evaluate(BOTONES):
+                print(f"  ✖ no apareció la autorización: {pg.evaluate(BOTONES)}")
+                nav.close()
+                return False
+            pg.evaluate(DEL_PANEL + f".find(b=>b.textContent==={json.dumps(autorizar)}).click()")
 
         t0 = time.time()
         panel = ""
@@ -155,7 +165,7 @@ def correr(modo: str, fuente: str) -> bool:
 
 
 if __name__ == "__main__":
-    modos = [sys.argv[1]] if len(sys.argv) > 1 else ["widget", "nativo", "muerto"]
+    modos = [sys.argv[1]] if len(sys.argv) > 1 else ["auto", "widget", "nativo", "muerto"]
     fuente = sys.argv[2] if len(sys.argv) > 2 else "min"
     print(f"Enviador-DEVOLUCIÓN contra el portal simulado ({fuente})")
     todo_bien = True
