@@ -72,3 +72,21 @@ for (const { fuente, destino } of BOOKMARKLETS) {
   console.log('OK ->', destino)
   console.log('   ', unaLinea.length, 'caracteres (fuente:', readFileSync(fuente, 'utf8').length + ')')
 }
+
+// La extensión corre EL MISMO enviador que el marcador. Se genera de la misma
+// fuente para que no puedan divergir: arreglar el marcador y olvidarse de la
+// extensión (o al revés) sería la forma más fácil de que uno de los dos vuelva
+// a fallar en el portal. Acá no hace falta una sola línea —es un archivo .js
+// normal—, así que se copia tal cual, con un encabezado que avisa que es
+// generado.
+const FUENTE_EXT = join(raiz, 'sri_downloader', 'bookmarklet_devolucion.js')
+const DESTINO_EXT = join(raiz, 'extension', 'enviador.js')
+const cabecera = [
+  '// ARCHIVO GENERADO — no editar acá.',
+  '// Sale de sri_downloader/bookmarklet_devolucion.js con:',
+  '//     node scripts/build_bookmarklets.mjs',
+  '// Es el mismo enviador que usa el marcador; la extensión solo lo inyecta.',
+  '',
+].join('\n')
+writeFileSync(DESTINO_EXT, cabecera + readFileSync(FUENTE_EXT, 'utf8'), 'utf8')
+console.log('OK ->', DESTINO_EXT)

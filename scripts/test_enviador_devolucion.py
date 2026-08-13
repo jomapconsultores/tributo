@@ -16,6 +16,7 @@ no se ve en la fuente.
     python scripts/test_enviador_devolucion.py nativo src # y contra la fuente
 
 Variantes del portal (el SRI cambia el widget entre versiones):
+    extension  solicitud inyectada como hace la extension -> corre SOLA
     auto    solicitud autorizada desde el sistema -> corre SOLA, sin un click
     widget  el click va a la caja del checkbox     -> tiene que marcar los 12
     nativo  la caja no escucha, sí el checkbox     -> tiene que marcar los 12
@@ -35,6 +36,7 @@ RAIZ = pathlib.Path(__file__).resolve().parent.parent
 PORTAL = RAIZ / "scripts/portal_devolucion_falso.html"
 TXT = RAIZ / "frontend/src/utils/enviador-devolucion.bookmarklet.txt"
 FUENTE_JS = RAIZ / "sri_downloader/bookmarklet_devolucion.js"
+EXT = RAIZ / "extension"
 
 SERIES = ["003-301-0000891%02d" % (n + 10) for n in range(1, 13)]
 
@@ -95,13 +97,38 @@ def correr(modo: str, fuente: str) -> bool:
 
         # 'auto' no es una variante del portal sino del paquete: corre sobre el
         # portal normal, pero con la solicitud ya autorizada desde el sistema.
-        auto = modo == "auto"
+        # 'extension' entrega la solicitud como lo hace la extensión de Chrome:
+        # inyectada en la página, sin pasar por el portapapeles.
+        extension = modo == "extension"
+        auto = modo == "auto" or extension
         pg.goto(PORTAL.as_uri() + "?modo=" + ("widget" if auto else modo))
         pg.click("#lnkIngresar")
         pg.wait_for_timeout(800)
-        # La app deja la solicitud en el portapapeles; el marcador la lee de ahí.
-        pg.evaluate("txt => navigator.clipboard.writeText(txt)", json.dumps(paquete_de_prueba(auto)))
-        pg.evaluate(codigo)
+        if extension:
+            # Se corren los scripts DE VERDAD de la extension, con las APIs de
+            # Chrome simuladas: asi se prueba el puente app -> almacenamiento ->
+            # portal, que es donde puede romperse sin que nadie lo note.
+            pg.evaluate("""(url) => {
+              const datos = {};
+              window.chrome = {
+                storage: { local: {
+                  set: (o, cb) => { Object.assign(datos, o); cb && cb(); },
+                  get: (k, cb) => cb({ [k]: datos[k] }),
+                  remove: (k, cb) => { delete datos[k]; cb && cb(); },
+                } },
+                runtime: { getURL: () => url },
+              };
+            }""", (EXT / "enviador.js").as_uri())
+            pg.evaluate((EXT / "contenido-app.js").read_text(encoding="utf-8"))
+            pg.evaluate("p => window.postMessage({ tipo: 'jomap-devolucion-paquete', paquete: p }, '*')",
+                        paquete_de_prueba(True))
+            pg.wait_for_timeout(300)
+            pg.evaluate((EXT / "contenido-sri.js").read_text(encoding="utf-8"))
+        else:
+            # La app deja la solicitud en el portapapeles; el marcador la lee de ahí.
+            pg.evaluate("txt => navigator.clipboard.writeText(txt)", json.dumps(paquete_de_prueba(auto)))
+        if not extension:
+            pg.evaluate(codigo)
         pg.wait_for_timeout(1500)
 
         # Con la solicitud autorizada desde el sistema no se toca NADA: el
@@ -165,7 +192,7 @@ def correr(modo: str, fuente: str) -> bool:
 
 
 if __name__ == "__main__":
-    modos = [sys.argv[1]] if len(sys.argv) > 1 else ["auto", "widget", "nativo", "muerto"]
+    modos = [sys.argv[1]] if len(sys.argv) > 1 else ["extension", "auto", "widget", "nativo", "muerto"]
     fuente = sys.argv[2] if len(sys.argv) > 2 else "min"
     print(f"Enviador-DEVOLUCIÓN contra el portal simulado ({fuente})")
     todo_bien = True

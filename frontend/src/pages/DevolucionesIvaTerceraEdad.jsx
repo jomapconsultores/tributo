@@ -508,7 +508,13 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
         'CANCELAR también copia la solicitud, pero el marcador se detendrá\n' +
         'antes de presentar para que revises el resumen del portal.'
       )
-      const paquete = JSON.stringify({ ...r.data, auto: seguir })
+      const solicitud = { ...r.data, auto: seguir }
+      // Para quien tenga instalada la extensión: se publica en la propia
+      // ventana y ella la recoge, así el portal arranca sin tocar el marcador.
+      // Sin extensión no pasa nada —nadie escucha— y sigue el camino del
+      // portapapeles, que es el de siempre.
+      window.postMessage({ tipo: 'jomap-devolucion-paquete', paquete: solicitud }, window.location.origin)
+      const paquete = JSON.stringify(solicitud)
       let copiado = true
       try {
         await navigator.clipboard.writeText(paquete)

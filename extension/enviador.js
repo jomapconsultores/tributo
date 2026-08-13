@@ -1,3 +1,7 @@
+// ARCHIVO GENERADO — no editar acá.
+// Sale de sri_downloader/bookmarklet_devolucion.js con:
+//     node scripts/build_bookmarklets.mjs
+// Es el mismo enviador que usa el marcador; la extensión solo lo inyecta.
 /* ------------------------------------------------------------
  * Desarrollado por Marco Antonio Posligua San Martín
  * ------------------------------------------------------------

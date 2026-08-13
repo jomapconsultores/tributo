@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Enviador-DEVOLUCIÓN (SRI) — Gestor Tributario",
+  "description": "Presenta en el portal del SRI la solicitud de devolución de IVA armada en el Gestor Tributario, sin cargarla a mano.",
+  "version": "1.0.0",
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://tributos.pensamiento-libre.org/*",
+        "http://localhost:5173/*"
+      ],
+      "js": ["contenido-app.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://srienlinea.sri.gob.ec/devolucionTerceraEdad-internet/*"
+      ],
+      "js": ["contenido-sri.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["enviador.js"],
+      "matches": ["https://srienlinea.sri.gob.ec/*"]
+    }
+  ]
+}
