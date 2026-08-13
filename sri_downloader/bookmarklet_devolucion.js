@@ -647,6 +647,31 @@
   // oculto dentro del widget, así que no se filtra por visibilidad.
   const comboDeFila = (f) => f.tr.querySelector('select');
 
+  // Lo que el portal MUESTRA en el combo de la fila. Es el único testigo de que
+  // el tipo de gasto entró: el <select> de abajo se puede cambiar por código sin
+  // que el portal se entere de nada.
+  const etiquetaDelCombo = (tr) => {
+    const lab = tr.querySelector('.ui-selectonemenu-label');
+    return lab ? norm(lab.textContent) : '';
+  };
+
+  // El combo es un widget de PrimeFaces: el <select> es su parte oculta y el
+  // widget lleva su propio estado. El nombre del widget se deduce del id del
+  // select (…:tblFacturas:0:cmbTipoGasto_input -> widget_…_tblFacturas_0_cmbTipoGasto).
+  const widgetDelCombo = (sel) => {
+    if (!sel || !sel.id || !window.PrimeFaces || !PrimeFaces.widgets) return null;
+    const nombre = 'widget_' + sel.id.replace(/_input$/, '').replace(/:/g, '_');
+    return PrimeFaces.widgets[nombre] || null;
+  };
+
+  // Elegir el tipo de gasto POR EL WIDGET, no escribiendo en el <select>.
+  //
+  // Verificado en el portal real el 2026-08-12: poner `select.value` y disparar
+  // change deja el valor puesto abajo pero el combo sigue mostrando "Seleccione"
+  // —el widget no se entera, y el servidor tampoco—. El marcador lo daba por
+  // bueno porque leía el value, así que informaba éxito y el portal terminaba
+  // rechazando la selección por falta de tipo de gasto. Con `selectValue` del
+  // propio widget, la etiqueta pasa a "alimentación" y el cambio viaja.
   const ponerTipoGasto = async (f, codigo, etiqueta) => {
     // Siempre contra la fila del momento: esperar sobre el nodo que se recibió
     // es esperar a un huérfano —el repintado ya lo reemplazó— y ese nunca se
@@ -661,22 +686,35 @@
     if (!op && etiqueta) op = ops.find((o) => norm(o.textContent) === norm(etiqueta));
     if (!op && etiqueta) op = ops.find((o) => norm(o.textContent).indexOf(norm(etiqueta)) >= 0);
     if (!op) return 'el combo no tiene la opcion ' + (etiqueta || codigo);
-    sel.value = op.value;
-    disparar(sel, 'input');
-    disparar(sel, 'change');
-    if (window.jQuery) { try { window.jQuery(sel).trigger('change'); } catch (e) { /* sin jQuery */ } }
-    // El widget pinta la etiqueta aparte: si no se actualiza, el usuario ve
-    // "Seleccione" con el valor ya puesto y no sabe si quedó.
-    const w = sel.closest ? sel.closest('.ui-selectonemenu') : null;
-    if (w) {
-      const lab = w.querySelector('.ui-selectonemenu-label');
-      if (lab) lab.textContent = (op.textContent || '').trim();
+    const buscada = norm(op.textContent);
+
+    const w = widgetDelCombo(sel);
+    if (w && typeof w.selectValue === 'function') {
+      try { w.selectValue(op.value); } catch (e) { /* se prueba a mano abajo */ }
     }
     await esperarPortal();
-    // Otra vez: si el portal repintó, el select de antes ya no es el de la fila.
-    const ahora = comboDeFila(filaPorSerie(f.serie) || f);
-    return ahora && String(ahora.value) === String(op.value)
-      ? '' : 'el portal no aceptó el tipo de gasto';
+
+    // ¿Lo tomó? Se lee la ETIQUETA de la fila nueva, no el value.
+    let fila = filaPorSerie(f.serie) || f;
+    if (etiquetaDelCombo(fila.tr) === buscada) return '';
+
+    // Sin widget (o no lo tomó): a mano, que es lo que funciona en versiones
+    // viejas del portal donde el combo es un <select> común.
+    const sel2 = comboDeFila(fila) || sel;
+    sel2.value = op.value;
+    disparar(sel2, 'input');
+    disparar(sel2, 'change');
+    if (window.jQuery) { try { window.jQuery(sel2).trigger('change'); } catch (e) { /* sin jQuery */ } }
+    await esperarPortal();
+
+    fila = filaPorSerie(f.serie) || f;
+    const ahora = comboDeFila(fila);
+    const etiquetaOk = etiquetaDelCombo(fila.tr) === buscada;
+    const valorOk = ahora && String(ahora.value) === String(op.value);
+    // Si hay etiqueta visible, manda ella: el value puede estar puesto y el
+    // portal no haberse enterado, que es exactamente el error que se corrigió.
+    if (etiquetaDelCombo(fila.tr)) return etiquetaOk ? '' : 'el portal no aceptó el tipo de gasto';
+    return valorOk ? '' : 'el portal no aceptó el tipo de gasto';
   };
 
   // Campo "IVA solicitado" de la fila: es el único editable de texto que queda.
