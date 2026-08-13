@@ -980,7 +980,7 @@
   };
 
   // --- El recorrido completo ------------------------------------------------
-  const llenarYEnviar = async (mes) => {
+  const llenarYEnviar = async (mes, hastaElFinal) => {
     limpiar();
     linea('Llenando el portal', 'font-weight:700;color:#1e6b33;margin-bottom:4px');
     const bitacora = el('div', 'margin:6px 0;max-height:40vh;overflow:auto;line-height:1.5');
@@ -1158,9 +1158,23 @@
     clickReal(bGuardar);
     await esperarPortal();
 
-    // 4) El envío definitivo, con confirmación explícita
-    paso('Selección guardada. Falta el envío.', 'font-weight:700;color:#1e6b33');
-    confirmarEnvio(hechas.length, total, mes);
+    // 4) El envío
+    paso('Selección guardada.', 'font-weight:700;color:#1e6b33');
+    if (!hastaElFinal) return confirmarEnvio(hechas.length, total, mes);
+
+    // Modo de una sola autorización: se dio ANTES de empezar, con contribuyente,
+    // período, cantidad y monto a la vista, así que acá no se vuelve a preguntar
+    // —preguntar dos veces por lo mismo no agrega control, agrega clicks—. Queda
+    // en la bitácora qué se presentó, y enseguida la constancia del portal.
+    const bEnviar = await esperar(() => botonPorTexto(/cargar informacion/), 12000)
+      ? botonPorTexto(/cargar informacion/) : null;
+    if (!bEnviar) return fallar('no encontré el botón "Cargar Información" para presentar. ' +
+      'La selección quedó guardada: se puede presentar a mano desde "Envío de solicitud".');
+    paso('Presentando la solicitud ante el SRI…', 'font-weight:700;color:#8b1e1e');
+    clickReal(bEnviar);
+    await esperarPortal(40000);
+    await dormir(1500);
+    mostrarConstancia(hechas.length, total);
   };
 
   // El envío es el acto definitivo (el portal advierte el art. 298 del COIP), así
@@ -1306,17 +1320,49 @@
     }, CSS_GRIS));
   };
 
+  // La autorización, UNA sola vez y por adelantado.
+  //
+  // El recorrido entero —marcar, clasificar, procesar, guardar y presentar— corre
+  // solo; lo que no corre solo es la decisión de presentar, que es un acto del
+  // contribuyente y no se deshace. Así que se pide acá, antes de tocar el portal
+  // y con los números delante, en vez de interrumpir al final: pedir permiso
+  // cuando el trabajo ya está hecho no agrega control, agrega clicks.
+  const autorizar = (mes) => {
+    const d = (paquete.detalle_meses || []).find((x) => x.mes === mes) || {};
+    const cuantos = d.comprobantes || items.length;
+    const monto = d.solicitar != null ? d.solicitar : paquete.totales.solicitado;
+    limpiar();
+    linea('¿Presento esta solicitud?', 'font-weight:700;color:#1e6b33;margin-bottom:6px');
+    const info = el('div', 'background:#f3f8f4;border:1px solid #cfe3d4;border-radius:8px;padding:8px;line-height:1.6');
+    info.appendChild(el('div', 'font-weight:700', paquete.contribuyente.nombre));
+    info.appendChild(el('div', '', 'RUC/cédula: ' + paquete.contribuyente.identificacion));
+    info.appendChild(el('div', '', 'Período: ' + (MESES[mes - 1] || mes) + ' ' + paquete.periodo.anio));
+    info.appendChild(el('div', 'font-weight:700',
+      cuantos + ' comprobante(s)  ·  ' + money(monto)));
+    cuerpo.appendChild(info);
+    linea('Al aceptar, el marcador hace TODO sin volver a preguntar: marca cada comprobante, ' +
+      'le pone el tipo de gasto, procesa, guarda y presenta la solicitud ante el SRI. ' +
+      'Presentar no se puede deshacer; el portal lo advierte con el art. 298 del COIP.',
+      'margin:8px 0;color:#555;line-height:1.5;font-size:12px');
+    cuerpo.appendChild(boton('Sí, presentar automáticamente', () => llenarYEnviar(mes, true),
+      'padding:9px 12px;margin:3px;border:1px solid #8b1e1e;border-radius:6px;' +
+      'background:#8b1e1e;color:#fff;font-weight:700;font-size:12px;cursor:pointer'));
+    cuerpo.appendChild(boton('Solo llenar; me detengo antes de presentar',
+      () => llenarYEnviar(mes, false), CSS_GRIS));
+    cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
+  };
+
   // Un mes por solicitud: si el período abarca varios (semestral), se elige cuál.
   const elegirMes = () => {
     const meses = (paquete.detalle_meses || []).filter((d) => d.comprobantes > 0).map((d) => d.mes);
-    if (meses.length <= 1) return llenarYEnviar(meses[0] || paquete.periodo.mes);
+    if (meses.length <= 1) return autorizar(meses[0] || paquete.periodo.mes);
     limpiar();
     linea('El portal presenta un mes por solicitud. ¿Cuál cargo ahora?',
       'font-weight:700;color:#1e6b33;margin-bottom:6px');
     meses.forEach((m) => {
       const d = (paquete.detalle_meses || []).find((x) => x.mes === m) || {};
       cuerpo.appendChild(boton((MESES[m - 1] || m) + '  ·  ' + (d.comprobantes || 0) +
-        ' compr.  ·  ' + money(d.solicitar || 0), () => llenarYEnviar(m)));
+        ' compr.  ·  ' + money(d.solicitar || 0), () => autorizar(m)));
     });
     cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
   };

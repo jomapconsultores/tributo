@@ -103,12 +103,22 @@ def correr(modo: str, fuente: str) -> bool:
             return False
         pg.evaluate(DEL_PANEL + ".find(b=>b.textContent==='Llenar y presentar en el portal').click()")
 
+        # La autorización se pide UNA vez, antes de tocar el portal. Se acepta el
+        # recorrido completo: marcar, clasificar, procesar, guardar y presentar.
+        pg.wait_for_timeout(500)
+        autorizar = "Sí, presentar automáticamente"
+        if autorizar not in pg.evaluate(BOTONES):
+            print(f"  ✖ no apareció la autorización: {pg.evaluate(BOTONES)}")
+            nav.close()
+            return False
+        pg.evaluate(DEL_PANEL + f".find(b=>b.textContent==={json.dumps(autorizar)}).click()")
+
         t0 = time.time()
         panel = ""
         for _ in range(150):
             pg.wait_for_timeout(1000)
             panel = pg.evaluate(PANEL)
-            if "Falta el envío" in panel or "aceptando las marcas" in panel:
+            if "Solicitud presentada" in panel or "aceptando las marcas" in panel:
                 break
         tardo = time.time() - t0
         marcadas = pg.evaluate(
@@ -122,10 +132,16 @@ def correr(modo: str, fuente: str) -> bool:
             print(f"  {'✔' if ok else '✖'} cortó avisando ({tardo:.0f}s)"
                   if ok else f"  ✖ no cortó: {panel[-200:]}")
         else:
-            ok = ("Falta el envío" in panel and "Marcados en el portal: 12 de 12" in panel
-                  and tipos == procesados)
-            print(f"  {'✔' if ok else '✖'} 12 de 12 marcados y clasificados, "
-                  f"llegó al envío ({tardo:.0f}s)")
+            # El portal simulado escribe su constancia al recibir la carga: es la
+            # prueba de que el recorrido llegó de verdad hasta el final.
+            constancia = pg.evaluate("(document.getElementById('constancia')||{}).textContent||''")
+            # Al presentar, el panel pasa a mostrar la constancia y reemplaza la
+            # bitácora: se comprueba sobre lo que queda —cuántos presentó, que el
+            # portal acusó recibo, y que las filas quedaron con su tipo de gasto—.
+            ok = ("Solicitud presentada" in panel and "Comprobantes: 12" in panel
+                  and "realizada exitosamente" in constancia and tipos == procesados)
+            print(f"  {'✔' if ok else '✖'} 12 de 12 marcados y clasificados, presentados "
+                  f"y con constancia ({tardo:.0f}s)")
             if not ok:
                 print("  panel:", panel[-600:])
         if errores:
