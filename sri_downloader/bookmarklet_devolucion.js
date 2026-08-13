@@ -688,15 +688,23 @@
     if (!op) return 'el combo no tiene la opcion ' + (etiqueta || codigo);
     const buscada = norm(op.textContent);
 
-    const w = widgetDelCombo(sel);
-    if (w && typeof w.selectValue === 'function') {
-      try { w.selectValue(op.value); } catch (e) { /* se prueba a mano abajo */ }
-    }
-    await esperarPortal();
-
-    // ¿Lo tomó? Se lee la ETIQUETA de la fila nueva, no el value.
+    // Dos intentos por el widget antes de bajar al modo manual: en el portal
+    // real se vio que a veces el primero no toma —la fila se está repintando
+    // por el ajax de la marca— y el segundo entra sin problema. Rendirse al
+    // primer fallo dejaba el comprobante marcado y sin tipo de gasto.
     let fila = filaPorSerie(f.serie) || f;
-    if (etiquetaDelCombo(fila.tr) === buscada) return '';
+    for (let intento = 0; intento < 2; intento++) {
+      const combo = comboDeFila(fila) || sel;
+      const w = widgetDelCombo(combo);
+      if (!w || typeof w.selectValue !== 'function') break;
+      try { w.selectValue(op.value); } catch (e) { /* se prueba a mano abajo */ }
+      await esperarPortal();
+      // ¿Lo tomó? Se lee la ETIQUETA de la fila nueva, no el value.
+      fila = filaPorSerie(f.serie) || fila;
+      if (etiquetaDelCombo(fila.tr) === buscada) return '';
+      await dormir(800);
+      fila = filaPorSerie(f.serie) || fila;
+    }
 
     // Sin widget (o no lo tomó): a mano, que es lo que funciona en versiones
     // viejas del portal donde el combo es un <select> común.
