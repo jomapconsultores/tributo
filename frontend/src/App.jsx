@@ -10,6 +10,7 @@ import { SELECTED_ORG_KEY } from './services/api'
 import { clearAll as clearApiCache } from './services/cache'
 import { useInactivityLogout } from './hooks/useInactivityLogout'
 import Layout from './components/Layout'
+import ErrorPantalla from './components/ErrorPantalla'
 import './App.css'
 
 // Lazy-load every page: first load only downloads the current route's chunk
@@ -206,6 +207,10 @@ function App() {
   return (
     <Router>
       <UpdateBanner />
+      {/* Envuelve TODAS las pantallas: si una falla al cargarse porque se
+          desplegó una versión nueva mientras la pestaña estaba abierta, se
+          recarga sola en vez de quedar en blanco. */}
+      <ErrorPantalla>
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/login" element={user ? <Navigate to="/" /> : <Login onLogin={handleLogin} />} />
@@ -268,6 +273,7 @@ function App() {
           )}
         </Routes>
       </Suspense>
+      </ErrorPantalla>
     </Router>
   )
 }
