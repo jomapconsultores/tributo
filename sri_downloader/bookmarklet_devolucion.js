@@ -1158,6 +1158,29 @@
     clickReal(bGuardar);
     await esperarPortal();
 
+    // Guardar deja la selección lista, pero el envío vive en la OTRA entrada del
+    // menú de dos pasos: "Envío de solicitud". Sin entrar ahí, "Cargar
+    // Información" no existe en la pantalla y el recorrido moría al final,
+    // después de haber hecho todo el trabajo.
+    if (!botonPorTexto(/cargar informacion/)) {
+      // La entrada puede tardar en aparecer: guardar dispara su propio ajax.
+      const buscarEnvio = () => visibles('a,button,input[type="button"],input[type="submit"]')
+        .find((e) => /envio de solicitud/.test(norm((e.value || e.textContent) || ''))) || null;
+      await esperar(() => !!buscarEnvio() || !!botonPorTexto(/cargar informacion/), 15000);
+      const irAlEnvio = buscarEnvio();
+      if (irAlEnvio) {
+        paso('Abriendo "Envío de solicitud"…');
+        clickReal(irAlEnvio);
+        await esperarPortal();
+        await esperar(() => !!botonPorTexto(/cargar informacion/), 15000);
+      } else if (!botonPorTexto(/cargar informacion/)) {
+        paso('⚠ no veo la entrada "Envío de solicitud". En pantalla hay: ' +
+          visibles('a,button,input[type="button"],input[type="submit"]')
+            .map((e) => ((e.value || e.textContent) || '').trim().slice(0, 24))
+            .filter(Boolean).slice(0, 8).join(' · '), 'color:#8b6b1e;font-size:11px');
+      }
+    }
+
     // 4) El envío
     paso('Selección guardada.', 'font-weight:700;color:#1e6b33');
     if (!hastaElFinal) return confirmarEnvio(hechas.length, total, mes);

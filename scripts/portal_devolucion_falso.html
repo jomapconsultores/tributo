@@ -28,6 +28,9 @@
 </div>
 <button id="btnProcesar" style="display:none">Procesar facturas seleccionadas</button>
 <button id="btnGuardar" style="display:none">Guardar seleccion realizada</button>
+<!-- Como en el portal real: guardar la seleccion no muestra el boton de enviar.
+     El envio vive en la OTRA entrada del menu de dos pasos, y hay que entrar. -->
+<a href="#" id="lnkEnvio" style="display:none">Envio de solicitud</a>
 <button id="btnCargar" style="display:none">Cargar Informacion</button>
 <div id="constancia"></div>
 </div>
@@ -66,7 +69,10 @@ function pintarGrilla() {
       '<td>FACTURA 003-301-' + f.serie.split('-')[2] + '</td>' +
       '<td>' + f.fecha + '</td><td>' + f.iva.toFixed(2) + '</td>' +
       '<td><input type="text" class="ivaSol" ' + (m ? '' : 'disabled') + ' value="' + (m ? (m.monto !== undefined ? m.monto : f.iva.toFixed(2)) : '') + '"></td>' +
-      '<td><div class="ui-selectonemenu"><label class="ui-selectonemenu-label">Seleccione</label>' +
+      // La etiqueta refleja lo elegido, como el widget real: es lo que el
+      // marcador lee para saber si el portal tomó el tipo de gasto.
+      '<td><div class="ui-selectonemenu"><label class="ui-selectonemenu-label">' +
+      ((m && m.tipo && (TIPOS.find((t) => t[0] === m.tipo) || [])[1]) || 'Seleccione') + '</label>' +
       '<select class="tipoGasto" ' + (m ? '' : 'disabled') + '>' +
       '<option value="">Seleccione</option>' +
       TIPOS.map((t) => '<option value="' + t[0] + '"' + (m && m.tipo === t[0] ? ' selected' : '') + '>' + t[1] + '</option>').join('') +
@@ -146,6 +152,10 @@ document.getElementById('btnProcesar').onclick = () => {
   ajax(500, () => { document.getElementById('btnGuardar').style.display = ''; });
 };
 document.getElementById('btnGuardar').onclick = () => {
+  ajax(500, () => { document.getElementById('lnkEnvio').style.display = ''; });
+};
+document.getElementById('lnkEnvio').onclick = (e) => {
+  e.preventDefault();
   ajax(500, () => { document.getElementById('btnCargar').style.display = ''; });
 };
 document.getElementById('btnCargar').onclick = () => {
