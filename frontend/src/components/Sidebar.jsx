@@ -152,6 +152,12 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         items: [
           L('👵', 'Adultos mayores', '/devoluciones-iva/tercera-edad'),
           L('♿', 'Discapacidad', '/devoluciones-iva/discapacidad'),
+          // El marcador que hace el trabajo en el portal del SRI: traer los
+          // comprobantes y presentar la solicitud. Estaba construido y la app
+          // lo nombraba en sus instrucciones, pero no había desde dónde
+          // instalarlo — igual que Gastos e Ingresos tienen el suyo acá.
+          { kind: 'bajador', which: 'devolucion', ico: '📤',
+            label: 'Enviador-DEVOLUCIÓN (SRI)', visible: true },
         ],
       },
       {
