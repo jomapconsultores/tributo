@@ -94,18 +94,21 @@ envío ocurre en la sesión del contribuyente.
    El enviador lo detecta —lee "(3 of 3)"— y **se corta pidiendo volver a entrar**
    en vez de armar una solicitud incompleta en silencio.
    *Verificado el 2026-08-11.*
-1quater. **El "Tipo de gasto" NO se pone escribiendo en el `<select>`.** Es un
-   `p:selectOneMenu`: el `<select>` (id `…:cmbTipoGasto_input`) es su parte
-   oculta y el widget lleva su propio estado. Poner `select.value` y disparar
-   `change` deja el valor abajo, **el combo sigue mostrando "Seleccione"** y el
-   servidor no se entera; después el portal rechaza la selección por falta de
-   tipo de gasto. Hay que usar el widget:
-   `PF('widget_…_tblFacturas_{i}_cmbTipoGasto').selectValue('4')`, cuyo nombre
-   sale del id del select (quitar `_input`, cambiar `:` por `_`, anteponer
-   `widget_`). Y la comprobación NO puede ser el `value`: es la **etiqueta
-   visible** (`.ui-selectonemenu-label`), que es lo único que refleja si el
-   portal lo tomó. *Verificado en el portal real el 2026-08-12; era la causa de
-   que la solicitud se marcara pero no se pudiera procesar.*
+1quater. **El "Tipo de gasto" solo entra ABRIENDO EL DESPLEGABLE Y TOCANDO LA
+   OPCIÓN.** Es un `p:selectOneMenu` y hay tres caminos posibles; solo uno sirve.
+   Probado contra el portal real el 2026-08-12 con la solicitud de julio:
+
+   | Cómo | Qué muestra el combo | Qué dice el portal al procesar |
+   |---|---|---|
+   | `select.value='4'` + `change` | "Seleccione" | — |
+   | `PF(widget).selectValue('4')` | **"alimentación"** | ✖ *"La factura solicitada … no detalla el tipo de gasto"* |
+   | click en el `<li>` del panel | "alimentación" | ✔ procesa sin quejarse |
+
+   O sea que `selectValue` **pinta la etiqueta pero el dato no llega al
+   servidor**: mirar el combo no alcanza para darlo por bueno. Y el desplegable
+   se ubica **por id** —`…cmbTipoGasto_panel`, colgado del `body`, uno por
+   fila—: se vieron cuatro abiertos a la vez, y tomar "el panel visible" hace
+   que el click caiga en otra fila.
 2. **Al marcar, el portal auto-rellena el IVA solicitado** con el monto completo
    de la factura. Solo hay que corregirlo cuando el mes supera el tope.
 3. **El período es mensual.** Un contribuyente semestral necesita seis

@@ -655,23 +655,35 @@
     return lab ? norm(lab.textContent) : '';
   };
 
-  // El combo es un widget de PrimeFaces: el <select> es su parte oculta y el
-  // widget lleva su propio estado. El nombre del widget se deduce del id del
-  // select (…:tblFacturas:0:cmbTipoGasto_input -> widget_…_tblFacturas_0_cmbTipoGasto).
-  const widgetDelCombo = (sel) => {
-    if (!sel || !sel.id || !window.PrimeFaces || !PrimeFaces.widgets) return null;
-    const nombre = 'widget_' + sel.id.replace(/_input$/, '').replace(/:/g, '_');
-    return PrimeFaces.widgets[nombre] || null;
+  // El desplegable de ESTA fila. Cada combo tiene el suyo, con id propio
+  // (…cmbTipoGasto_panel) y colgado del body, no de la fila. Buscar "el panel
+  // visible" agarra el de otra fila: se vio en el portal con cuatro abiertos a
+  // la vez, y los clicks caían en el equivocado.
+  const panelDelCombo = (sel) =>
+    (sel && sel.id) ? document.getElementById(sel.id.replace(/_input$/, '') + '_panel') : null;
+
+  const cerrarDesplegables = () => {
+    [...document.querySelectorAll('.ui-selectonemenu-panel')]
+      .filter((p) => p.offsetParent !== null)
+      .forEach((p) => { p.style.display = 'none'; });
   };
 
-  // Elegir el tipo de gasto POR EL WIDGET, no escribiendo en el <select>.
+  // Elegir el tipo de gasto ABRIENDO EL DESPLEGABLE Y TOCANDO LA OPCIÓN, como
+  // lo haría una persona. Es el único camino que el portal reconoce.
   //
-  // Verificado en el portal real el 2026-08-12: poner `select.value` y disparar
-  // change deja el valor puesto abajo pero el combo sigue mostrando "Seleccione"
-  // —el widget no se entera, y el servidor tampoco—. El marcador lo daba por
-  // bueno porque leía el value, así que informaba éxito y el portal terminaba
-  // rechazando la selección por falta de tipo de gasto. Con `selectValue` del
-  // propio widget, la etiqueta pasa a "alimentación" y el cambio viaja.
+  // Verificado contra el portal real el 2026-08-12, con la solicitud de julio:
+  //   · `select.value = '4'` + change  -> el combo sigue en "Seleccione".
+  //   · `PF(widget).selectValue('4')`  -> el combo MUESTRA "alimentación"…
+  //     pero al procesar, el portal responde "La factura solicitada
+  //     003-104-000055796 no detalla el tipo de gasto". O sea que la etiqueta
+  //     se pinta y el dato no llega: el servidor nunca se entera.
+  //   · click en el <li> del desplegable -> el portal PROCESA sin quejarse.
+  // Por eso la comprobación tampoco puede ser el `value` ni la etiqueta a secas:
+  // lo que vale es haber pasado por el desplegable.
+  //
+  // Y el desplegable se busca POR ID: son paneles colgados del body, uno por
+  // fila, y pueden quedar varios abiertos a la vez. Tomar "el visible" hace que
+  // el click caiga en la fila equivocada.
   const ponerTipoGasto = async (f, codigo, etiqueta) => {
     // Siempre contra la fila del momento: esperar sobre el nodo que se recibió
     // es esperar a un huérfano —el repintado ya lo reemplazó— y ese nunca se
@@ -688,26 +700,35 @@
     if (!op) return 'el combo no tiene la opcion ' + (etiqueta || codigo);
     const buscada = norm(op.textContent);
 
-    // Dos intentos por el widget antes de bajar al modo manual: en el portal
-    // real se vio que a veces el primero no toma —la fila se está repintando
-    // por el ajax de la marca— y el segundo entra sin problema. Rendirse al
-    // primer fallo dejaba el comprobante marcado y sin tipo de gasto.
+    // Tres intentos por el desplegable: entre el ajax de la marca y el
+    // repintado de la fila, el primer toque a veces se pierde.
     let fila = filaPorSerie(f.serie) || f;
-    for (let intento = 0; intento < 2; intento++) {
+    for (let intento = 0; intento < 3; intento++) {
       const combo = comboDeFila(fila) || sel;
-      const w = widgetDelCombo(combo);
-      if (!w || typeof w.selectValue !== 'function') break;
-      try { w.selectValue(op.value); } catch (e) { /* se prueba a mano abajo */ }
-      await esperarPortal();
-      // ¿Lo tomó? Se lee la ETIQUETA de la fila nueva, no el value.
-      fila = filaPorSerie(f.serie) || fila;
-      if (etiquetaDelCombo(fila.tr) === buscada) return '';
-      await dormir(800);
+      const panel = panelDelCombo(combo);
+      const widget = fila.tr.querySelector('.ui-selectonemenu');
+      if (!panel || !widget) break;          // no es un widget: se hace a mano
+      cerrarDesplegables();                  // que no queden abiertos de otras filas
+      const abridor = widget.querySelector('.ui-selectonemenu-trigger') ||
+        widget.querySelector('.ui-selectonemenu-label');
+      if (!abridor) break;
+      clickReal(abridor);
+      if (!(await esperar(() => panel.offsetParent !== null, 4000))) continue;
+      const opcion = [...panel.querySelectorAll('li')]
+        .find((li) => norm(li.textContent) === buscada);
+      if (!opcion) return 'el desplegable no ofrece ' + buscada;
+      clickReal(opcion);
+      const ok = await esperar(() => {
+        const g = filaPorSerie(f.serie);
+        return !!g && etiquetaDelCombo(g.tr) === buscada;
+      }, 8000);
+      cerrarDesplegables();
+      if (ok) return '';
       fila = filaPorSerie(f.serie) || fila;
     }
 
-    // Sin widget (o no lo tomó): a mano, que es lo que funciona en versiones
-    // viejas del portal donde el combo es un <select> común.
+    // Sin desplegable (o no lo tomó): a mano, que es lo que funciona en
+    // versiones viejas del portal donde el combo es un <select> común.
     const sel2 = comboDeFila(fila) || sel;
     sel2.value = op.value;
     disparar(sel2, 'input');
