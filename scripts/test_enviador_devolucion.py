@@ -16,6 +16,7 @@ no se ve en la fuente.
     python scripts/test_enviador_devolucion.py nativo src # y contra la fuente
 
 Variantes del portal (el SRI cambia el widget entre versiones):
+    semestral  periodo de dos meses -> una solicitud por mes, seguidas
     extension  solicitud inyectada como hace la extension -> corre SOLA
     auto    solicitud autorizada desde el sistema -> corre SOLA, sin un click
     widget  el click va a la caja del checkbox     -> tiene que marcar los 12
@@ -38,7 +39,8 @@ TXT = RAIZ / "frontend/src/utils/enviador-devolucion.bookmarklet.txt"
 FUENTE_JS = RAIZ / "sri_downloader/bookmarklet_devolucion.js"
 EXT = RAIZ / "extension"
 
-SERIES = ["003-301-0000891%02d" % (n + 10) for n in range(1, 13)]
+SERIES = ["003-301-0000891%02d" % (n + 10) for n in range(1, 13)]          # julio
+SERIES_JUNIO = ["003-301-0000892%02d" % (n + 10) for n in range(1, 5)]    # junio
 
 
 def codigo_del_marcador(fuente: str) -> str:
@@ -47,6 +49,39 @@ def codigo_del_marcador(fuente: str) -> str:
         return js[js.index("(async () => {"):]
     url = TXT.read_text(encoding="utf-8").strip()
     return unquote(url[len("javascript:"):])
+
+
+def paquete_semestral() -> dict:
+    """Un período de dos meses: el portal pide UNA solicitud por cada uno.
+
+    Es el caso que obligaba a repetir el trámite a mano tantas veces como meses
+    tuviera el período."""
+    p = paquete_de_prueba(auto=True)
+    junio = []
+    for n, serie in enumerate(SERIES_JUNIO, start=1):
+        junio.append({
+            "clave_acceso": ("j%d" % n).rjust(49, "0"),
+            "serie": serie,
+            "fecha": f"{n:02d}/06/2026",
+            "ruc_proveedor": "0999999999001",
+            "proveedor": f"COMERCIAL JUNIO {n} SA",
+            "rubro": "alimentacion", "rubro_label": "Alimentación", "rubro_sri": "4",
+            "base": 10.0, "iva": 2.0 + n, "total": 12.0 + n,
+        })
+    ivaJun = round(sum(i["iva"] for i in junio), 2)
+    ivaJul = round(sum(i["iva"] for i in p["items"]), 2)
+    p["items"] = junio + p["items"]
+    p["periodo"] = {"mes": 6, "anio": 2026, "periodicidad": "semestral",
+                    "semestre": 1, "etiqueta": "1er semestre 2026"}
+    p["detalle_meses"] = [
+        {"mes": 6, "comprobantes": len(junio), "iva": ivaJun, "tope": 361.50,
+         "solicitar": ivaJun, "excedente": 0},
+        {"mes": 7, "comprobantes": len(SERIES), "iva": ivaJul, "tope": 361.50,
+         "solicitar": ivaJul, "excedente": 0},
+    ]
+    p["totales"] = {"base": 0, "iva": ivaJun + ivaJul, "tope": 361.50,
+                    "solicitado": ivaJun + ivaJul}
+    return p
 
 
 def paquete_de_prueba(auto: bool = False) -> dict:
@@ -100,7 +135,8 @@ def correr(modo: str, fuente: str) -> bool:
         # 'extension' entrega la solicitud como lo hace la extensión de Chrome:
         # inyectada en la página, sin pasar por el portapapeles.
         extension = modo == "extension"
-        auto = modo == "auto" or extension
+        semestral = modo == "semestral"
+        auto = modo in ("auto", "extension", "semestral")
         pg.goto(PORTAL.as_uri() + "?modo=" + ("widget" if auto else modo))
         pg.click("#lnkIngresar")
         pg.wait_for_timeout(800)
@@ -126,7 +162,8 @@ def correr(modo: str, fuente: str) -> bool:
             pg.evaluate((EXT / "contenido-sri.js").read_text(encoding="utf-8"))
         else:
             # La app deja la solicitud en el portapapeles; el marcador la lee de ahí.
-            pg.evaluate("txt => navigator.clipboard.writeText(txt)", json.dumps(paquete_de_prueba(auto)))
+            paquete = paquete_semestral() if semestral else paquete_de_prueba(auto)
+            pg.evaluate("txt => navigator.clipboard.writeText(txt)", json.dumps(paquete))
         if not extension:
             pg.evaluate(codigo)
         pg.wait_for_timeout(1500)
@@ -155,7 +192,8 @@ def correr(modo: str, fuente: str) -> bool:
         for _ in range(150):
             pg.wait_for_timeout(1000)
             panel = pg.evaluate(PANEL)
-            if "Solicitud presentada" in panel or "aceptando las marcas" in panel:
+            if ("Solicitud presentada" in panel or "Meses presentados" in panel
+                    or "aceptando las marcas" in panel or "Terminó con problemas" in panel):
                 break
         tardo = time.time() - t0
         marcadas = pg.evaluate(
@@ -164,7 +202,15 @@ def correr(modo: str, fuente: str) -> bool:
                             ".map(s=>s.value).filter(Boolean).length")
         procesados = pg.evaluate("[...document.querySelectorAll('#tblFacturas tr')].length - 1")
 
-        if modo == "muerto":
+        if semestral:
+            # Dos meses seguidos: 4 comprobantes de junio y 12 de julio, cada uno
+            # con su vuelta completa por el portal.
+            ok = ("Meses presentados" in panel and "Junio: 4 comprobante" in panel
+                  and "Julio: 12 comprobante" in panel)
+            print(f"  {'✔' if ok else '✖'} dos meses presentados en una corrida ({tardo:.0f}s)")
+            if not ok:
+                print("  panel:", panel[-700:])
+        elif modo == "muerto":
             ok = "aceptando las marcas" in panel
             print(f"  {'✔' if ok else '✖'} cortó avisando ({tardo:.0f}s)"
                   if ok else f"  ✖ no cortó: {panel[-200:]}")
@@ -192,7 +238,7 @@ def correr(modo: str, fuente: str) -> bool:
 
 
 if __name__ == "__main__":
-    modos = [sys.argv[1]] if len(sys.argv) > 1 else ["extension", "auto", "widget", "nativo", "muerto"]
+    modos = [sys.argv[1]] if len(sys.argv) > 1 else ["semestral", "extension", "auto", "widget", "nativo", "muerto"]
     fuente = sys.argv[2] if len(sys.argv) > 2 else "min"
     print(f"Enviador-DEVOLUCIÓN contra el portal simulado ({fuente})")
     todo_bien = True

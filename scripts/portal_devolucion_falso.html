@@ -20,6 +20,7 @@
  <tr><td>Periodo solicitado</td><td><select id="cmbPeriodo_input"><option value="">Seleccione un periodo</option></select></td></tr>
 </table>
 <button id="btnBuscar">Buscar</button>
+<button id="btnVolverMenu">Volver menu principal</button>
 <div id="grilla"></div>
 <div id="pag" style="display:none">
   <span class="ui-paginator-current"></span>
@@ -36,17 +37,30 @@
 </div>
 
 <script>
-// --- Datos del "portal": 12 comprobantes de julio 2026, paginados de a 10 ----
+// --- Datos del "portal": julio con 12 comprobantes (3 paginas) y junio con 4.
+// Dos meses hacen falta para probar el recorrido de un periodo semestral, que
+// en el portal son varias solicitudes seguidas, una por mes.
 const DATOS = [];
 for (let i = 1; i <= 12; i++) {
   DATOS.push({
-    n: i,
+    n: i, mes: 7,
     serie: '003-301-0000891' + String(i + 10).padStart(2, '0'),
     prov: 'COMERCIAL PRUEBA ' + i + ' SA',
     fecha: '2026-07-' + String(i).padStart(2, '0'),
     iva: 1.5 + i,
   });
 }
+for (let i = 1; i <= 4; i++) {
+  DATOS.push({
+    n: i, mes: 6,
+    serie: '003-301-0000892' + String(i + 10).padStart(2, '0'),
+    prov: 'COMERCIAL JUNIO ' + i + ' SA',
+    fecha: '2026-06-' + String(i).padStart(2, '0'),
+    iva: 2 + i,
+  });
+}
+let mesElegido = 7;
+const delMes = () => DATOS.filter((d) => d.mes === mesElegido);
 const TIPOS = [['1','VESTIMENTA'],['2','VIVIENDA'],['3','SALUD'],['4','ALIMENTACION'],['5','EDUCACION']];
 let pagina = 0, porPagina = 10, marcadas = {};
 
@@ -59,7 +73,8 @@ const ajax = (ms, fn) => {
 
 function pintarGrilla() {
   const desde = pagina * porPagina;
-  const filas = DATOS.slice(desde, desde + porPagina);
+  const delPeriodo = delMes();
+  const filas = delPeriodo.slice(desde, desde + porPagina);
   let h = '<table id="tblFacturas"><tr><th>No.</th><th>RIDE</th><th>Razon social</th><th>Tipo y serie</th>' +
     '<th>Fecha</th><th>Monto IVA</th><th>IVA solicitado</th><th>Tipo de gasto</th><th>Seleccionar</th></tr>';
   filas.forEach((f) => {
@@ -87,7 +102,7 @@ function pintarGrilla() {
   document.getElementById('grilla').innerHTML = h;
   document.getElementById('pag').style.display = '';
   document.querySelector('.ui-paginator-current').textContent =
-    '(' + (pagina + 1) + ' of ' + Math.ceil(DATOS.length / porPagina) + ')';
+    '(' + (pagina + 1) + ' of ' + Math.max(1, Math.ceil(delMes().length / porPagina)) + ')';
   document.getElementById('btnProcesar').style.display = '';
   // Marcar. MODO simula versiones del portal:
   //   widget = escucha el click en la caja (lo normal)
@@ -127,7 +142,25 @@ function pintarGrilla() {
 
 document.getElementById('lnkIngresar').onclick = (e) => {
   e.preventDefault();
-  ajax(500, () => { document.getElementById('form').style.display = ''; });
+  ajax(500, () => {
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('form').style.display = '';
+  });
+};
+// Como en el portal real: se vuelve al menu de dos pasos y desde ahi se entra
+// otra vez a las facturas, para el mes siguiente. La seleccion se reinicia.
+document.getElementById('btnVolverMenu').onclick = () => {
+  ajax(500, () => {
+    marcadas = {};
+    document.getElementById('grilla').innerHTML = '';
+    document.getElementById('pag').style.display = 'none';
+    ['btnProcesar', 'btnGuardar', 'lnkEnvio', 'btnCargar'].forEach((id) => {
+      document.getElementById(id).style.display = 'none';
+    });
+    document.getElementById('constancia').textContent = '';
+    document.getElementById('form').style.display = 'none';
+    document.getElementById('menu').style.display = '';
+  });
 };
 document.getElementById('cmbAnio_input').onchange = function () {
   const v = this.value;
@@ -139,10 +172,11 @@ document.getElementById('cmbAnio_input').onchange = function () {
   });
 };
 document.getElementById('btnBuscar').onclick = () => {
-  ajax(600, () => { pagina = 0; pintarGrilla(); });
+  const v = parseInt(document.getElementById('cmbPeriodo_input').value, 10);
+  ajax(600, () => { if (v) mesElegido = v; pagina = 0; pintarGrilla(); });
 };
 document.querySelector('.ui-paginator-next').onclick = () => {
-  if ((pagina + 1) * porPagina >= DATOS.length) return;
+  if ((pagina + 1) * porPagina >= delMes().length) return;
   ajax(400, () => { pagina += 1; pintarGrilla(); });
 };
 document.querySelector('.ui-paginator-first').onclick = () => {

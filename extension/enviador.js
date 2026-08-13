@@ -838,6 +838,7 @@
   const consultarPeriodo = async (mes, anio, avisar) => {
     const contar = (t) => { if (avisar) avisar(t); };
     if (!hayFormulario()) {
+      await pasarPantallasPrevias(contar);
       const link = enlaceIngresarFacturas();
       if (!link) return 'no encontré la pantalla de facturas electrónicas: entrá por ' +
         'Devolución de IVA y abrí "Ingresar facturas electrónicas"';
@@ -854,11 +855,27 @@
     await esperarPortal();
     contar('Esperando que el portal cargue los meses…');
     const reMes = new RegExp('^\\s*' + MESES[mes - 1], 'i');
-    const hayMes = await esperar(() => {
+    const ofreceElMes = () => {
       const c = cbPeriodo();
-      return c && [...c.options].some((o) => String(o.value) === String(mes) ||
+      return !!c && [...c.options].some((o) => String(o.value) === String(mes) ||
         reMes.test((o.textContent || '').trim()));
-    }, 15000);
+    };
+    let hayMes = await esperar(ofreceElMes, 15000);
+    if (!hayMes) {
+      // Segundo mes de un período: el año YA estaba elegido, así que elegirlo de
+      // nuevo no cambia nada y el portal no vuelve a cargar los meses —el combo
+      // de período queda vacío y parece que el mes no existiera—. Se le avisa
+      // igual, aunque el valor no haya cambiado.
+      contar('Pidiendo de nuevo los meses de ' + anio + '…');
+      const cA = cbAnio();
+      if (cA) {
+        disparar(cA, 'input');
+        disparar(cA, 'change');
+        if (window.jQuery) { try { window.jQuery(cA).trigger('change'); } catch (e) { /* sin jQuery */ } }
+        await esperarPortal();
+        hayMes = await esperar(ofreceElMes, 15000);
+      }
+    }
     if (!hayMes) {
       return 'el portal no ofrece ' + MESES[mes - 1] + ' ' + anio +
         ' (solo lista meses ya cerrados)';
@@ -888,6 +905,57 @@
         'sin recargar la página, y corré esto de nuevo.';
     }
     return '';
+  };
+
+  // Las pantallas que el portal pone ANTES de las facturas: el aviso legal y la
+  // cuenta bancaria de acreditación. Son dos "Aceptar" que hasta ahora había que
+  // dar a mano, y sin ellos el marcador no encontraba nada y se quejaba de que
+  // no estaba la pantalla de facturas.
+  //
+  // Lo que NO se toca es el menú lateral: entrar por ahí desde código rebota a
+  // Keycloak y tira la sesión (verificado el 2026-08-11). Abrir la aplicación
+  // sigue siendo del usuario; de ahí en adelante, esto se encarga.
+  const pasarPantallasPrevias = async (avisar) => {
+    for (let vuelta = 0; vuelta < 4; vuelta++) {
+      if (hayFormulario() || enlaceIngresarFacturas()) return true;
+      const texto = norm(document.body.innerText || '');
+      const aceptar = visibles('button,input[type="submit"],input[type="button"],a')
+        .find((b) => /^aceptar$/.test(norm((b.value || b.textContent) || '')));
+      if (!aceptar) return false;
+      // La pantalla de la cuenta pide elegirla antes de aceptar; si ninguna está
+      // marcada se toma la primera, que es lo que hace el usuario cuando tiene
+      // una sola cuenta registrada.
+      const radios = visibles('input[type="radio"],.ui-radiobutton-box');
+      if (/cuenta/.test(texto) && radios.length) {
+        const marcado = radios.some((r) => r.checked ||
+          (r.classList && r.classList.contains('ui-state-active')));
+        if (!marcado) {
+          if (avisar) avisar('Eligiendo la cuenta bancaria…');
+          clickReal(radios[0]);
+          await esperarPortal();
+        }
+      } else if (avisar) {
+        avisar('Aceptando el aviso del portal…');
+      }
+      clickReal(aceptar);
+      await esperarPortal();
+      await esperar(() => hayFormulario() || !!enlaceIngresarFacturas(), 8000);
+    }
+    return hayFormulario() || !!enlaceIngresarFacturas();
+  };
+
+  // Vuelve al menú de dos pasos para encarar otro mes. Es el botón del propio
+  // portal ("Volver menú principal"), no el menú lateral: ese sí tira la sesión.
+  const volverAlMenu = async () => {
+    const b = botonPorTexto(/volver men/);
+    if (!b) return false;
+    clickReal(b);
+    await esperarPortal();
+    // Se espera el MENÚ, no "menú o formulario": justo después del click el
+    // formulario sigue en pantalla y esa condición se cumplía sola. El mes
+    // siguiente arrancaba sobre una pantalla que se estaba yendo, y terminaba
+    // esperando meses en un combo que ya no existía.
+    return esperar(() => !!enlaceIngresarFacturas() && !hayFormulario(), 12000);
   };
 
   // La fecha del portal viene ISO (2026-07-01); el sistema trabaja en dd/mm/aaaa.
@@ -989,7 +1057,7 @@
   };
 
   // --- El recorrido completo ------------------------------------------------
-  const llenarYEnviar = async (mes, hastaElFinal) => {
+  const llenarYEnviar = async (mes, hastaElFinal, enSerie) => {
     limpiar();
     linea('Llenando el portal', 'font-weight:700;color:#1e6b33;margin-bottom:4px');
     const bitacora = el('div', 'margin:6px 0;max-height:40vh;overflow:auto;line-height:1.5');
@@ -1004,6 +1072,8 @@
       bitacora.scrollTop = bitacora.scrollHeight;
       return d;
     };
+    // Devuelve el fallo además de pintarlo: cuando se recorren varios meses, el
+    // que llama necesita saber que este se cortó para no seguir a ciegas.
     const fallar = (txt) => {
       paso('✖ ' + txt, 'color:#8b1e1e;font-weight:700');
       cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
@@ -1014,6 +1084,7 @@
         'LO QUE INTENTE' + String.fromCharCode(10) + (bitacora.innerText || '') +
         String.fromCharCode(10, 10) + 'LO QUE VEO' + String.fromCharCode(10) + diagnostico()
       ), CSS_GRIS));
+      return { error: txt };
     };
 
     const anio = paquete.periodo.anio;
@@ -1192,7 +1263,10 @@
 
     // 4) El envío
     paso('Selección guardada.', 'font-weight:700;color:#1e6b33');
-    if (!hastaElFinal) return confirmarEnvio(hechas.length, total, mes);
+    if (!hastaElFinal) {
+      confirmarEnvio(hechas.length, total, mes);
+      return { ok: true, presentado: false, cuantos: hechas.length, total };
+    }
 
     // Modo de una sola autorización: se dio ANTES de empezar, con contribuyente,
     // período, cantidad y monto a la vista, así que acá no se vuelve a preguntar
@@ -1206,7 +1280,60 @@
     clickReal(bEnviar);
     await esperarPortal(40000);
     await dormir(1500);
-    mostrarConstancia(hechas.length, total);
+    const constancia = leerConstancia(hechas.length, total);
+    // En una serie de meses no se pinta la constancia de cada uno: taparía el
+    // recorrido del siguiente. Se devuelve y al final se muestran todas juntas.
+    if (!enSerie) mostrarConstancia(hechas.length, total);
+    return { ok: true, presentado: true, cuantos: hechas.length, total, constancia };
+  };
+
+  // Recorre TODOS los meses del período, uno por uno: el portal presenta una
+  // solicitud por mes, así que un semestral son seis vueltas. Entre mes y mes se
+  // vuelve por el botón del propio portal ("Volver menú principal"); el menú
+  // lateral no se toca, que desde código tira la sesión.
+  const presentarMeses = async (meses, hastaElFinal) => {
+    const resultados = [];
+    for (let i = 0; i < meses.length; i++) {
+      if (i > 0 && !(await volverAlMenu())) {
+        resultados.push({ mes: meses[i], error: 'no pude volver al menú para seguir con el mes siguiente' });
+        break;
+      }
+      const r = await llenarYEnviar(meses[i], hastaElFinal, meses.length > 1) || {};
+      resultados.push({ mes: meses[i], ...r });
+      if (r.error) break;                 // seguir tras un fallo es acumular ruido
+      if (!hastaElFinal) break;           // se detuvo a propósito: espera al usuario
+    }
+    if (meses.length > 1) resumenDeMeses(resultados);
+    return resultados;
+  };
+
+  // Cómo terminó cada mes. Con varios meses, el panel del último tapa a los
+  // anteriores: sin este resumen no habría manera de saber qué se presentó.
+  const resumenDeMeses = (resultados) => {
+    limpiar();
+    const hubo = resultados.some((r) => r.error);
+    linea(hubo ? 'Terminó con problemas' : 'Meses presentados',
+      'font-weight:700;margin-bottom:6px;color:' + (hubo ? '#8b6b1e' : '#1e6b33'));
+    let total = 0;
+    resultados.forEach((r) => {
+      const nombre = MESES[r.mes - 1] || r.mes;
+      if (r.error) {
+        linea('✖ ' + nombre + ': ' + r.error, 'margin:3px 0;color:#8b1e1e');
+        return;
+      }
+      total += Number(r.total) || 0;
+      linea((r.presentado ? '✔ ' : '· ') + nombre + ': ' + r.cuantos + ' comprobante(s) · ' +
+        money(r.total) + (r.presentado ? '' : ' (llenado, sin presentar)'),
+        'margin:3px 0;color:#1e6b33');
+    });
+    linea('Total presentado: ' + money(total), 'margin:8px 0;font-weight:700;color:#1e6b33');
+    const constancias = resultados.filter((r) => r.constancia).map((r) => r.constancia);
+    if (constancias.length) {
+      cuerpo.appendChild(boton('Copiar constancias para la app', function () {
+        copiar(JSON.stringify(constancias.length === 1 ? constancias[0] : constancias), this);
+      }));
+    }
+    cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
   };
 
   // El envío es el acto definitivo (el portal advierte el art. 298 del COIP), así
@@ -1241,17 +1368,22 @@
 
   // Lo que el portal contesta al presentar. Se copia como paquete para pegarlo
   // en la app: es la constancia de lo que el SRI aceptó de verdad.
-  const mostrarConstancia = (cuantos, total) => {
+  const leerConstancia = (cuantos, total) => {
     const texto = document.body.innerText || '';
     const ok = /carga de archivo realizada exitosamente/i.test(sinTildes(texto));
     const mf = /(\d{2}[-/]\d{2}[-/]\d{4}[ ]+\d{2}:\d{2}(?::\d{2})?)/.exec(texto);
     const mt = /total[^\n]{0,40}?(\d[\d.,]*)/i.exec(texto);
-    const constancia = {
+    return {
       comprobantes: cuantos,
       monto: (mt && leerNumero(mt[1]) !== null) ? leerNumero(mt[1]) : Math.round(total * 100) / 100,
       fecha_carga: mf ? mf[1] : '',
       mensaje: ok ? 'Carga de archivo realizada exitosamente' : '',
     };
+  };
+
+  const mostrarConstancia = (cuantos, total) => {
+    const constancia = leerConstancia(cuantos, total);
+    const ok = !!constancia.mensaje;
     limpiar();
     linea(ok ? 'Solicitud presentada' : 'Terminó el envío',
       'font-weight:700;color:' + (ok ? '#1e6b33' : '#8b6b1e') + ';margin-bottom:6px');
@@ -1359,45 +1491,52 @@
   // contribuyente y no se deshace. Así que se pide acá, antes de tocar el portal
   // y con los números delante, en vez de interrumpir al final: pedir permiso
   // cuando el trabajo ya está hecho no agrega control, agrega clicks.
-  const autorizar = (mes) => {
-    const d = (paquete.detalle_meses || []).find((x) => x.mes === mes) || {};
-    const cuantos = d.comprobantes || items.length;
-    const monto = d.solicitar != null ? d.solicitar : paquete.totales.solicitado;
+  const autorizar = (meses) => {
+    const detalles = meses.map((m) =>
+      (paquete.detalle_meses || []).find((x) => x.mes === m) || {});
+    const cuantos = detalles.reduce((s, d) => s + (d.comprobantes || 0), 0) || items.length;
+    const monto = detalles.some((d) => d.solicitar != null)
+      ? detalles.reduce((s, d) => s + (Number(d.solicitar) || 0), 0)
+      : paquete.totales.solicitado;
     limpiar();
-    linea('¿Presento esta solicitud?', 'font-weight:700;color:#1e6b33;margin-bottom:6px');
+    linea(meses.length > 1 ? '¿Presento estas ' + meses.length + ' solicitudes?' : '¿Presento esta solicitud?',
+      'font-weight:700;color:#1e6b33;margin-bottom:6px');
     const info = el('div', 'background:#f3f8f4;border:1px solid #cfe3d4;border-radius:8px;padding:8px;line-height:1.6');
     info.appendChild(el('div', 'font-weight:700', paquete.contribuyente.nombre));
     info.appendChild(el('div', '', 'RUC/cédula: ' + paquete.contribuyente.identificacion));
-    info.appendChild(el('div', '', 'Período: ' + (MESES[mes - 1] || mes) + ' ' + paquete.periodo.anio));
+    info.appendChild(el('div', '', 'Período: ' + (paquete.periodo.etiqueta || '') +
+      '  (' + meses.map((m) => MESES[m - 1] || m).join(', ') + ' ' + paquete.periodo.anio + ')'));
     info.appendChild(el('div', 'font-weight:700',
       cuantos + ' comprobante(s)  ·  ' + money(monto)));
     cuerpo.appendChild(info);
+    if (meses.length > 1) {
+      linea('El portal presenta UNA solicitud por mes, así que se van a hacer ' + meses.length +
+        ' vueltas seguidas, una por cada mes del período.',
+        'margin:6px 0;color:#555;line-height:1.5;font-size:12px');
+    }
     linea('Al aceptar, el marcador hace TODO sin volver a preguntar: marca cada comprobante, ' +
       'le pone el tipo de gasto, procesa, guarda y presenta la solicitud ante el SRI. ' +
       'Presentar no se puede deshacer; el portal lo advierte con el art. 298 del COIP.',
       'margin:8px 0;color:#555;line-height:1.5;font-size:12px');
-    cuerpo.appendChild(boton('Sí, presentar automáticamente', () => llenarYEnviar(mes, true),
+    cuerpo.appendChild(boton('Sí, presentar automáticamente', () => presentarMeses(meses, true),
       'padding:9px 12px;margin:3px;border:1px solid #8b1e1e;border-radius:6px;' +
       'background:#8b1e1e;color:#fff;font-weight:700;font-size:12px;cursor:pointer'));
     cuerpo.appendChild(boton('Solo llenar; me detengo antes de presentar',
-      () => llenarYEnviar(mes, false), CSS_GRIS));
+      () => presentarMeses(meses.slice(0, 1), false), CSS_GRIS));
     cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
   };
 
-  // Un mes por solicitud: si el período abarca varios (semestral), se elige cuál.
-  const elegirMes = () => {
-    const meses = (paquete.detalle_meses || []).filter((d) => d.comprobantes > 0).map((d) => d.mes);
-    if (meses.length <= 1) return autorizar(meses[0] || paquete.periodo.mes);
-    limpiar();
-    linea('El portal presenta un mes por solicitud. ¿Cuál cargo ahora?',
-      'font-weight:700;color:#1e6b33;margin-bottom:6px');
-    meses.forEach((m) => {
-      const d = (paquete.detalle_meses || []).find((x) => x.mes === m) || {};
-      cuerpo.appendChild(boton((MESES[m - 1] || m) + '  ·  ' + (d.comprobantes || 0) +
-        ' compr.  ·  ' + money(d.solicitar || 0), () => autorizar(m)));
-    });
-    cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
+  // Los meses del período que tienen comprobantes. El portal presenta UNA
+  // solicitud por mes, así que un semestral son seis vueltas: se recorren todas
+  // sin preguntar mes por mes, que era lo que obligaba a repetir el trámite a
+  // mano seis veces.
+  const mesesDelPeriodo = () => {
+    const conComprobantes = (paquete.detalle_meses || [])
+      .filter((d) => d.comprobantes > 0).map((d) => d.mes);
+    return conComprobantes.length ? conComprobantes : [paquete.periodo.mes];
   };
+
+  const elegirMes = () => autorizar(mesesDelPeriodo());
 
   // Etiquetas, ids y clases de un nodo y sus hijos, sin una letra del contenido.
   const esqueleto = (nodo, nivel) => {
@@ -1466,11 +1605,14 @@
   // cantidad y monto delante, al tocar "Enviar al SRI". Volver a preguntar acá
   // sería pedir dos veces lo mismo. Un período semestral es la excepción —hay
   // que elegir qué mes se presenta— y ahí sí se muestra el panel.
-  const mesesConComprobantes = () => (paquete && paquete.detalle_meses || [])
-    .filter((d) => d.comprobantes > 0).map((d) => d.mes);
-  if (paquete && paquete.auto && (hayFormulario() || enlaceIngresarFacturas()) &&
-      mesesConComprobantes().length <= 1) {
-    llenarYEnviar(mesesConComprobantes()[0] || paquete.periodo.mes, true);
+  if (paquete && paquete.auto) {
+    // Se pasan solas las pantallas previas (aviso legal y cuenta bancaria): el
+    // usuario abrió la aplicación del SRI y de ahí en adelante es trabajo del
+    // marcador, incluidos TODOS los meses del período.
+    pasarPantallasPrevias().then((listo) => {
+      if (listo) presentarMeses(mesesDelPeriodo(), true);
+      else pintar();
+    });
   } else {
     pintar();
   }
