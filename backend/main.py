@@ -121,9 +121,11 @@ _RATE_RULES = (
     # automatizada— y cada llamada queda en auditoría. Se chequea antes que la
     # regla general de "/reveal" porque la primera que matchea es la que aplica.
     ("/api/credentials/", ("GET",), 30, 60, "/reveal-all"),
-    # Acceso a credenciales SRI en plano: súper restrictivo (5/min) para detectar
-    # exfiltración aún con sesión admin comprometida.
-    ("/api/credentials/", ("GET",),  5, 60, "/reveal"),  # GET /api/credentials/{id}/reveal
+    # Acceso a credenciales SRI en plano. Dejó de ser excepcional: la clave se
+    # muestra sola al pararse en un contribuyente, así que 5/min cortaba el
+    # trabajo normal de recorrer clientes. 30/min sigue frenando una
+    # exfiltración automatizada, y cada llamada queda igual en auditoría.
+    ("/api/credentials/", ("GET",),  30, 60, "/reveal"),  # GET /api/credentials/{id}/reveal
     # Acceso a audit log o list también limitado pero menos estricto
     ("/api/credentials/audit-log", ("GET",), 30, 60),
 )

@@ -63,7 +63,6 @@ export default function Declaraciones({ tipo }) {
   // Credenciales/servicios del contribuyente (punto 4)
   const [creds, setCreds] = useState(null)
   const [claveSRI, setClaveSRI] = useState('')
-  const [revelandoClave, setRevelandoClave] = useState(false)
 
   // Overrides editables del crédito tributario mes anterior (605/606)
   // null = usar el pre-cargado del backend; número = override manual
@@ -249,16 +248,18 @@ export default function Declaraciones({ tipo }) {
     return () => { cancelled = true }
   }, [selectedClientId])
 
-  const revelarClaveSRI = async () => {
-    if (!creds?.credencial?.id || claveSRI || revelandoClave) return
-    setRevelandoClave(true)
-    try {
-      const r = await credentialsAPI.reveal(creds.credencial.id)
-      if (r.data?.password) setClaveSRI(r.data.password)
-    } finally {
-      setRevelandoClave(false)
-    }
-  }
+  // La clave del portal se muestra sola al abrir la declaración: es el dato con
+  // el que se entra al SRI, y pedir un click extra para verlo no protegía nada.
+  useEffect(() => {
+    setClaveSRI('')
+    const id = creds?.credencial?.id
+    if (!id) return
+    let cancelado = false
+    credentialsAPI.reveal(id)
+      .then((r) => { if (!cancelado && r.data?.password) setClaveSRI(r.data.password) })
+      .catch(() => { /* cifrada con otra llave */ })
+    return () => { cancelado = true }
+  }, [creds])
 
   const guardar = async () => {
     try {
@@ -468,16 +469,12 @@ export default function Declaraciones({ tipo }) {
           <h1>{icon} Declaración {tipo}</h1>
           <p className="dc-sub">
             <strong>{selectedClient.identificacion}</strong> — {selectedClient.nombre} · {periodoLargo(selectedClient)}
-            {creds?.es_admin && creds?.credencial && (
+            {(creds?.puede_ver_clave ?? creds?.es_admin) && creds?.credencial && (
               <span className="clave-header-tag">
                 🔐 <strong>{creds.credencial.username || '—'}</strong>
-                {claveSRI ? (
-                  <code className="clave-header-code">{claveSRI}</code>
-                ) : (
-                  <button type="button" className="clave-header-reveal" onClick={revelarClaveSRI} disabled={revelandoClave}>
-                    {revelandoClave ? '…' : 'revelar clave'}
-                  </button>
-                )}
+                {claveSRI
+                  ? <code className="clave-header-code">{claveSRI}</code>
+                  : <span className="clave-header-reveal">(no se pudo descifrar)</span>}
               </span>
             )}
           </p>

@@ -21,11 +21,9 @@ export default function ClientNavigator({ idents_svc = null }) {
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState({})
 
-  // Credenciales SRI — solo admin; null = cargando, {} = sin acceso/sin creds.
-  // Solo se guarda id/username (la password se revela bajo demanda por fila).
+  // Credenciales SRI del equipo del despacho; null = cargando, {} = sin acceso.
   const [credByRuc, setCredByRuc] = useState(null) // { [ruc]: { id, username } }
   const [revealed, setRevealed] = useState({}) // { [ruc]: password }
-  const [revealing, setRevealing] = useState(null) // ruc en curso
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -55,21 +53,23 @@ export default function ClientNavigator({ idents_svc = null }) {
           }
         }
         setCredByRuc(byRuc)
+        // Las claves se muestran directamente, y se piden TODAS en una sola
+        // llamada: una por fila serían cuarenta pedidos —y cuarenta registros
+        // de auditoría— cada vez que se abre el navegador de clientes.
+        credentialsAPI.revealAll()
+          .then((cl) => {
+            const porId = {}
+            for (const x of cl.data?.data || []) porId[x.credential_id] = x.password
+            const porRuc = {}
+            for (const [ruc, cred] of Object.entries(byRuc)) {
+              if (porId[cred.id]) porRuc[ruc] = porId[cred.id]
+            }
+            setRevealed(porRuc)
+          })
+          .catch(() => setRevealed({}))
       })
       .catch(() => setCredByRuc({}))
   }, [data])
-
-  const revelarClave = async (ruc, credId) => {
-    if (revealed[ruc] || revealing) return
-    setRevealing(ruc)
-    try {
-      const r = await credentialsAPI.reveal(credId)
-      const password = r.data?.password
-      if (password) setRevealed((prev) => ({ ...prev, [ruc]: password }))
-    } finally {
-      setRevealing(null)
-    }
-  }
 
   useEffect(() => {
     if (focusIdent) {
@@ -148,19 +148,9 @@ export default function ClientNavigator({ idents_svc = null }) {
                     <>
                       {cred.username && <span className="cn-clave-user">🔐 {cred.username}</span>}
                       {!cred.username && <span className="cn-clave-user">🔐</span>}
-                      {revealed[c.identificacion] ? (
-                        <code className="cn-clave-val">{revealed[c.identificacion]}</code>
-                      ) : (
-                        <button
-                          type="button"
-                          className="cn-clave-btn"
-                          onClick={(e) => { e.stopPropagation(); revelarClave(c.identificacion, cred.id) }}
-                          disabled={revealing === c.identificacion}
-                          title="Revelar clave SRI"
-                        >
-                          {revealing === c.identificacion ? '…' : '👁'}
-                        </button>
-                      )}
+                      {revealed[c.identificacion]
+                        ? <code className="cn-clave-val">{revealed[c.identificacion]}</code>
+                        : <span className="cn-clave-none">sin descifrar</span>}
                     </>
                   ) : (
                     <span className="cn-clave-none">sin clave</span>
