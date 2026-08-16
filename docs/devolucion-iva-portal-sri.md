@@ -109,6 +109,17 @@ envío ocurre en la sesión del contribuyente.
    se ubica **por id** —`…cmbTipoGasto_panel`, colgado del `body`, uno por
    fila—: se vieron cuatro abiertos a la vez, y tomar "el panel visible" hace
    que el click caiga en otra fila.
+1quinquies. **Lo que el portal RECLAMA hay que leerlo, y hay que esperarlo.** Al
+   tocar *Procesar facturas seleccionadas* el SRI contesta una de dos cosas: el
+   detalle (con *Guardar selección realizada*) o un reclamo —el conocido es
+   *"La factura solicitada … no detalla el tipo de gasto"*, que aparece cuando el
+   tipo de gasto se pintó en el combo pero no llegó al servidor (ver 1quater)—.
+   El enviador no los leía nunca: pintaba *"Selección guardada"* pasara lo que
+   pasara y seguía hasta presentar. Ahora espera a que llegue **cualquiera de las
+   dos** y, si es un reclamo, **corta el mes** con el texto del SRI a la vista y
+   sin avisarle a la app —así la solicitud no queda marcada como presentada—.
+   Mirar una sola vez apenas vuelve la tapa de *"Espere por favor"* no sirve: el
+   ajax tarda más que la tapa y no se ve nada. *Corregido el 2026-08-16.*
 2. **Al marcar, el portal auto-rellena el IVA solicitado** con el monto completo
    de la factura. Solo hay que corregirlo cuando el mes supera el tope.
 3. **El período es mensual.** Un contribuyente semestral necesita seis
@@ -182,9 +193,11 @@ incluye la anatomía de la primera fila (esqueleto de etiquetas, ids y clases; s
 texto, así no arrastra datos del contribuyente).
 
 Se prueba con `python scripts/test_enviador_devolucion.py`, que corre el marcador
-**minificado** contra `scripts/portal_devolucion_falso.html` en sus tres
-variantes (el widget escucha / solo escucha el checkbox interno / no escucha
-nadie). Contra el portal real hay que probarlo con una solicitud verdadera.
+**minificado** contra `scripts/portal_devolucion_falso.html` en sus variantes: el
+widget escucha / solo escucha el checkbox interno / no escucha nadie / **el
+portal rechaza la selección al procesar** (`quejoso`), más el recorrido semestral
+y el de la extensión. Contra el portal real hay que probarlo con una solicitud
+verdadera.
 
 ## Tipo de gasto — catálogo cerrado del SRI
 

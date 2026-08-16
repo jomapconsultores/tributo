@@ -136,8 +136,13 @@ def correr(modo: str, fuente: str) -> bool:
         # inyectada en la página, sin pasar por el portapapeles.
         extension = modo == "extension"
         semestral = modo == "semestral"
-        auto = modo in ("auto", "extension", "semestral")
-        pg.goto(PORTAL.as_uri() + "?modo=" + ("widget" if auto else modo))
+        # 'quejoso' marca bien pero el portal rechaza la selección al procesar:
+        # corre en automático porque es ahí donde el rechazo hace daño —el
+        # recorrido seguía de largo y presentaba como si nada—.
+        quejoso = modo == "quejoso"
+        auto = modo in ("auto", "extension", "semestral", "quejoso")
+        pg.goto(PORTAL.as_uri() + "?modo=" +
+                (modo if quejoso else ("widget" if auto else modo)))
         pg.click("#lnkIngresar")
         # Lo que el enviador le manda de vuelta a la app al terminar. Se escucha
         # en todos los modos: es la única prueba de que el trámite hecho en el
@@ -210,7 +215,8 @@ def correr(modo: str, fuente: str) -> bool:
             pg.wait_for_timeout(1000)
             panel = pg.evaluate(PANEL)
             if ("Solicitud presentada" in panel or "Meses presentados" in panel
-                    or "aceptando las marcas" in panel or "Terminó con problemas" in panel):
+                    or "aceptando las marcas" in panel or "Terminó con problemas" in panel
+                    or "el portal no aceptó" in panel):
                 break
         tardo = time.time() - t0
         marcadas = pg.evaluate(
@@ -238,6 +244,24 @@ def correr(modo: str, fuente: str) -> bool:
             if not suma:
                 print("   avisos:", avisos)
             ok = ok and suma
+        elif quejoso:
+            # Lo que importa: que corte con el texto del SRI, que no presente y
+            # que NO le avise a la app. Antes seguía de largo, pintaba
+            # "Selección guardada" y terminaba marcando como presentado un
+            # trámite que el portal había rechazado entero.
+            constancia = pg.evaluate("(document.getElementById('constancia')||{}).textContent||''")
+            avisos = pg.evaluate("window.__constancias || []")
+            ok = ("el portal no aceptó" in panel
+                  and "no detalla el tipo de gasto" in panel
+                  and "realizada exitosamente" not in constancia
+                  and not avisos)
+            print(f"  {'✔' if ok else '✖'} cortó con el reclamo del portal, sin presentar "
+                  f"ni avisar a la app ({tardo:.0f}s)")
+            if not ok:
+                print("  panel:", panel[-500:], "| avisos:", avisos,
+                      "| quejas en el DOM:",
+                      pg.evaluate("[...document.querySelectorAll('.ui-messages-error')]"
+                                  ".map(n=>[n.innerText,n.offsetParent!==null])"))
         elif modo == "muerto":
             ok = "aceptando las marcas" in panel
             print(f"  {'✔' if ok else '✖'} cortó avisando ({tardo:.0f}s)"
@@ -284,7 +308,8 @@ def correr(modo: str, fuente: str) -> bool:
 
 
 if __name__ == "__main__":
-    modos = [sys.argv[1]] if len(sys.argv) > 1 else ["semestral", "extension", "auto", "widget", "nativo", "muerto"]
+    modos = [sys.argv[1]] if len(sys.argv) > 1 else ["semestral", "extension", "auto", "widget",
+                                                     "nativo", "quejoso", "muerto"]
     fuente = sys.argv[2] if len(sys.argv) > 2 else "min"
     print(f"Enviador-DEVOLUCIÓN contra el portal simulado ({fuente})")
     todo_bien = True

@@ -22,6 +22,7 @@
 <button id="btnBuscar">Buscar</button>
 <button id="btnVolverMenu">Volver menu principal</button>
 <div id="grilla"></div>
+<div id="quejas"></div>
 <div id="pag" style="display:none">
   <span class="ui-paginator-current"></span>
   <span class="ui-paginator-first">«</span>
@@ -59,6 +60,12 @@ for (let i = 1; i <= 4; i++) {
     iva: 2 + i,
   });
 }
+// widget  = la caja del checkbox escucha el click (lo normal)
+// nativo  = la caja no escucha; solo el checkbox interno
+// muerto  = no escucha nadie (para ver cómo informa el marcador)
+// quejoso = marca bien, pero al procesar el portal RECHAZA la selección, que es
+//           lo que hace el SRI real cuando una fila llega sin tipo de gasto.
+const MODO_URL = new URLSearchParams(location.search).get('modo') || 'widget';
 let mesElegido = 7;
 const delMes = () => DATOS.filter((d) => d.mes === mesElegido);
 const TIPOS = [['1','VESTIMENTA'],['2','VIVIENDA'],['3','SALUD'],['4','ALIMENTACION'],['5','EDUCACION']];
@@ -104,11 +111,7 @@ function pintarGrilla() {
   document.querySelector('.ui-paginator-current').textContent =
     '(' + (pagina + 1) + ' of ' + Math.max(1, Math.ceil(delMes().length / porPagina)) + ')';
   document.getElementById('btnProcesar').style.display = '';
-  // Marcar. MODO simula versiones del portal:
-  //   widget = escucha el click en la caja (lo normal)
-  //   nativo = la caja no escucha; solo el checkbox interno
-  //   muerto = no escucha nadie (para ver cómo informa el marcador)
-  const MODO = new URLSearchParams(location.search).get('modo') || 'widget';
+  const MODO = MODO_URL;
   const alternar = (serie) => {
     const dato = DATOS.find((d) => d.serie === serie);
     ajax(400, () => {
@@ -117,7 +120,7 @@ function pintarGrilla() {
       pintarGrilla();
     });
   };
-  if (MODO === 'widget') {
+  if (MODO !== 'nativo' && MODO !== 'muerto') {
     document.querySelectorAll('.ui-chkbox-box').forEach((b) => {
       b.addEventListener('click', () => alternar(b.closest('tr').dataset.serie));
     });
@@ -158,6 +161,7 @@ document.getElementById('btnVolverMenu').onclick = () => {
       document.getElementById(id).style.display = 'none';
     });
     document.getElementById('constancia').textContent = '';
+    document.getElementById('quejas').innerHTML = '';
     document.getElementById('form').style.display = 'none';
     document.getElementById('menu').style.display = '';
   });
@@ -183,7 +187,18 @@ document.querySelector('.ui-paginator-first').onclick = () => {
   ajax(400, () => { pagina = 0; pintarGrilla(); });
 };
 document.getElementById('btnProcesar').onclick = () => {
-  ajax(500, () => { document.getElementById('btnGuardar').style.display = ''; });
+  ajax(500, () => {
+    // Como el portal real: si algo no le cuadra, pinta el reclamo y NO pasa al
+    // detalle. El botón de guardar nunca aparece.
+    if (MODO_URL === 'quejoso') {
+      document.getElementById('quejas').innerHTML =
+        '<div class="ui-messages"><div class="ui-messages-error">' +
+        'La factura solicitada 003-301-000089111 no detalla el tipo de gasto' +
+        '</div></div>';
+      return;
+    }
+    document.getElementById('btnGuardar').style.display = '';
+  });
 };
 document.getElementById('btnGuardar').onclick = () => {
   ajax(500, () => { document.getElementById('lnkEnvio').style.display = ''; });

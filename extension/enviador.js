@@ -543,6 +543,33 @@
   const botonPorTexto = (re) => visibles('button,input[type="submit"],input[type="button"],a')
     .find((b) => re.test(norm((b.value || b.textContent) || ''))) || null;
 
+  // --- Lo que el portal RECLAMA -------------------------------------------
+  // El marcador no leía esto nunca: tocaba "Procesar", esperaba el ajax y
+  // seguía. Si el SRI rechazaba la selección —el caso conocido es el tipo de
+  // gasto que se pinta en el combo pero no llega al servidor—, el panel pintaba
+  // igual "Selección guardada" y el recorrido continuaba como si nada. El
+  // resultado era el peor posible: nada procesado y el sistema diciendo que sí.
+  //
+  // PrimeFaces pinta sus errores con clases propias, pero no todas las
+  // versiones del portal las usan, así que además se reconoce el reclamo por su
+  // texto, que es fijo. Solo se miran ERRORES: un aviso informativo no puede
+  // frenar un trámite.
+  // La entrada al segundo paso del menú. Vive acá arriba porque se la espera en
+  // dos momentos: al guardar la selección y al buscar por dónde seguir.
+  const buscarEnvio = () => visibles('a,button,input[type="button"],input[type="submit"]')
+    .find((e) => /envio de solicitud/.test(norm((e.value || e.textContent) || ''))) || null;
+
+  const RE_QUEJA_SRI = /no detalla el tipo de gasto|la factura solicitada|no se pudo procesar|debe seleccionar/i;
+  const quejasDelPortal = () => {
+    const textoDe = (n) => (n.innerText || n.textContent || '').trim().replace(/\s+/g, ' ');
+    const marcadas = visibles('.ui-messages-error,.ui-message-error,.ui-growl-message-error,' +
+      '.ui-messages-error-detail,.ui-messages-error-summary')
+      .map(textoDe).filter(Boolean);
+    const porTexto = visibles('.ui-messages,.ui-growl-item,.ui-message')
+      .map(textoDe).filter((t) => t && RE_QUEJA_SRI.test(t)).map((t) => t.slice(0, 300));
+    return [...new Set([...marcadas, ...porTexto])];
+  };
+
   // Una fila de la grilla es la que trae una serie de comprobante en alguna celda.
   const filasGrilla = () => {
     const filas = [];
@@ -1227,16 +1254,46 @@
     const bProcesar = botonPorTexto(/procesar facturas/);
     if (!bProcesar) return fallar('no encontré el botón "Procesar facturas seleccionadas"');
     paso('Procesando la selección…');
+    // Lo que ya estaba en pantalla no cuenta: interesa lo que el portal conteste
+    // a ESTE click.
+    const quejasPrevias = new Set(quejasDelPortal());
+    const quejasNuevas = () => quejasDelPortal().filter((q) => !quejasPrevias.has(q));
+    // Un reclamo del portal es la respuesta, y se corta el mes con el texto del
+    // SRI a la vista. Seguir sería presentar una solicitud que el portal no
+    // aceptó —y en un semestral, arrastrar el problema por los cinco meses que
+    // faltan—. Lo marcado queda en el portal para revisarlo a mano.
+    const siSeQueja = (donde) => {
+      const qs = quejasNuevas();
+      if (!qs.length) return null;
+      qs.slice(0, 5).forEach((q) => paso('⚠ el portal dice: ' + q, 'color:#8b1e1e'));
+      return fallar('el portal no aceptó ' + donde + ': ' + qs[0].slice(0, 160) +
+        (qs.length > 1 ? ' (y ' + (qs.length - 1) + ' reclamo(s) más)' : '') +
+        '. No se presentó nada.');
+    };
     clickReal(bProcesar);
     await esperarPortal();
+    // El portal contesta una de dos cosas: el detalle (con su botón de guardar) o
+    // un reclamo. Se espera a que llegue CUALQUIERA de las dos en vez de mirar
+    // una sola vez —el ajax tarda más que la tapa de "Espere por favor", así que
+    // mirar apenas vuelve `esperarPortal` es mirar antes de que conteste, y por
+    // ahí se colaba el rechazo sin que nadie lo viera—.
+    await esperar(() => !!botonPorTexto(/guardar seleccion/) || quejasNuevas().length > 0, 12000);
 
-    const bGuardar = await esperar(() => botonPorTexto(/guardar seleccion/), 12000)
-      ? botonPorTexto(/guardar seleccion/) : null;
+    const rechazoProcesar = siSeQueja('la selección');
+    if (rechazoProcesar) return rechazoProcesar;
+
+    const bGuardar = botonPorTexto(/guardar seleccion/);
     if (!bGuardar) return fallar('no encontré el botón "Guardar selección realizada". Revisá el ' +
       'detalle en pantalla: puede que el portal esté pidiendo corregir algún monto.');
     paso('Guardando la selección…');
     clickReal(bGuardar);
     await esperarPortal();
+    // Igual que arriba: o aparece por dónde seguir, o el portal se queja.
+    await esperar(() => !!botonPorTexto(/cargar informacion/) || !!buscarEnvio() ||
+      quejasNuevas().length > 0, 12000);
+
+    const rechazoGuardar = siSeQueja('guardar la selección');
+    if (rechazoGuardar) return rechazoGuardar;
 
     // Guardar deja la selección lista, pero el envío vive en la OTRA entrada del
     // menú de dos pasos: "Envío de solicitud". Sin entrar ahí, "Cargar
@@ -1244,8 +1301,6 @@
     // después de haber hecho todo el trabajo.
     if (!botonPorTexto(/cargar informacion/)) {
       // La entrada puede tardar en aparecer: guardar dispara su propio ajax.
-      const buscarEnvio = () => visibles('a,button,input[type="button"],input[type="submit"]')
-        .find((e) => /envio de solicitud/.test(norm((e.value || e.textContent) || ''))) || null;
       await esperar(() => !!buscarEnvio() || !!botonPorTexto(/cargar informacion/), 15000);
       const irAlEnvio = buscarEnvio();
       if (irAlEnvio) {
@@ -1281,6 +1336,16 @@
     await esperarPortal(40000);
     await dormir(1500);
     const constancia = leerConstancia(hechas.length, total);
+    // Sin la confirmación del SRI, lo que el portal haya reclamado es la única
+    // pista de por qué. Viaja con la constancia para que llegue al resumen de
+    // meses, donde si no se perdería.
+    if (!constancia.mensaje) {
+      const qs = quejasNuevas();
+      if (qs.length) {
+        constancia.quejas = qs.slice(0, 5);
+        qs.slice(0, 3).forEach((q) => paso('⚠ el portal dice: ' + q, 'color:#8b1e1e'));
+      }
+    }
     // En una serie de meses no se pinta la constancia de cada uno: taparía el
     // recorrido del siguiente. Se devuelve y al final se muestran todas juntas.
     if (!enSerie) mostrarConstancia(hechas.length, total);
@@ -1437,6 +1502,7 @@
     if (!ok) {
       linea('No encontré en la pantalla la confirmación "Carga de archivo realizada ' +
         'exitosamente". Revisá el portal antes de darla por presentada.', 'color:#8b6b1e');
+      (constancia.quejas || []).forEach((q) => linea('⚠ el portal dice: ' + q, 'color:#8b1e1e'));
     }
     linea('Comprobantes: ' + constancia.comprobantes);
     linea('Total: ' + money(constancia.monto));

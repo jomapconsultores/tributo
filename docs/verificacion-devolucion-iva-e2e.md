@@ -150,8 +150,13 @@ el trámite quedaba hecho en el SRI y en **Borrador** en el sistema.
       constancia **sin** abrir el portal ni republicar el paquete. Es la vía para
       registrar un envío que ya se hizo: pasar por *Enviar al SRI* solo para
       llegar a esa ventana presentaría el trámite **dos veces**.
+- [ ] Si el portal **rechaza** la selección al procesar (el caso real: una fila
+      sin tipo de gasto), el enviador corta con el texto del SRI a la vista, **no
+      presenta** y **no avisa a la app**: la solicitud sigue en Borrador. Antes
+      pintaba "Selección guardada" y seguía de largo.
 - [ ] Automatizado en `python scripts/test_enviador_devolucion.py` (modos
-      `extension` y `semestral` comprueban que la constancia viaja y viaja sumada).
+      `extension` y `semestral` comprueban que la constancia viaja y viaja sumada;
+      `quejoso`, que un rechazo del portal corta el recorrido).
 
 ## 4. Probes adversariales (romper a propósito)
 
