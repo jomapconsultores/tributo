@@ -139,6 +139,17 @@ def correr(modo: str, fuente: str) -> bool:
         auto = modo in ("auto", "extension", "semestral")
         pg.goto(PORTAL.as_uri() + "?modo=" + ("widget" if auto else modo))
         pg.click("#lnkIngresar")
+        # Lo que el enviador le manda de vuelta a la app al terminar. Se escucha
+        # en todos los modos: es la única prueba de que el trámite hecho en el
+        # portal llega a marcarse como presentado en el sistema.
+        pg.evaluate("""() => {
+          window.__constancias = [];
+          window.addEventListener('message', (e) => {
+            if (e.data && e.data.tipo === 'jomap-devolucion-constancia' && e.data.constancia) {
+              window.__constancias.push(e.data);
+            }
+          });
+        }""")
         pg.wait_for_timeout(800)
         if extension:
             # Se corren los scripts DE VERDAD de la extension, con las APIs de
@@ -146,9 +157,15 @@ def correr(modo: str, fuente: str) -> bool:
             # portal, que es donde puede romperse sin que nadie lo note.
             pg.evaluate("""(url) => {
               const datos = {};
+              // Qué se guardó y qué constancias viajaron: es lo que se mira al
+              // final para saber si el camino de vuelta (portal -> app) existe.
+              window.__guardados = [];
               window.chrome = {
                 storage: { local: {
-                  set: (o, cb) => { Object.assign(datos, o); cb && cb(); },
+                  set: (o, cb) => {
+                    Object.keys(o).forEach((k) => window.__guardados.push(k));
+                    Object.assign(datos, o); cb && cb();
+                  },
                   get: (k, cb) => cb({ [k]: datos[k] }),
                   remove: (k, cb) => { delete datos[k]; cb && cb(); },
                 } },
@@ -210,6 +227,17 @@ def correr(modo: str, fuente: str) -> bool:
             print(f"  {'✔' if ok else '✖'} dos meses presentados en una corrida ({tardo:.0f}s)")
             if not ok:
                 print("  panel:", panel[-700:])
+            # Seis meses en el portal son UNA solicitud en el sistema: la
+            # constancia que vuelve tiene que venir sumada, o el reporte diría
+            # que se presentó solo el último mes.
+            avisos = pg.evaluate("window.__constancias || []")
+            c = (avisos[0].get("constancia") or {}) if avisos else {}
+            suma = (c.get("comprobantes") == 16 and c.get("meses") == 2
+                    and "exitosamente" in (c.get("mensaje") or ""))
+            print(f"  {'✔' if suma else '✖'} la constancia vuelve sumada (4+12 comprobantes)")
+            if not suma:
+                print("   avisos:", avisos)
+            ok = ok and suma
         elif modo == "muerto":
             ok = "aceptando las marcas" in panel
             print(f"  {'✔' if ok else '✖'} cortó avisando ({tardo:.0f}s)"
@@ -227,6 +255,24 @@ def correr(modo: str, fuente: str) -> bool:
                   f"y con constancia ({tardo:.0f}s)")
             if not ok:
                 print("  panel:", panel[-600:])
+            if extension:
+                # El camino de vuelta: sin esto el trámite queda hecho en el SRI
+                # y la solicitud sigue en Borrador en el sistema, que es
+                # exactamente el agujero que se tapó el 2026-08-16.
+                avisos = pg.evaluate("window.__constancias || []")
+                guardados = pg.evaluate("window.__guardados || []")
+                buena = next((a for a in avisos
+                              if (a.get("constancia") or {}).get("mensaje")), None)
+                vuelve = bool(buena) and "constancia" in guardados
+                if vuelve:
+                    c = buena["constancia"]
+                    vuelve = (c.get("comprobantes") == 12 and buena.get("solicitud_id")
+                              and "exitosamente" in c.get("mensaje", ""))
+                print(f"  {'✔' if vuelve else '✖'} la constancia vuelve a la app "
+                      f"(solicitud_id + {len(avisos)} aviso(s))")
+                if not vuelve:
+                    print("   avisos:", avisos, "guardados:", guardados)
+                ok = ok and vuelve
         if errores:
             ok = False
             print("  ✖ errores en la página:", errores)

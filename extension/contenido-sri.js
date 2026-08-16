@@ -29,6 +29,23 @@ const inyectar = (paquete) => {
   (document.head || document.documentElement).appendChild(codigo);
 };
 
+// El camino de vuelta: lo que el SRI contestó al presentar. El enviador lo
+// publica al terminar y acá se guarda para la app, que es la que puede marcar la
+// solicitud como presentada. Antes esa constancia moría en esta pestaña y el
+// sistema seguía mostrando Borrador un trámite ya hecho.
+window.addEventListener('message', (ev) => {
+  if (ev.source !== window) return;
+  const dato = ev.data;
+  if (!dato || dato.tipo !== 'jomap-devolucion-constancia' || !dato.constancia) return;
+  chrome.storage.local.set({
+    constancia: {
+      solicitud_id: dato.solicitud_id || null,
+      constancia: dato.constancia,
+      cuando: Date.now(),
+    },
+  });
+});
+
 chrome.storage.local.get('solicitud', ({ solicitud }) => {
   if (!solicitud || !solicitud.paquete) return;
   const minutos = (Date.now() - (solicitud.cuando || 0)) / 60000;

@@ -1304,7 +1304,54 @@
       if (!hastaElFinal) break;           // se detuvo a propósito: espera al usuario
     }
     if (meses.length > 1) resumenDeMeses(resultados);
+    // Y avisarle a la app. Sin esto el trámite queda hecho en el SRI pero el
+    // sistema sigue mostrando la solicitud en Borrador, porque marcarla como
+    // presentada dependía de que alguien volviera a la pestaña de la app a pegar
+    // la constancia a mano —y con el recorrido automático ya nadie vuelve—.
+    avisarALaApp(constanciaDeMeses(resultados));
     return resultados;
+  };
+
+  // Una sola constancia para toda la solicitud. El portal presenta un mes por
+  // vez, pero en el sistema un semestral es UNA solicitud: se suma lo que el SRI
+  // aceptó en cada mes. Si algún mes no llegó a confirmar, el mensaje va vacío a
+  // propósito: la app no debe dar por presentado lo que el portal no confirmó.
+  const constanciaDeMeses = (resultados) => {
+    const oks = (resultados || []).filter((r) => r && r.presentado && r.constancia);
+    if (!oks.length) return null;
+    const cs = oks.map((r) => r.constancia);
+    const conFecha = cs.filter((x) => x.fecha_carga);
+    const todosOk = cs.every((x) => x.mensaje) && !(resultados || []).some((r) => r && r.error);
+    return {
+      comprobantes: cs.reduce((s, x) => s + (Number(x.comprobantes) || 0), 0),
+      monto: Math.round(cs.reduce((s, x) => s + (Number(x.monto) || 0), 0) * 100) / 100,
+      fecha_carga: conFecha.length ? conFecha[conFecha.length - 1].fecha_carga : '',
+      mensaje: todosOk
+        ? 'Carga de archivo realizada exitosamente' +
+          (cs.length > 1 ? ' (' + cs.length + ' meses)' : '')
+        : '',
+      meses: cs.length,
+    };
+  };
+
+  // El canal de vuelta al sistema. Lo escucha la extensión (`contenido-sri.js`),
+  // que lo guarda y se lo entrega a la app cuando el usuario vuelve a esa
+  // pestaña. Sin extensión no escucha nadie y no pasa nada: queda el camino de
+  // siempre, "Copiar constancia para la app" y pegarla.
+  const avisarALaApp = (constancia) => {
+    if (!constancia) return;
+    try {
+      // Destino '*' y no el origen propio: un postMessage dirigido a `window` lo
+      // recibe ESA ventana y nadie más —los iframes no escuchan lo que se manda
+      // al padre—, así que no filtra nada. Con el origen propio, además, no
+      // llegaría nunca desde una página `file://` (ahí `origin` vale "null" y el
+      // navegador rechaza el envío en silencio), que es como corre la prueba.
+      window.postMessage({
+        tipo: 'jomap-devolucion-constancia',
+        solicitud_id: (paquete && paquete.solicitud_id) || null,
+        constancia,
+      }, '*');
+    } catch (e) { /* el aviso es un extra: nunca puede tumbar el envío */ }
   };
 
   // Cómo terminó cada mes. Con varios meses, el panel del último tapa a los

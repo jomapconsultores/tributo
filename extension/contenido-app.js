@@ -14,6 +14,10 @@
 // mensaje de otro origen no puede colarse como solicitud.
 
 const MARCA = 'jomap-devolucion-paquete';
+const MARCA_CONSTANCIA = 'jomap-devolucion-constancia';
+// La constancia sí puede esperar: registra algo que YA pasó en el SRI, y el
+// usuario puede tardar en volver a la pestaña de la app (o volver mañana).
+const VIGENCIA_CONSTANCIA_HORAS = 24;
 
 window.addEventListener('message', (ev) => {
   if (ev.source !== window) return;                 // nada de otras ventanas
@@ -31,3 +35,36 @@ window.addEventListener('message', (ev) => {
     },
   });
 });
+
+// Y el viaje de vuelta: la constancia que el enviador dejó guardada desde el
+// portal se le entrega a la app. Se hace al cargar y cada vez que esta pestaña
+// vuelve al frente, que es justo el momento en que el usuario regresa del SRI.
+const entregarConstancia = () => {
+  chrome.storage.local.get('constancia', ({ constancia }) => {
+    if (!constancia || !constancia.constancia) return;
+    const horas = (Date.now() - (constancia.cuando || 0)) / 3600000;
+    if (horas > VIGENCIA_CONSTANCIA_HORAS) {
+      chrome.storage.local.remove('constancia');
+      return;
+    }
+    // Se consume al entregarla: registrar dos veces el mismo envío sería
+    // pisar la constancia buena con una repetida.
+    chrome.storage.local.remove('constancia', () => {
+      // '*' por lo mismo que en el enviador: el mensaje va a esta misma ventana
+      // —la de la app— y ningún tercero lo ve.
+      window.postMessage({
+        tipo: MARCA_CONSTANCIA,
+        solicitud_id: constancia.solicitud_id || null,
+        constancia: constancia.constancia,
+      }, '*');
+    });
+  });
+};
+
+// La app tarda en montar la pantalla y en enganchar su escucha; entregar en el
+// acto sería hablarle a nadie.
+setTimeout(entregarConstancia, 1500);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) setTimeout(entregarConstancia, 400);
+});
+window.addEventListener('focus', () => setTimeout(entregarConstancia, 400));

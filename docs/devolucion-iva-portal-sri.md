@@ -155,6 +155,16 @@ portal"**, parado en *Ingresar facturas electrónicas*:
    confirmación con los números a la vista, porque es irreversible.
 6. Lee la constancia y la copia como JSON para pegarla en la app
    (`comprobantes`, `monto`, `fecha_carga`, `mensaje`).
+7. **Y se la manda de vuelta a la app** (`postMessage`
+   `jomap-devolucion-constancia`, con el `solicitud_id`): la extensión la guarda
+   y se la entrega a la pantalla cuando el usuario vuelve a esa pestaña, que
+   marca la solicitud como **Presentada** sola. *Agregado el 2026-08-16, porque
+   el trámite quedaba hecho en el SRI y en Borrador en el sistema: registrar el
+   envío dependía de volver a la app a pegar la constancia a mano, y con el
+   recorrido automático ya nadie volvía.* Con un semestral son seis
+   presentaciones en el portal y **una sola** solicitud acá: la constancia que
+   viaja es la suma de los meses, y si alguno no confirmó viaja **sin mensaje**
+   —la app avisa y no da nada por presentado—.
 
 La tabla se repinta en cada ajax, así que el script vuelve a buscar la fila por
 serie antes de cada paso; los controles se ubican por etiqueta propia y por el

@@ -132,6 +132,27 @@ Servicio por cliente: **`devolucion_iva`** (tabla `client_services`)
       período abarca más de un mes, el **desglose por mes**.
 - [ ] Migración **032** aplicada (`rubro`, `detalle_meses`, `presentada_at`).
 
+## 3c. La constancia vuelve sola (agregado 2026-08-16)
+
+Con la extensión instalada, presentar en el portal tiene que dejar la solicitud
+en **Presentada** sin que nadie vuelva a tocar nada en la app. Antes no ocurría:
+el trámite quedaba hecho en el SRI y en **Borrador** en el sistema.
+
+- [ ] Tocá **📤 Enviar al SRI**, dejá que el enviador presente en el portal y
+      volvé a la pestaña de la app **sin tocar nada más**: la solicitud pasa a
+      **Presentada** sola y se abre el reporte del envío.
+- [ ] En un **semestral**, el portal presenta seis meses y el sistema tiene una
+      sola solicitud: `comprobantes_enviados` y `monto_enviado` deben ser la
+      **suma de los seis**, no los del último mes.
+- [ ] Si algún mes NO confirmó, la solicitud **queda en Borrador** y la pantalla
+      avisa que el portal no confirmó. Nada se da por presentado a ciegas.
+- [ ] **📋 Ya presentada** (solo en solicitudes en borrador) abre la ventana de
+      constancia **sin** abrir el portal ni republicar el paquete. Es la vía para
+      registrar un envío que ya se hizo: pasar por *Enviar al SRI* solo para
+      llegar a esa ventana presentaría el trámite **dos veces**.
+- [ ] Automatizado en `python scripts/test_enviador_devolucion.py` (modos
+      `extension` y `semestral` comprueban que la constancia viaja y viaja sumada).
+
 ## 4. Probes adversariales (romper a propósito)
 
 - [ ] **Discapacidad**: cambia tipo a *discapacidad*, deja porcentaje vacío →

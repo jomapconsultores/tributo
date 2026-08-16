@@ -23,10 +23,21 @@ guarda, y al abrirse el portal la inyecta y el recorrido arranca solo.
 3. `enviador.js` —el mismo código del marcador, generado de la misma fuente—
    marca los comprobantes, les pone el tipo de gasto, procesa, guarda, entra a
    *Envío de solicitud* y presenta.
+4. Al terminar publica la **constancia** del portal; `contenido-sri.js` la
+   guarda y `contenido-app.js` se la entrega a la app cuando el usuario vuelve a
+   esa pestaña. Recién ahí la solicitud queda **Presentada** en el sistema.
 
-Dos resguardos deliberados: la solicitud **caduca a los 30 minutos** y se
-**consume al usarla**. Entrar al portal al otro día no puede disparar una
-presentación que nadie pidió hoy.
+El paso 4 no es un adorno: sin él el trámite quedaba hecho en el SRI y en
+**Borrador** en el sistema, porque marcarlo dependía de que alguien regresara a
+pegar la constancia a mano —y con el recorrido automático ya nadie regresa—.
+La app solo la registra si el portal confirmó con *"Carga de archivo realizada
+exitosamente"*; si no, avisa y la deja en Borrador.
+
+Tres resguardos deliberados: la solicitud **caduca a los 30 minutos** y se
+**consume al usarla** —entrar al portal al otro día no puede disparar una
+presentación que nadie pidió hoy—, y la constancia **también se consume**, para
+no registrar dos veces el mismo envío. La constancia vale 24 horas: registra
+algo que ya ocurrió, y el usuario puede volver a la app recién al día siguiente.
 
 ## Instalar
 

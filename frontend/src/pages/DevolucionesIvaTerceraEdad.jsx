@@ -533,6 +533,21 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
     }
   }
 
+  // Ya se presentó en el portal, pero el sistema no se enteró: se abre la
+  // ventana de constancia SIN publicar el paquete, sin copiarlo y sin abrir el
+  // portal. Es la diferencia que importa: pasar por «Enviar al SRI» solo para
+  // llegar a esta ventana volvería a soltar la solicitud en el portal y, con la
+  // extensión instalada, presentaría el trámite POR SEGUNDA VEZ.
+  const registrarConstancia = async (sol) => {
+    setMsg(null)
+    try {
+      const r = await devolucionesIvaAPI.envio(sol.id)   // solo lectura
+      setEnvioDe({ sol, paquete: r.data })
+    } catch (e) {
+      setMsg({ tipo: 'err', texto: e.response?.data?.detail || 'No se pudo abrir la constancia.' })
+    }
+  }
+
   // Registra lo que confirmó el SRI y guarda el reporte del envío.
   const registrarEnvio = async (sol, datos) => {
     try {
@@ -545,6 +560,45 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
       setMsg({ tipo: 'err', texto: e.response?.data?.detail || 'No se pudo registrar el envío.' })
     }
   }
+
+  // La constancia vuelve sola desde el portal: el enviador la publica al
+  // terminar y la extensión la trae hasta acá. Sin este camino de vuelta, el
+  // recorrido automático dejaba la solicitud PRESENTADA en el SRI y en Borrador
+  // en el sistema, porque marcarla dependía de que alguien regresara a esta
+  // pestaña a pegar la constancia a mano —y con el envío automático ya nadie
+  // regresa—. Sin extensión sigue estando el botón «Pegar constancia».
+  useEffect(() => {
+    const alLlegarConstancia = (ev) => {
+      if (ev.source !== window) return              // nada de otras ventanas
+      const d = ev.data
+      if (!d || d.tipo !== 'jomap-devolucion-constancia' || !d.constancia) return
+      const c = d.constancia
+      const sol = solicitudes.find((s) => s.id === d.solicitud_id)
+      if (!sol) return
+      if (sol.estado === 'presentada' || sol.estado === 'aprobada') return
+      // Sin el «Carga de archivo realizada exitosamente» del portal no se da
+      // nada por presentado: el enviador llegó al final pero el SRI no confirmó,
+      // y marcarlo igual sería registrar un envío que puede no existir.
+      if (!c.mensaje) {
+        setMsg({
+          tipo: 'err',
+          texto: 'El enviador terminó sin la confirmación del portal' +
+            (c.meses > 1 ? ' en alguno de los meses' : '') +
+            '. Revisá el SRI: la solicitud queda en Borrador hasta que se confirme.',
+        })
+        return
+      }
+      registrarEnvio(sol, {
+        comprobantes: c.comprobantes ?? null,
+        monto: c.monto ?? null,
+        fecha_carga: c.fecha_carga || null,
+        mensaje: c.mensaje || null,
+      })
+    }
+    window.addEventListener('message', alLlegarConstancia)
+    return () => window.removeEventListener('message', alLlegarConstancia)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [solicitudes])
 
   const eliminar = async (sol) => {
     if (!window.confirm(`¿Eliminar la solicitud de ${String(sol.mes).padStart(2, '0')}/${sol.anio}?`)) return
@@ -847,6 +901,12 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
                   <td className="dv-acciones">
                     <button className="dv-btn primary" onClick={() => enviar(s)}
                       title="Preparar el envío al portal del SRI y registrarlo">📤 Enviar al SRI</button>
+                    {s.estado === 'borrador' && (
+                      <button className="dv-btn" onClick={() => registrarConstancia(s)}
+                        title="Ya la presentaste en el portal: cargá acá la constancia sin volver a enviar">
+                        📋 Ya presentada
+                      </button>
+                    )}
                     <button className="dv-btn" onClick={() => exportar(s)} title="Exportar Excel">📥 Excel</button>
                     <button className="dv-btn" onClick={() => eliminar(s)} title="Eliminar">🗑️</button>
                   </td>
