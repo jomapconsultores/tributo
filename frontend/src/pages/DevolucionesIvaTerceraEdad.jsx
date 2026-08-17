@@ -545,10 +545,21 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
   //
   // Va sin await y sin bloquear: si el guardado del aprendizaje falla, el
   // usuario sigue clasificando y la solicitud igual lo persiste al guardarse.
+  // Y alcanza a TODAS las filas de ese proveedor. El tipo de gasto es del
+  // proveedor, no del comprobante —así se aprende y así se reusa—, y Coral
+  // aparece seis veces en un mes: elegirlo seis veces era repetir la misma
+  // decisión. Se puede corregir una fila suelta después, que el último cambio
+  // manda.
   const elegirRubro = (comprobante, rubro) => {
-    setRubroDe((prev) => ({ ...prev, [comprobante.id]: rubro }))
-    if (!rubro || !comprobante.nombre_proveedor) return
-    devolucionesIvaAPI.aprenderRubro(comprobante.nombre_proveedor, rubro)
+    const prov = comprobante.nombre_proveedor
+    const hermanos = prov ? comps.filter((c) => c.nombre_proveedor === prov) : [comprobante]
+    setRubroDe((prev) => {
+      const next = { ...prev }
+      hermanos.forEach((c) => { next[c.id] = rubro })
+      return next
+    })
+    if (!rubro || !prov) return
+    devolucionesIvaAPI.aprenderRubro(prov, rubro)
       .catch(() => { /* que no se aprenda no puede frenar la clasificación */ })
   }
 

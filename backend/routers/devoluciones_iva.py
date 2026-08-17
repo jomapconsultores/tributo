@@ -1381,8 +1381,10 @@ async def exportar_excel(solicitud_id: str, user_id: str = Depends(get_current_u
     ws.write(3, 0, "Beneficiario:", fmt_lbl); ws.write(3, 1, tipo_lbl)
     ws.write(4, 0, "Estado:", fmt_lbl); ws.write(4, 1, sol.get("estado", ""))
 
+    # Ni base gravada ni total: la grilla del portal no los informa —van en cero—
+    # y lo que se le solicita al SRI es el IVA. Igual que en la pantalla.
     heads = ["Fecha", "RUC proveedor", "Proveedor", "Tipo de gasto", "Clasificación",
-             "Clave de acceso", "Base gravada", "IVA", "Total"]
+             "Clave de acceso", "IVA"]
     row0 = 6
     for i, h in enumerate(heads):
         ws.write(row0, i, h, fmt_head)
@@ -1395,14 +1397,11 @@ async def exportar_excel(solicitud_id: str, user_id: str = Depends(get_current_u
         ws.write(r, 3, RUBRO_LABEL.get(it.get("rubro") or "", "—"), fmt_cell)
         ws.write(r, 4, it.get("clasificacion") or "", fmt_cell)
         ws.write(r, 5, it.get("unique_id") or "", fmt_cell)
-        ws.write_number(r, 6, _num(it.get("base")), fmt_num)
-        ws.write_number(r, 7, _num(it.get("iva")), fmt_num)
-        ws.write_number(r, 8, _num(it.get("total")), fmt_num)
+        ws.write_number(r, 6, _num(it.get("iva")), fmt_num)
         r += 1
 
     ws.write(r, 5, "TOTALES", fmt_head)
-    ws.write_number(r, 6, _num(sol.get("total_base")), fmt_num_b)
-    ws.write_number(r, 7, _num(sol.get("total_iva")), fmt_num_b)
+    ws.write_number(r, 6, _num(sol.get("total_iva")), fmt_num_b)
     r += 2
     ws.write(r, 5, "Tope del período:", fmt_lbl); ws.write_number(r, 6, _num(sol.get("tope_mensual")), fmt_num_b)
     ws.write(r + 1, 5, "IVA a solicitar:", fmt_lbl); ws.write_number(r + 1, 6, _num(sol.get("monto_solicitado")), fmt_num_b)
@@ -1411,14 +1410,13 @@ async def exportar_excel(solicitud_id: str, user_id: str = Depends(get_current_u
     r += 4
     ws.write(r, 0, "RESUMEN POR TIPO DE GASTO", fmt_lbl)
     r += 1
-    for i, h in enumerate(["Tipo de gasto", "Comprobantes", "Base gravada", "IVA"]):
+    for i, h in enumerate(["Tipo de gasto", "Comprobantes", "IVA"]):
         ws.write(r, i, h, fmt_head)
     r += 1
     por_rubro = {}
     for it in items:
-        acc = por_rubro.setdefault(it.get("rubro") or RUBRO_VACIO, {"n": 0, "base": 0.0, "iva": 0.0})
+        acc = por_rubro.setdefault(it.get("rubro") or RUBRO_VACIO, {"n": 0, "iva": 0.0})
         acc["n"] += 1
-        acc["base"] += _num(it.get("base"))
         acc["iva"] += _num(it.get("iva"))
     for rubro in RUBROS:
         acc = por_rubro.get(rubro["key"])
@@ -1426,8 +1424,7 @@ async def exportar_excel(solicitud_id: str, user_id: str = Depends(get_current_u
             continue
         ws.write(r, 0, rubro["label"], fmt_cell)
         ws.write_number(r, 1, acc["n"], fmt_cell)
-        ws.write_number(r, 2, round(acc["base"], 2), fmt_num)
-        ws.write_number(r, 3, round(acc["iva"], 2), fmt_num)
+        ws.write_number(r, 2, round(acc["iva"], 2), fmt_num)
         r += 1
 
     # Desglose por mes: el tope es mensual, así que un semestre lleva seis topes.
@@ -1436,22 +1433,21 @@ async def exportar_excel(solicitud_id: str, user_id: str = Depends(get_current_u
         r += 2
         ws.write(r, 0, "DESGLOSE POR MES (el tope es mensual)", fmt_lbl)
         r += 1
-        for i, h in enumerate(["Mes", "Comprobantes", "Base gravada", "IVA", "Tope del mes", "A solicitar", "Excedente"]):
+        for i, h in enumerate(["Mes", "Comprobantes", "IVA", "Tope del mes", "A solicitar", "Excedente"]):
             ws.write(r, i, h, fmt_head)
         r += 1
         for d in detalle:
             ws.write(r, 0, _NOMBRE_MES.get(int(d.get("mes") or 0), ""), fmt_cell)
             ws.write_number(r, 1, int(d.get("comprobantes") or 0), fmt_cell)
-            ws.write_number(r, 2, _num(d.get("base")), fmt_num)
-            ws.write_number(r, 3, _num(d.get("iva")), fmt_num)
-            ws.write_number(r, 4, _num(d.get("tope")), fmt_num)
-            ws.write_number(r, 5, _num(d.get("solicitar")), fmt_num_b)
-            ws.write_number(r, 6, _num(d.get("excedente")), fmt_num)
+            ws.write_number(r, 2, _num(d.get("iva")), fmt_num)
+            ws.write_number(r, 3, _num(d.get("tope")), fmt_num)
+            ws.write_number(r, 4, _num(d.get("solicitar")), fmt_num_b)
+            ws.write_number(r, 5, _num(d.get("excedente")), fmt_num)
             r += 1
 
     ws.set_column(0, 0, 14); ws.set_column(1, 1, 15); ws.set_column(2, 2, 32)
     ws.set_column(3, 3, 18); ws.set_column(4, 4, 20); ws.set_column(5, 5, 52)
-    ws.set_column(6, 8, 13)
+    ws.set_column(6, 6, 13)
     wb.close()
     output.seek(0)
 
