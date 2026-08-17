@@ -25,7 +25,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from auth import get_current_user
-from database import get_supabase_client, fetch_all
+from database import get_supabase_client, fetch_all, fetch_in
 import orgs
 from tenancy import assert_client_owner, filtro_org
 from services.periodo import (periodo_cliente_ext, etiqueta_periodo, rango_semestre,
@@ -582,9 +582,24 @@ async def clave_sri(request: Request, client_id: str = Query(...),
     sb = get_supabase_client()
     assert_client_owner(client_id, user_id)
     rol = _autorizar_ver_credencial(user_id, client_id)
-    filas = sb.table("service_credentials").select(
-        "id,username,ciphertext,key_version").eq("client_id", client_id).eq(
-        "service", "sri_portal").execute().data
+
+    # La clave se busca POR RUC, no por client_id. Un contribuyente tiene una
+    # fila de `clients` por período y la credencial cuelga de UNA sola —la del
+    # período en que se cargó—, mientras que esta pantalla trabaja con la del
+    # período abierto. Buscando por client_id, un contribuyente con su clave
+    # bien guardada aparecía como "sin clave cargada". Es el mismo criterio del
+    # módulo de claves: la clave del SRI es del contribuyente, no del período.
+    cl = sb.table("clients").select("identificacion").eq("id", client_id).execute().data
+    ident = str((cl[0] if cl else {}).get("identificacion") or "").strip()
+    ids = [client_id]
+    if ident:
+        hermanos = fetch_all(lambda: sb.table("clients").select("id").eq(
+            "identificacion", ident))
+        ids = list({client_id, *[h["id"] for h in hermanos if h.get("id")]})
+
+    filas = fetch_in(lambda: sb.table("service_credentials").select(
+        "id,client_id,username,ciphertext,key_version").eq("service", "sri_portal"),
+        ids, "client_id")
     if not filas:
         return {"hay": False, "motivo": "Este contribuyente todavía no tiene la clave del SRI "
                                         "cargada. Se ingresa en Admin → Claves SRI."}
