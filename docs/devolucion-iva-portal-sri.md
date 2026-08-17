@@ -176,7 +176,13 @@ los de devolución automática total aunque estén en Gastos.
 ## Qué automatiza el enviador
 
 `sri_downloader/bookmarklet_devolucion.js`, botón **"Llenar y presentar en el
-portal"**, parado en *Ingresar facturas electrónicas*:
+portal"**. Desde 2026-08-16 **arranca donde esté el portal**: si hace falta,
+camina el asistente entero antes de trabajar —aviso legal → cuenta bancaria →
+menú de dos pasos → *Ingresar facturas electrónicas*—, reconociendo cada
+pantalla por su TEXTO, porque sus ids son `j_idt` autogenerados. Dos frenos
+deliberados: si el portal ofrece **más de una cuenta bancaria** no elige ninguna
+—a dónde entra la plata lo decide el contribuyente— y si la sesión caducó, corta
+y lo dice. Antes exigía que todo eso estuviera hecho a mano:
 
 0bis. **La solicitud sale del contribuyente abierto, no del portapapeles.** El
    marcador leía el paquete de `navigator.clipboard`, y ahí queda el del último

@@ -508,6 +508,84 @@
   const enlaceIngresarFacturas = () => visibles('a').find((a) =>
     /ingresar facturas electr/i.test((a.textContent || '').trim())) || null;
 
+  // --- El asistente, desde el principio -------------------------------------
+  //
+  // Antes de la grilla hay tres pantallas: el aviso legal, la cuenta bancaria
+  // donde se acredita la devolución, y el menú de dos pasos. El marcador daba
+  // por hecho que ya estaban pasadas a mano y, si no, decía "entrá primero a
+  // Ingresar facturas electrónicas". Ahora las camina solo.
+  //
+  // Cada pantalla se reconoce por su TEXTO: los ids del asistente son `j_idt`
+  // autogenerados y cambian entre versiones del portal.
+  const textoPantalla = () => norm((document.body.innerText || '').slice(0, 4000));
+
+  const sesionCaducada = () => /sesion ha expirado|sesion caducada/.test(textoPantalla());
+
+  // Las cuentas bancarias que ofrece el paso del convenio de débito.
+  const radiosDeCuenta = () => visibles('[id*="tblConvenios"] .ui-radiobutton-box');
+  const cuentaYaMarcada = () => radiosDeCuenta().some((r) => r.classList.contains('ui-state-active'));
+
+  const llegarAlIngreso = async (paso) => {
+    const decir = paso || (() => {});
+    for (let vuelta = 0; vuelta < 8; vuelta++) {
+      if (hayFormulario()) return { ok: true };
+      if (sesionCaducada()) {
+        return { ok: false, motivo: 'el portal dice que la sesión expiró. Iniciá sesión de nuevo y ' +
+          'entrá a Devoluciones (TAX refund) → Devolución de IVA.' };
+      }
+
+      // El menú de dos pasos: es la pantalla más cercana al trabajo.
+      const link = enlaceIngresarFacturas();
+      if (link) {
+        decir('Entrando a "Ingresar facturas electrónicas"…');
+        clickReal(link);
+        await esperarPortal();
+        await esperar(hayFormulario, 8000);
+        continue;
+      }
+
+      // La cuenta bancaria de acreditación. Con una sola, se marca; con varias
+      // NO se elige: a qué cuenta entra la plata es del contribuyente, no del
+      // marcador.
+      const cuentas = radiosDeCuenta();
+      if (cuentas.length) {
+        if (!cuentaYaMarcada()) {
+          if (cuentas.length > 1) {
+            return { ok: false, motivo: 'el portal ofrece ' + cuentas.length + ' cuentas bancarias ' +
+              'para acreditar la devolución. Elegí vos cuál y tocá Aceptar; después volvé a ' +
+              'tocar el marcador. No la elijo yo: es a dónde entra la plata.' };
+          }
+          decir('Marcando la cuenta bancaria (es la única)…');
+          clickReal(cuentas[0]);
+          await esperarPortal();
+        }
+        const ok = botonPorTexto(/^aceptar$/) || botonPorTexto(/aceptar/);
+        if (!ok) return { ok: false, motivo: 'no encontré el botón "Aceptar" de la cuenta bancaria.' };
+        decir('Aceptando la cuenta bancaria…');
+        clickReal(ok);
+        await esperarPortal();
+        continue;
+      }
+
+      // El aviso legal. Se exige reconocer su texto para no tocar el "Aceptar"
+      // de cualquier otro cartel que el portal tenga abierto.
+      const t = textoPantalla();
+      const esAviso = /primera necesidad|tramite de devolucion|establecimientos|devolucion automatica/.test(t);
+      const aceptar = botonPorTexto(/^aceptar$/) || botonPorTexto(/^continuar$/);
+      if (esAviso && aceptar) {
+        decir('Aceptando el aviso del portal…');
+        clickReal(aceptar);
+        await esperarPortal();
+        continue;
+      }
+
+      return { ok: false, motivo: 'no reconozco esta pantalla del portal. Entrá a mano hasta ' +
+        '"Ingresar facturas electrónicas" y volvé a tocar el marcador.' };
+    }
+    return hayFormulario() ? { ok: true }
+      : { ok: false, motivo: 'no pude llegar a "Ingresar facturas electrónicas".' };
+  };
+
   const elegir = (sel, valor, re) => {
     if (!sel) return false;
     let op = [...sel.options].find((o) => String(o.value) === String(valor));
@@ -1269,6 +1347,14 @@
       return { error: txt };
     };
 
+    // Desde donde esté el portal hasta la pantalla de trabajo: aviso legal,
+    // cuenta bancaria y menú de dos pasos, si hacen falta.
+    if (!hayFormulario()) {
+      paso('Abriéndome paso en el portal…');
+      const camino = await llegarAlIngreso(paso);
+      if (!camino.ok) return fallar(camino.motivo);
+    }
+
     const anio = paquete.periodo.anio;
     const mios = items.filter((i) => (paquete.detalle_meses || []).length > 1
       ? mesDeFecha(i.fecha) === mes
@@ -1702,16 +1788,16 @@
     const est = el('div', 'margin:4px 0;color:#555');
     cuerpo.appendChild(est);
     if (!hayFormulario()) {
-      const link = enlaceIngresarFacturas();
-      if (!link) {
-        est.textContent = '✖ Entrá primero a Devolución de IVA → "Ingresar facturas electrónicas".';
+      // Se camina el asistente entero —aviso legal, cuenta bancaria y menú— en
+      // vez de mandar al usuario a hacerlo a mano.
+      const camino = await llegarAlIngreso((t) => { est.textContent = t; });
+      if (!camino.ok) {
+        est.textContent = '✖ ' + camino.motivo;
+        cuerpo.appendChild(boton('Ver diagnostico',
+          () => mostrarTexto('Diagnostico del portal', diagnostico()), CSS_GRIS));
         cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
         return;
       }
-      est.textContent = 'Abriendo "Ingresar facturas electrónicas"…';
-      link.click();
-      await esperarPortal();
-      await esperar(hayFormulario, 15000);
     }
     const cA = cbAnio();
     if (!cA) {

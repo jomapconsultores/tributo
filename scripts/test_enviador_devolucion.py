@@ -16,12 +16,19 @@ no se ve en la fuente.
     python scripts/test_enviador_devolucion.py nativo src # y contra la fuente
 
 Variantes del portal (el SRI cambia el widget entre versiones):
-    semestral  periodo de dos meses -> una solicitud por mes, seguidas
-    extension  solicitud inyectada como hace la extension -> corre SOLA
-    auto    solicitud autorizada desde el sistema -> corre SOLA, sin un click
-    widget  el click va a la caja del checkbox     -> tiene que marcar los 12
-    nativo  la caja no escucha, sí el checkbox     -> tiene que marcar los 12
-    muerto  no escucha nadie                       -> tiene que CORTAR y avisar
+    inicio       el portal recién abierto -> tiene que caminar el aviso legal,
+                 la cuenta bancaria y el menú, y recién ahí trabajar
+    semestral    periodo de dos meses -> una solicitud por mes, seguidas
+    extension    solicitud inyectada como hace la extension -> corre SOLA
+    auto         solicitud autorizada desde el sistema -> corre SOLA, sin click
+    widget       el click va a la caja del checkbox   -> marca los 12
+    nativo       la caja no escucha, sí el checkbox   -> marca los 12
+    discapacidad la otra entrada, con el catálogo de tipo de gasto cambiado ->
+                 tiene que elegir por la ETIQUETA, no por el código
+    quejoso      el portal RECHAZA la selección       -> corta sin presentar
+    otro         el portal abierto con otra persona   -> no toca nada
+    cruzado      el marcador dentro de la app, con la solicitud de otro copiada
+    muerto       no escucha nadie                     -> tiene que CORTAR y avisar
 
 Necesita Playwright (pip install playwright && playwright install chromium).
 """
@@ -163,11 +170,19 @@ def correr(modo: str, fuente: str) -> bool:
         # 'cruzado': el marcador tocado DENTRO de la app, con el sistema abierto
         # en un contribuyente y el portapapeles trayendo la solicitud de otro.
         cruzado = modo == "cruzado"
-        auto = modo in ("auto", "extension", "semestral", "quejoso", "otro", "discapacidad")
-        propio = quejoso or otro or discapacidad
+        # 'inicio': el portal recién abierto. El marcador tiene que caminar el
+        # aviso legal, la cuenta bancaria y el menú de dos pasos antes de poder
+        # trabajar; antes exigía que eso estuviera hecho a mano.
+        inicio = modo == "inicio"
+        auto = modo in ("auto", "extension", "semestral", "quejoso", "otro",
+                        "discapacidad", "inicio")
+        propio = quejoso or otro or discapacidad or inicio
         pg.goto(PORTAL.as_uri() + "?modo=" +
                 (modo if propio else ("widget" if (auto or cruzado) else modo)))
-        pg.click("#lnkIngresar")
+        # En 'inicio' NO se toca nada: el portal queda en el aviso legal y es el
+        # marcador el que tiene que abrirse paso hasta la grilla.
+        if not inicio:
+            pg.click("#lnkIngresar")
         # Lo que el enviador le manda de vuelta a la app al terminar. Se escucha
         # en todos los modos: es la única prueba de que el trámite hecho en el
         # portal llega a marcarse como presentado en el sistema.
@@ -292,6 +307,16 @@ def correr(modo: str, fuente: str) -> bool:
             if not suma:
                 print("   avisos:", avisos)
             ok = ok and suma
+        elif inicio:
+            # Que haya llegado hasta el final desde el aviso legal, sin que nadie
+            # le abriera el camino.
+            constancia = pg.evaluate("(document.getElementById('constancia')||{}).textContent||''")
+            ok = ("Solicitud presentada" in panel and "Comprobantes: 12" in panel
+                  and "realizada exitosamente" in constancia)
+            print(f"  {'✔' if ok else '✖'} caminó el asistente desde el aviso legal y presentó "
+                  f"({tardo:.0f}s)")
+            if not ok:
+                print("  panel:", panel[-500:])
         elif discapacidad:
             # Con los códigos cambiados de lugar, elegir por código pondría
             # VIVIENDA (el 4 de allá). Tiene que ir por la etiqueta y avisar que
@@ -386,7 +411,7 @@ def correr(modo: str, fuente: str) -> bool:
 
 if __name__ == "__main__":
     modos = [sys.argv[1]] if len(sys.argv) > 1 else ["semestral", "extension", "auto", "widget",
-                                                     "nativo", "discapacidad", "quejoso", "cruzado",
+                                                     "nativo", "discapacidad", "quejoso", "cruzado", "inicio",
                                                      "otro", "muerto"]
     fuente = sys.argv[2] if len(sys.argv) > 2 else "min"
     print(f"Enviador-DEVOLUCIÓN contra el portal simulado ({fuente})")

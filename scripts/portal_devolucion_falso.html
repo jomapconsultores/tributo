@@ -15,6 +15,26 @@
      mayúsculas enseguida. Es de donde el marcador saca con quién está tratando. -->
 <div id="cabecera">Servicios en Linea 0912345678 CONTRIBUYENTE DE PRUEBA Perfil Cerrar sesion</div>
 <h3>Devolución de IVA - Adultos mayores</h3>
+<!-- El asistente antes de la grilla, como en el portal real: aviso legal, cuenta
+     bancaria de acreditación y recién ahí el menú de dos pasos. Solo se muestra
+     en el modo 'inicio'; en los demás se arranca ya dentro, que es como se
+     probaba antes. -->
+<div id="aviso" style="display:none">
+  <p>Ahora el tramite de devolucion del IVA es mas facil. Usted visualizara sus
+     comprobantes de bienes y servicios de primera necesidad en establecimientos
+     verificados por el SRI.</p>
+  <button id="btnAceptaAviso">Aceptar</button>
+</div>
+
+<div id="convenio" style="display:none">
+  <p>Seleccione la cuenta bancaria a la que desea la acreditacion.</p>
+  <table id="frmConvenioDebito:tblConvenios_data">
+    <tr><td><div class="ui-radiobutton"><div class="ui-radiobutton-box"></div></div></td>
+        <td>BANCO DE PRUEBA</td><td>0912345678</td></tr>
+  </table>
+  <button id="btnAceptaConvenio">Aceptar</button>
+</div>
+
 <div id="menu"><a href="#" id="lnkIngresar">Ingresar facturas electronicas</a></div>
 
 <div id="form" style="display:none">
@@ -71,6 +91,27 @@ for (let i = 1; i <= 4; i++) {
 // quejoso = marca bien, pero al procesar el portal RECHAZA la selección.
 // otro    = el portal está abierto con OTRA persona que la de la solicitud.
 const MODO_URL = new URLSearchParams(location.search).get('modo') || 'widget';
+// 'inicio': el portal recién abierto, con el asistente entero por delante.
+if (MODO_URL === 'inicio') {
+  document.getElementById('aviso').style.display = '';
+  document.getElementById('menu').style.display = 'none';
+  document.getElementById('btnAceptaAviso').onclick = () => {
+    ajax(400, () => {
+      document.getElementById('aviso').style.display = 'none';
+      document.getElementById('convenio').style.display = '';
+    });
+  };
+  // La caja del radio se marca sola al tocarla, como PrimeFaces.
+  document.querySelector('#convenio .ui-radiobutton-box').addEventListener('click', function () {
+    ajax(300, () => this.classList.add('ui-state-active'));
+  });
+  document.getElementById('btnAceptaConvenio').onclick = () => {
+    ajax(400, () => {
+      document.getElementById('convenio').style.display = 'none';
+      document.getElementById('menu').style.display = '';
+    });
+  };
+}
 if (MODO_URL === 'discapacidad') {
   document.querySelector('h3').textContent = 'Devolución de IVA personas con discapacidad';
 }
