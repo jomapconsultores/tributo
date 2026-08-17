@@ -536,6 +536,22 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
     }
   }
 
+  // El tipo de gasto elegido A MANO se graba en el acto, no al guardar.
+  //
+  // Antes la decisión vivía solo en la pantalla hasta que alguien tocara
+  // "Guardar solicitud": clasificar quince comprobantes y salir sin guardar
+  // tiraba las quince, y al volver había que repetirlas. Se guarda por
+  // proveedor, que es como se reusa después.
+  //
+  // Va sin await y sin bloquear: si el guardado del aprendizaje falla, el
+  // usuario sigue clasificando y la solicitud igual lo persiste al guardarse.
+  const elegirRubro = (comprobante, rubro) => {
+    setRubroDe((prev) => ({ ...prev, [comprobante.id]: rubro }))
+    if (!rubro || !comprobante.nombre_proveedor) return
+    devolucionesIvaAPI.aprenderRubro(comprobante.nombre_proveedor, rubro)
+      .catch(() => { /* que no se aprenda no puede frenar la clasificación */ })
+  }
+
   // Trae del SRI la actividad económica de los proveedores. Es la mejor pista
   // del tipo de gasto: la razón social no dice el giro y la actividad sí. Va
   // como acción explícita porque el SRI responde de a un RUC por vez y tarda;
@@ -908,7 +924,7 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
                     <select
                       className={`dv-rubro ${!(rubroDe[c.id] || c.rubro_sugerido) ? 'sin-asignar' : ''}`}
                       value={rubroDe[c.id] ?? c.rubro_sugerido ?? ''}
-                      onChange={(e) => setRubroDe((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                      onChange={(e) => elegirRubro(c, e.target.value)}
                       title="Tipo de gasto al que se direcciona este comprobante (es el mismo combo del portal del SRI)"
                     >
                       <option value="">— Elegí el tipo de gasto —</option>

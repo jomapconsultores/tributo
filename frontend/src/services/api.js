@@ -513,6 +513,11 @@ export const devolucionesIvaAPI = {
   // que sirve para los proveedores que el sistema ya conoce con número.
   sincronizarActividades: (clientId) =>
     api.post('/api/devoluciones-iva/actividades', null, { params: { client_id: clientId } }),
+  // Graba el tipo de gasto elegido a mano para un proveedor, en el momento en
+  // que se elige: así la decisión no depende de acordarse de guardar.
+  aprenderRubro: (nombreProveedor, rubro) =>
+    api.post('/api/devoluciones-iva/rubro-proveedor',
+      { nombre_proveedor: nombreProveedor, rubro }),
   // Paquete listo para llevar la solicitud al portal del SRI (lo usa el enviador)
   envio: (id) => api.get(`/api/devoluciones-iva/solicitudes/${id}/envio`),
   // Deja constancia de lo presentado al SRI y devuelve el reporte del envío.

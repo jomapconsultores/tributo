@@ -494,6 +494,38 @@ async def rubros(_: str = Depends(get_current_user)):
     return {"rubros": RUBROS, "defecto": RUBRO_VACIO}
 
 
+class RubroProveedorIn(BaseModel):
+    nombre_proveedor: str
+    rubro: str
+
+
+@router.post("/rubro-proveedor")
+async def aprender_rubro_proveedor(body: RubroProveedorIn,
+                                   user_id: str = Depends(get_current_user)):
+    """Graba el tipo de gasto que el usuario eligió A MANO para un proveedor.
+
+    Antes esto se aprendía solo al guardar la solicitud. Clasificar quince
+    comprobantes y salir de la pantalla sin guardar tiraba las quince
+    decisiones, y al volver había que repetirlas. Ahora cada elección se guarda
+    cuando se toma: el guardado de la solicitud sigue existiendo, pero ya no es
+    lo único que preserva el trabajo.
+
+    Solo lo elegido a mano llega acá —la pantalla llama al cambiar el combo—; las
+    propuestas automáticas no se aprenden, que sería enseñarle al sistema lo que
+    el sistema mismo adivinó."""
+    rubro = _rubro_valido(body.rubro)
+    if not rubro:
+        raise HTTPException(status_code=400, detail="Ese tipo de gasto no es del catálogo del SRI.")
+    clave = _nombre_clave(body.nombre_proveedor)
+    if not clave:
+        raise HTTPException(status_code=400, detail="Falta el proveedor.")
+    sb = get_supabase_client()
+    aprendidos = _aprender_rubros(sb, user_id, [{
+        "nombre_proveedor": body.nombre_proveedor, "rubro": rubro,
+    }])
+    return {"ok": bool(aprendidos), "nombre_clave": clave, "rubro": rubro}
+
+
 @router.post("/actividades")
 async def sincronizar_actividades(client_id: str = Query(...),
                                   user_id: str = Depends(get_current_user)):
