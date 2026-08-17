@@ -274,12 +274,29 @@ def _mejor_por_ruc(filas, prefer_user_id=None):
 
 def _admin_ids(supabase):
     """user_ids con rol 'admin': dueños del catálogo GENERAL (compartido con todo
-    el equipo). Los demás usuarios solo tienen OVERRIDES personales."""
+    el equipo). Los demás usuarios solo tienen OVERRIDES personales.
+
+    Se miran las DOS fuentes de rol que tiene el sistema, y no una sola:
+    `app_admins` (el rol de plataforma) y `organization_members` (el rol dentro
+    de la empresa). Mirando solo la primera, un administrador de empresa que
+    figuraba como 'trabajador' en app_admins quedaba fuera del conjunto, el
+    catálogo general se armaba vacío y el clasificador aparecía SIN NINGÚN RUC
+    aunque ese mismo usuario tuviera mil quinientas filas cargadas. Que las dos
+    tablas se contradigan es un problema aparte; lo que no puede pasar es que
+    esa contradicción borre el catálogo de la pantalla."""
+    ids = set()
     try:
         rows = supabase.table("app_admins").select("user_id").eq("role", "admin").execute().data or []
-        return [r["user_id"] for r in rows]
+        ids.update(r["user_id"] for r in rows if r.get("user_id"))
     except Exception:
-        return []
+        pass
+    try:
+        rows = supabase.table("organization_members").select("user_id").eq(
+            "role", "admin").execute().data or []
+        ids.update(r["user_id"] for r in rows if r.get("user_id"))
+    except Exception:
+        pass
+    return list(ids)
 
 
 def _prov_map(supabase, user_id, is_admin):
@@ -389,8 +406,18 @@ async def list_classifications(user_id: str = Depends(get_current_user)):
                     continue
                 if (r.get("categoria") or "").strip():
                     ov.setdefault((r.get("ruc") or "").strip(), set()).add(r.get("user_id"))
+            # Las filas PROPIAS del admin entran siempre, estén o no dentro del
+            # catálogo general. Si su rol quedó mal registrado en alguna de las
+            # dos tablas, sus RUC desaparecían de su propia pantalla: la vista de
+            # un usuario no puede depender de esa contabilidad interna.
+            propias = _mejor_por_ruc([r for r in filas if r.get("user_id") == user_id],
+                                     prefer_user_id=user_id)
+            juntas = dict(general_by_ruc)
+            for k, p in propias.items():
+                if k not in juntas or (p.get("categoria") or "").strip():
+                    juntas[k] = p
             rows = []
-            for r in general_by_ruc.values():
+            for r in juntas.values():
                 r["es_propio"] = True       # el admin edita directamente el general
                 r["es_general"] = True
                 r["override_users"] = len(ov.get((r.get("ruc") or "").strip(), ()))
