@@ -233,10 +233,14 @@ export default function Declaraciones({ tipo }) {
   }, [isIVA, diferirMeses, setDiferirMeses])
 
 
-  // Servicios contratados + metadata de credencial SRI (sin password: se revela
-  // bajo demanda con un clic, no automáticamente al seleccionar el cliente).
+  // Servicios contratados + credencial del SRI del contribuyente.
+  //
+  // Acá vivía un `setRevelandoClave(false)` que quedó huérfano cuando se sacó el
+  // botón de revelar: el estado ya no existe, así que el efecto reventaba con
+  // "setRevelandoClave is not defined" al entrar y se llevaba puesta la pantalla
+  // entera de Declaraciones.
   useEffect(() => {
-    setCreds(null); setClaveSRI(''); setRevelandoClave(false)
+    setCreds(null); setClaveSRI('')
     if (!selectedClientId) return
     let cancelled = false
     declaracionesAPI.credenciales(selectedClientId, false)
