@@ -974,3 +974,43 @@
 .sidebar-quick-nav { border-bottom: 1px solid #dbe3ec; }
 .sidebar-user-chip { border-bottom: 1px solid #dbe3ec; }
 .sidebar-footer { border-top: 1px solid #dbe3ec; }
+
+/* ── Estados seleccionado y hover: el texto deja de ser blanco ──────────────
+   El rótulo de la barra de módulos vive en un hijo (.sb-rail-lbl) que traía
+   color propio, así que las reglas escritas sobre el botón nunca llegaban a
+   él: seleccionar "GASTOS" lo pintaba de blanco sobre verde claro. Aquí los
+   hijos vuelven a heredar del padre y los estados hover/activo del resto del
+   menú cambian el blanco heredado del tema oscuro por tinta legible.
+   ────────────────────────────────────────────────────────────────────────── */
+.sb-rail-btn:hover .sb-rail-lbl,
+.sb-rail-btn.sel .sb-rail-lbl,
+.sb-rail-btn.active .sb-rail-lbl { color: inherit; }
+
+.sb-rail-btn:hover { background: #e8eef6; color: #0f172a; }
+.sb-rail-btn:hover .sb-rail-ico { background: rgba(15, 23, 42, 0.07); }
+.sb-rail-btn.sel { color: #002a80; box-shadow: inset 3px 0 0 currentColor; }
+.sb-rail-btn.sel .sb-rail-ico,
+.sb-rail-btn.active .sb-rail-ico {
+  background: rgba(15, 23, 42, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.07);
+}
+
+/* Módulos y submódulos del panel */
+.nav-item:hover { background: #eef2f7; color: #0f172a; }
+.nav-item.active { background: #e6edfa; color: #002a80; }
+.module-btn:not(.gastos):not(.retenciones):not(.ingresos):not(.declaraciones):not(.devoluciones):hover,
+.module-btn:not(.gastos):not(.retenciones):not(.ingresos):not(.declaraciones):not(.devoluciones).active {
+  background: #eef2f7;
+  color: #0f172a;
+}
+.submodule:hover { background: #eef2f7; color: #0f172a; }
+.submodule.active { background: #e6edfa; color: #002a80; }
+
+/* Navegación secundaria, buscador de clientes y accesos rápidos */
+.level-1:hover { background: #eef2f7; color: #0f172a; }
+.level-1.active { background: #e6edfa; color: #002a80; }
+.info-item:hover { background: #eef2f7; color: #0f172a; }
+.info-item.active { background: #e6edfa; color: #002a80; }
+.clients-toggle.active { background: #eef2f7; color: #002a80; }
+.client-item.active .client-name { color: #002a80; font-weight: 600; }
+.sqn-chip:hover { background: #e6edfa; color: #002a80; }
