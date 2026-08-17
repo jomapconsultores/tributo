@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import useDraft, { clearDraftsByPrefix } from '../hooks/useDraft'
 import { refrescarPresentadas } from '../hooks/useDeclPresentadas'
-import { useOutletContext } from 'react-router-dom'
+import { useOutletContext, useNavigate } from 'react-router-dom'
 import { declaracionesAPI, credentialsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, nombreMes } from '../utils/periodo'
@@ -304,6 +304,12 @@ export default function Declaraciones({ tipo }) {
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
   const [marcandoSri, setMarcandoSri] = useState(false)
+  // Con la declaración presentada, lo siguiente del trabajo real es cobrarla.
+  // Se ofrece acá, en el momento en que se cierra el trámite, en vez de
+  // confiar en que alguien se acuerde después de pasar por Facturación.
+  const [ofrecerFactura, setOfrecerFactura] = useState(null)
+  const navigate = useNavigate()
+
   // Confirma/revierte que la declaración ya se subió al portal del SRI. Al
   // marcarla, el contribuyente deja de figurar en «Clientes pendientes».
   const togglePresentada = async (id, presentada) => {
@@ -312,6 +318,15 @@ export default function Declaraciones({ tipo }) {
       await declaracionesAPI.marcarPresentada(id, presentada)
       refrescarPresentadas()   // que los badges de vencimiento dejen de marcar plazo
       await cargarHistorial()
+      // Solo al MARCARLA: deshacer la marca no es motivo para ofrecer nada.
+      if (presentada) {
+        setOfrecerFactura({
+          nombre: selectedClient?.nombre || '',
+          periodo: selectedClient ? periodoLargo(selectedClient) : '',
+        })
+      } else {
+        setOfrecerFactura(null)
+      }
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
     finally { setMarcandoSri(false) }
   }
@@ -815,6 +830,28 @@ export default function Declaraciones({ tipo }) {
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {/* Presentada la declaración, lo que sigue es cobrarla: se ofrece acá, en
+          el momento, y no se deja librado a que alguien se acuerde de pasar por
+          Facturación. Es una invitación, no un paso obligatorio: se puede
+          cerrar y seguir trabajando. */}
+      {ofrecerFactura && (
+        <div className="dc-facturar">
+          <span className="dc-facturar-msg">
+            ✅ Declaración marcada como subida al SRI
+            {ofrecerFactura.nombre && <> · <strong>{ofrecerFactura.nombre}</strong></>}
+            {ofrecerFactura.periodo && <> · {ofrecerFactura.periodo}</>}
+            . ¿Emitimos la factura de honorarios?
+          </span>
+          <button
+            className="dc-btn primary"
+            onClick={() => { setOfrecerFactura(null); navigate('/odoo-facturacion') }}
+          >🧾 Sí, facturar</button>
+          <button className="dc-btn small" onClick={() => setOfrecerFactura(null)}>
+            Ahora no
+          </button>
         </div>
       )}
 

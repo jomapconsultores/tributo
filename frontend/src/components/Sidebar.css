@@ -724,3 +724,168 @@
   .sb-rail { width: 190px; min-width: 190px; }
   .sb-rail-lbl { font-size: 0.70rem; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TEMA CLARO
+   ═══════════════════════════════════════════════════════════════════════════
+   El sidebar nació oscuro mientras el resto de la aplicación es claro, y esa
+   costura se notaba. Acá se reescribe su paleta entera —superficies, textos,
+   estados y acentos— sobre blancos y grises muy claros, con el azul
+   institucional (#003399) como único color de mando.
+
+   Va como bloque al final y no repartido por el archivo: se lee de una vez,
+   se audita de una vez y se revierte de una vez. La estructura, los tamaños y
+   las animaciones de arriba quedan intactos: esto solo cambia el color.
+
+   Contraste: los textos de menú van sobre #f7f9fc en gris 600/700, y los
+   acentos de cada módulo se bajaron a su tono legible sobre claro (el verde
+   #6ee7b7 sobre blanco no se lee; #047857 sí).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.sidebar {
+  background: #f7f9fc;
+  color: #334155;
+  border-right: 1px solid #e2e8f0;
+  box-shadow: 1px 0 0 rgba(15, 23, 42, 0.03), 4px 0 20px rgba(15, 23, 42, 0.06);
+}
+
+/* ── Cabecera: blanca, con el azul institucional como firma ── */
+.sidebar-brand {
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+}
+.sidebar-brand::after {
+  background: linear-gradient(90deg, transparent, rgba(0, 51, 153, 0.35), transparent);
+}
+.brand-icon { filter: none; }
+.brand-title { color: #003399; }
+.brand-sub { color: #64748b; opacity: 1; }
+
+/* ── Barras de desplazamiento discretas ── */
+.sidebar-nav, .sb-rail { scrollbar-color: #cbd5e1 transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb,
+.sb-rail::-webkit-scrollbar-thumb { background: #cbd5e1; }
+.sidebar-nav::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ── Ítems de navegación ── */
+.nav-item { color: #475569; }
+.nav-item:hover { background: #eef2f7; color: #0f172a; }
+.nav-item.active { background: #e8effa; color: #003399; }
+.caret { color: #94a3b8; }
+.caret.open { color: #64748b; }
+
+/* ── Módulos: cada uno con su color, en el tono que se lee sobre claro ── */
+.module-btn.gastos { color: #047857; }
+.module-btn.gastos:hover { background: #ecfdf5; color: #065f46; }
+.module-btn.gastos.active { background: #d1fae5; color: #065f46; }
+
+.module-btn.retenciones { color: #0369a1; }
+.module-btn.retenciones:hover { background: #f0f9ff; color: #075985; }
+.module-btn.retenciones.active { background: #e0f2fe; color: #075985; }
+
+.module-btn.ingresos { color: #b45309; }
+.module-btn.ingresos:hover { background: #fffbeb; color: #92400e; }
+.module-btn.ingresos.active { background: #fef3c7; color: #92400e; }
+
+.module-btn.declaraciones { color: #4338ca; }
+.module-btn.declaraciones:hover { background: #eef2ff; color: #3730a3; }
+.module-btn.declaraciones.active { background: #e0e7ff; color: #3730a3; }
+
+.module-btn.devoluciones { color: #be185d; }
+.module-btn.devoluciones:hover { background: #fdf2f8; color: #9d174d; }
+.module-btn.devoluciones.active { background: #fce7f3; color: #9d174d; }
+
+.module-btn:not(.gastos):not(.retenciones):not(.ingresos):not(.declaraciones):not(.devoluciones) {
+  color: #475569;
+}
+.module-btn:not(.gastos):not(.retenciones):not(.ingresos):not(.declaraciones):not(.devoluciones):hover {
+  background: #eef2f7; color: #0f172a;
+}
+.module-btn:not(.gastos):not(.retenciones):not(.ingresos):not(.declaraciones):not(.devoluciones).active {
+  background: #e8effa; color: #003399;
+}
+
+/* ── Submódulos, información y niveles ── */
+.submodule { color: #64748b; }
+.submodule:hover { background: #eef2f7; color: #0f172a; }
+.submodule.active { background: #e8effa; color: #003399; }
+
+.info-title { color: #94a3b8; }
+.info-item { color: #64748b; }
+.info-item:hover { color: #0f172a; background: #eef2f7; }
+.info-item.active { background: #e8effa; color: #003399; }
+
+.bajador-item::after { color: #94a3b8; }
+.bajador-item:hover::after { color: #475569; }
+
+.level-1 { color: #475569; }
+.level-1:hover { color: #0f172a; }
+.level-1.active { background: #e8effa; color: #003399; }
+
+/* ── Contribuyentes ── */
+.clients-toggle { color: #64748b; }
+.clients-toggle:hover { color: #0f172a; }
+.clients-toggle.active { color: #003399; background: #e8effa; }
+
+.client-search {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+}
+.client-search::placeholder { color: #94a3b8; }
+.client-search:focus {
+  border-color: #003399;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(0, 51, 153, 0.10);
+}
+
+.client-item:hover { background: #eef2f7; }
+.client-item.active { background: #e8effa; }
+.client-dot { background: #cbd5e1; }
+.client-item:hover .client-dot { background: #94a3b8; }
+.client-item.active .client-dot { background: #003399; }
+.client-name { color: #334155; }
+.client-item.active .client-name { color: #003399; }
+.client-periodo { color: #94a3b8; }
+.client-item.active .client-periodo { color: #003399; }
+
+.add-client { color: #003399; }
+.add-client:hover { color: #002266; background: #e8effa; border-color: #94b0dd; }
+
+/* ── Pie y accesos ── */
+.sidebar-footer,
+.sidebar-user {
+  border-top: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+.sb-rail {
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  box-shadow: none;
+}
+.sb-rail-lbl { color: #94a3b8; }
+
+.sqn-chip { background: #eef2f7; color: #475569; }
+.sqn-chip:hover { background: #e8effa; color: #003399; }
+.sqn-chip.active { background: #dbe6f8; color: #003399; }
+
+@media (max-width: 768px) {
+  .sidebar.is-open { box-shadow: 4px 0 32px rgba(15, 23, 42, 0.25); }
+}
+
+/* Piezas menores que también vivían en tono oscuro */
+.client-badge { background: #e8effa; color: #003399; }
+.client-empty { color: #94a3b8; }
+.client-shared-notice { color: #4338ca; }
+.client-dot.shared { background: #4338ca; box-shadow: 0 0 4px rgba(67, 56, 202, 0.25); }
+
+.sidebar-user-chip {
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+}
+.sidebar-user-email { color: #475569; }
+.sidebar-user-mail { color: #64748b; }
+.sidebar-quick-nav { border-bottom: 1px solid #e2e8f0; }
+.sqn-title { color: #94a3b8; }
+.logout-btn { color: #64748b; border-color: #e2e8f0; }
+.logout-btn:hover { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
