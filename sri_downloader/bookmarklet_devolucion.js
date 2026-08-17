@@ -1582,6 +1582,22 @@
     await esperarPortal(40000);
     await dormir(1500);
     const constancia = leerConstancia(hechas.length, total);
+    // La fecha y los RUC están en "Ver detalle", no en la confirmación. Se
+    // entra a buscarlos: sin eso, la constancia llega al sistema sin la fecha
+    // que reporta el SRI.
+    if (constancia.mensaje) {
+      try {
+        const det = await leerDetalleDeCarga();
+        if (det) {
+          if (det.fecha_carga) constancia.fecha_carga = det.fecha_carga;
+          if (det.proveedores && det.proveedores.length) {
+            constancia.proveedores = det.proveedores;
+            paso('Leí el detalle: ' + det.proveedores.length + ' comprobante(s) con el RUC ' +
+              'de su proveedor.', 'color:#1e6b33;font-size:11px');
+          }
+        }
+      } catch (e) { /* el detalle es un extra: no puede tumbar la constancia */ }
+    }
     // Sin la confirmación del SRI, lo que el portal haya reclamado es la única
     // pista de por qué. Viaja con la constancia para que llegue al resumen de
     // meses, donde si no se perdería.
@@ -1645,10 +1661,18 @@
     const cs = oks.map((r) => r.constancia);
     const conFecha = cs.filter((x) => x.fecha_carga);
     const todosOk = cs.every((x) => x.mensaje) && !(resultados || []).some((r) => r && r.error);
+    // Los RUC que el detalle del SRI reveló, de todos los meses juntos: es lo
+    // que el sistema no podía averiguar por su cuenta.
+    const proveedores = [];
+    const vistos = new Set();
+    cs.forEach((c) => (c.proveedores || []).forEach((p) => {
+      if (p.ruc && p.clave && !vistos.has(p.clave)) { vistos.add(p.clave); proveedores.push(p); }
+    }));
     return {
       comprobantes: cs.reduce((s, x) => s + (Number(x.comprobantes) || 0), 0),
       monto: Math.round(cs.reduce((s, x) => s + (Number(x.monto) || 0), 0) * 100) / 100,
       fecha_carga: conFecha.length ? conFecha[conFecha.length - 1].fecha_carga : '',
+      proveedores,
       mensaje: todosOk
         ? 'Carga de archivo realizada exitosamente' +
           (cs.length > 1 ? ' (' + cs.length + ' meses)' : '')
@@ -1751,6 +1775,44 @@
       fecha_carga: mf ? mf[1] : '',
       mensaje: ok ? 'Carga de archivo realizada exitosamente' : '',
     };
+  };
+
+  // "Ver detalle", la pantalla que el portal ofrece DESPUÉS de cargar.
+  //
+  // Por qué hace falta entrar: la pantalla de confirmación dice "Carga de
+  // archivo realizada exitosamente" y nada más —ni fecha, ni montos—. La
+  // constancia de verdad está un click más allá, y ahí el SRI sí escribe la
+  // "Fecha y hora de carga" y el detalle comprobante por comprobante.
+  //
+  // Y trae un dato que la grilla no da: el RUC DEL PROVEEDOR. Es lo que le
+  // faltaba al sistema para saber a qué se dedica cada uno —al catastro se le
+  // pregunta por número, no por nombre—, así que se lleva de vuelta.
+  // *Verificado contra el portal el 2026-08-17, presentando de verdad.*
+  const RE_FECHA_CARGA = /fecha y hora de carga[:\s]*(\d{2}[-/]\d{2}[-/]\d{4}[ ]+\d{2}:\d{2}(?::\d{2})?)/i;
+
+  const leerDetalleDeCarga = async () => {
+    const bDetalle = botonPorTexto(/ver detalle/);
+    if (!bDetalle) return null;
+    clickReal(bDetalle);
+    await esperarPortal(25000);
+    await esperar(() => RE_FECHA_CARGA.test(sinTildes(document.body.innerText || '')), 12000);
+    const texto = document.body.innerText || '';
+    const mf = RE_FECHA_CARGA.exec(sinTildes(texto));
+
+    // Una fila del detalle: No · RUC · comprobante · fecha · IVA. El comprobante
+    // viene SIN los ceros de relleno ("324-004-28237" por "324-004-000028237"),
+    // así que se compara por sus tres bloques numéricos.
+    const proveedores = [];
+    visibles('tr').forEach((tr) => {
+      const celdas = [...(tr.cells || [])].map((td) => (td.textContent || '').trim());
+      const ruc = celdas.find((c) => /^\d{13}$/.test(c));
+      const comp = celdas.find((c) => /^\d{1,3}-\d{1,3}-\d{1,9}$/.test(c));
+      if (ruc && comp) {
+        const partes = comp.split('-').map((p) => String(parseInt(p, 10)));
+        proveedores.push({ ruc, serie: comp, clave: partes.join('-') });
+      }
+    });
+    return { fecha_carga: mf ? mf[1] : '', proveedores };
   };
 
   const mostrarConstancia = (cuantos, total) => {

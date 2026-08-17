@@ -394,6 +394,15 @@ def correr(modo: str, fuente: str) -> bool:
                     c = buena["constancia"]
                     vuelve = (c.get("comprobantes") == 12 and buena.get("solicitud_id")
                               and "exitosamente" in c.get("mensaje", ""))
+                    # La fecha y los RUC salen de "Ver detalle", no de la
+                    # confirmación: sin entrar ahí, la constancia llega coja.
+                    provs = c.get("proveedores") or []
+                    if not c.get("fecha_carga"):
+                        vuelve = False
+                        print("   ✖ la constancia volvió SIN la fecha de carga")
+                    if len(provs) != 12 or not all(p.get("ruc") for p in provs):
+                        vuelve = False
+                        print(f"   ✖ RUC de proveedores en la constancia: {len(provs)} de 12")
                 print(f"  {'✔' if vuelve else '✖'} la constancia vuelve a la app "
                       f"(solicitud_id + {len(avisos)} aviso(s))")
                 if not vuelve:

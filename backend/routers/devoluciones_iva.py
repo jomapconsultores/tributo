@@ -868,9 +868,15 @@ def _guardar_solicitud(sb, user_id: str, client_id: str, tipo: str, porcentaje,
     # Reemplazo total: la solicitud del período es una sola (UNIQUE client+mes+anio).
     previa = _solicitud_de_periodo(sb, client_id, pmes, panio)
     if previa:
-        if previa.get("estado") == "presentada":
+        # Aprobada cuenta igual que presentada: reemplazarla borraba la
+        # constancia de lo que el SRI aceptó —fecha de carga, comprobantes y
+        # monto— y devolvía el período a borrador, sin aviso. Solo se protegía
+        # 'presentada', así que guardar sobre una aprobada se llevaba puesto el
+        # registro del trámite.
+        if previa.get("estado") in ("presentada", "aprobada"):
+            estado_lbl = "presentada al SRI" if previa["estado"] == "presentada" else "aprobada"
             raise HTTPException(status_code=409, detail=(
-                f"{etiqueta_periodo(pmes, panio, pfreq, psem)} ya está presentada al SRI. "
+                f"{etiqueta_periodo(pmes, panio, pfreq, psem)} ya está {estado_lbl}. "
                 "Elimínala del historial si necesitás rehacerla."))
         sb.table("devoluciones_iva_solicitudes").delete().eq("id", previa["id"]).execute()
 
@@ -1195,6 +1201,53 @@ class EnvioIn(BaseModel):
     monto: Optional[float] = None
     fecha_carga: Optional[str] = None   # "06-08-2026 13:52:14" o ISO
     mensaje: Optional[str] = None       # constancia textual del portal
+    # [{"ruc": "1790710319001", "serie": "324-004-28237", "clave": "324-4-28237"}]
+    # El detalle de la carga es el ÚNICO lugar donde el portal da el RUC del
+    # proveedor: la grilla solo trae la razón social. Con el RUC se le puede
+    # preguntar al catastro por su actividad económica.
+    proveedores: Optional[List[Dict[str, str]]] = None
+
+
+def _clave_serie(serie) -> str:
+    """Los tres bloques de una serie, sin los ceros de relleno.
+
+    El detalle de la carga escribe "324-004-28237" donde la grilla dice
+    "324-004-000028237": comparando el texto tal cual no casa ninguno."""
+    partes = re.findall(r"\d+", str(serie or ""))
+    return "-".join(str(int(p)) for p in partes) if len(partes) >= 3 else ""
+
+
+def _guardar_rucs_del_detalle(sb, items: List[dict], proveedores) -> int:
+    """Guarda en cada comprobante el RUC que el SRI reveló al cargar.
+
+    La grilla del portal da la razón social y nada más, y al catastro se le
+    pregunta por número: sin RUC, la actividad económica de ese proveedor era
+    inalcanzable. El detalle de la carga sí lo trae, así que se aprovecha ese
+    único momento en que el SRI lo dice."""
+    if not proveedores:
+        return 0
+    por_clave = {}
+    for p in proveedores:
+        clave = _clave_serie(p.get("clave") or p.get("serie"))
+        ruc = str(p.get("ruc") or "").strip()
+        if clave and ruc:
+            por_clave.setdefault(clave, ruc)
+    if not por_clave:
+        return 0
+    puestos = 0
+    for it in items:
+        if it.get("ruc_proveedor"):
+            continue
+        ruc = por_clave.get(_clave_serie(it.get("factura_numero")))
+        if not ruc:
+            continue
+        try:
+            sb.table("devoluciones_iva_items").update(
+                {"ruc_proveedor": ruc}).eq("id", it["id"]).execute()
+            puestos += 1
+        except Exception as e:
+            print(f"[devoluciones_iva] no pude guardar el RUC de {it.get('factura_numero')}: {e}")
+    return puestos
 
 
 def _fecha_carga_iso(txt) -> Optional[str]:
@@ -1237,11 +1290,14 @@ async def marcar_enviada(solicitud_id: str, body: Optional[EnvioIn] = None,
         "sri_mensaje": b.mensaje,
     }).eq("id", solicitud_id).execute()
 
+    rucs = _guardar_rucs_del_detalle(sb, items, b.proveedores)
+
     registrar(actor_user_id=user_id, action="update", module="declaraciones",
               entity="Devolución IVA enviada al SRI", client_id=sol["client_id"],
               cantidad=enviados,
               metadata={"monto": monto, "mes": sol.get("mes"), "anio": sol.get("anio"),
-                        "marcados": len(items), "mensaje": b.mensaje})
+                        "marcados": len(items), "mensaje": b.mensaje,
+                        "fecha_carga_sri": b.fecha_carga, "rucs_aprendidos": rucs})
 
     # Reporte del envío: qué se marcó acá vs. qué procesó el SRI, y a qué tipo
     # de gasto se direccionó cada dólar (que es lo que el portal pide fila a fila).
@@ -1265,6 +1321,7 @@ async def marcar_enviada(solicitud_id: str, body: Optional[EnvioIn] = None,
             "diferencia": round(_num(sol.get("monto_solicitado")) - monto, 2),
             "fecha_carga": b.fecha_carga,
             "mensaje": b.mensaje,
+            "rucs_aprendidos": rucs,
             "por_rubro": [{**v, "iva": round(v["iva"], 2)} for v in por_rubro.values()],
         },
     }
@@ -1383,8 +1440,13 @@ async def exportar_excel(solicitud_id: str, user_id: str = Depends(get_current_u
 
     # Ni base gravada ni total: la grilla del portal no los informa —van en cero—
     # y lo que se le solicita al SRI es el IVA. Igual que en la pantalla.
-    heads = ["Fecha", "RUC proveedor", "Proveedor", "Tipo de gasto", "Clasificación",
-             "Clave de acceso", "IVA"]
+    #
+    # Y "Clasificación" es la ACTIVIDAD ECONÓMICA del SRI, que es lo que explica
+    # el tipo de gasto de cada fila; también igual que en la pantalla.
+    actividades = _actividades_por_nombre(sb, sol["client_id"])
+    claves_act = _claves_por_largo(actividades)
+    heads = ["Fecha", "RUC proveedor", "Proveedor", "Tipo de gasto",
+             "Actividad económica (SRI)", "Clave de acceso", "IVA"]
     row0 = 6
     for i, h in enumerate(heads):
         ws.write(row0, i, h, fmt_head)
@@ -1395,7 +1457,9 @@ async def exportar_excel(solicitud_id: str, user_id: str = Depends(get_current_u
         ws.write(r, 1, it.get("ruc_proveedor") or "", fmt_cell)
         ws.write(r, 2, it.get("nombre_proveedor") or "", fmt_cell)
         ws.write(r, 3, RUBRO_LABEL.get(it.get("rubro") or "", "—"), fmt_cell)
-        ws.write(r, 4, it.get("clasificacion") or "", fmt_cell)
+        ws.write(r, 4, (_resolver_actividad(actividades, claves_act,
+                                            it.get("nombre_proveedor")).get("actividad")
+                        or it.get("clasificacion") or ""), fmt_cell)
         ws.write(r, 5, it.get("unique_id") or "", fmt_cell)
         ws.write_number(r, 6, _num(it.get("iva")), fmt_num)
         r += 1

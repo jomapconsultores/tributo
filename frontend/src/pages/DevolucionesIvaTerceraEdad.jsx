@@ -696,6 +696,10 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
         monto: c.monto ?? null,
         fecha_carga: c.fecha_carga || null,
         mensaje: c.mensaje || null,
+        // El RUC de cada proveedor, que solo aparece en el detalle del SRI: con
+        // él se puede pedir su actividad económica, que es de donde sale el
+        // tipo de gasto propuesto.
+        proveedores: c.proveedores || null,
       })
     }
     window.addEventListener('message', alLlegarConstancia)

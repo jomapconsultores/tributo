@@ -58,6 +58,8 @@
 <a href="#" id="lnkEnvio" style="display:none">Envio de solicitud</a>
 <button id="btnCargar" style="display:none">Cargar Informacion</button>
 <div id="constancia"></div>
+<button id="btnVerDetalle" style="display:none">Ver detalle</button>
+<div id="detalle"></div>
 </div>
 
 <script>
@@ -269,9 +271,30 @@ document.getElementById('lnkEnvio').onclick = (e) => {
 };
 document.getElementById('btnCargar').onclick = () => {
   ajax(800, () => {
+    // Como el portal real: la confirmación NO trae fecha ni montos. Eso está en
+    // "Ver detalle", que además es el único lugar donde aparece el RUC del
+    // proveedor. (Verificado presentando de verdad el 2026-08-17.)
     document.getElementById('constancia').textContent =
-      'Carga de archivo realizada exitosamente  12-08-2026 10:15:00   Total: ' +
-      Object.values(marcadas).reduce((s, m) => s + Number(m.monto || 0), 0).toFixed(2);
+      'Carga de archivo realizada exitosamente';
+    document.getElementById('btnVerDetalle').style.display = '';
+  });
+};
+
+document.getElementById('btnVerDetalle').onclick = () => {
+  ajax(600, () => {
+    // El detalle escribe la serie SIN los ceros de relleno, como el real.
+    const sinCeros = (s) => s.split('-').map((p) => String(parseInt(p, 10))).join('-');
+    let h = '<div>Detalle de valores a devolver</div>' +
+      '<div>Fecha y hora de carga: 12-08-2026 10:15:00</div>' +
+      '<table><tr><th>No</th><th>RUC proveedor</th><th>Comprobante de venta</th>' +
+      '<th>Fecha de emision</th><th>IVA solicitado (USD)</th></tr>';
+    Object.keys(marcadas).forEach((serie, i) => {
+      const d = DATOS.find((x) => x.serie === serie) || {};
+      h += '<tr><td>' + (i + 1) + '</td><td>179071031900' + (i % 10) +
+        '</td><td>' + sinCeros(serie) + '</td><td>' + (d.fecha || '') +
+        '</td><td>' + (d.iva || 0).toFixed(2) + '</td></tr>';
+    });
+    document.getElementById('detalle').innerHTML = h + '</table>';
   });
 };
 </script>
