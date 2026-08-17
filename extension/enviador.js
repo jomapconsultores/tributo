@@ -786,6 +786,25 @@
       .forEach((p) => { p.style.display = 'none'; });
   };
 
+  // Desacuerdos entre el catálogo que traemos y el que ofrece el portal. Se
+  // juntan acá y se vuelcan al final del mes: son la evidencia de que las dos
+  // entradas —adultos mayores y discapacidad— no comparten catálogo.
+  const avisosDelCatalogo = [];
+
+  // La entrada de discapacidad corta ANTES de la grilla cuando el MSP no tiene
+  // un registro vigente: el portal manda a acercarse al Ministerio de Salud
+  // Pública (o al MDT/MIES si es sustituto). Sin reconocer ese texto, el
+  // marcador informaba "no encontré el botón Buscar", que manda a buscar el
+  // problema donde no está —en el marcador, no en el registro—.
+  const RE_SIN_REGISTRO = /ministerio de salud publica|ministerio de trabajo|ministerio de inclusion economica|carne de discapacidad|no registra discapacidad|sin registro de discapacidad/;
+  const avisoDeRegistro = () => {
+    const t = norm((document.body.innerText || '').slice(0, 3000));
+    if (!RE_SIN_REGISTRO.test(t)) return '';
+    return 'el portal no reconoce un registro de discapacidad vigente para este ' +
+      'contribuyente. Eso se resuelve en el MSP —o en el MDT/MIES si es sustituto—, ' +
+      'no acá: sin registro, la aplicación no llega ni a mostrar la grilla.';
+  };
+
   // Elegir el tipo de gasto ABRIENDO EL DESPLEGABLE Y TOCANDO LA OPCIÓN, como
   // lo haría una persona. Es el único camino que el portal reconoce.
   //
@@ -812,10 +831,26 @@
     if (!sel) return 'no hay combo de tipo de gasto en la fila';
     if (sel.disabled) return 'el combo de tipo de gasto sigue deshabilitado';
     const ops = [...sel.options];
-    let op = codigo ? ops.find((o) => String(o.value) === String(codigo)) : null;
-    if (!op && etiqueta) op = ops.find((o) => norm(o.textContent) === norm(etiqueta));
-    if (!op && etiqueta) op = ops.find((o) => norm(o.textContent).indexOf(norm(etiqueta)) >= 0);
+    // La ETIQUETA manda sobre el código. Los códigos (1..5) son los del catálogo
+    // de adultos mayores; en la entrada de discapacidad **no están verificados**,
+    // y si allá el 4 no fuera "alimentación", elegir por código pondría un tipo
+    // de gasto equivocado sin que nadie se entere —el combo mostraría el nombre
+    // que el portal quisiera y el trámite saldría mal—. El nombre del gasto, en
+    // cambio, es el mismo dato en las dos entradas.
+    const porEtiqueta = etiqueta
+      ? ops.find((o) => norm(o.textContent) === norm(etiqueta)) ||
+        ops.find((o) => norm(o.textContent).indexOf(norm(etiqueta)) >= 0)
+      : null;
+    const porCodigo = codigo ? ops.find((o) => String(o.value) === String(codigo)) : null;
+    const op = porEtiqueta || porCodigo;
     if (!op) return 'el combo no tiene la opcion ' + (etiqueta || codigo);
+    // Que el código y la etiqueta lleven a opciones distintas es exactamente lo
+    // que falta saber de la grilla de discapacidad: se anota, no se calla.
+    if (porEtiqueta && porCodigo && porEtiqueta !== porCodigo) {
+      const dicho = 'el código ' + codigo + ' del combo no es "' + norm(etiqueta) + '" sino "' +
+        norm(porCodigo.textContent) + '": se fue por la etiqueta';
+      if (avisosDelCatalogo.indexOf(dicho) < 0) avisosDelCatalogo.push(dicho);
+    }
     const buscada = norm(op.textContent);
 
     // Tres intentos por el desplegable: entre el ajax de la marca y el
@@ -1185,6 +1220,10 @@
     // que llama necesita saber que este se cortó para no seguir a ciegas.
     const fallar = (txt) => {
       paso('✖ ' + txt, 'color:#8b1e1e;font-weight:700');
+      // Si el portal está diciendo que falta el registro de discapacidad, eso
+      // explica el fallo mejor que cualquier cosa que diga el marcador.
+      const reg = avisoDeRegistro();
+      if (reg) paso('→ ' + reg, 'color:#8b6b1e;line-height:1.45');
       cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
       // La bitácora va DENTRO del diagnóstico: lo que se intentó y lo que el
       // portal muestra son la misma historia, y así se manda de una sola vez.
@@ -1329,6 +1368,11 @@
         'quedan sin marcar.', 'color:#777;font-size:11px');
     }
     problemas.slice(0, 10).forEach((p) => paso('⚠ ' + p, 'color:#8b1e1e;font-size:11px'));
+    // El catálogo del portal no coincidió con el nuestro: se dice, aunque el
+    // trámite haya salido bien. Es el dato que hace falta para dar por verificada
+    // la grilla de discapacidad.
+    avisosDelCatalogo.forEach((a) => paso('⚠ catálogo del portal: ' + a,
+      'color:#8b6b1e;font-size:11px'));
 
     if (!hechas.length) return fallar('no se pudo marcar ningún comprobante.');
 
@@ -1533,6 +1577,8 @@
         'margin:3px 0;color:#1e6b33');
     });
     linea('Total presentado: ' + money(total), 'margin:8px 0;font-weight:700;color:#1e6b33');
+    avisosDelCatalogo.forEach((a) => linea('⚠ catálogo del portal: ' + a,
+      'color:#8b6b1e;font-size:11px;line-height:1.4'));
     const constancias = resultados.filter((r) => r.constancia).map((r) => r.constancia);
     if (constancias.length) {
       cuerpo.appendChild(boton('Copiar constancias para la app', function () {
@@ -1598,6 +1644,10 @@
         'exitosamente". Revisá el portal antes de darla por presentada.', 'color:#8b6b1e');
       (constancia.quejas || []).forEach((q) => linea('⚠ el portal dice: ' + q, 'color:#8b1e1e'));
     }
+    // Los desacuerdos de catálogo sobreviven a la constancia: la bitácora se
+    // borra al pintarla, y este aviso hay que verlo justamente al final.
+    avisosDelCatalogo.forEach((a) => linea('⚠ catálogo del portal: ' + a,
+      'color:#8b6b1e;font-size:11px;line-height:1.4'));
     linea('Comprobantes: ' + constancia.comprobantes);
     linea('Total: ' + money(constancia.monto));
     if (constancia.fecha_carga) linea('Carga: ' + constancia.fecha_carga);
@@ -1795,6 +1845,14 @@
       p.push('  combo tipo de gasto: ' + (sel
         ? 'id=' + (sel.id || '-') + ' deshabilitado=' + sel.disabled + ' opciones=' + sel.options.length
         : 'NO ESTA'));
+      // El catálogo entero, código por código. Es lo que hace falta para saber si
+      // la entrada de discapacidad usa el mismo que la de adultos mayores, y son
+      // etiquetas fijas del SRI: no arrastran nada del contribuyente.
+      if (sel) {
+        p.push('  catalogo del combo: ' + [...sel.options]
+          .map((o) => (o.value || '-') + '=' + (o.textContent || '').trim())
+          .join(' | '));
+      }
       const inp = montoDeFila(f);
       p.push('  campo IVA solicitado: ' + (inp
         ? 'id=' + (inp.id || '-') + ' deshabilitado=' + inp.disabled : 'NO ESTA'));

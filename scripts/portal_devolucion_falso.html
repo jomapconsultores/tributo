@@ -71,13 +71,23 @@ for (let i = 1; i <= 4; i++) {
 // quejoso = marca bien, pero al procesar el portal RECHAZA la selección.
 // otro    = el portal está abierto con OTRA persona que la de la solicitud.
 const MODO_URL = new URLSearchParams(location.search).get('modo') || 'widget';
+if (MODO_URL === 'discapacidad') {
+  document.querySelector('h3').textContent = 'Devolución de IVA personas con discapacidad';
+}
 if (MODO_URL === 'otro') {
   document.getElementById('cabecera').textContent =
     'Servicios en Linea 0400533824001 CORAL LIDIA MAGOLA Perfil Cerrar sesion';
 }
 let mesElegido = 7;
 const delMes = () => DATOS.filter((d) => d.mes === mesElegido);
-const TIPOS = [['1','VESTIMENTA'],['2','VIVIENDA'],['3','SALUD'],['4','ALIMENTACION'],['5','EDUCACION']];
+// Los códigos del catálogo son los de ADULTOS MAYORES. En la entrada de
+// discapacidad nadie los verificó nunca, así que el modo 'discapacidad' simula
+// lo peor plausible: los mismos nombres con los códigos cambiados de lugar. Si
+// el marcador eligiera por código, pondría "vivienda" donde va "alimentación" y
+// el trámite saldría mal sin que nadie lo note.
+const TIPOS = MODO_URL === 'discapacidad'
+  ? [['5','VESTIMENTA'],['4','VIVIENDA'],['3','SALUD'],['2','ALIMENTACION'],['1','EDUCACION']]
+  : [['1','VESTIMENTA'],['2','VIVIENDA'],['3','SALUD'],['4','ALIMENTACION'],['5','EDUCACION']];
 let pagina = 0, porPagina = 10, marcadas = {};
 
 const ajax = (ms, fn) => {

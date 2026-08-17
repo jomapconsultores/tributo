@@ -256,9 +256,28 @@ buscar esos controles por etiqueta o por posición dentro de la fila, no por id.
   se usa solo para calcular el tope propio.
 - Los bienes del **art. 96 de la LOD** se presentan **físicamente** en un Centro
   de Atención del SRI, no por este canal.
-- La grilla de discapacidad **no está verificada**: hace falta un contribuyente
-  con registro vigente para confirmar que las columnas y el catálogo de tipo de
-  gasto son los mismos.
+- La grilla de discapacidad **sigue sin verificarse contra el portal**: hace falta
+  un contribuyente con registro vigente. Lo que se hizo (2026-08-16) es que no
+  haga falta confiar en que sea igual:
+  - **El tipo de gasto se elige por la ETIQUETA, no por el código.** Los códigos
+    1..5 son los de adultos mayores; si allá el 4 no fuera *alimentación*, elegir
+    por código habría puesto el rubro equivocado sin que nadie se enterara. El
+    nombre del gasto es el mismo dato en las dos entradas; el código es una
+    suposición. Si código y etiqueta discrepan, el panel lo **avisa** —y ese
+    aviso sobrevive a la pantalla de constancia—.
+  - **El corte por falta de registro se reconoce.** Sin registro vigente el
+    portal manda al MSP (o al MDT/MIES si es sustituto) y nunca llega a la
+    grilla; antes eso se informaba como *"no encontré el botón Buscar"*, que
+    manda a buscar el problema donde no está.
+  - **El diagnóstico trae el catálogo completo del combo** (código y etiqueta de
+    cada opción). Son etiquetas fijas del SRI, no arrastran datos del
+    contribuyente: es lo que hay que copiar la primera vez que se entre con un
+    contribuyente real para dar la grilla por verificada.
+  - Las filas se identifican por el **patrón de la serie**, no por columnas, así
+    que un orden distinto de columnas no rompe el recorrido.
+  - Se prueba con el modo `discapacidad` de `portal_devolucion_falso.html`, que
+    simula lo peor plausible: los mismos nombres con los códigos cambiados de
+    lugar.
 
 ## Parámetros legales
 

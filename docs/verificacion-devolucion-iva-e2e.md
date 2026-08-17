@@ -162,7 +162,26 @@ el trámite quedaba hecho en el SRI y en **Borrador** en el sistema.
 - [ ] Automatizado en `python scripts/test_enviador_devolucion.py` (modos
       `extension` y `semestral` comprueban que la constancia viaja y viaja sumada;
       `quejoso`, que un rechazo del portal corta el recorrido; `otro`, que no
-      presenta nada cuando el portal está con otro contribuyente).
+      presenta nada cuando el portal está con otro contribuyente;
+      `discapacidad`, que el tipo de gasto se elige por etiqueta y no por código).
+
+## 3d. Discapacidad — lo que falta es una sesión real
+
+El módulo funciona y el enviador ya no depende de que el catálogo de esa grilla
+sea igual al de adultos mayores (elige por etiqueta y avisa si difieren). Lo que
+**nadie hizo nunca** es entrar al portal con un contribuyente con registro MSP
+vigente. Cuando haya uno:
+
+- [ ] Entrar a **Devoluciones (TAX refund) → Devolución de IVA - Personas con
+      discapacidad** y comprobar que la app lo abre ahí sola desde *Enviar al SRI*.
+- [ ] Con la grilla a la vista, tocar **Copiar diagnóstico** en el enviador y
+      guardar el `catalogo del combo` que trae: es el dato que cierra la duda.
+      Si los códigos coinciden con los de adultos mayores (1=vestimenta …
+      5=educación), anotarlo en `docs/devolucion-iva-portal-sri.md`.
+- [ ] Comprobar que las columnas de la grilla son las mismas y que el
+      **porcentaje** no se pide en ningún lado (lo toma del MSP).
+- [ ] Sin registro vigente, comprobar que el enviador dice que falta el registro
+      del MSP y no "no encontré el botón Buscar".
 
 ## 4. Probes adversariales (romper a propósito)
 

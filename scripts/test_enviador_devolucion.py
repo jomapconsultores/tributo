@@ -116,6 +116,20 @@ def paquete_de_prueba(auto: bool = False) -> dict:
     }
 
 
+def paquete_discapacidad() -> dict:
+    """La otra entrada del portal: personas con discapacidad.
+
+    Mismo trámite y mismos nombres de gasto, pero el catálogo de esa grilla NUNCA
+    se verificó contra el portal. Acá se lo simula con los códigos cambiados de
+    lugar, que es lo peor plausible: elegir por código pondría "vivienda" donde
+    va "alimentación" y el trámite saldría mal sin que nadie lo note."""
+    p = paquete_de_prueba(auto=True)
+    p["beneficiario"] = {"tipo": "discapacidad", "porcentaje_discapacidad": 75}
+    p["totales"]["tope"] = 144.60
+    p["detalle_meses"][0]["tope"] = 144.60
+    return p
+
+
 PANEL = "(document.getElementById('jomap-enviador-devolucion')||{}).innerText||''"
 DEL_PANEL = "[...document.querySelectorAll('#jomap-enviador-devolucion button')]"
 BOTONES = DEL_PANEL + ".map(b=>b.textContent)"
@@ -143,8 +157,11 @@ def correr(modo: str, fuente: str) -> bool:
         # 'otro': el portal abierto con una persona distinta a la de la
         # solicitud. Tiene que cortar ANTES de tocar nada.
         otro = modo == "otro"
-        auto = modo in ("auto", "extension", "semestral", "quejoso", "otro")
-        propio = quejoso or otro
+        # 'discapacidad': la otra entrada del portal, con su catálogo de tipo de
+        # gasto sin verificar.
+        discapacidad = modo == "discapacidad"
+        auto = modo in ("auto", "extension", "semestral", "quejoso", "otro", "discapacidad")
+        propio = quejoso or otro or discapacidad
         pg.goto(PORTAL.as_uri() + "?modo=" +
                 (modo if propio else ("widget" if auto else modo)))
         pg.click("#lnkIngresar")
@@ -188,7 +205,9 @@ def correr(modo: str, fuente: str) -> bool:
             pg.evaluate((EXT / "contenido-sri.js").read_text(encoding="utf-8"))
         else:
             # La app deja la solicitud en el portapapeles; el marcador la lee de ahí.
-            paquete = paquete_semestral() if semestral else paquete_de_prueba(auto)
+            paquete = (paquete_semestral() if semestral
+                       else paquete_discapacidad() if discapacidad
+                       else paquete_de_prueba(auto))
             pg.evaluate("txt => navigator.clipboard.writeText(txt)", json.dumps(paquete))
         if not extension:
             pg.evaluate(codigo)
@@ -248,6 +267,23 @@ def correr(modo: str, fuente: str) -> bool:
             if not suma:
                 print("   avisos:", avisos)
             ok = ok and suma
+        elif discapacidad:
+            # Con los códigos cambiados de lugar, elegir por código pondría
+            # VIVIENDA (el 4 de allá). Tiene que ir por la etiqueta y avisar que
+            # el catálogo no es el que traíamos.
+            valores = pg.evaluate("[...document.querySelectorAll('#tblFacturas select')]"
+                                  ".map(s=>s.value)")
+            etiquetas = pg.evaluate("[...document.querySelectorAll('#tblFacturas "
+                                    ".ui-selectonemenu-label')].map(e=>e.textContent)")
+            ok = ("Solicitud presentada" in panel
+                  and bool(valores) and all(v == "2" for v in valores)
+                  and all("ALIMENTACION" in e for e in etiquetas)
+                  and "catálogo del portal" in panel)
+            print(f"  {'✔' if ok else '✖'} eligió por la etiqueta, no por el código, "
+                  f"y lo avisó ({tardo:.0f}s)")
+            if not ok:
+                print("  valores:", valores, "| etiquetas:", etiquetas)
+                print("  panel:", panel[-400:])
         elif otro:
             # Ni una casilla tocada: presentar la solicitud de uno dentro de la
             # sesión de otro es declarar a nombre equivocado. Antes el marcador
@@ -325,7 +361,8 @@ def correr(modo: str, fuente: str) -> bool:
 
 if __name__ == "__main__":
     modos = [sys.argv[1]] if len(sys.argv) > 1 else ["semestral", "extension", "auto", "widget",
-                                                     "nativo", "quejoso", "otro", "muerto"]
+                                                     "nativo", "discapacidad", "quejoso",
+                                                     "otro", "muerto"]
     fuente = sys.argv[2] if len(sys.argv) > 2 else "min"
     print(f"Enviador-DEVOLUCIÓN contra el portal simulado ({fuente})")
     todo_bien = True
