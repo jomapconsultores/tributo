@@ -731,7 +731,7 @@
    El sidebar nació oscuro mientras el resto de la aplicación es claro, y esa
    costura se notaba. Acá se reescribe su paleta entera —superficies, textos,
    estados y acentos— sobre blancos y grises muy claros, con el azul
-   institucional (#003399) como único color de mando.
+   institucional (#002a80) como único color de mando.
 
    Va como bloque al final y no repartido por el archivo: se lee de una vez,
    se audita de una vez y se revierte de una vez. La estructura, los tamaños y
@@ -739,12 +739,12 @@
 
    Contraste: los textos de menú van sobre #f7f9fc en gris 600/700, y los
    acentos de cada módulo se bajaron a su tono legible sobre claro (el verde
-   #6ee7b7 sobre blanco no se lee; #047857 sí).
+   #6ee7b7 sobre blanco no se lee; #065f46 sí).
    ══════════════════════════════════════════════════════════════════════════ */
 
 .sidebar {
   background: #f7f9fc;
-  color: #334155;
+  color: #1e293b;
   border-right: 1px solid #e2e8f0;
   box-shadow: 1px 0 0 rgba(15, 23, 42, 0.03), 4px 0 20px rgba(15, 23, 42, 0.06);
 }
@@ -758,99 +758,99 @@
   background: linear-gradient(90deg, transparent, rgba(0, 51, 153, 0.35), transparent);
 }
 .brand-icon { filter: none; }
-.brand-title { color: #003399; }
-.brand-sub { color: #64748b; opacity: 1; }
+.brand-title { color: #002a80; }
+.brand-sub { color: #475569; opacity: 1; }
 
 /* ── Barras de desplazamiento discretas ── */
 .sidebar-nav, .sb-rail { scrollbar-color: #cbd5e1 transparent; }
 .sidebar-nav::-webkit-scrollbar-thumb,
 .sb-rail::-webkit-scrollbar-thumb { background: #cbd5e1; }
-.sidebar-nav::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+.sidebar-nav::-webkit-scrollbar-thumb:hover { background: #64748b; }
 
 /* ── Ítems de navegación ── */
-.nav-item { color: #475569; }
+.nav-item { color: #334155; }
 .nav-item:hover { background: #eef2f7; color: #0f172a; }
-.nav-item.active { background: #e8effa; color: #003399; }
-.caret { color: #94a3b8; }
-.caret.open { color: #64748b; }
+.nav-item.active { background: #dce8f8; color: #002a80; }
+.caret { color: #64748b; }
+.caret.open { color: #475569; }
 
 /* ── Módulos: cada uno con su color, en el tono que se lee sobre claro ── */
-.module-btn.gastos { color: #047857; }
+.module-btn.gastos { color: #065f46; }
 .module-btn.gastos:hover { background: #ecfdf5; color: #065f46; }
 .module-btn.gastos.active { background: #d1fae5; color: #065f46; }
 
-.module-btn.retenciones { color: #0369a1; }
+.module-btn.retenciones { color: #075985; }
 .module-btn.retenciones:hover { background: #f0f9ff; color: #075985; }
 .module-btn.retenciones.active { background: #e0f2fe; color: #075985; }
 
-.module-btn.ingresos { color: #b45309; }
+.module-btn.ingresos { color: #92400e; }
 .module-btn.ingresos:hover { background: #fffbeb; color: #92400e; }
 .module-btn.ingresos.active { background: #fef3c7; color: #92400e; }
 
-.module-btn.declaraciones { color: #4338ca; }
+.module-btn.declaraciones { color: #3730a3; }
 .module-btn.declaraciones:hover { background: #eef2ff; color: #3730a3; }
 .module-btn.declaraciones.active { background: #e0e7ff; color: #3730a3; }
 
-.module-btn.devoluciones { color: #be185d; }
+.module-btn.devoluciones { color: #9d174d; }
 .module-btn.devoluciones:hover { background: #fdf2f8; color: #9d174d; }
 .module-btn.devoluciones.active { background: #fce7f3; color: #9d174d; }
 
 .module-btn:not(.gastos):not(.retenciones):not(.ingresos):not(.declaraciones):not(.devoluciones) {
-  color: #475569;
+  color: #334155;
 }
 .module-btn:not(.gastos):not(.retenciones):not(.ingresos):not(.declaraciones):not(.devoluciones):hover {
   background: #eef2f7; color: #0f172a;
 }
 .module-btn:not(.gastos):not(.retenciones):not(.ingresos):not(.declaraciones):not(.devoluciones).active {
-  background: #e8effa; color: #003399;
+  background: #dce8f8; color: #002a80;
 }
 
 /* ── Submódulos, información y niveles ── */
-.submodule { color: #64748b; }
+.submodule { color: #475569; }
 .submodule:hover { background: #eef2f7; color: #0f172a; }
-.submodule.active { background: #e8effa; color: #003399; }
+.submodule.active { background: #dce8f8; color: #002a80; }
 
-.info-title { color: #94a3b8; }
-.info-item { color: #64748b; }
+.info-title { color: #64748b; }
+.info-item { color: #475569; }
 .info-item:hover { color: #0f172a; background: #eef2f7; }
-.info-item.active { background: #e8effa; color: #003399; }
+.info-item.active { background: #dce8f8; color: #002a80; }
 
-.bajador-item::after { color: #94a3b8; }
-.bajador-item:hover::after { color: #475569; }
+.bajador-item::after { color: #64748b; }
+.bajador-item:hover::after { color: #334155; }
 
-.level-1 { color: #475569; }
+.level-1 { color: #334155; }
 .level-1:hover { color: #0f172a; }
-.level-1.active { background: #e8effa; color: #003399; }
+.level-1.active { background: #dce8f8; color: #002a80; }
 
 /* ── Contribuyentes ── */
-.clients-toggle { color: #64748b; }
+.clients-toggle { color: #475569; }
 .clients-toggle:hover { color: #0f172a; }
-.clients-toggle.active { color: #003399; background: #e8effa; }
+.clients-toggle.active { color: #002a80; background: #dce8f8; }
 
 .client-search {
   background: #ffffff;
   border: 1px solid #cbd5e1;
   color: #0f172a;
 }
-.client-search::placeholder { color: #94a3b8; }
+.client-search::placeholder { color: #64748b; }
 .client-search:focus {
-  border-color: #003399;
+  border-color: #002a80;
   background: #ffffff;
   box-shadow: 0 0 0 3px rgba(0, 51, 153, 0.10);
 }
 
 .client-item:hover { background: #eef2f7; }
-.client-item.active { background: #e8effa; }
+.client-item.active { background: #dce8f8; }
 .client-dot { background: #cbd5e1; }
-.client-item:hover .client-dot { background: #94a3b8; }
-.client-item.active .client-dot { background: #003399; }
-.client-name { color: #334155; }
-.client-item.active .client-name { color: #003399; }
-.client-periodo { color: #94a3b8; }
-.client-item.active .client-periodo { color: #003399; }
+.client-item:hover .client-dot { background: #64748b; }
+.client-item.active .client-dot { background: #002a80; }
+.client-name { color: #1e293b; }
+.client-item.active .client-name { color: #002a80; }
+.client-periodo { color: #64748b; }
+.client-item.active .client-periodo { color: #002a80; }
 
-.add-client { color: #003399; }
-.add-client:hover { color: #002266; background: #e8effa; border-color: #94b0dd; }
+.add-client { color: #002a80; }
+.add-client:hover { color: #002266; background: #dce8f8; border-color: #94b0dd; }
 
 /* ── Pie y accesos ── */
 .sidebar-footer,
@@ -863,31 +863,31 @@
   border-right: 1px solid #e2e8f0;
   box-shadow: none;
 }
-.sb-rail-lbl { color: #94a3b8; }
+.sb-rail-lbl { color: #64748b; }
 
-.sqn-chip { background: #eef2f7; color: #475569; }
-.sqn-chip:hover { background: #e8effa; color: #003399; }
-.sqn-chip.active { background: #dbe6f8; color: #003399; }
+.sqn-chip { background: #eef2f7; color: #334155; }
+.sqn-chip:hover { background: #dce8f8; color: #002a80; }
+.sqn-chip.active { background: #dbe6f8; color: #002a80; }
 
 @media (max-width: 768px) {
   .sidebar.is-open { box-shadow: 4px 0 32px rgba(15, 23, 42, 0.25); }
 }
 
 /* Piezas menores que también vivían en tono oscuro */
-.client-badge { background: #e8effa; color: #003399; }
-.client-empty { color: #94a3b8; }
-.client-shared-notice { color: #4338ca; }
-.client-dot.shared { background: #4338ca; box-shadow: 0 0 4px rgba(67, 56, 202, 0.25); }
+.client-badge { background: #dce8f8; color: #002a80; }
+.client-empty { color: #64748b; }
+.client-shared-notice { color: #3730a3; }
+.client-dot.shared { background: #3730a3; box-shadow: 0 0 4px rgba(67, 56, 202, 0.25); }
 
 .sidebar-user-chip {
   background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
 }
-.sidebar-user-email { color: #475569; }
-.sidebar-user-mail { color: #64748b; }
+.sidebar-user-email { color: #334155; }
+.sidebar-user-mail { color: #475569; }
 .sidebar-quick-nav { border-bottom: 1px solid #e2e8f0; }
-.sqn-title { color: #94a3b8; }
-.logout-btn { color: #64748b; border-color: #e2e8f0; }
+.sqn-title { color: #64748b; }
+.logout-btn { color: #475569; border-color: #e2e8f0; }
 .logout-btn:hover { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
 
 /* ── Franja principal (.sb-rail-btn): los accesos de módulo ──────────────────
@@ -897,35 +897,35 @@
    cada familia, con más peso tipográfico: legibles de un vistazo y sin gritar.
    ────────────────────────────────────────────────────────────────────────── */
 .sb-rail-btn {
-  color: #475569;
+  color: #334155;
   font-weight: 600;
   letter-spacing: 0.2px;
 }
 .sb-rail-btn:hover { background: #eef2f7; color: #0f172a; }
 .sb-rail-btn.active,
 .sb-rail-btn.sel {
-  background: #e8effa;
-  color: #003399;
+  background: #dce8f8;
+  color: #002a80;
   font-weight: 700;
 }
 
-.sb-rail-btn.gastos { color: #047857; }
+.sb-rail-btn.gastos { color: #065f46; }
 .sb-rail-btn.gastos:hover { background: #ecfdf5; color: #065f46; }
 .sb-rail-btn.gastos.active, .sb-rail-btn.gastos.sel { background: #d1fae5; color: #065f46; }
 
-.sb-rail-btn.retenciones { color: #0369a1; }
+.sb-rail-btn.retenciones { color: #075985; }
 .sb-rail-btn.retenciones:hover { background: #f0f9ff; color: #075985; }
 .sb-rail-btn.retenciones.active, .sb-rail-btn.retenciones.sel { background: #e0f2fe; color: #075985; }
 
-.sb-rail-btn.ingresos { color: #b45309; }
+.sb-rail-btn.ingresos { color: #92400e; }
 .sb-rail-btn.ingresos:hover { background: #fffbeb; color: #92400e; }
 .sb-rail-btn.ingresos.active, .sb-rail-btn.ingresos.sel { background: #fef3c7; color: #92400e; }
 
-.sb-rail-btn.declaraciones { color: #4338ca; }
+.sb-rail-btn.declaraciones { color: #3730a3; }
 .sb-rail-btn.declaraciones:hover { background: #eef2ff; color: #3730a3; }
 .sb-rail-btn.declaraciones.active, .sb-rail-btn.declaraciones.sel { background: #e0e7ff; color: #3730a3; }
 
-.sb-rail-btn.devoluciones { color: #be185d; }
+.sb-rail-btn.devoluciones { color: #9d174d; }
 .sb-rail-btn.devoluciones:hover { background: #fdf2f8; color: #9d174d; }
 .sb-rail-btn.devoluciones.active, .sb-rail-btn.devoluciones.sel { background: #fce7f3; color: #9d174d; }
 
@@ -934,14 +934,43 @@
    con peso; los encabezados de sección suben de gris 400 a gris 500, que es
    donde dejan de leerse como deshabilitados sin competir con los ítems.
    ────────────────────────────────────────────────────────────────────────── */
-.nav-item, .level-1, .clients-toggle { color: #334155; font-weight: 500; }
-.nav-item.active, .level-1.active { color: #003399; font-weight: 600; }
-.submodule { color: #475569; }
-.submodule.active { color: #003399; font-weight: 600; }
-.info-item { color: #475569; }
-.info-title, .sqn-title, .sb-rail-lbl { color: #64748b; }
+.nav-item, .level-1, .clients-toggle { color: #1e293b; font-weight: 500; }
+.nav-item.active, .level-1.active { color: #002a80; font-weight: 600; }
+.submodule { color: #334155; }
+.submodule.active { color: #002a80; font-weight: 600; }
+.info-item { color: #334155; }
+.info-title, .sqn-title, .sb-rail-lbl { color: #475569; }
 .client-name { color: #1e293b; }
-.client-periodo { color: #64748b; }
-.client-empty { color: #64748b; }
-.brand-sub { color: #475569; }
-.logout-link, .logout-btn { color: #475569; }
+.client-periodo { color: #475569; }
+.client-empty { color: #475569; }
+.brand-sub { color: #334155; }
+.logout-link, .logout-btn { color: #334155; }
+
+/* ── Un punto más de definición ─────────────────────────────────────────────
+   Con los tonos ya oscurecidos, lo que faltaba era estructura: el panel se
+   despega del fondo con blanco puro, las secciones se separan con una línea
+   fina en vez de solo con aire, y lo seleccionado se ancla con una barra de
+   color. Contraste por jerarquía, no por saturación.
+   ────────────────────────────────────────────────────────────────────────── */
+.sidebar { background: #ffffff; }
+.sb-rail { background: #f4f7fb; border-right: 1px solid #dbe3ec; }
+
+.info-title, .sqn-title, .sb-rail-lbl {
+  font-weight: 700;
+  letter-spacing: 0.8px;
+}
+
+/* La barra del ítem activo, que antes heredaba un color translúcido */
+.module-btn.active::before,
+.level-1.active::before { background: currentColor; opacity: 1; width: 3px; }
+
+.sb-rail-btn.active,
+.sb-rail-btn.sel { box-shadow: inset 3px 0 0 currentColor; }
+
+.nav-item.active,
+.submodule.active { box-shadow: inset 2px 0 0 #002a80; }
+
+/* Separadores entre bloques del menú */
+.sidebar-quick-nav { border-bottom: 1px solid #dbe3ec; }
+.sidebar-user-chip { border-bottom: 1px solid #dbe3ec; }
+.sidebar-footer { border-top: 1px solid #dbe3ec; }
