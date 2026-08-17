@@ -188,13 +188,23 @@ def _cargar_credito_mes_anterior(supabase, user_id, identificacion, mes, anio, _
     if not previos:
         return 0.0, 0.0
     prev_cid = previos[0]["id"]
-    # 1) Declaración IVA GUARDADA de ese período → su remanente manda.
+    # 1) Declaración IVA GUARDADA de ese período → su remanente manda, PERO solo
+    #    si trae cifras. Marcar un período como "presentada directa" guarda un
+    #    registro con el resumen VACÍO ({"resumen": {}, "marcada_directa": true}),
+    #    y tomarlo como bueno devolvía 0 y cortaba la cadena: el mes siguiente
+    #    arrancaba sin el crédito tributario del anterior. Caso real: un
+    #    contribuyente con 2565.75 de crédito por adquisiciones en mayo lo
+    #    perdía entero en julio porque junio estaba marcado directo.
     saved = supabase.table("declaraciones").select("datos").eq(
         "client_id", prev_cid).eq("tipo", "IVA").order(
         "created_at", desc=True).limit(1).execute().data
-    if saved:
+    resumen_guardado = ((saved[0].get("datos") or {}).get("resumen") or {}) if saved else {}
+    CIFRAS = ("credito_proximo_mes_adquisiciones", "credito_proximo_mes_retenciones",
+              "saldo_a_favor_proximo_mes")
+    if saved and any(k in resumen_guardado for k in CIFRAS):
         return _remanente_de_resumen(saved[0].get("datos"))
-    # 2) No guardada: calcular ese período al vuelo (recursivo, con tope de profundidad).
+    # 2) No guardada, o guardada sin cifras: calcular ese período al vuelo
+    #    (recursivo, con tope de profundidad).
     if _depth >= 24:
         return 0.0, 0.0
     try:
