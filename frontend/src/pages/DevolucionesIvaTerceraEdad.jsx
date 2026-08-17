@@ -62,8 +62,28 @@ const BENEFICIARIOS = {
 export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_edad' }) {
   const { openNewClient } = useOutletContext()
   const { selectedClient, identsForSvc } = useClients()
-  const idents_svc = identsForSvc('devolucion_iva')
+  const idents_con_servicio = identsForSvc('devolucion_iva')
   const cfg = BENEFICIARIOS[beneficiario] || BENEFICIARIOS.tercera_edad
+
+  // Esta pantalla lista SOLO a los suyos: adultos mayores y discapacidad son
+  // trámites distintos, y mezclarlos obliga a buscar entre contribuyentes que
+  // no van. El backend devuelve los marcados con este tipo más los que todavía
+  // no tienen solicitud —de esos no hay forma de saberlo, y esconderlos de las
+  // dos pantallas los dejaría inalcanzables—.
+  const [identsDelTipo, setIdentsDelTipo] = useState(null)
+  useEffect(() => {
+    let vigente = true
+    devolucionesIvaAPI.contribuyentes(beneficiario)
+      .then((r) => { if (vigente) setIdentsDelTipo(r.data?.identificaciones ?? null) })
+      .catch(() => { if (vigente) setIdentsDelTipo(null) })
+    return () => { vigente = false }
+  }, [beneficiario])
+
+  const idents_svc = useMemo(() => {
+    if (!idents_con_servicio || !identsDelTipo) return idents_con_servicio
+    const permitidas = new Set(identsDelTipo)
+    return new Set([...idents_con_servicio].filter((i) => permitidas.has(i)))
+  }, [idents_con_servicio, identsDelTipo])
 
   const [comps, setComps] = useState([])
   const [periodo, setPeriodo] = useState('')

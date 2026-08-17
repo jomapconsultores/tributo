@@ -27,7 +27,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client, fetch_all
 import orgs
-from tenancy import assert_client_owner
+from tenancy import assert_client_owner, filtro_org
 from services.periodo import (periodo_cliente_ext, etiqueta_periodo, rango_semestre,
                               semestre_de_mes, mes_anio_de_fecha)
 from services.activity import registrar
@@ -526,6 +526,44 @@ async def aprender_rubro_proveedor(body: RubroProveedorIn,
     return {"ok": bool(aprendidos), "nombre_clave": clave, "rubro": rubro}
 
 
+@router.get("/contribuyentes")
+async def contribuyentes_del_tipo(tipo: str = Query("tercera_edad"),
+                                  user_id: str = Depends(get_current_user)):
+    """Identificaciones que corresponden a esta pantalla.
+
+    Adultos mayores y discapacidad son trámites distintos; mezclarlos en una sola
+    lista obliga a buscar entre contribuyentes que no van. Se devuelven los que
+    ya quedaron marcados con ese tipo MÁS los que todavía no tienen marca: sin
+    una solicitud previa no hay forma de saber cuál les toca, y esconderlos de
+    las dos pantallas los volvería inalcanzables."""
+    if tipo not in ("tercera_edad", "discapacidad"):
+        raise HTTPException(status_code=400, detail="Tipo de beneficiario desconocido.")
+    sb = get_supabase_client()
+    try:
+        filas = fetch_all(lambda: filtro_org(sb.table("clients").select(
+            "identificacion,devolucion_beneficiario")))
+    except Exception as e:
+        print(f"[devoluciones_iva] sin marca de beneficiario: {e}")
+        return {"identificaciones": None}      # None = no filtrar
+    # La marca se resuelve POR RUC, no por fila: un contribuyente tiene una fila
+    # de `clients` por período, y la solicitud marcó solo la del período en que
+    # se armó. Mirando fila por fila, el mismo contribuyente saldría marcado en
+    # una y sin marca en las otras, y el filtro no filtraría nada.
+    marca_por_ruc: Dict[str, str] = {}
+    for f in filas:
+        ident = str(f.get("identificacion") or "").strip()
+        if not ident:
+            continue
+        marca_por_ruc.setdefault(ident, "")
+        m = (f.get("devolucion_beneficiario") or "").strip()
+        if m:
+            marca_por_ruc[ident] = m
+    propios = [i for i, m in marca_por_ruc.items() if m == tipo]
+    sin_marca = [i for i, m in marca_por_ruc.items() if not m]
+    return {"identificaciones": propios + sin_marca,
+            "con_marca": len(propios), "sin_marca": len(sin_marca)}
+
+
 @router.get("/clave-sri")
 async def clave_sri(request: Request, client_id: str = Query(...),
                     user_id: str = Depends(get_current_user)):
@@ -917,6 +955,10 @@ def _guardar_solicitud(sb, user_id: str, client_id: str, tipo: str, porcentaje,
                 "Elimínala del historial si necesitás rehacerla."))
         sb.table("devoluciones_iva_solicitudes").delete().eq("id", previa["id"]).execute()
 
+    # De qué tipo es este contribuyente queda aprendido acá, que es cuando el
+    # usuario lo decide de verdad.
+    _marcar_beneficiario(sb, client_id, tipo)
+
     res = sb.table("devoluciones_iva_solicitudes").insert({
         "user_id": user_id,
         "client_id": client_id,
@@ -1245,6 +1287,23 @@ class EnvioIn(BaseModel):
     proveedores: Optional[List[Dict[str, str]]] = None
 
 
+def _marcar_beneficiario(sb, client_id: str, tipo) -> None:
+    """Deja anotado de qué tipo de devolución es este contribuyente.
+
+    Adultos mayores y discapacidad son dos trámites distintos y dos pantallas
+    distintas, pero el sistema no tiene cómo distinguirlos por su cuenta: no hay
+    fecha de nacimiento y el grado de discapacidad lo tiene el MSP. Lo que sí
+    hay es lo que el usuario decidió al armar la solicitud, así que se aprende de
+    ahí y desde entonces el contribuyente aparece solo donde le toca."""
+    t = str(tipo or "").strip()
+    if t not in ("tercera_edad", "discapacidad"):
+        return
+    try:
+        sb.table("clients").update({"devolucion_beneficiario": t}).eq("id", client_id).execute()
+    except Exception as e:              # la columna puede no estar todavía
+        print(f"[devoluciones_iva] no pude marcar el beneficiario: {e}")
+
+
 def _clave_serie(serie) -> str:
     """Los tres bloques de una serie, sin los ceros de relleno.
 
@@ -1328,6 +1387,7 @@ async def marcar_enviada(solicitud_id: str, body: Optional[EnvioIn] = None,
     }).eq("id", solicitud_id).execute()
 
     rucs = _guardar_rucs_del_detalle(sb, items, b.proveedores)
+    _marcar_beneficiario(sb, sol["client_id"], sol.get("tipo_beneficiario"))
 
     registrar(actor_user_id=user_id, action="update", module="declaraciones",
               entity="Devolución IVA enviada al SRI", client_id=sol["client_id"],
