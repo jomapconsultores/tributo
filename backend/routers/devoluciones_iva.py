@@ -20,7 +20,7 @@ import unicodedata
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -524,6 +524,43 @@ async def aprender_rubro_proveedor(body: RubroProveedorIn,
         "nombre_proveedor": body.nombre_proveedor, "rubro": rubro,
     }])
     return {"ok": bool(aprendidos), "nombre_clave": clave, "rubro": rubro}
+
+
+@router.get("/clave-sri")
+async def clave_sri(request: Request, client_id: str = Query(...),
+                    user_id: str = Depends(get_current_user)):
+    """Usuario y clave del portal del SRI de este contribuyente.
+
+    Para qué acá: el trámite se hace DENTRO del portal, con la sesión del
+    contribuyente. Tener que salir a buscar la clave a otra pantalla en cada
+    devolución es fricción pura, y son varias por mes.
+
+    No relaja nada: usa la misma autorización que el módulo de claves —la
+    empresa dueña del contribuyente— y queda registrado en la bitácora de
+    accesos, igual que revelarla desde Admin."""
+    from routers.credentials import _autorizar_ver_credencial, _log
+    from services.credentials_crypto import decrypt
+
+    sb = get_supabase_client()
+    assert_client_owner(client_id, user_id)
+    rol = _autorizar_ver_credencial(user_id, client_id)
+    filas = sb.table("service_credentials").select(
+        "id,username,ciphertext,key_version").eq("client_id", client_id).eq(
+        "service", "sri_portal").execute().data
+    if not filas:
+        return {"hay": False, "motivo": "Este contribuyente todavía no tiene la clave del SRI "
+                                        "cargada. Se ingresa en Admin → Claves SRI."}
+    row = filas[0]
+    try:
+        password = decrypt(row["ciphertext"], row["key_version"])
+    except Exception as e:
+        _log(credential_id=row["id"], admin_user_id=user_id, action="reveal", req=request,
+             metadata={"error": str(e), "rol": rol, "desde": "devoluciones"})
+        return {"hay": False, "motivo": "La clave está guardada con otra llave de cifrado y no se "
+                                        "puede descifrar. Reingresala en Admin → Claves SRI."}
+    _log(credential_id=row["id"], admin_user_id=user_id, action="reveal", req=request,
+         metadata={"rol": rol, "desde": "devoluciones"})
+    return {"hay": True, "usuario": row.get("username") or "", "clave": password}
 
 
 @router.post("/actividades")

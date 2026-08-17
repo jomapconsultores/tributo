@@ -518,6 +518,10 @@ export const devolucionesIvaAPI = {
   aprenderRubro: (nombreProveedor, rubro) =>
     api.post('/api/devoluciones-iva/rubro-proveedor',
       { nombre_proveedor: nombreProveedor, rubro }),
+  // Usuario y clave del portal del SRI del contribuyente: el trámite se hace
+  // allá, y salir a buscarla a otra pantalla en cada devolución es fricción.
+  claveSri: (clientId) =>
+    api.get('/api/devoluciones-iva/clave-sri', { params: { client_id: clientId } }),
   // Paquete listo para llevar la solicitud al portal del SRI (lo usa el enviador)
   envio: (id) => api.get(`/api/devoluciones-iva/solicitudes/${id}/envio`),
   // Deja constancia de lo presentado al SRI y devuelve el reporte del envío.

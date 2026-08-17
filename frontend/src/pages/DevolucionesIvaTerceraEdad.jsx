@@ -311,6 +311,18 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
     [periodosDisp],
   )
 
+  // Un mes ya presentado al SRI no se vuelve a presentar: ofrecerlo era invitar
+  // a rehacer un trámite hecho. Sale del selector —sigue estando en las
+  // solicitudes guardadas, con su constancia— y solo quedan los que faltan.
+  const yaPresentados = useMemo(
+    () => periodosDisp.filter((p) => p.estado === 'presentada' || p.estado === 'aprobada'),
+    [periodosDisp],
+  )
+  const periodosPorHacer = useMemo(
+    () => periodosDisp.filter((p) => p.estado !== 'presentada' && p.estado !== 'aprobada'),
+    [periodosDisp],
+  )
+
   const toggleLote = (p) => {
     setLote((prev) => {
       const s = new Set(prev)
@@ -625,6 +637,22 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
     }
   }
 
+  // La clave del portal del SRI, a mano. El trámite se hace DENTRO del portal
+  // con la sesión del contribuyente, así que tenerla que ir a buscar a otra
+  // pantalla en cada devolución es fricción pura. El backend la entrega con la
+  // misma autorización que el módulo de claves y deja registro del acceso.
+  const [claveSri, setClaveSri] = useState(null)
+  const [verClave, setVerClave] = useState(false)
+  useEffect(() => {
+    setVerClave(false)
+    if (!clientId) { setClaveSri(null); return }
+    let vigente = true
+    devolucionesIvaAPI.claveSri(clientId)
+      .then((r) => { if (vigente) setClaveSri(r.data) })
+      .catch(() => { if (vigente) setClaveSri(null) })
+    return () => { vigente = false }
+  }, [clientId])
+
   // Quién está abierto en el sistema, a la vista del enviador.
   //
   // El marcador, tocado dentro de la app, leía la solicitud del PORTAPAPELES, y
@@ -736,7 +764,7 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
 
       {msg && <div className={`dv-msg ${msg.tipo}`}>{msg.texto}</div>}
 
-      {periodosDisp.length > 0 && (
+      {periodosPorHacer.length > 0 && (
         <section className="dv-periodos">
           <div className="dv-periodos-head">
             <h2>📅 ¿Qué mes vas a validar?</h2>
@@ -744,6 +772,10 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
               La devolución se presenta <strong>mes a mes</strong> en el portal del SRI.
               Elegí uno para revisarlo comprobante por comprobante, o marcá varios meses
               anteriores y prepararlos de una.
+              {yaPresentados.length > 0 && (
+                <> {yaPresentados.length} mes(es) ya presentado(s) no se ofrecen acá;
+                  están abajo, en las solicitudes guardadas.</>
+              )}
             </p>
           </div>
           <div className="dv-periodos-lista">
@@ -752,7 +784,7 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
               onClick={() => setPeriodoSel(null)}
               title="Volver al período configurado del contribuyente"
             >Período del cliente</button>
-            {periodosDisp.map((p) => (
+            {periodosPorHacer.map((p) => (
               <div key={clave(p)} className={`dv-periodo-card estado-${p.estado}`}>
                 <label className="dv-periodo-check" title="Marcar para preparar en lote">
                   <input
@@ -813,6 +845,28 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
           onClick={pegarPortal}
           title="Ingresar el listado que el portal del SRI muestra del período (copialo con el enviador, en el SRI)"
         >📥 Pegar comprobantes del portal</button>
+        {claveSri && (
+          <span className="dv-clave-sri" title="Clave del portal del SRI de este contribuyente. Cada vez que se muestra queda registrado en la bitácora de accesos.">
+            {claveSri.hay ? (
+              <>
+                🔑 <strong>{claveSri.usuario || selectedClient?.identificacion}</strong>
+                {' · '}
+                <code>{verClave ? claveSri.clave : '••••••••'}</code>
+                <button className="dv-clave-btn" onClick={() => setVerClave((v) => !v)}>
+                  {verClave ? 'ocultar' : 'ver'}
+                </button>
+                <button
+                  className="dv-clave-btn"
+                  onClick={() => navigator.clipboard?.writeText(claveSri.clave)
+                    .then(() => setAvisoSubida({ tipo: 'ok', texto: 'Clave del SRI copiada.' }))
+                    .catch(() => setAvisoSubida({ tipo: 'err', texto: 'No se pudo copiar la clave.' }))}
+                >copiar</button>
+              </>
+            ) : (
+              <em title={claveSri.motivo}>🔑 sin clave cargada</em>
+            )}
+          </span>
+        )}
         <button
           className="dv-btn"
           onClick={sincronizarActividades}
