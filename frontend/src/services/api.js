@@ -508,6 +508,11 @@ export const devolucionesIvaAPI = {
   exportExcel: (id) => api.get(`/api/devoluciones-iva/solicitudes/${id}/export/excel`, { responseType: 'blob' }),
   // Catálogo de tipos de gasto a los que se direcciona cada comprobante
   rubros: () => api.get('/api/devoluciones-iva/rubros'),
+  // Trae del SRI la actividad económica de los proveedores del contribuyente:
+  // es la mejor pista del tipo de gasto. El catastro se consulta por RUC, así
+  // que sirve para los proveedores que el sistema ya conoce con número.
+  sincronizarActividades: (clientId) =>
+    api.post('/api/devoluciones-iva/actividades', null, { params: { client_id: clientId } }),
   // Paquete listo para llevar la solicitud al portal del SRI (lo usa el enviador)
   envio: (id) => api.get(`/api/devoluciones-iva/solicitudes/${id}/envio`),
   // Deja constancia de lo presentado al SRI y devuelve el reporte del envío.

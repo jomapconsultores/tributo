@@ -143,6 +143,26 @@ comprobantes estén cargados en Gastos:
 - En la app, **"Pegar comprobantes del portal"** (`POST /devoluciones-iva/portal`)
   crea la solicitud del mes con esas filas, proponiendo el tipo de gasto por la
   clasificación que el proveedor ya tenga en Gastos o, si no, por su nombre.
+- **La mejor pista es la ACTIVIDAD ECONÓMICA del SRI** (agregado 2026-08-16). El
+  orden de la propuesta es: lo que el usuario ya decidió para ese proveedor →
+  su actividad económica → su clasificación en Gastos → su nombre. La razón
+  social no dice el giro; la actividad sí (*"venta al por menor … productos
+  alimenticios"* → alimentación).
+  - El catastro del SRI se consulta **por RUC**: los servicios
+    `obtenerPorRazonSocial` y `obtenerPorNombreComercial` **no existen** en la API
+    pública (probado el 2026-08-16, dan 404). Y la grilla del portal no trae RUC.
+  - Por eso la actividad se **hereda casando el nombre** con el mismo proveedor
+    en Gastos, que sí tiene RUC, usando la misma normalización con la que se
+    aprende el tipo de gasto. El proveedor que nunca pasó por Gastos se queda sin
+    actividad: no hay a quién preguntarle por nombre.
+  - **🔄 Actividades del SRI** (`POST /devoluciones-iva/actividades`) trae las que
+    falten y las guarda en `classification_map`. Es una acción aparte porque el
+    SRI responde de a un RUC por vez: va de a 20 por llamada e informa cuántos
+    quedaron pendientes y cuántos no tienen RUC.
+  - Las pistas se prueban con `python scripts/test_rubros_actividad.py`. Están
+    escritas para DOS vocabularios distintos —el del catastro ("ENSEÑANZA",
+    "PRENDAS DE VESTIR") y el de los nombres comerciales—, y la comparación va
+    sin tildes ni Ñ.
 - Esos items van **sin `invoice_id`** —no son facturas de Gastos— y se
   distinguen en la pantalla con el chip `SRI`. Como la grilla no informa la
   base imponible, van con base y total en cero y la pantalla muestra "—".

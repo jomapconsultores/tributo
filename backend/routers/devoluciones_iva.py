@@ -99,9 +99,11 @@ _PISTAS_RUBRO = [
                       "BURGER", "POLLO", "CAFE", "CAFETER", "HELAD", "CHUZO",
                       "ASADERO", "MARISQU", "CEVICH", "SANDUCH", "FRUT", "CARNIC")),
     ("vivienda",     ("VIVIENDA", "ARRIEND", "ALQUILER", "CONDOMIN", "FERRETER", "MUEBL", "HOGAR",
-                      "LUZ", "ELECTRIC", "AGUA", "TELEFON", "INTERNET", "TELECOM", "GAS")),
-    ("vestimenta",   ("VESTIMENTA", "ROPA", "CALZAD", "TEXTIL", "BOUTIQUE")),
-    ("educacion",    ("EDUCAC", "COLEGIO", "ESCUELA", "UNIVERSID", "CAPACITAC", "LIBRER", "UTILES")),
+                      "LUZ", "ELECTRIC", "AGUA", "TELEFON", "INTERNET", "TELECOM", "GAS",
+                      "INMUEBLE")),
+    ("vestimenta",   ("VESTIMENTA", "ROPA", "CALZAD", "TEXTIL", "BOUTIQUE", "VESTIR", "PRENDAS")),
+    ("educacion",    ("EDUCAC", "COLEGIO", "ESCUELA", "UNIVERSID", "CAPACITAC", "LIBRER", "UTILES",
+                      "ENSENANZ")),
 ]
 
 
@@ -111,7 +113,10 @@ def _rubro_sugerido(clasificacion) -> str:
     Devuelve vacío cuando no hay con qué decidir: es preferible que el usuario
     elija a mandar todo a un cajón por defecto, porque el tipo de gasto es un
     dato que se declara al SRI."""
-    texto = str(clasificacion or "").strip().upper()
+    # Sin tildes ni Ñ: el catastro del SRI escribe "ENSEÑANZA" y "FARMACÉUTICOS",
+    # y una pista con acento sería una pista que no encuentra nada.
+    texto = unicodedata.normalize("NFD", str(clasificacion or "").strip().upper())
+    texto = "".join(c for c in texto if unicodedata.category(c) != "Mn")
     if not texto:
         return RUBRO_VACIO
     for rubro, pistas in _PISTAS_RUBRO:
@@ -330,6 +335,58 @@ def _clasif_por_proveedor(sb, client_id: str) -> Dict[str, str]:
     return mapa
 
 
+def _actividades_por_nombre(sb, client_id: str) -> Dict[str, dict]:
+    """Actividad económica del SRI de cada proveedor, indexada por NOMBRE.
+
+    La grilla del portal trae la razón social y nada más —sin RUC—, así que la
+    actividad no se puede pedir al SRI para esas filas: el catastro se consulta
+    por número, no por nombre (probado: los servicios `obtenerPorRazonSocial` y
+    `obtenerPorNombreComercial` no existen en la API pública).
+
+    Lo que sí se puede es reusar lo que el sistema YA sabe: el mismo proveedor,
+    en Gastos, aparece con RUC, y su actividad está en `classification_map`
+    porque la clasificación la trae del SRI. Se casa por nombre normalizado —el
+    mismo criterio con el que ya se aprende el tipo de gasto— y así la fila del
+    portal hereda la actividad de su RUC."""
+    porrruc: Dict[str, dict] = {}
+    try:
+        for f in fetch_all(lambda: sb.table("classification_map")
+                           .select("ruc,nombre_proveedor,actividad,categoria")):
+            ruc = str(f.get("ruc") or "").strip()
+            act = str(f.get("actividad") or "").strip()
+            if ruc:
+                porrruc[ruc] = {"actividad": act, "categoria": f.get("categoria") or "",
+                                "nombre": f.get("nombre_proveedor") or ""}
+    except Exception as e:                      # sin clasificador no se rompe nada
+        print(f"[devoluciones_iva] sin classification_map: {e}")
+
+    mapa: Dict[str, dict] = {}
+    # Por el nombre con que el proveedor figura en el clasificador…
+    for ruc, d in porrruc.items():
+        clave = _nombre_clave(d.get("nombre"))
+        if clave and d.get("actividad"):
+            mapa.setdefault(clave, {"actividad": d["actividad"], "ruc": ruc})
+    # …y por el nombre con que aparece en las facturas de este contribuyente,
+    # que es el que más se parece al del portal.
+    try:
+        for f in fetch_all(lambda: sb.table("invoices")
+                           .select("nombre_proveedor,ruc_proveedor").eq("client_id", client_id)):
+            clave = _nombre_clave(f.get("nombre_proveedor"))
+            ruc = str(f.get("ruc_proveedor") or "").strip()
+            if not clave or not ruc:
+                continue
+            d = porrruc.get(ruc)
+            if d and d.get("actividad"):
+                mapa.setdefault(clave, {"actividad": d["actividad"], "ruc": ruc})
+            else:
+                # Sin actividad todavía: se deja el RUC para poder pedírsela al
+                # SRI cuando se sincronice.
+                mapa.setdefault(clave, {"actividad": "", "ruc": ruc})
+    except Exception as e:
+        print(f"[devoluciones_iva] sin facturas para cruzar actividades: {e}")
+    return mapa
+
+
 def _meses_del_periodo(pmes, pfreq, psem) -> List[int]:
     """Meses que cubre el período del cliente: uno si es mensual, los seis del
     semestre si es semestral (la devolución también se pide por el semestre)."""
@@ -404,6 +461,60 @@ def _items_de(sb, solicitud_id: str) -> List[dict]:
 async def rubros(_: str = Depends(get_current_user)):
     """Catálogo de tipos de gasto (el mismo del portal del SRI, con su código)."""
     return {"rubros": RUBROS, "defecto": RUBRO_VACIO}
+
+
+@router.post("/actividades")
+async def sincronizar_actividades(client_id: str = Query(...),
+                                  user_id: str = Depends(get_current_user)):
+    """Trae del SRI la actividad económica de los proveedores de este contribuyente.
+
+    Para qué: la actividad es la mejor pista del tipo de gasto. "GERARDO ORTIZ E
+    HIJOS CIA LTDA" no dice nada; su actividad —venta al por menor de alimentos—
+    lo dice todo, y de ahí sale la propuesta de rubro.
+
+    Alcance y su límite: el catastro del SRI se consulta POR RUC. Los
+    comprobantes que trae la grilla del portal no lo tienen —solo la razón
+    social—, así que acá se sincronizan los proveedores que el sistema conoce con
+    RUC (los de las facturas del contribuyente) y las filas del portal heredan la
+    actividad casando el nombre. El que nunca pasó por Gastos se queda sin
+    actividad: no hay forma de preguntarle al SRI por nombre."""
+    from services.min_produccion import consultar_sri
+    sb = get_supabase_client()
+    assert_client_owner(client_id, user_id)
+
+    mapa = _actividades_por_nombre(sb, client_id)
+    con_ruc = {d["ruc"] for d in mapa.values() if d.get("ruc")}
+    faltan = sorted({d["ruc"] for d in mapa.values()
+                     if d.get("ruc") and not d.get("actividad")})
+    sin_ruc = sum(1 for d in mapa.values() if not d.get("ruc"))
+
+    # El SRI responde de a uno y tarda; se acota por llamada y se avisa cuánto
+    # quedó afuera, que es mejor que una pantalla colgada o un corte silencioso.
+    TOPE = 20
+    pendientes = faltan[TOPE:]
+    nuevas = 0
+    for ruc in faltan[:TOPE]:
+        try:
+            sri = consultar_sri(ruc, timeout=8) or {}
+        except Exception:
+            continue
+        ae = (sri.get("actividad_economica") or "").strip()
+        if not ae:
+            continue
+        try:
+            sb.table("classification_map").update({"actividad": ae}).eq("ruc", ruc).execute()
+            nuevas += 1
+        except Exception as e:
+            print(f"[devoluciones_iva] no pude guardar la actividad de {ruc}: {e}")
+
+    return {
+        "proveedores": len(mapa),
+        "con_ruc": len(con_ruc),
+        "sin_ruc": sin_ruc,
+        "consultados": min(len(faltan), TOPE),
+        "actualizados": nuevas,
+        "pendientes": len(pendientes),
+    }
 
 
 @router.get("/parametros")
@@ -563,8 +674,18 @@ async def comprobantes(
     # la pista por palabra clave. Para los del portal no hay clasificación de
     # Gastos, así que ahí la pista se busca en el nombre.
     aprendidos = _rubros_aprendidos(sb, user_id)
+    # La ACTIVIDAD ECONÓMICA del SRI es mejor pista que el nombre: "GERARDO
+    # ORTIZ E HIJOS CIA LTDA" no dice nada, y su actividad —venta al por menor
+    # de alimentos— lo dice todo. Va después de lo aprendido, que es una
+    # decisión, y antes del nombre, que es una adivinanza.
+    actividades = _actividades_por_nombre(sb, client_id)
     for c in comps:
-        sugerido = (aprendidos.get(_nombre_clave(c.get("nombre_proveedor")))
+        clave = _nombre_clave(c.get("nombre_proveedor"))
+        act = (actividades.get(clave) or {})
+        c["actividad"] = act.get("actividad") or ""
+        c["ruc_sri"] = act.get("ruc") or c.get("ruc_proveedor") or ""
+        sugerido = (aprendidos.get(clave)
+                    or (_rubro_sugerido(c["actividad"]) if c["actividad"] else RUBRO_VACIO)
                     or _rubro_sugerido(c.get("clasificacion") or c.get("nombre_proveedor")))
         c["rubro_sugerido"] = sugerido
         c["rubro"] = rubros_guardados.get(c["id"]) or sugerido
@@ -804,6 +925,7 @@ async def ingresar_del_portal(body: PortalIn, user_id: str = Depends(get_current
 
     clasif = _clasif_por_proveedor(sb, body.client_id)
     aprendidos = _rubros_aprendidos(sb, user_id)
+    actividades = _actividades_por_nombre(sb, body.client_id)
     filas, rubros, vistas = [], {}, set()
     for f in body.filas:
         serie = str(f.serie or "").strip()
@@ -813,10 +935,15 @@ async def ingresar_del_portal(body: PortalIn, user_id: str = Depends(get_current
         fila = {"serie": serie, "fecha": f.fecha, "proveedor": f.proveedor, "iva": f.iva}
         filas.append(fila)
         nombre = str(f.proveedor or "").strip().upper()
-        # Primero lo que ya se decidió antes para ese proveedor; después la
-        # clasificación que tenga en Gastos; y por último la pista del nombre.
-        rubros[PORTAL_PREFIJO + serie] = (aprendidos.get(_nombre_clave(f.proveedor))
-                                          or _rubro_sugerido(clasif.get(nombre) or nombre))
+        clave = _nombre_clave(f.proveedor)
+        actividad = (actividades.get(clave) or {}).get("actividad") or ""
+        # Primero lo que ya se decidió antes para ese proveedor; después su
+        # ACTIVIDAD ECONÓMICA según el SRI; después la clasificación que tenga en
+        # Gastos; y por último la pista del nombre, que es la más pobre.
+        rubros[PORTAL_PREFIJO + serie] = (
+            aprendidos.get(clave)
+            or (_rubro_sugerido(actividad) if actividad else RUBRO_VACIO)
+            or _rubro_sugerido(clasif.get(nombre) or nombre))
 
     sol = _guardar_solicitud(
         sb, user_id, body.client_id, body.tipo_beneficiario, body.porcentaje_discapacidad,

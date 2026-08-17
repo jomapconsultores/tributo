@@ -536,6 +536,34 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
     }
   }
 
+  // Trae del SRI la actividad económica de los proveedores. Es la mejor pista
+  // del tipo de gasto: la razón social no dice el giro y la actividad sí. Va
+  // como acción explícita porque el SRI responde de a un RUC por vez y tarda;
+  // hacerlo en cada carga de la pantalla la volvería lenta.
+  const [sincronizando, setSincronizando] = useState(false)
+  const sincronizarActividades = async () => {
+    if (!clientId) return
+    setSincronizando(true)
+    setMsg(null)
+    try {
+      const r = await devolucionesIvaAPI.sincronizarActividades(clientId)
+      const d = r.data
+      const partes = [`${d.actualizados} actividad(es) traída(s) del SRI`]
+      if (d.pendientes) partes.push(`quedan ${d.pendientes} para la próxima vuelta`)
+      if (d.sin_ruc) {
+        partes.push(`${d.sin_ruc} proveedor(es) sin RUC en el sistema: al SRI no se le ` +
+          'puede preguntar por nombre, así que esos se resuelven cuando el proveedor ' +
+          'aparezca en Gastos con su RUC')
+      }
+      setMsg({ tipo: d.actualizados ? 'ok' : 'err', texto: partes.join(' · ') })
+      cargar()
+    } catch (e) {
+      setMsg({ tipo: 'err', texto: e.response?.data?.detail || 'No se pudo consultar al SRI.' })
+    } finally {
+      setSincronizando(false)
+    }
+  }
+
   // Ya se presentó en el portal, pero el sistema no se enteró: se abre la
   // ventana de constancia SIN publicar el paquete, sin copiarlo y sin abrir el
   // portal. Es la diferencia que importa: pasar por «Enviar al SRI» solo para
@@ -748,6 +776,12 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
           onClick={pegarPortal}
           title="Ingresar el listado que el portal del SRI muestra del período (copialo con el enviador, en el SRI)"
         >📥 Pegar comprobantes del portal</button>
+        <button
+          className="dv-btn"
+          onClick={sincronizarActividades}
+          disabled={sincronizando}
+          title="Consulta al SRI la actividad económica de los proveedores: es de donde sale la propuesta de tipo de gasto"
+        >{sincronizando ? '⏳ Consultando al SRI…' : '🔄 Actividades del SRI'}</button>
         <a
           ref={setEnviadorDevolucionHref}
           className="dv-enviador"
@@ -860,7 +894,16 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
                 <tr key={c.id} className={seleccion.has(c.id) ? 'sel' : ''} onClick={() => toggle(c.id)}>
                   <td><input type="checkbox" checked={seleccion.has(c.id)} onChange={() => toggle(c.id)} onClick={(e) => e.stopPropagation()} /></td>
                   <td>{c.fecha}</td>
-                  <td title={c.ruc_proveedor}>{c.nombre_proveedor}</td>
+                  <td title={c.ruc_sri || c.ruc_proveedor}>
+                    {c.nombre_proveedor}
+                    {/* La actividad del SRI, que es de donde sale la propuesta de
+                        tipo de gasto: verla explica por qué se propuso eso. */}
+                    {c.actividad && (
+                      <em className="dv-actividad" title={`Actividad económica en el SRI${c.ruc_sri ? ` · RUC ${c.ruc_sri}` : ''}`}>
+                        {c.actividad}
+                      </em>
+                    )}
+                  </td>
                   <td onClick={(e) => e.stopPropagation()}>
                     <select
                       className={`dv-rubro ${!(rubroDe[c.id] || c.rubro_sugerido) ? 'sin-asignar' : ''}`}
