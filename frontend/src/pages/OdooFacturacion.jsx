@@ -16,6 +16,7 @@ const OF_STEPS = [
   { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
   { icon: '🧾', label: 'Facturar en Odoo', current: true },
   { icon: '✅', label: 'Facturas procesadas', path: '/odoo-facturacion/procesadas' },
+  { icon: '🔍', label: 'Cruce mensual', path: '/odoo-facturacion/cruce' },
 ]
 
 export default function OdooFacturacion() {
@@ -39,6 +40,9 @@ export default function OdooFacturacion() {
   const [bancosPorEmpresa, setBancosPorEmpresa] = useState({})  // { companyId: [bancos] }
   const [impuestoPorEmpresa, setImpuestoPorEmpresa] = useState({})  // { companyId: bool } — tiene IVA 15% (411,S)
   const [cuentas, setCuentas] = useState({})                // { ruc: {existe, cuenta_id, cuenta_nombre, asignada, siguiente_codigo} }
+  const [periodo, setPeriodo] = useState(null)              // período que se está facturando (mes/año)
+  const [atrasos, setAtrasos] = useState({})                // { ruc: {total, meses:[...]} } — meses anteriores sin facturar
+  const [atrasosOk, setAtrasosOk] = useState(false)         // ¿el cruce con Odoo respondió?
   const [destino, setDestino] = useDraft('draft:odoofac:destino', {})           // { ruc: 'cobrar' | journalId } — por cobrar o banco
   const [creandoCta, setCreandoCta] = useState('')
 
@@ -49,6 +53,7 @@ export default function OdooFacturacion() {
       .then((r) => {
         const data = r.data.data || []
         setFilas(data)
+        setPeriodo(r.data.periodo || null)   // mes/año que se está facturando
         // Pre-marcar TODAS las empresas que tienen valor a facturar
         setSeleccionados(new Set(data.filter((f) => f.cobrar && f.valor > 0).map((f) => f.identificacion)))
       })
@@ -72,6 +77,12 @@ export default function OdooFacturacion() {
     odooAPI.productos()
       .then((r) => setProductos(r.data?.data || []))
       .catch(() => setProductos([]))
+
+    // Meses ANTERIORES que quedaron sin facturar (cruce con Odoo). Es lo que
+    // evita que se mezclen períodos: acá se ve qué arrastra cada contribuyente.
+    odooAPI.pendientesPorMes(12)
+      .then((r) => { setAtrasos(r.data?.data || {}); setAtrasosOk(!!r.data?.odoo_ok) })
+      .catch(() => { setAtrasos({}); setAtrasosOk(false) })
   }, [])
 
   // Agrupar filas por contribuyente — solo cobrar=true, valor>0 y sin factura ya emitida
@@ -281,6 +292,33 @@ export default function OdooFacturacion() {
         </div>
       </div>
 
+      {/* Período que se está facturando: sin esto no se sabía a qué mes
+          correspondían las facturas que se iban a emitir. */}
+      <div className="of-periodo">
+        <span className="of-periodo-ico">🗓️</span>
+        <span className="of-periodo-txt">
+          Se emitirán las facturas del período <strong>{(periodo?.etiqueta || '').toUpperCase()}</strong>
+        </span>
+        <span className="of-periodo-nota">
+          Un contribuyente = una factura de este mes. Los meses anteriores se revisan en «Cruce mensual».
+        </span>
+      </div>
+
+      {/* Arrastres: meses anteriores con honorario registrado y sin factura en Odoo */}
+      {Object.keys(atrasos).length > 0 && (
+        <button type="button" className="of-atrasos-banner" onClick={() => navigate('/odoo-facturacion/cruce')}>
+          ⚠ {Object.keys(atrasos).length} contribuyente(s) arrastran meses anteriores sin facturar
+          {' · '}
+          {fmtMoney(Object.values(atrasos).reduce((a, x) => a + (x.total || 0), 0))}
+          {' — ver el cruce mes a mes ›'}
+        </button>
+      )}
+      {!atrasosOk && (
+        <div className="of-atrasos-nota">
+          ℹ El cruce con la facturación de Odoo no respondió: los meses anteriores no pudieron verificarse.
+        </div>
+      )}
+
       {grupos.length === 0 ? (
         <div className="of-empty">
           <span className="of-empty-ico">📋</span>
@@ -326,7 +364,7 @@ export default function OdooFacturacion() {
             <div className="of-toolbar-right">
               {facturasSeleccionadas.length > 0 && (
                 <span className="of-sel-info">
-                  {facturasSeleccionadas.length} factura{facturasSeleccionadas.length !== 1 ? 's' : ''} · {fmtMoney(totalSeleccionado)}
+                  {facturasSeleccionadas.length} factura{facturasSeleccionadas.length !== 1 ? 's' : ''} de {periodo?.etiqueta || 'este mes'} · {fmtMoney(totalSeleccionado)}
                 </span>
               )}
               <button
@@ -433,7 +471,10 @@ export default function OdooFacturacion() {
                   <div className="of-grupo-header">
                     <div className="of-grupo-info">
                       <span className="of-grupo-nombre">Honorarios de: {g.nombre || '(sin nombre)'}</span>
-                      <span className="of-grupo-ruc">Contribuyente · RUC {g.ruc}</span>
+                      <span className="of-grupo-ruc">
+                        Contribuyente · RUC {g.ruc}
+                        {periodo?.etiqueta && <span className="of-grupo-mes">🗓️ {periodo.etiqueta}</span>}
+                      </span>
                     </div>
                     <div className="of-grupo-total">
                       <span className="of-grupo-monto">{fmtMoney(g.total)}</span>
@@ -487,6 +528,27 @@ export default function OdooFacturacion() {
                           </div>
                         )
                       })()}
+
+                  {/* Meses anteriores de ESTE contribuyente que quedaron sin facturar.
+                      Se enumeran uno por uno para no mezclarlos con el mes en curso. */}
+                  {atrasos[g.ruc] && (
+                    <div className="of-atraso">
+                      <span className="of-atraso-tit">
+                        ⚠ Arrastra {atrasos[g.ruc].meses.length} mes(es) sin facturar · {fmtMoney(atrasos[g.ruc].total)}
+                      </span>
+                      <span className="of-atraso-meses">
+                        {atrasos[g.ruc].meses.map((m) => (
+                          <span key={m.clave} className="of-atraso-chip" title={m.conceptos.map((c) => c.concepto).join(', ')}>
+                            {m.etiqueta}: {fmtMoney(m.registrado)}
+                          </span>
+                        ))}
+                      </span>
+                      <span className="of-atraso-nota">
+                        Esta emisión cubre solo {periodo?.etiqueta || 'el mes en curso'}; los meses de arriba
+                        siguen pendientes.
+                      </span>
+                    </div>
+                  )}
 
                   {/* Registro contable: cuenta por cobrar del cliente + destino (por cobrar / banco) */}
                   <div className="of-contable">

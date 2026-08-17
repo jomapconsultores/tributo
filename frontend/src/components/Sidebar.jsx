@@ -175,6 +175,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         items: [
           L('📤', 'Emitir facturas', '/odoo-facturacion'),
           L('✅', 'Facturas procesadas', '/odoo-facturacion/procesadas'),
+          L('🔍', 'Cruce mensual', '/odoo-facturacion/cruce'),
         ],
       },
       {
@@ -412,7 +413,9 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
           ))}
         </nav>
 
-        <div className="sb-panel">
+        {/* La familia del módulo abierto viaja al panel: así la segunda columna
+            usa el mismo color y el mismo contraste que la franja de la izquierda */}
+        <div className={`sb-panel ${sel?.color || ''}`}>
           <div className="sb-panel-head">
             <span className="sb-panel-head-ico">{sel?.ico}</span>
             <span className="sb-panel-head-txt">{sel?.title}</span>

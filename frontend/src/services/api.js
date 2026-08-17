@@ -592,6 +592,9 @@ export const odooAPI = {
   estadoSri: (ids) => api.post('/api/odoo/estado-sri', { ids }),   // verifica/reintenta el envío al SRI
   facturas: () => api.get('/api/odoo/facturas'),                   // facturas procesadas (emitidas) en Odoo
   facturar: (body) => api.post('/api/odoo/facturar', body),
+  // Cruce mes a mes: honorarios registrados en el sistema ↔ facturas en Odoo
+  cruceMensual: (meses = 12) => api.get('/api/odoo/cruce-mensual', { params: { meses } }),
+  pendientesPorMes: (meses = 12) => api.get('/api/odoo/pendientes-por-mes', { params: { meses } }),
 }
 
 // Helper de descarga de blobs

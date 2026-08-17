@@ -1014,3 +1014,65 @@
 .clients-toggle.active { background: #eef2f7; color: #002a80; }
 .client-item.active .client-name { color: #002a80; font-weight: 600; }
 .sqn-chip:hover { background: #e6edfa; color: #002a80; }
+
+/* ── Segunda columna: el mismo contraste que la franja de módulos ───────────
+   El panel heredaba del tema oscuro: encabezado gris pálido, filo azul sobre
+   blanco y el ítem de la pantalla actual en blanco sobre lila. Ahora el panel
+   lleva la clase de la familia abierta, de modo que el título, el acento y lo
+   seleccionado usan el mismo color con que se pinta el módulo a la izquierda.
+   ────────────────────────────────────────────────────────────────────────── */
+.sb-panel-head {
+  color: #002a80;
+  border-bottom: 1px solid #dbe3ec;
+}
+.sb-panel-head-ico { opacity: 1; }
+.sb-panel-head::after { background: linear-gradient(90deg, currentColor, transparent); opacity: 0.45; }
+
+.sb-panel-body { scrollbar-color: #c7d2e0 transparent; }
+.sb-panel-body::-webkit-scrollbar-thumb { background: #c7d2e0; }
+.sb-panel-body::-webkit-scrollbar-thumb:hover { background: #9fb0c6; }
+
+.sb-panel-body .submodule { color: #1e293b; font-weight: 500; }
+.sb-panel-body .submodule:hover { background: #eef2f7; color: #0f172a; }
+.sb-panel-body .submodule.active {
+  background: #e6edfa;
+  color: #002a80;
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 #002a80;
+}
+.sb-panel-body .info-item { color: #334155; }
+.sb-panel-body .info-item:hover { background: #eef2f7; color: #0f172a; }
+.sb-panel-body .level-1 { color: #1e293b; font-weight: 500; }
+.sb-panel-body .level-1:hover { background: #eef2f7; color: #0f172a; }
+.sb-panel-body .level-1.active { background: #e6edfa; color: #002a80; font-weight: 600; }
+
+/* Cada familia tiñe su panel igual que su botón en la franja */
+.sb-panel.gastos .sb-panel-head { color: #065f46; }
+.sb-panel.gastos .sb-panel-body .submodule.active {
+  background: #d1fae5; color: #065f46; box-shadow: inset 2px 0 0 #065f46;
+}
+.sb-panel.gastos .sb-panel-body .submodule:hover { background: #ecfdf5; color: #065f46; }
+
+.sb-panel.retenciones .sb-panel-head { color: #075985; }
+.sb-panel.retenciones .sb-panel-body .submodule.active {
+  background: #e0f2fe; color: #075985; box-shadow: inset 2px 0 0 #075985;
+}
+.sb-panel.retenciones .sb-panel-body .submodule:hover { background: #f0f9ff; color: #075985; }
+
+.sb-panel.ingresos .sb-panel-head { color: #92400e; }
+.sb-panel.ingresos .sb-panel-body .submodule.active {
+  background: #fef3c7; color: #92400e; box-shadow: inset 2px 0 0 #92400e;
+}
+.sb-panel.ingresos .sb-panel-body .submodule:hover { background: #fffbeb; color: #92400e; }
+
+.sb-panel.declaraciones .sb-panel-head { color: #3730a3; }
+.sb-panel.declaraciones .sb-panel-body .submodule.active {
+  background: #e0e7ff; color: #3730a3; box-shadow: inset 2px 0 0 #3730a3;
+}
+.sb-panel.declaraciones .sb-panel-body .submodule:hover { background: #eef2ff; color: #3730a3; }
+
+.sb-panel.devoluciones .sb-panel-head { color: #9d174d; }
+.sb-panel.devoluciones .sb-panel-body .submodule.active {
+  background: #fce7f3; color: #9d174d; box-shadow: inset 2px 0 0 #9d174d;
+}
+.sb-panel.devoluciones .sb-panel-body .submodule:hover { background: #fdf2f8; color: #9d174d; }

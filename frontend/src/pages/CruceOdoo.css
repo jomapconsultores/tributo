@@ -1,0 +1,146 @@
+/* Cruce mensual con Odoo — mismo lenguaje visual que Facturación Odoo */
+
+.co-wrap {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+  font-family: inherit;
+}
+
+.co-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.co-title { font-size: 1.45rem; font-weight: 700; color: #1e3a6e; margin: 0 0 4px; }
+.co-sub { font-size: 0.85rem; color: #475569; margin: 0; max-width: 62ch; line-height: 1.45; }
+
+.co-meses {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.8rem; color: #334155; font-weight: 600;
+}
+.co-meses select {
+  padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px;
+  background: #fff; color: #1e293b; font-size: 0.8rem;
+}
+
+.co-aviso {
+  background: #fef3c7; color: #92400e; border: 1px solid #fcd34d;
+  border-radius: 10px; padding: 10px 14px; font-size: 0.82rem; margin-bottom: 16px;
+}
+
+/* Marcador */
+.co-resumen {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.co-card {
+  border-radius: 12px; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 2px;
+  border: 1px solid transparent;
+}
+.co-card-num { font-size: 1.6rem; font-weight: 800; line-height: 1; }
+.co-card-lbl { font-size: 0.76rem; font-weight: 600; opacity: 0.85; }
+.co-card-mon { font-size: 0.8rem; font-weight: 700; margin-top: 4px; }
+.co-card.ok   { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
+.co-card.warn { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.co-card.pend { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+.co-card.info { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
+
+/* Barra de filtros */
+.co-toolbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.co-buscar {
+  flex: 1; min-width: 220px;
+  padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px;
+  font-size: 0.83rem; color: #1e293b; background: #fff;
+}
+.co-solo { font-size: 0.8rem; color: #334155; display: flex; align-items: center; gap: 6px; }
+.co-recargar {
+  padding: 8px 14px; border: 1px solid #1e3a6e; background: #1e3a6e; color: #fff;
+  border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+}
+.co-recargar:disabled { opacity: 0.6; cursor: default; }
+
+.co-loading, .co-error, .co-empty {
+  padding: 36px; text-align: center; font-size: 0.88rem; color: #475569;
+}
+.co-error { color: #dc2626; }
+
+/* Contribuyente */
+.co-cli {
+  border: 1px solid #dbe3ec; border-radius: 12px; background: #fff;
+  margin-bottom: 12px; overflow: hidden;
+}
+.co-cli-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 10px 14px; background: #f4f7fb; border-bottom: 1px solid #dbe3ec;
+}
+.co-cli-nom { font-weight: 700; color: #1e293b; font-size: 0.9rem; }
+.co-cli-ruc { font-size: 0.76rem; color: #64748b; }
+
+/* Mes */
+.co-meses-list { display: flex; flex-direction: column; }
+.co-mes { border-bottom: 1px solid #eef2f7; }
+.co-mes:last-child { border-bottom: none; }
+.co-mes-head {
+  width: 100%; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 9px 14px; background: none; border: none; cursor: pointer;
+  text-align: left; font-family: inherit; font-size: 0.82rem; color: #1e293b;
+}
+.co-mes-head:hover { background: #f8fafc; }
+.co-mes-et { font-weight: 700; min-width: 120px; text-transform: capitalize; }
+.co-mes-est {
+  font-size: 0.72rem; font-weight: 700; padding: 2px 9px; border-radius: 20px;
+  white-space: nowrap;
+}
+.co-mes.cuadra    .co-mes-est { background: #d1fae5; color: #065f46; }
+.co-mes.difiere   .co-mes-est { background: #fef3c7; color: #92400e; }
+.co-mes.pendiente .co-mes-est { background: #fee2e2; color: #991b1b; }
+.co-mes.solo_odoo .co-mes-est { background: #e0e7ff; color: #3730a3; }
+/* Filo de color al costado, para leer el estado sin leer la etiqueta */
+.co-mes.difiere   { box-shadow: inset 3px 0 0 #f59e0b; }
+.co-mes.pendiente { box-shadow: inset 3px 0 0 #ef4444; }
+.co-mes.solo_odoo { box-shadow: inset 3px 0 0 #6366f1; }
+
+.co-mes-cifras {
+  margin-left: auto; display: flex; align-items: center; gap: 8px;
+  font-size: 0.78rem; color: #334155;
+}
+.co-vs { color: #94a3b8; font-size: 0.7rem; }
+.co-dif { font-weight: 800; color: #b45309; }
+.co-mes-chev { color: #94a3b8; font-size: 0.75rem; }
+
+/* Detalle desplegado: sistema | Odoo */
+.co-mes-det {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  padding: 10px 14px 14px; background: #f8fafc;
+}
+@media (max-width: 700px) { .co-mes-det { grid-template-columns: 1fr; } }
+.co-col-tit {
+  font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #475569; margin-bottom: 6px;
+}
+.co-det-row {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-size: 0.78rem; color: #1e293b; padding: 3px 0;
+  border-bottom: 1px dashed #e2e8f0;
+}
+.co-det-row:last-child { border-bottom: none; }
+.co-dim { font-size: 0.76rem; color: #94a3b8; font-style: italic; }
+.co-fecha { color: #64748b; font-size: 0.72rem; }
+.co-sri, .co-pago {
+  font-size: 0.66rem; font-weight: 700; padding: 1px 6px; border-radius: 10px;
+  margin-left: 6px; white-space: nowrap;
+}
+.co-sri.ok    { background: #d1fae5; color: #065f46; }
+.co-sri.pend  { background: #fef3c7; color: #92400e; }
+.co-pago.paid { background: #d1fae5; color: #065f46; }
+.co-pago.pend { background: #fee2e2; color: #991b1b; }

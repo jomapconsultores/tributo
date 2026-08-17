@@ -380,3 +380,50 @@
 .of-proc-nombre { font-weight: 600; color: #1a3d6b; min-width: 200px; flex: 1; }
 .of-proc-num { font-family: 'Courier New', monospace; color: #51607a; }
 .of-proc-total { font-weight: 700; color: #1e8449; font-variant-numeric: tabular-nums; }
+
+/* ── Período que se factura y arrastres de meses anteriores ─────────────────
+   Antes la pantalla no decía a qué mes correspondían las facturas por emitir y
+   los pendientes de meses previos no se distinguían del mes en curso. Estos
+   avisos separan una cosa de la otra: arriba el mes que se emite, y en cada
+   contribuyente los meses que quedaron atrás según el cruce con Odoo.
+   ────────────────────────────────────────────────────────────────────────── */
+.of-periodo {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: #e6edfa; border: 1px solid #c7d7f0; border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 12px;
+}
+.of-periodo-ico { font-size: 1.05rem; }
+.of-periodo-txt { font-size: 0.86rem; color: #1e3a6e; }
+.of-periodo-txt strong { letter-spacing: 0.03em; }
+.of-periodo-nota { font-size: 0.75rem; color: #475569; margin-left: auto; }
+
+.of-atrasos-banner {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: #fef3c7; border: 1px solid #fcd34d; color: #92400e;
+  border-radius: 10px; padding: 9px 14px; margin-bottom: 12px;
+  font-size: 0.82rem; font-weight: 600; font-family: inherit;
+}
+.of-atrasos-banner:hover { background: #fde68a; }
+.of-atrasos-nota {
+  font-size: 0.76rem; color: #64748b; margin-bottom: 12px;
+}
+
+.of-grupo-mes {
+  margin-left: 8px; padding: 1px 8px; border-radius: 10px;
+  background: #e6edfa; color: #1e3a6e; font-weight: 700; font-size: 0.72rem;
+  text-transform: capitalize;
+}
+
+.of-atraso {
+  display: flex; flex-direction: column; gap: 5px;
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
+  padding: 8px 11px; margin: 8px 0;
+}
+.of-atraso-tit { font-size: 0.79rem; font-weight: 700; color: #92400e; }
+.of-atraso-meses { display: flex; flex-wrap: wrap; gap: 6px; }
+.of-atraso-chip {
+  background: #fef3c7; color: #92400e; border: 1px solid #fcd34d;
+  border-radius: 12px; padding: 1px 9px; font-size: 0.73rem; font-weight: 600;
+  text-transform: capitalize;
+}
+.of-atraso-nota { font-size: 0.72rem; color: #78716c; }
