@@ -808,7 +808,9 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
 
       <div className="dv-resumen">
         <div className="dv-res-card"><span>Comprobantes marcados</span><strong>{seleccion.size} / {comps.length}</strong></div>
-        <div className="dv-res-card"><span>Base gravada</span><strong>{fmtMoney(totales.base)}</strong></div>
+        {/* La base gravada no se muestra: el portal del SRI no la informa, así
+            que con el flujo normal marcaba $0,00 siempre. Lo que se devuelve, y
+            lo único que el trámite mira, es el IVA. */}
         <div className="dv-res-card"><span>IVA marcado</span><strong>{fmtMoney(totales.iva)}</strong></div>
         <div className={`dv-res-card destacado ${totales.excedente > 0 ? 'alerta' : ''}`}>
           <span>IVA a solicitar</span><strong>{fmtMoney(totales.solicitar)}</strong>
@@ -890,9 +892,10 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
                 <th>Proveedor</th>
                 <th>Tipo de gasto</th>
                 <th>Clasificación</th>
-                <th className="num">Base gravada</th>
+                {/* Ni base gravada ni total: la grilla del portal no los informa
+                    —solo el IVA del comprobante— y quedaban dos columnas de
+                    guiones. Lo que se solicita al SRI es el IVA. */}
                 <th className="num">IVA</th>
-                <th className="num">Total</th>
               </tr>
             </thead>
             <tbody>
@@ -900,16 +903,7 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
                 <tr key={c.id} className={seleccion.has(c.id) ? 'sel' : ''} onClick={() => toggle(c.id)}>
                   <td><input type="checkbox" checked={seleccion.has(c.id)} onChange={() => toggle(c.id)} onClick={(e) => e.stopPropagation()} /></td>
                   <td>{c.fecha}</td>
-                  <td title={c.ruc_sri || c.ruc_proveedor}>
-                    {c.nombre_proveedor}
-                    {/* La actividad del SRI, que es de donde sale la propuesta de
-                        tipo de gasto: verla explica por qué se propuso eso. */}
-                    {c.actividad && (
-                      <em className="dv-actividad" title={`Actividad económica en el SRI${c.ruc_sri ? ` · RUC ${c.ruc_sri}` : ''}`}>
-                        {c.actividad}
-                      </em>
-                    )}
-                  </td>
+                  <td title={c.ruc_sri || c.ruc_proveedor}>{c.nombre_proveedor}</td>
                   <td onClick={(e) => e.stopPropagation()}>
                     <select
                       className={`dv-rubro ${!(rubroDe[c.id] || c.rubro_sugerido) ? 'sin-asignar' : ''}`}
@@ -921,14 +915,24 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
                       {rubros.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
                     </select>
                   </td>
-                  <td>
-                    {c.origen === 'portal'
-                      ? <span className="dv-chip-portal" title="Lo lista el portal del SRI; no está en Gastos">SRI</span>
-                      : (c.clasificacion || 'SIN CLASIFICAR')}
+                  {/* La clasificación es la ACTIVIDAD ECONÓMICA del SRI: es el
+                      dato que dice a qué se dedica el proveedor y de donde sale
+                      la propuesta de tipo de gasto. La de Gastos queda de
+                      respaldo para los comprobantes que no vienen del portal. */}
+                  <td className="dv-clasif">
+                    {c.actividad ? (
+                      <span className="dv-actividad"
+                        title={`Actividad económica en el SRI${c.ruc_sri ? ` · RUC ${c.ruc_sri}` : ''}`}>
+                        {c.actividad}
+                      </span>
+                    ) : c.origen === 'portal' ? (
+                      <span className="dv-chip-portal"
+                        title="Lo lista el portal del SRI. Sin actividad: ese proveedor todavía no figura con RUC en el sistema">
+                        SRI · sin actividad
+                      </span>
+                    ) : (c.clasificacion || 'SIN CLASIFICAR')}
                   </td>
-                  <td className="num">{c.origen === 'portal' ? '—' : fmtMoney(c.base)}</td>
                   <td className="num">{fmtMoney(c.iva)}</td>
-                  <td className="num">{c.origen === 'portal' ? '—' : fmtMoney(c.total)}</td>
                 </tr>
               ))}
             </tbody>
