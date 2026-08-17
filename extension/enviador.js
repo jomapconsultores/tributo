@@ -207,11 +207,77 @@
   };
   if (paquete) adoptarPaquete(paquete);
 
+  // Quién abrió el portal, según su propia cabecera. El SRI la escribe así:
+  // "Servicios en Línea ⋮ 0400533824001 CORAL LIDIA MAGOLA" —el número primero y
+  // el nombre enseguida, en mayúsculas—. El nombre se toma por palabras
+  // completas en mayúscula, que es lo que corta antes de "Perfil".
+  const quienEstaEnElPortal = () => {
+    const cab = (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 400);
+    const m = /\b(\d{10}(?:\d{3})?)\b[\s.:-]*([A-ZÁÉÍÓÚÑ]{2,}(?: [A-ZÁÉÍÓÚÑ]{2,})*)?/.exec(cab);
+    if (!m) return null;
+    return { identificacion: m[1], nombre: (m[2] || '').trim() };
+  };
+
   // Identificación del contribuyente segun la propia pantalla del SRI: sirve
   // para que el sistema no cargue los comprobantes de uno en la ficha de otro.
-  const identificacionEnPantalla = () => {
-    const m = /\b(\d{10}(\d{3})?)\b/.exec((document.body.innerText || '').slice(0, 400));
-    return m ? m[1] : '';
+  const identificacionEnPantalla = () => (quienEstaEnElPortal() || {}).identificacion || '';
+
+  // En qué aplicación está parado el portal. Las dos entradas viven bajo el
+  // mismo contexto `devolucionTerceraEdad-internet`, así que discapacidad se
+  // pregunta PRIMERO: su ruta también contiene "TerceraEdad".
+  const seccionDelPortal = () => {
+    const ruta = String(location.pathname || '');
+    if (/personasDiscapacidad/i.test(ruta)) return 'discapacidad';
+    if (/terceraEdad/i.test(ruta)) return 'tercera_edad';
+    const t = norm((document.body.innerText || '').slice(0, 600));
+    if (/discapacidad/.test(t)) return 'discapacidad';
+    if (/adultos mayores/.test(t)) return 'tercera_edad';
+    return '';
+  };
+  const NOMBRE_SECCION = {
+    discapacidad: 'Personas con discapacidad',
+    tercera_edad: 'Adultos mayores',
+  };
+
+  // Lo que impide presentar. Son dos desacuerdos y los dos terminan igual de
+  // mal: la solicitud es de otra persona, o el portal está abierto en la otra
+  // sección. El primero aparece solo cuando el paquete no llegó y el marcador
+  // leyó del portapapeles la solicitud ANTERIOR: así es como el nombre de otro
+  // contribuyente termina en el panel sin que nadie lo note.
+  //
+  // Si el portal no dice quién es —una pantalla intermedia, otra maqueta—, no se
+  // bloquea: no hay dato con qué contradecir, y frenar por no saber sería frenar
+  // siempre.
+  const desacuerdoConElPortal = () => {
+    if (!paquete) return null;
+    const quien = quienEstaEnElPortal();
+    const mio = String(paquete.contribuyente.identificacion || '').trim();
+    if (quien && mio && quien.identificacion !== mio) {
+      return {
+        motivo: 'La solicitud es de un contribuyente y el portal está abierto con otro.',
+        detalles: [
+          'Solicitud: ' + paquete.contribuyente.nombre + '  (' + mio + ')',
+          'Portal: ' + (quien.nombre || 'sin nombre a la vista') + '  (' + quien.identificacion + ')',
+          'Entrá al portal con el contribuyente de la solicitud, o mandá desde el ' +
+          'sistema la solicitud de ' + (quien.nombre || quien.identificacion) + '.',
+        ],
+      };
+    }
+    const seccion = seccionDelPortal();
+    const mia = paquete.beneficiario.tipo === 'discapacidad' ? 'discapacidad' : 'tercera_edad';
+    if (seccion && seccion !== mia) {
+      return {
+        motivo: 'El portal está abierto en la sección que no le corresponde a esta solicitud.',
+        detalles: [
+          'Solicitud: ' + NOMBRE_SECCION[mia],
+          'Portal: ' + NOMBRE_SECCION[seccion],
+          'Entrá por Devoluciones (TAX refund) → Devolución de IVA - ' + NOMBRE_SECCION[mia] +
+          ' y volvé a tocar. Desde acá no puedo cambiar de sección: el menú del ' +
+          'portal, tocado desde código, tira la sesión.',
+        ],
+      };
+    }
+    return null;
   };
 
   const pintar = () => {
@@ -231,6 +297,22 @@
       'IVA a solicitar: ' + money(paquete.totales.solicitado) +
       '  (IVA marcado ' + money(paquete.totales.iva) + ' · tope ' + money(paquete.totales.tope) + ')'));
     cuerpo.appendChild(info);
+
+    // Y quién abrió el portal, que es lo que el panel nunca mostraba: se veía
+    // solo el nombre que venía en el paquete, viniera de donde viniera.
+    const quien = quienEstaEnElPortal();
+    const desacuerdo = desacuerdoConElPortal();
+    if (quien) {
+      linea('En el portal: ' + (quien.nombre || 'sin nombre a la vista') +
+        ' (' + quien.identificacion + ')' +
+        (seccionDelPortal() ? ' · ' + NOMBRE_SECCION[seccionDelPortal()] : ''),
+        'margin:6px 0;font-size:11px;color:' + (desacuerdo ? '#8b1e1e' : '#1e6b33'));
+    }
+    if (desacuerdo) {
+      linea('⚠ ' + desacuerdo.motivo + ' No se puede presentar así.',
+        'margin:4px 0;padding:6px;border:1px solid #e0b4b4;border-radius:6px;' +
+        'background:#fff5f5;color:#8b1e1e;line-height:1.45');
+    }
 
     // Desglose por mes (períodos semestrales: un tope por cada mes)
     const meses = paquete.detalle_meses || [];
@@ -1357,6 +1439,18 @@
   // vuelve por el botón del propio portal ("Volver menú principal"); el menú
   // lateral no se toca, que desde código tira la sesión.
   const presentarMeses = async (meses, hastaElFinal) => {
+    // Quién abrió el portal manda por encima del paquete. Presentar la solicitud
+    // de una persona dentro de la sesión de otra es declarar a nombre
+    // equivocado, y no se deshace.
+    const desacuerdo = desacuerdoConElPortal();
+    if (desacuerdo) {
+      limpiar();
+      linea('No presento nada', 'font-weight:700;color:#8b1e1e;margin-bottom:6px');
+      linea(desacuerdo.motivo, 'margin:4px 0;color:#333;line-height:1.5');
+      desacuerdo.detalles.forEach((d) => linea(d, 'margin:3px 0;color:#555;line-height:1.45'));
+      cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
+      return [];
+    }
     const resultados = [];
     for (let i = 0; i < meses.length; i++) {
       if (i > 0 && !(await volverAlMenu())) {

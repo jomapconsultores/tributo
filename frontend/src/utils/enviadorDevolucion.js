@@ -42,3 +42,40 @@ export const setEnviadorDevolucionHref = (el) => {
 
 export const SRI_DEVOLUCION_URL =
   'https://srienlinea.sri.gob.ec/sri-en-linea/inicio/NAT'
+
+// La aplicación de devolución tiene dos entradas —adultos mayores y personas
+// con discapacidad— bajo el mismo contexto. Abrir la portada del SRI dejaba al
+// usuario navegando el menú a mano hasta la sección, y entrando a la que no era
+// el enviador no tiene nada que hacer.
+//
+// Se abre con los parámetros MPT completos a propósito: la URL "pelada" rebota a
+// Keycloak, y con estos el SSO del cliente de devolución resuelve solo si la
+// sesión del portal está viva (ver `sri_downloader/core/devoluciones.py`). Esto
+// vale para una pestaña NUEVA; recargar una que ya está adentro sigue siendo lo
+// que tira la sesión.
+const BASE_MPT = 'https://srienlinea.sri.gob.ec/devolucionTerceraEdad-internet/pages/'
+const CONTEXTO_MPT = '?&contextoMPT=https://srienlinea.sri.gob.ec/tuportal-internet' +
+  '&pathMPT=Devoluciones%20(TAX%20refund)'
+
+const SECCIONES = {
+  tercera_edad: {
+    ruta: 'terceraEdad/procesarDTE.jsf',
+    titulo: 'Devoluci%F3n%20de%20IVA%20-%20Adultos%20mayores%20',
+  },
+  discapacidad: {
+    ruta: 'personasDiscapacidad/procesarPersonasDiscapacidad.jsf',
+    titulo: 'Devoluci%F3n%20de%20IVA%20-%20Personas%20con%20discapacidad%20',
+  },
+}
+
+// La URL del portal para el beneficiario de la solicitud. Sin beneficiario
+// conocido se abre la portada, que es de donde se puede llegar a mano a las dos.
+export const urlDevolucion = (beneficiario) => {
+  const s = SECCIONES[beneficiario]
+  if (!s) return SRI_DEVOLUCION_URL
+  return BASE_MPT + s.ruta + CONTEXTO_MPT +
+    '&actualMPT=' + s.titulo +
+    '&linkMPT=%2FdevolucionTerceraEdad-internet%2Fpages%2F' +
+    encodeURIComponent(s.ruta) + '%3F' +
+    '&esFavorito=S'
+}

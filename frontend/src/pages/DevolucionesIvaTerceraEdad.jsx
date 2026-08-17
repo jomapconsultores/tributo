@@ -8,7 +8,7 @@ import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import UploadPanel from '../components/UploadPanel'
 import WorkflowGuide from '../components/WorkflowGuide'
-import { setEnviadorDevolucionHref, SRI_DEVOLUCION_URL } from '../utils/enviadorDevolucion'
+import { setEnviadorDevolucionHref, urlDevolucion } from '../utils/enviadorDevolucion'
 import BajadorSRI from '../components/BajadorSRI'
 import './DevolucionesIva.css'
 
@@ -523,7 +523,10 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
         alert('⚠ No se pudo copiar la solicitud al portapapeles. Abrí el marcador en el ' +
           'portal y usá "Pegar el paquete de una solicitud", o exportá el Excel como respaldo.')
       }
-      window.open(SRI_DEVOLUCION_URL, '_blank', 'noopener')
+      // A la sección que le toca a esta solicitud, no a la portada: entrar por
+      // la de adultos mayores con una solicitud de discapacidad (o al revés) es
+      // un viaje perdido, y el enviador ahí no tiene nada que hacer.
+      window.open(urlDevolucion(r.data.beneficiario?.tipo), '_blank', 'noopener')
       // La constancia se toma de la pantalla de confirmación del portal, que es
       // la que dice cuántos comprobantes procesó y por cuánto. Puede no coincidir
       // con lo marcado acá: el SRI trabaja con su propio listado filtrado.

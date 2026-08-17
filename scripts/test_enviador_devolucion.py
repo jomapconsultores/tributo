@@ -140,9 +140,13 @@ def correr(modo: str, fuente: str) -> bool:
         # corre en automático porque es ahí donde el rechazo hace daño —el
         # recorrido seguía de largo y presentaba como si nada—.
         quejoso = modo == "quejoso"
-        auto = modo in ("auto", "extension", "semestral", "quejoso")
+        # 'otro': el portal abierto con una persona distinta a la de la
+        # solicitud. Tiene que cortar ANTES de tocar nada.
+        otro = modo == "otro"
+        auto = modo in ("auto", "extension", "semestral", "quejoso", "otro")
+        propio = quejoso or otro
         pg.goto(PORTAL.as_uri() + "?modo=" +
-                (modo if quejoso else ("widget" if auto else modo)))
+                (modo if propio else ("widget" if auto else modo)))
         pg.click("#lnkIngresar")
         # Lo que el enviador le manda de vuelta a la app al terminar. Se escucha
         # en todos los modos: es la única prueba de que el trámite hecho en el
@@ -216,7 +220,7 @@ def correr(modo: str, fuente: str) -> bool:
             panel = pg.evaluate(PANEL)
             if ("Solicitud presentada" in panel or "Meses presentados" in panel
                     or "aceptando las marcas" in panel or "Terminó con problemas" in panel
-                    or "el portal no aceptó" in panel):
+                    or "el portal no aceptó" in panel or "No presento nada" in panel):
                 break
         tardo = time.time() - t0
         marcadas = pg.evaluate(
@@ -244,6 +248,18 @@ def correr(modo: str, fuente: str) -> bool:
             if not suma:
                 print("   avisos:", avisos)
             ok = ok and suma
+        elif otro:
+            # Ni una casilla tocada: presentar la solicitud de uno dentro de la
+            # sesión de otro es declarar a nombre equivocado. Antes el marcador
+            # ni miraba quién había abierto el portal.
+            avisos = pg.evaluate("window.__constancias || []")
+            ok = ("No presento nada" in panel
+                  and "0400533824001" in panel and "0912345678" in panel
+                  and marcadas == 0 and not avisos)
+            print(f"  {'✔' if ok else '✖'} no tocó nada: el portal está con otra persona "
+                  f"({tardo:.0f}s)")
+            if not ok:
+                print("  panel:", panel[-500:], "| marcadas:", marcadas, "| avisos:", avisos)
         elif quejoso:
             # Lo que importa: que corte con el texto del SRI, que no presente y
             # que NO le avise a la app. Antes seguía de largo, pintaba
@@ -301,7 +317,7 @@ def correr(modo: str, fuente: str) -> bool:
             ok = False
             print("  ✖ errores en la página:", errores)
         # En la última página quedan 2 filas: las dos tienen que estar marcadas.
-        if modo != "muerto" and marcadas != procesados:
+        if modo not in ("muerto", "otro") and marcadas != procesados:
             print(f"  ⚠ marcadas en pantalla: {marcadas} de {procesados}")
         nav.close()
         return ok
@@ -309,7 +325,7 @@ def correr(modo: str, fuente: str) -> bool:
 
 if __name__ == "__main__":
     modos = [sys.argv[1]] if len(sys.argv) > 1 else ["semestral", "extension", "auto", "widget",
-                                                     "nativo", "quejoso", "muerto"]
+                                                     "nativo", "quejoso", "otro", "muerto"]
     fuente = sys.argv[2] if len(sys.argv) > 2 else "min"
     print(f"Enviador-DEVOLUCIÓN contra el portal simulado ({fuente})")
     todo_bien = True

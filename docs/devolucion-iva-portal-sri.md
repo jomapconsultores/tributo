@@ -16,7 +16,11 @@ pide confirmar montos y tipo de gasto.
 | Personas con discapacidad | `devolucionTerceraEdad-internet/pages/personasDiscapacidad/procesarPersonasDiscapacidad.jsf` |
 
 Son la **misma aplicación** con dos entradas, bajo el menú *Devoluciones (TAX
-refund)*. El mismo menú ofrece además *Prevalidación*, *Recuperación código de
+refund)*. **La app abre la que le toca a la solicitud** (`urlDevolucion()` en
+`frontend/src/utils/enviadorDevolucion.js`, con los parámetros MPT completos):
+antes abría la portada del SRI y había que llegar a la sección a mano, con el
+riesgo de entrar a la que no era —y ahí el enviador no tiene nada que hacer—.
+*Cambiado el 2026-08-16; la URL de discapacidad no está probada contra el portal.* El mismo menú ofrece además *Prevalidación*, *Recuperación código de
 confirmación* y *Consulta devolución automática*.
 
 ### Acceso
@@ -154,6 +158,16 @@ los de devolución automática total aunque estén en Gastos.
 `sri_downloader/bookmarklet_devolucion.js`, botón **"Llenar y presentar en el
 portal"**, parado en *Ingresar facturas electrónicas*:
 
+0. **Antes de tocar nada, mira con quién está tratando.** La cabecera del SRI
+   dice quién abrió el portal (`0400533824001 CORAL LIDIA MAGOLA`) y la ruta dice
+   en qué sección está. Si el contribuyente no es el de la solicitud, o la
+   sección no es la del beneficiario, **corta sin tocar una casilla**: presentar
+   la solicitud de una persona dentro de la sesión de otra es declarar a nombre
+   equivocado, y no se deshace. El caso que lo motivó: cuando la copia al
+   portapapeles falla, el marcador lee el paquete **anterior** que quedó ahí, y
+   el panel muestra el nombre de otro contribuyente sin que nadie lo note.
+   *Agregado el 2026-08-16.* Si el portal no dice quién es, no bloquea: frenar
+   por no saber sería frenar siempre.
 1. Elige año y mes y toca *Buscar*.
 2. Recorre la grilla (y sus páginas) casando cada fila por **serie**: marca la
    casilla, espera el ajax, elige el tipo de gasto y corrige el *IVA solicitado*

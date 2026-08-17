@@ -11,6 +11,9 @@
 </style>
 </head>
 <body>
+<!-- La cabecera del SRI dice quién abrió el portal: número primero, nombre en
+     mayúsculas enseguida. Es de donde el marcador saca con quién está tratando. -->
+<div id="cabecera">Servicios en Linea 0912345678 CONTRIBUYENTE DE PRUEBA Perfil Cerrar sesion</div>
 <h3>Devolución de IVA - Adultos mayores</h3>
 <div id="menu"><a href="#" id="lnkIngresar">Ingresar facturas electronicas</a></div>
 
@@ -65,7 +68,13 @@ for (let i = 1; i <= 4; i++) {
 // muerto  = no escucha nadie (para ver cómo informa el marcador)
 // quejoso = marca bien, pero al procesar el portal RECHAZA la selección, que es
 //           lo que hace el SRI real cuando una fila llega sin tipo de gasto.
+// quejoso = marca bien, pero al procesar el portal RECHAZA la selección.
+// otro    = el portal está abierto con OTRA persona que la de la solicitud.
 const MODO_URL = new URLSearchParams(location.search).get('modo') || 'widget';
+if (MODO_URL === 'otro') {
+  document.getElementById('cabecera').textContent =
+    'Servicios en Linea 0400533824001 CORAL LIDIA MAGOLA Perfil Cerrar sesion';
+}
 let mesElegido = 7;
 const delMes = () => DATOS.filter((d) => d.mes === mesElegido);
 const TIPOS = [['1','VESTIMENTA'],['2','VIVIENDA'],['3','SALUD'],['4','ALIMENTACION'],['5','EDUCACION']];

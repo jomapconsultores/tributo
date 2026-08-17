@@ -154,9 +154,15 @@ el trámite quedaba hecho en el SRI y en **Borrador** en el sistema.
       sin tipo de gasto), el enviador corta con el texto del SRI a la vista, **no
       presenta** y **no avisa a la app**: la solicitud sigue en Borrador. Antes
       pintaba "Selección guardada" y seguía de largo.
+- [ ] **📤 Enviar al SRI** abre el portal **en la sección del beneficiario**
+      (adultos mayores o discapacidad), no en la portada del SRI.
+- [ ] Con el portal abierto con **otra persona**, el enviador corta sin tocar una
+      casilla y muestra los dos: quién es la solicitud y quién abrió el portal.
+      Lo mismo si el portal está en la sección que no corresponde.
 - [ ] Automatizado en `python scripts/test_enviador_devolucion.py` (modos
       `extension` y `semestral` comprueban que la constancia viaja y viaja sumada;
-      `quejoso`, que un rechazo del portal corta el recorrido).
+      `quejoso`, que un rechazo del portal corta el recorrido; `otro`, que no
+      presenta nada cuando el portal está con otro contribuyente).
 
 ## 4. Probes adversariales (romper a propósito)
 
