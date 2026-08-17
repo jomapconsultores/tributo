@@ -37,7 +37,10 @@ npm run dev
 ### Supabase
 
 1. Crear proyecto en https://supabase.com
-2. Ejecutar migraciones en `supabase/migrations/`
+2. Ejecutar migraciones en `supabase/migrations/`, **en orden alfabético** (hay
+   dos intercaladas con letra: `008a` y `019a`, que tienen que correr antes de
+   las que las usan). Es la única carpeta que se aplica: `backend/migrations/` es
+   histórico, ver su README.
 3. Configurar variables de entorno
 
 ## Deployment
