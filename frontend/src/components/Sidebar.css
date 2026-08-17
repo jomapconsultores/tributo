@@ -889,3 +889,59 @@
 .sqn-title { color: #94a3b8; }
 .logout-btn { color: #64748b; border-color: #e2e8f0; }
 .logout-btn:hover { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+
+/* ── Franja principal (.sb-rail-btn): los accesos de módulo ──────────────────
+   Son la columna que más se mira del sistema y habían quedado con la paleta
+   pensada para fondo oscuro: verde menta, celeste y ámbar claros que sobre
+   blanco no se leen, y gris 400 para el resto. Acá van en los tonos oscuros de
+   cada familia, con más peso tipográfico: legibles de un vistazo y sin gritar.
+   ────────────────────────────────────────────────────────────────────────── */
+.sb-rail-btn {
+  color: #475569;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.sb-rail-btn:hover { background: #eef2f7; color: #0f172a; }
+.sb-rail-btn.active,
+.sb-rail-btn.sel {
+  background: #e8effa;
+  color: #003399;
+  font-weight: 700;
+}
+
+.sb-rail-btn.gastos { color: #047857; }
+.sb-rail-btn.gastos:hover { background: #ecfdf5; color: #065f46; }
+.sb-rail-btn.gastos.active, .sb-rail-btn.gastos.sel { background: #d1fae5; color: #065f46; }
+
+.sb-rail-btn.retenciones { color: #0369a1; }
+.sb-rail-btn.retenciones:hover { background: #f0f9ff; color: #075985; }
+.sb-rail-btn.retenciones.active, .sb-rail-btn.retenciones.sel { background: #e0f2fe; color: #075985; }
+
+.sb-rail-btn.ingresos { color: #b45309; }
+.sb-rail-btn.ingresos:hover { background: #fffbeb; color: #92400e; }
+.sb-rail-btn.ingresos.active, .sb-rail-btn.ingresos.sel { background: #fef3c7; color: #92400e; }
+
+.sb-rail-btn.declaraciones { color: #4338ca; }
+.sb-rail-btn.declaraciones:hover { background: #eef2ff; color: #3730a3; }
+.sb-rail-btn.declaraciones.active, .sb-rail-btn.declaraciones.sel { background: #e0e7ff; color: #3730a3; }
+
+.sb-rail-btn.devoluciones { color: #be185d; }
+.sb-rail-btn.devoluciones:hover { background: #fdf2f8; color: #9d174d; }
+.sb-rail-btn.devoluciones.active, .sb-rail-btn.devoluciones.sel { background: #fce7f3; color: #9d174d; }
+
+/* ── Contraste general: el texto de menú deja de ser gris pálido ─────────────
+   Los rótulos van en slate 700 y los seleccionados en el azul institucional
+   con peso; los encabezados de sección suben de gris 400 a gris 500, que es
+   donde dejan de leerse como deshabilitados sin competir con los ítems.
+   ────────────────────────────────────────────────────────────────────────── */
+.nav-item, .level-1, .clients-toggle { color: #334155; font-weight: 500; }
+.nav-item.active, .level-1.active { color: #003399; font-weight: 600; }
+.submodule { color: #475569; }
+.submodule.active { color: #003399; font-weight: 600; }
+.info-item { color: #475569; }
+.info-title, .sqn-title, .sb-rail-lbl { color: #64748b; }
+.client-name { color: #1e293b; }
+.client-periodo { color: #64748b; }
+.client-empty { color: #64748b; }
+.brand-sub { color: #475569; }
+.logout-link, .logout-btn { color: #475569; }
