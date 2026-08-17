@@ -545,6 +545,7 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
     if (!clientId) return
     setSincronizando(true)
     setMsg(null)
+    setAvisoSubida({ tipo: 'work', texto: 'Consultando el catastro del SRI…' })
     try {
       const r = await devolucionesIvaAPI.sincronizarActividades(clientId)
       const d = r.data
@@ -555,10 +556,15 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
           'puede preguntar por nombre, así que esos se resuelven cuando el proveedor ' +
           'aparezca en Gastos con su RUC')
       }
-      setMsg({ tipo: d.actualizados ? 'ok' : 'err', texto: partes.join(' · ') })
+      // En su propio renglón y no en `msg`: `cargar()` empieza limpiando `msg`,
+      // así que el resultado se borraba antes de que nadie llegara a leerlo.
+      setAvisoSubida({ tipo: d.actualizados ? 'ok' : 'err', texto: partes.join(' · ') })
       cargar()
     } catch (e) {
-      setMsg({ tipo: 'err', texto: e.response?.data?.detail || 'No se pudo consultar al SRI.' })
+      setAvisoSubida({
+        tipo: 'err',
+        texto: e.response?.data?.detail || 'No se pudo consultar al SRI.',
+      })
     } finally {
       setSincronizando(false)
     }

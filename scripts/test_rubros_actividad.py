@@ -25,7 +25,8 @@ from pathlib import Path
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from routers.devoluciones_iva import _rubro_sugerido      # noqa: E402
+from routers.devoluciones_iva import (                    # noqa: E402
+    _rubro_sugerido, _resolver_actividad, _claves_por_largo, _nombre_clave)
 
 # Actividades tal como las escribe el catastro del SRI (con sus tildes y su Ñ).
 ACTIVIDADES = [
@@ -62,6 +63,52 @@ NOMBRES = [
 ]
 
 
+# Cómo escribe el portal al proveedor (razón social + nombre comercial pegados)
+# contra cómo está en el sistema (razón social sola). Sin casar por prefijo, de
+# 17 proveedores de una solicitud real casaba UNO: el único cuyo nombre comercial
+# repetía la razón social.
+CONOCIDOS = [
+    ("GERARDO ORTIZ E HIJOS CIA LTDA",
+     "VENTA AL POR MENOR DE GRAN VARIEDAD DE PRODUCTOS EN SUPERMERCADOS, ENTRE LOS "
+     "QUE PREDOMINAN, LOS PRODUCTOS ALIMENTICIOS."),
+    ("COMERCIAL ETATEX C.A.",
+     "VENTA AL POR MENOR DE ACCESORIOS DE VESTIR EN ESTABLECIMIENTOS ESPECIALIZADOS."),
+    ("PEREZ AREVALO LINDA LUCIA",
+     "VENTA AL POR MENOR DE PRENDAS DE VESTIR Y PELETERÍA EN ESTABLECIMIENTOS "
+     "ESPECIALIZADOS."),
+    ("DELI INTERNACIONAL S.A.",
+     "VENTA DE COMIDAS Y BEBIDAS EN BARES- RESTAURANTES, INCLUSO PARA LLEVAR."),
+    # Un prefijo genérico no puede ganarle a nadie.
+    ("COMERCIAL", "ACTIVIDAD GENÉRICA QUE NO DEBE ARRASTRAR A OTROS PROVEEDORES"),
+]
+
+DEL_PORTAL = [
+    ("GERARDO ORTIZ E HIJOS CIA LTDA CORAL CARLOS JULIO", "alimentacion"),
+    ("COMERCIAL ETATEX C.A. ETAFASHION", "vestimenta"),
+    ("PEREZ AREVALO LINDA LUCIA INGESA", "vestimenta"),
+    ("DELI INTERNACIONAL S.A. DELI INTERNACIONAL S.A", "alimentacion"),
+    # Nadie conocido detrás: sin actividad y sin rubro.
+    ("PACHECO VIDAL CARLOS GILBERTO", ""),
+]
+
+
+def correr_cruce():
+    print("— cruce del nombre del portal con el proveedor conocido")
+    mapa = {_nombre_clave(n): {"actividad": a, "ruc": "9" * 13} for n, a in CONOCIDOS}
+    claves = _claves_por_largo(mapa)
+    malos = 0
+    for nombre, esperado in DEL_PORTAL:
+        act = _resolver_actividad(mapa, claves, nombre).get("actividad", "")
+        obtenido = _rubro_sugerido(act) if act else ""
+        bien = obtenido == esperado
+        malos += not bien
+        if not bien:
+            print(f"  ✖ {nombre[:60]!r}")
+            print(f"     esperaba {esperado!r} y dio {obtenido!r} (actividad: {act[:50]!r})")
+    print(f"  {'✔' if not malos else '✖'} {len(DEL_PORTAL) - malos}/{len(DEL_PORTAL)}")
+    return malos
+
+
 def correr(titulo, casos):
     print(f"— {titulo}")
     malos = 0
@@ -80,4 +127,5 @@ if __name__ == "__main__":
     print("Tipo de gasto propuesto para la devolución de IVA")
     fallos = correr("por la actividad económica del SRI", ACTIVIDADES)
     fallos += correr("por el nombre del proveedor (grilla del portal)", NOMBRES)
+    fallos += correr_cruce()
     sys.exit(1 if fallos else 0)

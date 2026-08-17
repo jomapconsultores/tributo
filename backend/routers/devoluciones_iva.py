@@ -387,6 +387,37 @@ def _actividades_por_nombre(sb, client_id: str) -> Dict[str, dict]:
     return mapa
 
 
+def _resolver_actividad(mapa: Dict[str, dict], claves_largas: List[str], nombre) -> dict:
+    """Busca al proveedor en el mapa de actividades, tolerando cómo lo escribe el portal.
+
+    La grilla del SRI pega la razón social y el nombre comercial en un solo campo
+    —"GERARDO ORTIZ E HIJOS CIA LTDA CORAL CARLOS JULIO"—, mientras que en el
+    sistema ese proveedor está con su razón social sola. Comparando de igual a
+    igual no casa ninguno: de 17 proveedores de una solicitud real casó 1, y solo
+    porque su nombre comercial repetía la razón social.
+
+    Por eso, si no hay coincidencia exacta, se prueba por PREFIJO, empezando por
+    la clave conocida más larga: entre "COMERCIAL ETATEX" y "COMERCIAL ETATEX
+    C A", gana la segunda. Se exige un prefijo de al menos 10 caracteres y que
+    corte en un espacio, porque un prefijo corto casaría cualquier cosa."""
+    clave = _nombre_clave(nombre)
+    if not clave:
+        return {}
+    d = mapa.get(clave)
+    if d:
+        return d
+    for k in claves_largas:
+        if len(k) >= 10 and clave.startswith(k + " "):
+            return mapa[k]
+    return {}
+
+
+def _claves_por_largo(mapa: Dict[str, dict]) -> List[str]:
+    """Las claves del mapa, de la más larga a la más corta: así el prefijo que
+    gana es el más específico."""
+    return sorted(mapa.keys(), key=len, reverse=True)
+
+
 def _meses_del_periodo(pmes, pfreq, psem) -> List[int]:
     """Meses que cubre el período del cliente: uno si es mensual, los seis del
     semestre si es semestral (la devolución también se pide por el semestre)."""
@@ -679,9 +710,10 @@ async def comprobantes(
     # de alimentos— lo dice todo. Va después de lo aprendido, que es una
     # decisión, y antes del nombre, que es una adivinanza.
     actividades = _actividades_por_nombre(sb, client_id)
+    claves_act = _claves_por_largo(actividades)
     for c in comps:
         clave = _nombre_clave(c.get("nombre_proveedor"))
-        act = (actividades.get(clave) or {})
+        act = _resolver_actividad(actividades, claves_act, c.get("nombre_proveedor"))
         c["actividad"] = act.get("actividad") or ""
         c["ruc_sri"] = act.get("ruc") or c.get("ruc_proveedor") or ""
         sugerido = (aprendidos.get(clave)
@@ -926,6 +958,7 @@ async def ingresar_del_portal(body: PortalIn, user_id: str = Depends(get_current
     clasif = _clasif_por_proveedor(sb, body.client_id)
     aprendidos = _rubros_aprendidos(sb, user_id)
     actividades = _actividades_por_nombre(sb, body.client_id)
+    claves_act = _claves_por_largo(actividades)
     filas, rubros, vistas = [], {}, set()
     for f in body.filas:
         serie = str(f.serie or "").strip()
@@ -936,7 +969,7 @@ async def ingresar_del_portal(body: PortalIn, user_id: str = Depends(get_current
         filas.append(fila)
         nombre = str(f.proveedor or "").strip().upper()
         clave = _nombre_clave(f.proveedor)
-        actividad = (actividades.get(clave) or {}).get("actividad") or ""
+        actividad = _resolver_actividad(actividades, claves_act, f.proveedor).get("actividad") or ""
         # Primero lo que ya se decidió antes para ese proveedor; después su
         # ACTIVIDAD ECONÓMICA según el SRI; después la clasificación que tenga en
         # Gastos; y por último la pista del nombre, que es la más pobre.
