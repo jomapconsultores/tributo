@@ -138,13 +138,42 @@
   // La solicitud puede llegar por dos caminos: el portapapeles (marcador) o
   // dejada en la página por la extensión, que la recibe de la app y no depende
   // de permisos de portapapeles. Se mira primero la inyectada.
+  // Quién está abierto en el sistema. Lo publica la pantalla de devoluciones, así
+  // que solo existe cuando el marcador se toca DENTRO de la app.
+  const contextoDeLaApp = () => {
+    const c = window.__jomapDevolucionContexto;
+    return (c && c.identificacion) ? c : null;
+  };
+  // Lo que el portapapeles trae no es de fiar: ahí queda la solicitud del último
+  // "Enviar al SRI", de cualquier contribuyente y de cualquier día. Si el sistema
+  // dice a quién tiene abierto y no es el mismo, se descarta —se veía el panel de
+  // un contribuyente con la solicitud, los comprobantes y los montos de otro—.
+  let avisoDePaquete = '';
+  const esDeOtro = (p) => {
+    const ctx = contextoDeLaApp();
+    if (!ctx || !p || !p.contribuyente) return false;
+    const mio = String(p.contribuyente.identificacion || '').trim();
+    return !!mio && mio !== String(ctx.identificacion).trim();
+  };
+
   const leerDelPortapapeles = async () => {
     const inyectada = window.__jomapDevolucionPaquete;
-    if (valido(inyectada)) return inyectada;
+    if (valido(inyectada) && !esDeOtro(inyectada)) return inyectada;
     try {
       const txt = await navigator.clipboard.readText();
       const p = JSON.parse(txt);
-      return valido(p) ? p : null;
+      if (!valido(p)) return null;
+      if (esDeOtro(p)) {
+        const ctx = contextoDeLaApp();
+        avisoDePaquete = 'Lo que hay copiado es la solicitud de ' +
+          (p.contribuyente.nombre || p.contribuyente.identificacion) +
+          ', y en el sistema está abierto ' + (ctx.nombre || ctx.identificacion) +
+          '. No se carga: sería trabajar con los datos de otro contribuyente. ' +
+          'Abrí la solicitud de ' + (ctx.nombre || ctx.identificacion) +
+          ' y tocá "Enviar al SRI".';
+        return null;
+      }
+      return p;
     } catch (e) {
       return null;
     }
@@ -164,6 +193,15 @@
       let p = null;
       try { p = JSON.parse(ta.value.trim()); } catch (e) { p = null; }
       if (!valido(p)) { aviso.textContent = 'Eso no es el paquete de una solicitud.'; return; }
+      // Pegar a mano no puede saltarse la comprobación: es el mismo error, con
+      // un paso más.
+      if (esDeOtro(p)) {
+        const ctx = contextoDeLaApp();
+        aviso.textContent = 'Esa solicitud es de ' +
+          (p.contribuyente.nombre || p.contribuyente.identificacion) +
+          ' y acá está abierto ' + (ctx.nombre || ctx.identificacion) + '.';
+        return;
+      }
       resolve(p);
     }));
     cuerpo.appendChild(boton('Volver', () => resolve(null), CSS_GRIS));
@@ -1723,8 +1761,20 @@
       'sistema: ahí se marcan, se les pone el tipo de gasto y se controla el tope del mes. ' +
       'Después volvés acá con la solicitud y se presenta.',
       'margin:4px 0;color:#555;line-height:1.45');
+    // Lo que se descartó por ser de otro contribuyente se dice: un panel vacío
+    // sin explicación manda a buscar el problema a cualquier lado.
+    if (avisoDePaquete) {
+      linea('⚠ ' + avisoDePaquete,
+        'margin:6px 0;padding:8px;border:1px solid #e0b4b4;border-radius:6px;' +
+        'background:#fff5f5;color:#8b1e1e;line-height:1.45');
+    }
+    const ctx = contextoDeLaApp();
+    if (ctx) {
+      linea('Abierto en el sistema: ' + (ctx.nombre || '') + ' (' + ctx.identificacion + ')',
+        'margin:6px 0;color:#1e6b33;font-weight:600');
+    }
     const ident = identificacionEnPantalla();
-    if (ident) {
+    if (ident && !ctx) {
       linea('Contribuyente en pantalla: ' + ident, 'margin:6px 0;color:#1e6b33;font-weight:600');
     }
     cuerpo.appendChild(boton('Traer comprobantes al sistema', () => elegirAnioYMes(traerComprobantes)));

@@ -564,6 +564,45 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
     }
   }
 
+  // Quién está abierto en el sistema, a la vista del enviador.
+  //
+  // El marcador, tocado dentro de la app, leía la solicitud del PORTAPAPELES, y
+  // ahí queda la del último "Enviar al SRI" —de cualquier contribuyente y de
+  // cualquier día—. Resultado: se abría el panel de Judith y mostraba la
+  // solicitud de otro, con sus comprobantes y sus montos. Publicando acá quién
+  // está abierto, el enviador puede descartar lo que no le corresponde.
+  //
+  // Es una variable de la página, no un `postMessage`: eso último lo escucha la
+  // extensión y le dispararía una presentación en el portal.
+  useEffect(() => {
+    if (!selectedClient) return undefined
+    window.__jomapDevolucionContexto = {
+      identificacion: selectedClient.identificacion || '',
+      nombre: selectedClient.nombre || '',
+      mes: mesPeriodo,
+      anio,
+    }
+    return () => { delete window.__jomapDevolucionContexto }
+  }, [selectedClient, mesPeriodo, anio])
+
+  // Y la solicitud del contribuyente abierto, para que el enviador la tome de
+  // acá en vez del portapapeles. Sin `auto`: se deja a la vista, no se autoriza
+  // nada —autorizar sigue siendo tocar "Enviar al SRI"—.
+  useEffect(() => {
+    let vigente = true
+    if (!solicitudActual?.id) {
+      delete window.__jomapDevolucionPaquete
+      return () => { vigente = false }
+    }
+    devolucionesIvaAPI.envio(solicitudActual.id)
+      .then((r) => { if (vigente) window.__jomapDevolucionPaquete = r.data })
+      .catch(() => { if (vigente) delete window.__jomapDevolucionPaquete })
+    return () => {
+      vigente = false
+      delete window.__jomapDevolucionPaquete
+    }
+  }, [solicitudActual?.id])
+
   // La constancia vuelve sola desde el portal: el enviador la publica al
   // terminar y la extensión la trae hasta acá. Sin este camino de vuelta, el
   // recorrido automático dejaba la solicitud PRESENTADA en el SRI y en Borrador

@@ -160,10 +160,13 @@ def correr(modo: str, fuente: str) -> bool:
         # 'discapacidad': la otra entrada del portal, con su catálogo de tipo de
         # gasto sin verificar.
         discapacidad = modo == "discapacidad"
+        # 'cruzado': el marcador tocado DENTRO de la app, con el sistema abierto
+        # en un contribuyente y el portapapeles trayendo la solicitud de otro.
+        cruzado = modo == "cruzado"
         auto = modo in ("auto", "extension", "semestral", "quejoso", "otro", "discapacidad")
         propio = quejoso or otro or discapacidad
         pg.goto(PORTAL.as_uri() + "?modo=" +
-                (modo if propio else ("widget" if auto else modo)))
+                (modo if propio else ("widget" if (auto or cruzado) else modo)))
         pg.click("#lnkIngresar")
         # Lo que el enviador le manda de vuelta a la app al terminar. Se escucha
         # en todos los modos: es la única prueba de que el trámite hecho en el
@@ -209,9 +212,31 @@ def correr(modo: str, fuente: str) -> bool:
                        else paquete_discapacidad() if discapacidad
                        else paquete_de_prueba(auto))
             pg.evaluate("txt => navigator.clipboard.writeText(txt)", json.dumps(paquete))
+        if cruzado:
+            # Lo que publica la pantalla de devoluciones: a quién tiene abierto.
+            pg.evaluate("() => { window.__jomapDevolucionContexto = {"
+                        "identificacion: '1702086305',"
+                        "nombre: 'JUDITH RODRIGUEZ', mes: 7, anio: 2026 }; }")
         if not extension:
             pg.evaluate(codigo)
         pg.wait_for_timeout(1500)
+
+        if cruzado:
+            panel = pg.evaluate(PANEL)
+            marcadas = pg.evaluate(
+                "[...document.querySelectorAll('.ui-chkbox-box.ui-state-active')].length")
+            # El nombre ajeno SÍ aparece —el aviso explica de quién es lo que se
+            # descartó—; lo que no puede aparecer es la solicitud cargada, que es
+            # la cabecera con el monto y la lista de comprobantes.
+            ok = ("IVA a solicitar" not in panel
+                  and "Traer los comprobantes al sistema" in panel
+                  and "JUDITH RODRIGUEZ" in panel             # quién está abierto
+                  and "No se carga" in panel and marcadas == 0)
+            print(f"  {'✔' if ok else '✖'} no cargó la solicitud de otro contribuyente")
+            if not ok:
+                print("  panel:", panel[:600])
+            nav.close()
+            return ok
 
         # Con la solicitud autorizada desde el sistema no se toca NADA: el
         # marcador tiene que estar trabajando desde que se abrió.
@@ -361,7 +386,7 @@ def correr(modo: str, fuente: str) -> bool:
 
 if __name__ == "__main__":
     modos = [sys.argv[1]] if len(sys.argv) > 1 else ["semestral", "extension", "auto", "widget",
-                                                     "nativo", "discapacidad", "quejoso",
+                                                     "nativo", "discapacidad", "quejoso", "cruzado",
                                                      "otro", "muerto"]
     fuente = sys.argv[2] if len(sys.argv) > 2 else "min"
     print(f"Enviador-DEVOLUCIÓN contra el portal simulado ({fuente})")

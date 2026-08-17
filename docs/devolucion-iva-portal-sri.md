@@ -158,6 +158,17 @@ los de devolución automática total aunque estén en Gastos.
 `sri_downloader/bookmarklet_devolucion.js`, botón **"Llenar y presentar en el
 portal"**, parado en *Ingresar facturas electrónicas*:
 
+0bis. **La solicitud sale del contribuyente abierto, no del portapapeles.** El
+   marcador leía el paquete de `navigator.clipboard`, y ahí queda el del último
+   *Enviar al SRI* —de cualquier contribuyente y de cualquier día—. Tocándolo
+   dentro de la app se abría el panel de un contribuyente mostrando la solicitud,
+   los comprobantes y los montos de OTRO. Ahora la pantalla de devoluciones
+   publica en la página quién está abierto (`window.__jomapDevolucionContexto`) y
+   la solicitud de ese contribuyente (`window.__jomapDevolucionPaquete`, sin
+   `auto`: se muestra, no se autoriza); el marcador prefiere eso y **descarta**
+   lo que traiga el portapapeles si es de otro, diciéndolo. *Corregido el
+   2026-08-16.* Se publica como variable de página y no con `postMessage`: eso
+   último lo escucha la extensión y le dispararía una presentación en el portal.
 0. **Antes de tocar nada, mira con quién está tratando.** La cabecera del SRI
    dice quién abrió el portal (`0400533824001 CORAL LIDIA MAGOLA`) y la ruta dice
    en qué sección está. Si el contribuyente no es el de la solicitud, o la

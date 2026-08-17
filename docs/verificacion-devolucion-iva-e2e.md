@@ -154,6 +154,11 @@ el trámite quedaba hecho en el SRI y en **Borrador** en el sistema.
       sin tipo de gasto), el enviador corta con el texto del SRI a la vista, **no
       presenta** y **no avisa a la app**: la solicitud sigue en Borrador. Antes
       pintaba "Selección guardada" y seguía de largo.
+- [ ] Con un contribuyente abierto, tocar el marcador **dentro de la app**: el
+      panel tiene que mostrar la solicitud de ESE contribuyente, o decir que no
+      hay ninguna. Nunca la de otro. Probar el caso que lo destapó: preparar el
+      envío de uno (queda copiado), cambiar de contribuyente y tocar el marcador
+      → debe avisar que lo copiado es de otro y **no cargarlo**.
 - [ ] **📤 Enviar al SRI** abre el portal **en la sección del beneficiario**
       (adultos mayores o discapacidad), no en la portada del SRI.
 - [ ] Con el portal abierto con **otra persona**, el enviador corta sin tocar una
