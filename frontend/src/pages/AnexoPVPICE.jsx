@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
 import { iceAPI, productsAPI, anexosAPI, compradoresAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
-import { periodoCorto } from '../utils/periodo'
+import { periodoCorto, MESES_CORTO } from '../utils/periodo'
 import useDraft from '../hooks/useDraft'
 import './AnexoPVPICE.css'
 
@@ -106,18 +106,37 @@ export default function AnexoPVPICE() {
   const [tipoImport, setTipoImport] = useState('ICE')
   const [saved, setSaved] = useState([])
   const [savedId, setSavedId] = useDraft(`${DRAFT}:savedId`, null) // anexo guardado en edición (para actualizar, no duplicar)
+  const [savedClientId, setSavedClientId] = useDraft(`${DRAFT}:savedClientId`, null) // período al que pertenece ese anexo guardado
+  const [copiaDe, setCopiaDe] = useDraft(`${DRAFT}:copiaDe`, null) // período del que se trajo el contenido, si se cambió de mes
 
   // header/rows/savedId son un borrador GLOBAL (no por cliente): al cambiar de
-  // RUC/período hay que limpiarlos, o se podría guardar el anexo de un cliente
-  // bajo el client_id de otro. No dispara al montar (solo cuando clientSel
+  // CONTRIBUYENTE hay que limpiarlos, o se podría guardar el anexo de un cliente
+  // bajo el client_id de otro. Al cambiar solo de MES dentro del mismo RUC se
+  // CONSERVA lo que hay en pantalla: así se trae el anexo de un mes anterior, se
+  // lo corrige y se lo graba en el mes que se está trabajando (el del mes
+  // anterior queda intacto). No dispara al montar (solo cuando clientSel
   // realmente cambia), para no perder un borrador que se está retomando.
   const prevClientSelRef = useRef(clientSel)
   useEffect(() => {
-    if (prevClientSelRef.current !== clientSel) {
-      prevClientSelRef.current = clientSel
-      setHeader({}); setRows([]); setSavedId(null)
+    if (prevClientSelRef.current === clientSel) return
+    const antes = clients.find((c) => c.id === prevClientSelRef.current)
+    const ahora = clients.find((c) => c.id === clientSel)
+    const mismoRuc = !!antes && !!ahora && antes.identificacion === ahora.identificacion
+    prevClientSelRef.current = clientSel
+    if (mismoRuc && tipo) {
+      // Copia para otro mes: se despega del registro guardado (para no pisar el
+      // anexo del mes de origen) y la cabecera pasa a declarar el período nuevo.
+      setSavedId(null); setSavedClientId(null)
+      setCopiaDe(periodoCorto(antes))
+      setHeader((h) => ({
+        ...h,
+        Anio: String(ahora.periodo_anio || h.Anio || ''),
+        Mes: String(ahora.periodo_mes || '').padStart(2, '0'),
+      }))
+    } else {
+      setHeader({}); setRows([]); setSavedId(null); setSavedClientId(null); setCopiaDe(null)
     }
-  }, [clientSel])
+  }, [clientSel, clients])
   const [filtro, setFiltro] = useState('')
   const [busqCod, setBusqCod] = useState('')
   const [resCod, setResCod] = useState([])
@@ -142,6 +161,9 @@ export default function AnexoPVPICE() {
   }
 
   const codField = tipo === 'PVP' ? 'codProdPVP' : 'codProdICE'
+
+  // Contribuyente/período elegido: es la base de datos donde se graba el anexo
+  const periodoSel = clients.find((c) => c.id === clientSel) || null
 
   // Contribuyentes únicos (RUC) y períodos del RUC elegido
   const contribs = []
@@ -190,25 +212,66 @@ export default function AnexoPVPICE() {
     if (!clientSel) { alert('Elige un cliente (RUC y período) para guardar.'); return }
     if (!tipo) { alert('No hay anexo para guardar.'); return }
     try {
-      if (savedId) {
-        await anexosAPI.update(savedId, tipo, { tipo, header, rows })
-        alert('✔ Anexo actualizado en la base de datos.')
+      // El anexo recuperado solo se ACTUALIZA si se sigue trabajando en SU
+      // período; si se cambió de mes, se graba uno nuevo para ese mes y el
+      // original queda como estaba.
+      let fila
+      if (savedId && savedClientId === clientSel) {
+        const res = await anexosAPI.update(savedId, tipo, { tipo, header, rows })
+        fila = res.data
+        alert(`✔ Anexo ${tipo} actualizado en la base de datos de ${nombrePeriodo(clientSel)}.`)
       } else {
         const res = await anexosAPI.save(clientSel, tipo, { tipo, header, rows })
-        if (res.data?.id) setSavedId(res.data.id)
-        alert('✔ Anexo guardado en la base de datos para el período seleccionado.')
+        fila = res.data
+        if (fila?.id) { setSavedId(fila.id); setSavedClientId(clientSel) }
+        alert(fila?.reemplazado
+          ? `✔ Se reemplazó el anexo ${tipo} que ya existía en ${nombrePeriodo(clientSel)}.`
+          : `✔ Anexo ${tipo} guardado en la base de datos de ${nombrePeriodo(clientSel)}.`)
       }
+      // El servidor alinea la cabecera con el período del contribuyente: se
+      // refleja acá para que el XML que se genere después declare ese mes.
+      if (fila?.datos?.header) setHeader(fila.datos.header)
+      setCopiaDe(null)
       cargarAnexos()
     } catch (e) { alert('Error al guardar: ' + (e.response?.data?.detail || e.message)) }
+  }
+
+  // "RUC — MES AÑO" del período elegido, para los avisos de guardado
+  const nombrePeriodo = (id) => {
+    const c = clients.find((x) => x.id === id)
+    return c ? `${c.nombre || c.identificacion} · ${periodoCorto(c)}` : 'el período elegido'
+  }
+
+  // Período que declara un anexo guardado (columna propia, o su cabecera)
+  const periodoAnexo = (a) => {
+    if (a.periodo_anio && a.periodo_mes) return `${MESES_CORTO[a.periodo_mes - 1] || a.periodo_mes} ${a.periodo_anio}`
+    const cli = clients.find((c) => c.id === a.client_id)
+    if (cli) return periodoCorto(cli)
+    const h = a.datos?.header || {}
+    const m = parseInt(String(h.Mes || '').replace(/\D/g, ''), 10)
+    return h.Anio ? `${MESES_CORTO[m - 1] || h.Mes || ''} ${h.Anio}` : '—'
   }
 
   const recuperarAnexo = (a) => {
     const d = a.datos || {}
     const t = d.tipo || a.tipo
+    const cli = clients.find((c) => c.id === a.client_id)
+    // Se abre EN SU período: sincronizamos la ref ANTES de mover los selectores
+    // para que el efecto de cambio de cliente no toque lo que acabamos de cargar.
+    // Si ese período ya no está a la vista, se deja el elegido como está (mover
+    // solo la ref haría que el efecto tomara el desfase por un cambio manual y
+    // borrara lo recuperado).
+    if (cli) {
+      prevClientSelRef.current = cli.id
+      setRucSel(cli.identificacion)
+      setClientSel(cli.id)
+    }
     setTipo(t)
     setHeader(d.header || {})
     setRows((d.rows || []).map((r) => normalizarCantidades(t, r)))
     setSavedId(a.id)
+    setSavedClientId(a.client_id || null)
+    setCopiaDe(null)
     cerrarPanel()
   }
 
@@ -216,7 +279,7 @@ export default function AnexoPVPICE() {
     if (!window.confirm('¿Eliminar este anexo guardado?')) return
     try {
       await anexosAPI.delete(id)
-      if (id === savedId) setSavedId(null)
+      if (id === savedId) { setSavedId(null); setSavedClientId(null) }
       cargarAnexos()
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
@@ -230,7 +293,7 @@ export default function AnexoPVPICE() {
       setTipo(t)
       setHeader(d.header || {})
       setRows((d.rows || []).map((v) => ({ ...DEFAULT_ROW(t), ...v })))
-      setSavedId(null)
+      setSavedId(null); setSavedClientId(null); setCopiaDe(null)
       cerrarPanel()
       if (d.advertencias?.length) {
         alert('⚠ ' + d.advertencias.join(' ') + '\nUsa el buscador de códigos o haz clic en el código para corregirlo aquí mismo.')
@@ -294,7 +357,7 @@ export default function AnexoPVPICE() {
     const per = clients.find((c) => c.id === clientSel)
     if (per) { h.Anio = String(per.periodo_anio || ''); h.Mes = String(per.periodo_mes || '').padStart(2, '0') }
     setTipo(t); setHeader(h); setRows([])
-    setSavedId(null)
+    setSavedId(null); setSavedClientId(null); setCopiaDe(null)
     cerrarPanel()
   }
 
@@ -319,7 +382,7 @@ export default function AnexoPVPICE() {
         }
       }
       setTipo(t); setHeader(h); setRows(nuevas)
-      setSavedId(null)
+      setSavedId(null); setSavedClientId(null); setCopiaDe(null)
       cerrarPanel()
 
       // Relación automática con la base de datos: si el XML trae IdInformante
@@ -366,7 +429,8 @@ export default function AnexoPVPICE() {
   }
   const limpiar = () => {
     if (window.confirm('¿Borrar todo el contenido en pantalla?')) {
-      setTipo(null); setHeader({}); setRows([]); setSavedId(null); setFiltro('')
+      setTipo(null); setHeader({}); setRows([]); setFiltro('')
+      setSavedId(null); setSavedClientId(null); setCopiaDe(null)
       cerrarPanel()
     }
   }
@@ -555,7 +619,7 @@ export default function AnexoPVPICE() {
       <header className="ax-header">
         <div>
           <h1>📄 Anexo PVP+ICE</h1>
-          <p className="ax-sub">Editor de anexos SRI: carga un XML (ICE o PVP), edita cabecera y productos, y regenera el XML. <strong>Lo que cargues/edites se respalda solo en este navegador</strong> (sobrevive a recargas); usá "🗄 Guardar anexo" para grabarlo en la base de datos.</p>
+          <p className="ax-sub">Editor de anexos SRI: carga un XML (ICE o PVP), edita cabecera y productos, y regenera el XML. <strong>Lo que cargues/edites se respalda solo en este navegador</strong> (sobrevive a recargas); usá "🗄 Guardar anexo" para grabarlo <strong>en la base de datos del contribuyente, en el mes elegido</strong>. Los anexos de meses anteriores se abren desde la lista de abajo: se modifican y se vuelven a guardar, o se copian al mes que estés trabajando cambiando el Mes/Año.</p>
         </div>
         {tipo && <span className={`ax-badge ${tipo.toLowerCase()}`}>Anexo {tipo}</span>}
       </header>
@@ -567,12 +631,34 @@ export default function AnexoPVPICE() {
         <button className="ax-btn green" onClick={addRow} disabled={!tipo}>➕ Añadir producto</button>
         <button className="ax-btn red" onClick={limpiar}>🧹 Limpiar todo</button>
         <button className="ax-btn yellow" onClick={descargar} disabled={!tipo}>💾 Generar XML SRI</button>
-        <button className="ax-btn teal" onClick={guardarAnexo} disabled={!tipo || !clientSel}>
-          {savedId ? '🗄 Actualizar anexo' : '🗄 Guardar anexo'}
+        <button className="ax-btn teal" onClick={guardarAnexo} disabled={!tipo || !clientSel}
+          title={clientSel ? `Se graba en la base de datos de ${nombrePeriodo(clientSel)}` : 'Elige RUC y período'}>
+          {savedId && savedClientId === clientSel ? '🗄 Actualizar anexo' : '🗄 Guardar anexo'}
+          {clientSel && periodoSel ? ` · ${periodoCorto(periodoSel)}` : ''}
         </button>
         <button className="ax-btn green" onClick={exportarExcel} disabled={!tipo}>📊 Exportar Excel</button>
         <button className="ax-btn red" onClick={exportarPdf} disabled={!tipo}>📑 Exportar PDF</button>
       </div>
+
+      {/* Dónde se va a grabar: contribuyente y mes. Si el contenido viene de otro
+          mes, se avisa que al guardar nace un anexo nuevo y el viejo no se toca. */}
+      {tipo && clientSel && (
+        <div className={`ax-destino${copiaDe ? ' copia' : ''}`}>
+          {copiaDe ? (
+            <span>
+              📋 Estás editando una copia del anexo de <strong>{copiaDe}</strong>. Al guardar se creará el
+              anexo <strong>{tipo}</strong> de <strong>{periodoSel ? periodoCorto(periodoSel) : ''}</strong> en la base de
+              datos de <strong>{periodoSel?.nombre || ''}</strong>; el de {copiaDe} queda como está.
+            </span>
+          ) : (
+            <span>
+              🗄 Se grabará en la base de datos de <strong>{periodoSel?.nombre || ''}</strong> ({periodoSel?.identificacion || ''}),
+              período <strong>{periodoSel ? periodoCorto(periodoSel) : ''}</strong>
+              {savedId && savedClientId === clientSel ? ' — actualizando el anexo ya guardado de ese mes.' : '.'}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Zona de arrastre del XML (también se puede usar el botón "📂 Cargar XML") */}
       <div
@@ -647,21 +733,23 @@ export default function AnexoPVPICE() {
         )}
       </div>
 
-      {/* Anexos guardados del RUC (todos sus períodos) */}
+      {/* Anexos guardados del RUC (todos sus períodos, del más nuevo al más viejo) */}
       {rucSel && saved.length > 0 && (
         <div className="ax-saved">
           <span className="ax-saved-lbl">Anexos guardados del RUC:</span>
-          {saved.map((a) => {
-            const cli = clients.find((c) => c.id === a.client_id)
-            return (
-              <span key={a.id} className={`ax-saved-item${a.id === savedId ? ' activo' : ''}`}>
-                <button className="ax-saved-load" onClick={() => recuperarAnexo(a)} title="Recuperar">
-                  {a.tipo} · {cli ? periodoCorto(cli) : '—'} · {(a.datos?.rows?.length ?? 0)} filas
-                </button>
-                <button className="ax-saved-del" onClick={() => borrarAnexo(a.id)} title="Eliminar">✕</button>
-              </span>
-            )
-          })}
+          {saved.map((a) => (
+            <span key={a.id} className={`ax-saved-item${a.id === savedId ? ' activo' : ''}`}>
+              <button className="ax-saved-load" onClick={() => recuperarAnexo(a)}
+                title="Abrirlo para modificarlo (se abre en su propio mes; para reusarlo en otro, cambia el Mes/Año arriba y guarda)">
+                {a.tipo} · {periodoAnexo(a)} · {(a.datos?.rows?.length ?? 0)} filas
+              </button>
+              <button className="ax-saved-del" onClick={() => borrarAnexo(a.id)} title="Eliminar">✕</button>
+            </span>
+          ))}
+          <span className="ax-saved-hint">
+            Ábrelo para modificarlo y volver a guardarlo. Para armar el mes actual a partir de uno
+            anterior: ábrelo, cambia el <strong>Mes/Año</strong> arriba, corrige lo que haga falta y guarda.
+          </span>
         </div>
       )}
 

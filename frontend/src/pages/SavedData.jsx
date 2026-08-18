@@ -192,13 +192,18 @@ export default function SavedData() {
                   </div>
                   <table className="sd-table">
                     <thead>
-                      <tr><th>Tipo</th><th>Período</th><th className="r">Filas</th><th>Guardado</th><th></th></tr>
+                      <tr><th>Tipo</th><th>Período</th><th className="r">Filas</th><th>Guardado</th><th>Actualizado</th><th></th></tr>
                     </thead>
                     <tbody>
                       {anexos.map((a) => {
                         const cli = clientById[a.client_id]
                         const d = a.datos || {}
-                        const per = cli ? `${nombreMes(cli.periodo_mes)} ${cli.periodo_anio}`
+                        // El período lo declara el propio anexo (columnas
+                        // periodo_anio/mes); el contribuyente y la cabecera son
+                        // el respaldo para lo guardado antes de la migración 061.
+                        const per = a.periodo_anio && a.periodo_mes
+                          ? `${nombreMes(a.periodo_mes)} ${a.periodo_anio}`
+                          : cli ? `${nombreMes(cli.periodo_mes)} ${cli.periodo_anio}`
                           : `${d.header?.Anio || ''}/${d.header?.Mes || ''}`
                         return (
                           <Fragment key={a.id}>
@@ -207,12 +212,13 @@ export default function SavedData() {
                               <td>{per}</td>
                               <td className="r">{(d.rows || []).length}</td>
                               <td>{String(a.created_at || '').slice(0, 10)}</td>
+                              <td>{String(a.updated_at || a.created_at || '').slice(0, 10)}</td>
                               <td><button className="sd-li-item" style={{ padding: '2px 8px', cursor: 'pointer' }}
                                 onClick={() => setAnexoOpen(anexoOpen === a.id ? null : a.id)}>
                                 {anexoOpen === a.id ? '▲ Ocultar' : '▼ Detalle'}</button></td>
                             </tr>
                             {anexoOpen === a.id && (
-                              <tr><td colSpan={5}>
+                              <tr><td colSpan={6}>
                                 <div style={{ fontSize: 12, color: '#444', padding: '4px 0' }}>
                                   <div><strong>Informante:</strong> {d.header?.IdInformante || '—'} · {d.header?.razonSocial || '—'}</div>
                                   <div style={{ marginTop: 4, maxHeight: 180, overflow: 'auto' }}>

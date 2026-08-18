@@ -336,6 +336,7 @@ export const productsAPI = {
 // Anexos PVP/ICE guardados por cliente/período
 export const anexosAPI = {
   list: (clientId) => api.get('/api/anexos/', { params: { client_id: clientId } }),
+  get: (id) => api.get(`/api/anexos/${id}`),
   save: (clientId, tipo, datos) => api.post('/api/anexos/', { client_id: clientId, tipo, datos }),
   update: (id, tipo, datos) => api.put(`/api/anexos/${id}`, { tipo, datos }),
   delete: (id) => api.delete(`/api/anexos/${id}`),

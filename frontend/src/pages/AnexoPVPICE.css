@@ -33,6 +33,12 @@
 .ax-saved-load { border: none; background: transparent; cursor: pointer; font-size: 0.8rem; color: #0e7490; font-weight: 600; }
 .ax-saved-del { border: none; background: transparent; cursor: pointer; color: #cbd5e1; padding: 2px 6px; }
 .ax-saved-del:hover { color: #dc2626; }
+.ax-saved-hint { flex-basis: 100%; font-size: 0.74rem; color: #0e7490; line-height: 1.35; }
+
+/* Dónde se graba el anexo: contribuyente y mes (y aviso de copia de otro mes) */
+.ax-destino { background: #f0fdfa; border: 1px solid #99f6e4; border-left: 4px solid #0d9488; border-radius: 10px;
+  padding: 9px 13px; font-size: 0.8rem; color: #115e59; line-height: 1.4; }
+.ax-destino.copia { background: #fffbeb; border-color: #fde68a; border-left-color: #d97706; color: #92400e; }
 
 .ax-init { background: #fff; border-radius: 12px; padding: 40px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.06); color: #64748b; }
 .ax-init-btns { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
