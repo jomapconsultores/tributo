@@ -107,6 +107,7 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
   // resultado del TXT/XML tiene que quedar a la vista después de recargar.
   const [avisoSubida, setAvisoSubida] = useState(null) // { tipo: 'work'|'ok'|'err', texto }
   const portalEnCursoRef = useRef(null) // listado del portal que ya se está ingresando (no entra dos veces)
+  const [ocultos, setOcultos] = useState([])  // comprobantes que el usuario sacó de esta devolución
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null) // { tipo: 'ok'|'err', texto }
 
@@ -133,6 +134,24 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
   }
   const leerPortal = (mes, anio) => {
     try { return JSON.parse(localStorage.getItem(clavePortal(mes, anio))) || [] } catch { return [] }
+  }
+
+  // Comprobantes que el usuario sacó de ESTA devolución. No se borran de
+  // Gastos —ahí siguen, son sus facturas— pero dejan de estorbar en la pantalla:
+  // el SRI lista lo suyo y lo demás no va en la solicitud. Se guarda por período
+  // y contribuyente, igual que la copia de la grilla del portal.
+  const claveFuera = (mes, anio) => `devIvaFuera:${clientId}:${anio}-${mes}`
+  const leerFuera = (mes, anio) => {
+    try { return new Set(JSON.parse(localStorage.getItem(claveFuera(mes, anio))) || []) } catch { return new Set() }
+  }
+  const guardarFuera = (mes, anio, ids) => {
+    try {
+      if (ids.size) localStorage.setItem(claveFuera(mes, anio), JSON.stringify([...ids]))
+      else localStorage.removeItem(claveFuera(mes, anio))
+    } catch { /* sin espacio */ }
+  }
+  const olvidarPortal = (mes, anio) => {
+    try { localStorage.removeItem(clavePortal(mes, anio)) } catch { /* noop */ }
   }
 
   const filaDePortal = (f) => ({
@@ -180,7 +199,13 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
       // A lo que responde el servidor se le suman los comprobantes del portal
       // que se hayan desmarcado: el servidor solo devuelve los que están en la
       // solicitud, y sin esto una fila desmarcada ya no se podría recuperar.
-      const lista = mezclarPortal(rc.data.comprobantes || [], rc.data.mes, rc.data.anio)
+      const todos = mezclarPortal(rc.data.comprobantes || [], rc.data.mes, rc.data.anio)
+      // Lo que el usuario sacó de esta devolución no se muestra (sigue en
+      // Gastos): la solicitud se arma con lo que el SRI lista, no con todo lo
+      // que haya cargado el contribuyente ese mes.
+      const afuera = leerFuera(rc.data.mes, rc.data.anio)
+      const lista = afuera.size ? todos.filter((c) => !afuera.has(c.id)) : todos
+      setOcultos(afuera.size ? todos.filter((c) => afuera.has(c.id)) : [])
       setComps(lista)
       setMesPeriodo(rc.data.mes)
       setPeriodo(rc.data.periodo || '')
@@ -306,6 +331,9 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
         filas: d.filas,
       })
       guardarPortal(d.mes, d.anio, d.filas)
+      // Llegó una devolución nueva: la vista del mes arranca limpia, o los
+      // comprobantes que se habían sacado antes taparían lo que acaba de entrar.
+      guardarFuera(d.mes, d.anio, new Set())
       const faltan = r.data.sin_rubro || 0
       setAvisoSubida({
         tipo: 'ok',
@@ -322,6 +350,63 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
       // 409 es "ese mes ya está presentado": reintentarlo en cada vuelta a la
       // pestaña solo repetiría el aviso, así que se da por atendido.
       return { ok: false, soltar: e.response?.status === 409 }
+    }
+  }
+
+  // --- Sacar comprobantes de esta devolución ------------------------------
+  // El listado del SRI es el que manda: lo que el contribuyente tenga cargado
+  // en Gastos ese mes (bancos, servicios, lo que no califica) solo estorba
+  // cuando hay que armar la solicitud. Se quita de la devolución, NO de Gastos.
+  const quitarComprobante = (c) => {
+    const afuera = leerFuera(mesPeriodo, anio)
+    afuera.add(c.id)
+    guardarFuera(mesPeriodo, anio, afuera)
+    // Los del portal viven en la copia local: si no se los saca de ahí, la
+    // próxima carga los vuelve a mezclar.
+    if (c.origen === 'portal') {
+      const serie = String(c.factura_numero || '')
+      guardarPortal(mesPeriodo, anio, leerPortal(mesPeriodo, anio).filter((f) => f.serie !== serie))
+    }
+    setComps((cs) => cs.filter((x) => x.id !== c.id))
+    setOcultos((os) => [...os, c])
+    setSeleccion((sel) => {
+      if (!sel.has(c.id)) return sel
+      const s = new Set(sel); s.delete(c.id); return s
+    })
+  }
+
+  const mostrarOcultos = () => {
+    guardarFuera(mesPeriodo, anio, new Set())
+    cargar()
+  }
+
+  // Vaciar el mes para empezar de nuevo: borra la solicitud, olvida la grilla
+  // que se trajo del portal y saca de la devolución lo que quedaba en pantalla.
+  // Es lo que hace falta para volver a traer el listado del SRI desde cero.
+  const limpiarPeriodo = async () => {
+    const etiqueta = periodoSel ? `${nombreMes(periodoSel.mes)} ${periodoSel.anio}` : (periodo || 'el período')
+    const presentada = solicitudActual && ['presentada', 'aprobada'].includes(solicitudActual.estado)
+    const aviso = presentada
+      ? `La solicitud de ${etiqueta} figura como ${solicitudActual.estado.toUpperCase()}: al limpiar se borra ` +
+        'también el registro del envío (fecha de carga, monto y comprobantes). ¿Seguir?'
+      : `¿Vaciar la devolución de ${etiqueta}? Se borra la solicitud en borrador y el listado que se ` +
+        'trajo del portal. Las facturas siguen en Gastos: esto no las elimina.'
+    if (!window.confirm(aviso)) return
+    setMsg(null)
+    try {
+      if (solicitudActual?.id) await devolucionesIvaAPI.eliminar(solicitudActual.id)
+      olvidarPortal(mesPeriodo, anio)
+      guardarFuera(mesPeriodo, anio, new Set([...comps.map((c) => c.id), ...ocultos.map((c) => c.id)]))
+      setSeleccion(new Set())
+      portalEnCursoRef.current = null
+      setAvisoSubida({
+        tipo: 'ok',
+        texto: `${etiqueta} quedó en blanco. Traé el listado del portal del SRI: los comprobantes ` +
+          'entran solos (o usá «📥 Pegar comprobantes del portal»).',
+      })
+      await cargar()
+    } catch (e) {
+      setMsg({ tipo: 'err', texto: e.response?.data?.detail || 'No se pudo limpiar el período.' })
     }
   }
 
@@ -946,6 +1031,12 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
           onClick={pegarPortal}
           title="Ingresar el listado que el portal del SRI muestra del período (copialo con el enviador, en el SRI)"
         >📥 Pegar comprobantes del portal</button>
+        <button
+          className="dv-btn"
+          onClick={limpiarPeriodo}
+          disabled={!comps.length && !ocultos.length && !solicitudActual}
+          title="Vaciar la devolución de este mes (borra la solicitud y el listado traído del portal) para armarla de nuevo. No borra las facturas de Gastos."
+        >🧹 Limpiar comprobantes</button>
         {claveSri && (
           <span className="dv-clave-sri" title="Clave del portal del SRI de este contribuyente. Cada vez que se muestra queda registrado en la bitácora de accesos.">
             {claveSri.hay ? (
@@ -1082,6 +1173,7 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
                     —solo el IVA del comprobante— y quedaban dos columnas de
                     guiones. Lo que se solicita al SRI es el IVA. */}
                 <th className="num">IVA</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -1119,11 +1211,22 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
                     ) : (c.clasificacion || 'SIN CLASIFICAR')}
                   </td>
                   <td className="num">{fmtMoney(c.iva)}</td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <button className="dv-quitar" onClick={() => quitarComprobante(c)}
+                      title="Sacar este comprobante de la devolución (sigue en Gastos)">✕</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {ocultos.length > 0 && (
+        <p className="dv-fuera">
+          {ocultos.length} comprobante(s) fuera de esta devolución (siguen en Gastos).{' '}
+          <button className="dv-fuera-btn" onClick={mostrarOcultos}>volver a mostrarlos</button>
+        </p>
       )}
 
       {solicitudes.length > 0 && (

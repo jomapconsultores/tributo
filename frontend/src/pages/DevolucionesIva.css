@@ -157,6 +157,12 @@
 
 .dv-vacio-nota { margin: 8px 0 0; color: #94a3b8; font-size: .78rem; line-height: 1.45; }
 
+/* Sacar un comprobante de la devolución (no de Gastos) y volver atrás */
+.dv-quitar { border: none; background: transparent; color: #cbd5e1; cursor: pointer; font-size: .9rem; padding: 2px 6px; }
+.dv-quitar:hover { color: #dc2626; }
+.dv-fuera { margin: 8px 0 0; color: #94a3b8; font-size: .8rem; }
+.dv-fuera-btn { border: none; background: transparent; color: #2563eb; cursor: pointer; font-size: .8rem; text-decoration: underline; padding: 0; }
+
 .dv-vacio-carga { max-width: 620px; }
 .dv-vacio-carga summary { cursor: pointer; color: #64748b; font-size: .84rem; margin-bottom: 8px; }
 
