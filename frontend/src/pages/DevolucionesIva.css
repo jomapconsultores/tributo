@@ -155,6 +155,8 @@
   font-size: .86rem;
 }
 
+.dv-vacio-nota { margin: 8px 0 0; color: #94a3b8; font-size: .78rem; line-height: 1.45; }
+
 .dv-vacio-carga { max-width: 620px; }
 .dv-vacio-carga summary { cursor: pointer; color: #64748b; font-size: .84rem; margin-bottom: 8px; }
 

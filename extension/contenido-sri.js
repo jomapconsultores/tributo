@@ -46,6 +46,24 @@ window.addEventListener('message', (ev) => {
   });
 });
 
+// El otro camino de vuelta: el LISTADO de comprobantes que el portal muestra.
+// Antes había que copiarlo a mano y pegarlo en la app, y el mes se perdía cada
+// vez que el portapapeles fallaba o alguien cerraba la pestaña sin pegar. Ahora
+// viaja igual que la constancia, y se le acusa recibo al enviador para que diga
+// la verdad sobre si llegó (sin extensión no lo escucha nadie).
+window.addEventListener('message', (ev) => {
+  if (ev.source !== window) return;
+  const dato = ev.data;
+  if (!dato || dato.tipo !== 'jomap-devolucion-comprobantes') return;
+  const b = dato.bulto;
+  if (!b || !Array.isArray(b.filas) || !b.filas.length) return;
+  chrome.storage.local.set({
+    comprobantes: { bulto: b, cuando: Date.now() },
+  }, () => {
+    window.postMessage({ tipo: 'jomap-devolucion-comprobantes-recibidos' }, '*');
+  });
+});
+
 chrome.storage.local.get('solicitud', ({ solicitud }) => {
   if (!solicitud || !solicitud.paquete) return;
   const minutos = (Date.now() - (solicitud.cuando || 0)) / 60000;

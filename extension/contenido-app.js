@@ -15,6 +15,9 @@
 
 const MARCA = 'jomap-devolucion-paquete';
 const MARCA_CONSTANCIA = 'jomap-devolucion-constancia';
+const MARCA_COMPROBANTES_APP = 'jomap-devolucion-comprobantes-app';
+const MARCA_COMPROBANTES_OK = 'jomap-devolucion-comprobantes-ingresados';
+const MARCA_COMPROBANTES_PEDIDO = 'jomap-devolucion-comprobantes-pedido';
 // La constancia sí puede esperar: registra algo que YA pasó en el SRI, y el
 // usuario puede tardar en volver a la pestaña de la app (o volver mañana).
 const VIGENCIA_CONSTANCIA_HORAS = 24;
@@ -61,10 +64,39 @@ const entregarConstancia = () => {
   });
 };
 
+// Y los COMPROBANTES que el enviador trajo de la grilla del portal. Se
+// entregan igual que la constancia, pero NO se consumen al entregarlos: solo se
+// borran cuando la app avisa que los ingresó. Si el usuario está en otra
+// pantalla —o abrió otro contribuyente— el listado tiene que seguir esperando,
+// o el mes se perdería por haber vuelto a la pestaña en el momento equivocado.
+const entregarComprobantes = () => {
+  chrome.storage.local.get('comprobantes', ({ comprobantes }) => {
+    if (!comprobantes || !comprobantes.bulto) return;
+    const horas = (Date.now() - (comprobantes.cuando || 0)) / 3600000;
+    if (horas > VIGENCIA_CONSTANCIA_HORAS) {
+      chrome.storage.local.remove('comprobantes');
+      return;
+    }
+    window.postMessage({ tipo: MARCA_COMPROBANTES_APP, bulto: comprobantes.bulto }, '*');
+  });
+};
+
+// La app confirma cuando ya los ingresó: recién ahí se sueltan. Y cuando abre
+// la pantalla de devoluciones los pide, porque navegar dentro de la app no
+// dispara ningún `focus` y el listado se quedaría esperando sin que nadie lo
+// reclame.
+window.addEventListener('message', (ev) => {
+  if (ev.source !== window) return;
+  const tipo = ev.data && ev.data.tipo;
+  if (tipo === MARCA_COMPROBANTES_OK) chrome.storage.local.remove('comprobantes');
+  else if (tipo === MARCA_COMPROBANTES_PEDIDO) setTimeout(entregarComprobantes, 200);
+});
+
 // La app tarda en montar la pantalla y en enganchar su escucha; entregar en el
 // acto sería hablarle a nadie.
-setTimeout(entregarConstancia, 1500);
+const entregar = () => { entregarConstancia(); entregarComprobantes(); };
+setTimeout(entregar, 1500);
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) setTimeout(entregarConstancia, 400);
+  if (!document.hidden) setTimeout(entregar, 400);
 });
-window.addEventListener('focus', () => setTimeout(entregarConstancia, 400));
+window.addEventListener('focus', () => setTimeout(entregar, 400));

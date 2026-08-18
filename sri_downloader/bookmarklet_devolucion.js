@@ -1254,6 +1254,35 @@
     return filas;
   };
 
+  // El listado, de vuelta al sistema por el mismo camino que la constancia: lo
+  // escucha la extensión (`contenido-sri.js`), que lo guarda y se lo entrega a
+  // la app cuando el usuario vuelve a esa pestaña. Devuelve si alguien lo
+  // recibió, para no prometer un viaje que sin extensión no ocurre —ahí queda
+  // el camino de siempre: copiar y pegar—.
+  const mandarComprobantesALaApp = (bulto) => new Promise((resolve) => {
+    let listo = false;
+    const acuse = (ev) => {
+      if (ev.source !== window) return;
+      if (!ev.data || ev.data.tipo !== 'jomap-devolucion-comprobantes-recibidos') return;
+      listo = true;
+      window.removeEventListener('message', acuse);
+      resolve(true);
+    };
+    try {
+      window.addEventListener('message', acuse);
+      // Destino '*' por lo mismo que en `avisarALaApp`: el mensaje va a ESTA
+      // ventana y nadie más lo ve; con el origen propio no llegaría desde una
+      // página `file://`, que es como corre la prueba.
+      window.postMessage({ tipo: 'jomap-devolucion-comprobantes', bulto }, '*');
+    } catch (e) { resolve(false); return; }
+    // Si nadie contesta es que no hay extensión: no se espera más.
+    setTimeout(() => {
+      if (listo) return;
+      window.removeEventListener('message', acuse);
+      resolve(false);
+    }, 1500);
+  });
+
   // --- Traer la grilla al sistema ------------------------------------------
   // El SRI ya no pide cargar facturas: muestra el listado que califica y el
   // tramite es marcar, clasificar y enviar. Asi que el listado se lleva al
@@ -1295,12 +1324,27 @@
     linea('Listos para el sistema', 'font-weight:700;color:#1e6b33;margin-bottom:4px');
     linea(filas.length + ' comprobante(s) de ' + (MESES[mes - 1] || mes) + ' ' + anio +
       '  ·  IVA ' + money(total), 'font-weight:600;color:#333');
+    // El listado viaja SOLO al sistema, igual que la constancia: leerlo acá y
+    // que el trabajo dependa de acordarse de copiar y pegar era perder el mes
+    // entero cuando el portapapeles fallaba o alguien cerraba la pestaña.
+    const viaje = el('div', 'margin:6px 0;color:#555;font-size:11px;line-height:1.45',
+      'Mandando los comprobantes al sistema…');
+    cuerpo.appendChild(viaje);
+    const llego = await mandarComprobantesALaApp(bulto);
+    if (llego) {
+      viaje.style.color = '#1e6b33';
+      viaje.style.fontWeight = '600';
+      viaje.textContent = '✔ Ya viajaron al sistema. Volvé a la pestaña del Gestor Tributario, ' +
+        'en Devolución IVA con este contribuyente abierto, y aparecen solos: ahí marcás, ' +
+        'clasificás y se controla el tope del mes; después volvés acá a presentar.';
+    } else {
+      viaje.textContent = 'Sin la extensión instalada no pueden viajar solos: tocá ' +
+        '"Copiar para el sistema" y, en el Gestor Tributario, "📥 Pegar comprobantes del portal". ' +
+        'Ahí marcás, clasificás y se controla el tope del mes; después volvés acá a presentar.';
+    }
     cuerpo.appendChild(boton('Copiar para el sistema', function () {
       copiar(JSON.stringify(bulto), this);
     }));
-    linea('En el sistema, entrá a Devolución IVA y tocá "📥 Pegar comprobantes del portal". ' +
-      'Ahí marcás, clasificás y se controla el tope del mes; después volvés acá a presentar.',
-      'margin:6px 0;color:#777;font-size:11px;line-height:1.45');
     const lista = el('div', 'margin-top:6px;max-height:30vh;overflow:auto;border:1px solid #e2e8e4;border-radius:6px');
     filas.forEach((f) => {
       const fila = el('div', 'padding:3px 6px;border-bottom:1px solid #f0f3f1;font-size:11px;color:#444');

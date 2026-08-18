@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { useClients } from '../context/ClientContext'
 import { devolucionesIvaAPI, invoicesAPI, downloadBlob } from '../services/api'
@@ -106,6 +106,7 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
   // Aviso de la subida en su propio renglón: `msg` lo borra cada recarga y el
   // resultado del TXT/XML tiene que quedar a la vista después de recargar.
   const [avisoSubida, setAvisoSubida] = useState(null) // { tipo: 'work'|'ok'|'err', texto }
+  const portalEnCursoRef = useRef(null) // listado del portal que ya se está ingresando (no entra dos veces)
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null) // { tipo: 'ok'|'err', texto }
 
@@ -269,20 +270,31 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
   // enviarlos. El enviador copia esa grilla y acá entra tal cual, sin pasar por
   // Gastos. Se guarda además en el navegador para poder desmarcar y volver a
   // marcar sin tener que ir a buscarla de nuevo al portal.
-  const pegarPortal = async () => {
-    setMsg(null)
-    let d = null
-    try {
-      d = JSON.parse(await navigator.clipboard.readText())
-    } catch {
-      setAvisoSubida({ tipo: 'err', texto: 'En el portapapeles no hay comprobantes del portal. En el SRI, tocá «Traer comprobantes al sistema» en el enviador.' })
-      return
-    }
+  // Ingresa un listado del portal (venga del portapapeles o solo, por la
+  // extensión). Devuelve `soltar`: si la extensión ya puede olvidarse de ese
+  // listado —porque entró, o porque insistir no va a cambiar nada—.
+  const ingresarPortal = async (d, { automatico = false } = {}) => {
     if (!d || !Array.isArray(d.filas) || !d.filas.length) {
       setAvisoSubida({ tipo: 'err', texto: 'Eso no es el listado del portal: falta el detalle de comprobantes.' })
-      return
+      return { ok: false, soltar: true }
     }
-    setAvisoSubida({ tipo: 'work', texto: `Ingresando ${d.filas.length} comprobante(s) del portal…` })
+    // El listado es DE alguien: entrarlo en el contribuyente que esté abierto
+    // sería armarle la devolución a otra persona. Si no coincide se avisa y se
+    // deja esperando —al abrir a quien corresponde, entra solo—.
+    const suyo = String(d.identificacion || '').replace(/\D/g, '')
+    const abierto = String(selectedClient?.identificacion || '').replace(/\D/g, '')
+    if (suyo && abierto && suyo !== abierto) {
+      setAvisoSubida({
+        tipo: 'err',
+        texto: `Esos comprobantes del portal son de ${d.identificacion}, y acá está abierto ` +
+          `${selectedClient?.identificacion}. Abrí ese contribuyente y entran solos.`,
+      })
+      return { ok: false, soltar: false }   // que sigan esperando a su contribuyente
+    }
+    setAvisoSubida({
+      tipo: 'work',
+      texto: `Ingresando ${d.filas.length} comprobante(s) del portal${automatico ? ' que llegaron del SRI' : ''}…`,
+    })
     try {
       const r = await devolucionesIvaAPI.portal({
         client_id: clientId,
@@ -304,9 +316,40 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
       })
       setPeriodoSel({ mes: d.mes, anio: d.anio })
       cargarPeriodos()
+      return { ok: true, soltar: true }
     } catch (e) {
       setAvisoSubida({ tipo: 'err', texto: e.response?.data?.detail || 'No se pudieron ingresar los comprobantes del portal.' })
+      // 409 es "ese mes ya está presentado": reintentarlo en cada vuelta a la
+      // pestaña solo repetiría el aviso, así que se da por atendido.
+      return { ok: false, soltar: e.response?.status === 409 }
     }
+  }
+
+  const pegarPortal = async () => {
+    setMsg(null)
+    let texto = null
+    try {
+      texto = await navigator.clipboard.readText()
+    } catch {
+      // El navegador puede negar la lectura del portapapeles (permiso denegado,
+      // pestaña sin foco, navegador endurecido) y eso no se distingue de "no hay
+      // nada copiado": decirlo evita mandar a buscar el problema al SRI.
+      setAvisoSubida({
+        tipo: 'err',
+        texto: 'El navegador no dejó leer el portapapeles. Con la extensión instalada no hace ' +
+          'falta copiar ni pegar: al tocar «Traer comprobantes al sistema» en el portal, los ' +
+          'comprobantes entran solos al volver acá.',
+      })
+      return
+    }
+    let d = null
+    try {
+      d = JSON.parse(texto)
+    } catch {
+      setAvisoSubida({ tipo: 'err', texto: 'En el portapapeles no hay comprobantes del portal. En el SRI, tocá «Traer comprobantes al sistema» en el enviador.' })
+      return
+    }
+    await ingresarPortal(d)
   }
 
   const subirXml = async (files) => {
@@ -755,6 +798,44 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [solicitudes])
 
+  // Y el listado del portal llega solo, por el mismo camino: el enviador lo
+  // publica al traerlo, la extensión lo guarda y lo entrega al volver a esta
+  // pestaña. Antes había que copiarlo y pegarlo a mano —«Traer comprobantes al
+  // sistema» dejaba el trabajo a medias en el portapapeles, y el mes se perdía
+  // cada vez que la copia fallaba o alguien cerraba la pestaña sin pegar—.
+  // Sin extensión sigue estando «📥 Pegar comprobantes del portal».
+  useEffect(() => {
+    const alLlegarComprobantes = async (ev) => {
+      if (ev.source !== window) return              // nada de otras ventanas
+      const d = ev.data
+      if (!d || d.tipo !== 'jomap-devolucion-comprobantes-app' || !d.bulto) return
+      const b = d.bulto
+      const filas = Array.isArray(b.filas) ? b.filas : []
+      // La extensión reintenta la entrega cada vez que la pestaña vuelve al
+      // frente (no lo suelta hasta que se ingresa): sin esta marca, el mismo
+      // listado entraría dos veces.
+      const firma = `${b.identificacion || ''}|${b.anio}-${b.mes}|${filas.length}|${filas[0]?.serie || ''}`
+      if (portalEnCursoRef.current === firma) return
+      portalEnCursoRef.current = firma
+      setMsg(null)
+      const r = await ingresarPortal(b, { automatico: true })
+      if (r.soltar) window.postMessage({ tipo: 'jomap-devolucion-comprobantes-ingresados' }, '*')
+      if (!r.ok) portalEnCursoRef.current = null     // que se pueda reintentar
+    }
+    window.addEventListener('message', alLlegarComprobantes)
+    return () => window.removeEventListener('message', alLlegarComprobantes)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId, selectedClient?.identificacion, tipo, porcentaje])
+
+  // Y al abrir la pantalla (o al cambiar de contribuyente) se pide lo que haya
+  // esperando: volver del SRI y navegar acá dentro de la app no dispara ningún
+  // `focus`, y entonces el listado se quedaría guardado sin que nadie lo
+  // reclame. Va aparte de la escucha para no repetir el pedido con cada tecla
+  // del porcentaje de discapacidad.
+  useEffect(() => {
+    window.postMessage({ tipo: 'jomap-devolucion-comprobantes-pedido' }, '*')
+  }, [clientId])
+
   const eliminar = async (sol) => {
     if (!window.confirm(`¿Eliminar la solicitud de ${String(sol.mes).padStart(2, '0')}/${sol.anio}?`)) return
     try {
@@ -1156,12 +1237,17 @@ function SinComprobantes({ cliente, periodo, anio, conGasto, onElegirPeriodo, on
         <ol>
           <li>En el SRI, entrá a <em>Devolución de IVA → Ingresar facturas electrónicas</em>.</li>
           <li>Tocá el marcador <strong>📤 Enviador-DEVOLUCIÓN</strong> y después
-            <strong> «Traer comprobantes al sistema»</strong>: elige el mes y copia la grilla.</li>
-          <li>Volvé acá y pegala:</li>
+            <strong> «Traer comprobantes al sistema»</strong>: elige el mes y lee la grilla.</li>
+          <li>Volvé a esta pantalla: <strong>los comprobantes entran solos</strong>, sin copiar
+            ni pegar (con la extensión instalada).</li>
         </ol>
         <button className="dv-btn primary" onClick={onPegarPortal}>
           📥 Pegar comprobantes del portal
         </button>
+        <p className="dv-vacio-nota">
+          El botón es el respaldo: sirve si trabajás con el marcador sin la extensión, o si
+          copiaste el listado desde el portal.
+        </p>
       </div>
 
       {conGasto.length > 0 && (

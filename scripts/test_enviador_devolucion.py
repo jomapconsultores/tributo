@@ -20,6 +20,8 @@ Variantes del portal (el SRI cambia el widget entre versiones):
                  la cuenta bancaria y el menú, y recién ahí trabajar
     semestral    periodo de dos meses -> una solicitud por mes, seguidas
     extension    solicitud inyectada como hace la extension -> corre SOLA
+    traer        "Traer comprobantes al sistema" -> el listado viaja SOLO a la
+                 app por la extension, y no se suelta hasta que ella lo ingresa
     auto         solicitud autorizada desde el sistema -> corre SOLA, sin click
     widget       el click va a la caja del checkbox   -> marca los 12
     nativo       la caja no escucha, sí el checkbox   -> marca los 12
@@ -142,6 +144,80 @@ DEL_PANEL = "[...document.querySelectorAll('#jomap-enviador-devolucion button')]
 BOTONES = DEL_PANEL + ".map(b=>b.textContent)"
 
 
+def tocar(pg, patron: str) -> bool:
+    """Toca el botón del panel cuyo texto casa con el patrón (regex JS)."""
+    return pg.evaluate(
+        "() => { const b = " + DEL_PANEL + f".find(x => {patron}.test((x.textContent||'').trim()));"
+        " if (!b) return false; b.click(); return true; }")
+
+
+def probar_traida(pg) -> bool:
+    """El listado del portal tiene que viajar SOLO al sistema.
+
+    Antes terminaba en el portapapeles y había que acordarse de pegarlo en la
+    app: si la copia fallaba —o alguien cerraba la pestaña— el mes se perdía y
+    había que volver a recorrer la grilla del SRI."""
+    # Lo que la extensión le entrega a la app (el tramo de vuelta).
+    pg.evaluate("""() => {
+      window.__alaApp = [];
+      window.addEventListener('message', (e) => {
+        if (e.data && e.data.tipo === 'jomap-devolucion-comprobantes-app') window.__alaApp.push(e.data);
+      });
+    }""")
+    if not tocar(pg, "/^Traer comprobantes al sistema$/"):
+        print(f"  ✖ el panel no ofrece traer comprobantes: {pg.evaluate(BOTONES)}")
+        return False
+    pg.wait_for_timeout(600)
+    if not tocar(pg, "/^2026$/"):
+        print(f"  ✖ no ofreció el año: {pg.evaluate(BOTONES)}")
+        return False
+    pg.wait_for_timeout(1500)                      # el portal llena los meses por ajax
+    if not tocar(pg, "/^julio$/i"):
+        print(f"  ✖ no ofreció el mes: {pg.evaluate(BOTONES)}")
+        return False
+
+    panel = ""
+    for _ in range(30):
+        pg.wait_for_timeout(500)
+        panel = pg.evaluate(PANEL)
+        if "Ya viajaron al sistema" in panel or "Sin la extensión" in panel:
+            break
+    guardados = pg.evaluate("window.__guardados || []")
+    ok = "Ya viajaron al sistema" in panel and "comprobantes" in guardados
+    print(f"  {'✔' if ok else '✖'} el listado viaja solo (y el panel lo dice)")
+    if not ok:
+        print("  panel:", panel[-400:], "| guardados:", guardados)
+
+    # La app pide lo que haya esperando al abrir la pantalla: navegar dentro de
+    # la app no dispara ningún `focus`, y sin el pedido el listado se quedaría
+    # guardado sin que nadie lo reclame.
+    pg.evaluate("() => window.postMessage({ tipo: 'jomap-devolucion-comprobantes-pedido' }, '*')")
+    pg.wait_for_timeout(600)
+    entregas = pg.evaluate("window.__alaApp || []")
+    b = (entregas[0] or {}).get("bulto") if entregas else None
+    llego = bool(b) and len(b.get("filas") or []) == 12 and b.get("identificacion") == "0912345678"
+    print(f"  {'✔' if llego else '✖'} la extensión se lo entrega a la app (12 filas, con su RUC)")
+    if not llego:
+        print("  entregas:", entregas)
+
+    # Y no se suelta hasta que la app avisa que los ingresó: si se soltara al
+    # entregarlos, volver a la pestaña en el momento equivocado —otra pantalla,
+    # otro contribuyente— perdería el mes.
+    pg.evaluate("() => window.postMessage({ tipo: 'jomap-devolucion-comprobantes-pedido' }, '*')")
+    pg.wait_for_timeout(600)
+    espera = len(pg.evaluate("window.__alaApp || []")) == 2
+    print(f"  {'✔' if espera else '✖'} sigue esperando mientras la app no lo ingresa")
+
+    pg.evaluate("() => window.postMessage({ tipo: 'jomap-devolucion-comprobantes-ingresados' }, '*')")
+    pg.wait_for_timeout(400)
+    pg.evaluate("() => window.postMessage({ tipo: 'jomap-devolucion-comprobantes-pedido' }, '*')")
+    pg.wait_for_timeout(600)
+    soltado = len(pg.evaluate("window.__alaApp || []")) == 2
+    print(f"  {'✔' if soltado else '✖'} ingresado en la app, ya no se vuelve a entregar")
+
+    return ok and llego and espera and soltado
+
+
 def correr(modo: str, fuente: str) -> bool:
     codigo = codigo_del_marcador(fuente)
     with sync_playwright() as p:
@@ -155,7 +231,10 @@ def correr(modo: str, fuente: str) -> bool:
         # portal normal, pero con la solicitud ya autorizada desde el sistema.
         # 'extension' entrega la solicitud como lo hace la extensión de Chrome:
         # inyectada en la página, sin pasar por el portapapeles.
-        extension = modo == "extension"
+        # 'traer' corre el mismo puente de la extensión, pero para el camino de
+        # IDA de los comprobantes: el listado del portal hacia el sistema.
+        traer = modo == "traer"
+        extension = modo in ("extension", "traer")
         semestral = modo == "semestral"
         # 'quejoso' marca bien pero el portal rechaza la selección al procesar:
         # corre en automático porque es ahí donde el rechazo hace daño —el
@@ -178,7 +257,7 @@ def correr(modo: str, fuente: str) -> bool:
                         "discapacidad", "inicio")
         propio = quejoso or otro or discapacidad or inicio
         pg.goto(PORTAL.as_uri() + "?modo=" +
-                (modo if propio else ("widget" if (auto or cruzado) else modo)))
+                (modo if propio else ("widget" if (auto or cruzado or traer) else modo)))
         # En 'inicio' NO se toca nada: el portal queda en el aviso legal y es el
         # marcador el que tiene que abrirse paso hasta la grilla.
         if not inicio:
@@ -218,7 +297,7 @@ def correr(modo: str, fuente: str) -> bool:
             }""", (EXT / "enviador.js").as_uri())
             pg.evaluate((EXT / "contenido-app.js").read_text(encoding="utf-8"))
             pg.evaluate("p => window.postMessage({ tipo: 'jomap-devolucion-paquete', paquete: p }, '*')",
-                        paquete_de_prueba(True))
+                        paquete_de_prueba(not traer))
             pg.wait_for_timeout(300)
             pg.evaluate((EXT / "contenido-sri.js").read_text(encoding="utf-8"))
         else:
@@ -235,6 +314,14 @@ def correr(modo: str, fuente: str) -> bool:
         if not extension:
             pg.evaluate(codigo)
         pg.wait_for_timeout(1500)
+
+        if traer:
+            ok = probar_traida(pg)
+            if errores:
+                ok = False
+                print("  ✖ errores en la página:", errores)
+            nav.close()
+            return ok
 
         if cruzado:
             panel = pg.evaluate(PANEL)
@@ -419,7 +506,7 @@ def correr(modo: str, fuente: str) -> bool:
 
 
 if __name__ == "__main__":
-    modos = [sys.argv[1]] if len(sys.argv) > 1 else ["semestral", "extension", "auto", "widget",
+    modos = [sys.argv[1]] if len(sys.argv) > 1 else ["semestral", "extension", "traer", "auto", "widget",
                                                      "nativo", "discapacidad", "quejoso", "cruzado", "inicio",
                                                      "otro", "muerto"]
     fuente = sys.argv[2] if len(sys.argv) > 2 else "min"

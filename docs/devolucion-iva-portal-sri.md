@@ -139,10 +139,29 @@ marcar, clasificar y enviar. Así que el módulo ya no depende de que esos
 comprobantes estén cargados en Gastos:
 
 - El enviador tiene **"Traer comprobantes al sistema"**: recorre la grilla del
-  mes y copia el listado (serie, fecha, proveedor, monto IVA).
-- En la app, **"Pegar comprobantes del portal"** (`POST /devoluciones-iva/portal`)
-  crea la solicitud del mes con esas filas, proponiendo el tipo de gasto por la
-  clasificación que el proveedor ya tenga en Gastos o, si no, por su nombre.
+  mes y lee el listado (serie, fecha, proveedor, monto IVA).
+- **Ese listado viaja SOLO al sistema** (agregado 2026-08-17), por el mismo
+  camino que la constancia: el enviador lo publica (`postMessage`
+  `jomap-devolucion-comprobantes`), la extensión lo guarda y se lo entrega a la
+  pantalla de devoluciones (`jomap-devolucion-comprobantes-app`), que lo ingresa
+  sola. Antes terminaba en el **portapapeles** y había que acordarse de pegarlo:
+  si la copia fallaba —o alguien cerraba la pestaña, o volvía a la app días
+  después— el mes se perdía y había que recorrer la grilla del SRI otra vez.
+  - **No se suelta hasta que la app avisa que los ingresó**
+    (`jomap-devolucion-comprobantes-ingresados`). La constancia sí se consume al
+    entregarla, pero acá volver a la pestaña en el momento equivocado —otra
+    pantalla abierta, otro contribuyente— tiraría el mes a la basura.
+  - **La app lo pide al abrir la pantalla**
+    (`jomap-devolucion-comprobantes-pedido`): navegar dentro de la app no
+    dispara ningún `focus`, y sin el pedido el listado se quedaría esperando.
+  - **No entra en el contribuyente equivocado**: si el RUC del listado no es el
+    que está abierto, la pantalla lo dice y lo deja esperando —al abrir a quien
+    corresponde, entra solo—. Es la misma regla que ya frenaba al enviador.
+  - Sin la extensión no lo escucha nadie: el panel del portal lo dice y quedan
+    **"Copiar para el sistema"** y **"📥 Pegar comprobantes del portal"**.
+- En la app, `POST /devoluciones-iva/portal` crea la solicitud del mes con esas
+  filas, proponiendo el tipo de gasto por la clasificación que el proveedor ya
+  tenga en Gastos o, si no, por su nombre.
 - **La mejor pista es la ACTIVIDAD ECONÓMICA del SRI** (agregado 2026-08-16). El
   orden de la propuesta es: lo que el usuario ya decidió para ese proveedor →
   su actividad económica → su clasificación en Gastos → su nombre. La razón
@@ -246,8 +265,9 @@ texto, así no arrastra datos del contribuyente).
 Se prueba con `python scripts/test_enviador_devolucion.py`, que corre el marcador
 **minificado** contra `scripts/portal_devolucion_falso.html` en sus variantes: el
 widget escucha / solo escucha el checkbox interno / no escucha nadie / **el
-portal rechaza la selección al procesar** (`quejoso`), más el recorrido semestral
-y el de la extensión. Contra el portal real hay que probarlo con una solicitud
+portal rechaza la selección al procesar** (`quejoso`), más el recorrido semestral,
+el de la extensión y el de **`traer`** —el listado del portal viajando solo hasta
+la app, con su acuse de recibo—. Contra el portal real hay que probarlo con una solicitud
 verdadera.
 
 ## Tipo de gasto — catálogo cerrado del SRI
