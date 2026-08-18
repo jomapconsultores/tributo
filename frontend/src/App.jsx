@@ -142,8 +142,23 @@ function RequireOrgAdmin({ children }) {
   return children
 }
 
+// Cada cuánto se pregunta si hay versión nueva. El navegador solo lo comprueba
+// al cargar la página, así que una pestaña abierta desde la mañana se queda con
+// el código viejo —y lo que se despliega "no aparece" aunque esté en el
+// servidor—. Se revisa también al volver a la pestaña, que es cuando el usuario
+// suele regresar del SRI o de Odoo.
+const REVISAR_VERSION_MS = 5 * 60 * 1000
+
 function UpdateBanner() {
-  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW()
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW({
+    onRegisteredSW(_url, registro) {
+      if (!registro) return
+      const revisar = () => { registro.update().catch(() => { /* sin red: se reintenta */ }) }
+      setInterval(revisar, REVISAR_VERSION_MS)
+      window.addEventListener('focus', revisar)
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) revisar() })
+    },
+  })
   if (!needRefresh) return null
   return (
     <div style={{
