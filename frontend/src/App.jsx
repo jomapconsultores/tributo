@@ -3,7 +3,7 @@
  * ------------------------------------------------------------ */
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { AccessProvider, useAccess, homeFor } from './context/AccessContext'
 import { ClientProvider, SELECTED_CLIENT_KEY } from './context/ClientContext'
 import { SELECTED_ORG_KEY } from './services/api'
@@ -41,10 +41,7 @@ const Capacitaciones           = lazy(() => import('./pages/Capacitaciones'))
 const Admin                    = lazy(() => import('./pages/Admin'))
 const AdminCredentials         = lazy(() => import('./pages/AdminCredentials'))
 const Movimientos              = lazy(() => import('./pages/Movimientos'))
-const OdooFacturacion          = lazy(() => import('./pages/OdooFacturacion'))
-const FacturasProcesadas       = lazy(() => import('./pages/FacturasProcesadas'))
-const CruceOdoo                = lazy(() => import('./pages/CruceOdoo'))
-const ReporteFacturacion       = lazy(() => import('./pages/ReporteFacturacion'))
+const Facturacion              = lazy(() => import('./pages/Facturacion'))
 const AdminClientAccess        = lazy(() => import('./pages/AdminClientAccess'))
 const AdminPermisos            = lazy(() => import('./pages/AdminPermisos'))
 const AdminEmpresas            = lazy(() => import('./pages/AdminEmpresas'))
@@ -118,13 +115,6 @@ function HomeRedirect() {
   return <Navigate to={homeFor(has, hasSub)} replace />
 }
 
-function RequireAdmin({ children }) {
-  const { isAdmin, loading, has, hasSub } = useAccess()
-  if (loading) return <PageLoader />
-  if (!isAdmin) return <Navigate to={homeFor(has, hasSub)} replace />
-  return children
-}
-
 function RequireSuperAdmin({ children }) {
   const { isSuperAdmin, loading, has, hasSub } = useAccess()
   if (loading) return <PageLoader />
@@ -148,6 +138,12 @@ function RequireOrgAdmin({ children }) {
 // servidor—. Se revisa también al volver a la pestaña, que es cuando el usuario
 // suele regresar del SRI o de Odoo.
 const REVISAR_VERSION_MS = 5 * 60 * 1000
+
+// /odoo-facturacion/xxx -> /facturacion/xxx (marcadores viejos)
+function RedirFacturacion() {
+  const { tab } = useParams()
+  return <Navigate to={`/facturacion/${tab || ''}`} replace />
+}
 
 function UpdateBanner() {
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW({
@@ -273,17 +269,16 @@ function App() {
               <Route path="/capacitaciones" element={<Capacitaciones />} />
               <Route path="/admin" element={<RequireSuperAdmin><Admin /></RequireSuperAdmin>} />
               <Route path="/admin/credenciales" element={<RequireCredenciales><AdminCredentials /></RequireCredenciales>} />
-              <Route path="/odoo-facturacion" element={<RequireAdmin><OdooFacturacion /></RequireAdmin>} />
-              {/* Sin guard a propósito: es de solo lectura y /api/odoo/facturas ya
-                  filtra server-side por RUC autorizado para el rol 'cliente' (a
-                  diferencia de /odoo-facturacion, que factura y sí requiere admin/socio). */}
-              <Route path="/odoo-facturacion/procesadas" element={<FacturasProcesadas />} />
-              {/* Cruce mes a mes contra Odoo: lee honorarios propios del rol, por eso
-                  va con el mismo guard que la emisión. */}
-              <Route path="/odoo-facturacion/cruce" element={<RequireAdmin><CruceOdoo /></RequireAdmin>} />
-              {/* Reporte del mes (trabajo declarado + cobro + Odoo): lee honorarios
-                  y declaraciones propias del rol, mismo guard que la emisión. */}
-              <Route path="/odoo-facturacion/reporte" element={<RequireAdmin><ReporteFacturacion /></RequireAdmin>} />
+              {/* TODA la facturación en una pantalla con pestañas. Sin guard acá: el
+                  módulo decide por pestaña —emitir, reporte y cruce son de
+                  admin/socio; "Facturas de Odoo" es de solo lectura y el backend
+                  ya filtra por RUC autorizado para el rol 'cliente'—. */}
+              <Route path="/facturacion" element={<Facturacion />} />
+              <Route path="/facturacion/:tab" element={<Facturacion />} />
+              {/* Las direcciones viejas siguen funcionando: marcadores, enlaces
+                  guardados y lo que quedó escrito en otras pantallas. */}
+              <Route path="/odoo-facturacion" element={<Navigate to="/facturacion" replace />} />
+              <Route path="/odoo-facturacion/:tab" element={<RedirFacturacion />} />
               <Route path="/admin/acceso-clientes" element={<RequireSuperAdmin><AdminClientAccess /></RequireSuperAdmin>} />
               <Route path="/admin/permisos" element={<RequireSuperAdmin><AdminPermisos /></RequireSuperAdmin>} />
               <Route path="/admin/empresas" element={<RequireOrgAdmin><AdminEmpresas /></RequireOrgAdmin>} />

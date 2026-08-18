@@ -170,14 +170,12 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         ],
       },
       {
-        key: 'odoo', ico: '🧾', rail: 'Facturación Odoo', title: 'Facturación Odoo',
-        visible: true, match: (p) => p.startsWith('/odoo-facturacion'),
-        items: [
-          L('📤', 'Emitir facturas', '/odoo-facturacion'),
-          L('✅', 'Facturas procesadas', '/odoo-facturacion/procesadas'),
-          L('📊', 'Reporte y comparativo', '/odoo-facturacion/reporte'),
-          L('🔍', 'Cruce mensual', '/odoo-facturacion/cruce'),
-        ],
+        key: 'odoo', ico: '🧾', rail: 'Facturación', title: 'Facturación',
+        // Un solo destino: adentro son pestañas. Cuatro entradas parecidas en el
+        // menú obligaban a adivinar en cuál estaba cada cosa.
+        visible: true, autoNav: true,
+        match: (p) => p.startsWith('/facturacion') || p.startsWith('/odoo-facturacion'),
+        items: [L('🧾', 'Facturación', '/facturacion')],
       },
       {
         key: 'capacitaciones', ico: '🎓', rail: 'Capacitaciones', title: 'Capacitaciones',

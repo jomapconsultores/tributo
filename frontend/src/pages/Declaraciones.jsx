@@ -847,7 +847,7 @@ export default function Declaraciones({ tipo }) {
           </span>
           <button
             className="dc-btn primary"
-            onClick={() => { setOfrecerFactura(null); navigate('/odoo-facturacion') }}
+            onClick={() => { setOfrecerFactura(null); navigate('/facturacion') }}
           >🧾 Sí, facturar</button>
           <button className="dc-btn small" onClick={() => setOfrecerFactura(null)}>
             Ahora no

@@ -5,7 +5,7 @@ import './CruceOdoo.css'
 
 const CO_STEPS = [
   { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
-  { icon: '🧾', label: 'Facturar en Odoo', path: '/odoo-facturacion' },
+  { icon: '🧾', label: 'Facturar en Odoo', path: '/facturacion' },
   { icon: '🔍', label: 'Cruce con Odoo', current: true },
 ]
 
@@ -19,7 +19,7 @@ const ESTADOS = {
   solo_odoo: { ico: '↯', txt: 'Solo en Odoo',        hint: 'Hay factura en Odoo sin honorario registrado en el sistema' },
 }
 
-export default function CruceOdoo() {
+export default function CruceOdoo({ embebido = false }) {
   const [datos, setDatos] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
@@ -56,11 +56,11 @@ export default function CruceOdoo() {
 
   return (
     <div className="co-wrap">
-      <WorkflowGuide steps={CO_STEPS} />
+      {!embebido && <WorkflowGuide steps={CO_STEPS} />}
 
       <div className="co-header">
         <div>
-          <h1 className="co-title">Cruce mensual con Odoo</h1>
+          {!embebido && <h1 className="co-title">Cruce mensual con Odoo</h1>}
           <p className="co-sub">
             Mes a mes: lo que el sistema registró como honorario frente a lo que realmente
             se facturó en Odoo. Cada factura queda atribuida al mes que le corresponde.

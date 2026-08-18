@@ -8,11 +8,11 @@ const fmtMoney = (v) => `$${Number(v || 0).toFixed(2)}`
 
 const FP_STEPS = [
   { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
-  { icon: '🧾', label: 'Facturar en Odoo', path: '/odoo-facturacion' },
+  { icon: '🧾', label: 'Facturar en Odoo', path: '/facturacion' },
   { icon: '✅', label: 'Facturas procesadas', current: true },
 ]
 
-export default function FacturasProcesadas() {
+export default function FacturasProcesadas({ embebido = false }) {
   const navigate = useNavigate()
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
@@ -43,16 +43,18 @@ export default function FacturasProcesadas() {
 
   return (
     <div className="fp-page" style={{ padding: '16px 20px' }}>
-      <WorkflowGuide steps={FP_STEPS} />
+      {!embebido && <WorkflowGuide steps={FP_STEPS} />}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ margin: '0 0 4px' }}>✅ Facturas procesadas</h1>
+          {!embebido && <h1 style={{ margin: '0 0 4px' }}>✅ Facturas procesadas</h1>}
           <p style={{ margin: 0, color: '#6b7888', fontSize: '.9rem' }}>
             Facturas de honorarios ya emitidas en Odoo. Buscá por fecha, RUC, nombre o número.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => navigate('/odoo-facturacion')} style={btn}>📤 Emitir facturas</button>
+          {!embebido && (
+            <button onClick={() => navigate('/facturacion')} style={btn}>📤 Emitir facturas</button>
+          )}
           <button onClick={cargar} style={btn}>↻ Actualizar</button>
         </div>
       </header>

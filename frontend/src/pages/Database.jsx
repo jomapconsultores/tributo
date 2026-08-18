@@ -157,7 +157,7 @@ export default function Database() {
     { icon: '🗂', label: 'Clasificar comprobantes', path: '/clasificador' },
     { icon: '📄', label: 'Declaraciones IVA / ICE', path: '/declaracion-iva' },
     { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
-    { icon: '🧾', label: 'Facturar en Odoo', path: '/odoo-facturacion' },
+    { icon: '🧾', label: 'Facturar en Odoo', path: '/facturacion' },
   ]
 
   return (

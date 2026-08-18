@@ -6,9 +6,9 @@ import './ReporteFacturacion.css'
 
 const RF_STEPS = [
   { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
-  { icon: '🧾', label: 'Facturar en Odoo', path: '/odoo-facturacion' },
+  { icon: '🧾', label: 'Facturar en Odoo', path: '/facturacion' },
   { icon: '📊', label: 'Reporte y comparativo', current: true },
-  { icon: '🔍', label: 'Cruce mensual', path: '/odoo-facturacion/cruce' },
+  { icon: '🔍', label: 'Cruce mensual', path: '/facturacion/cruce' },
 ]
 
 const fmt = (v) => `$${Number(v || 0).toFixed(2)}`
@@ -28,7 +28,7 @@ const FACT = {
   sin_movimiento: { txt: '—', cls: 'dim' },
 }
 
-export default function ReporteFacturacion() {
+export default function ReporteFacturacion({ embebido = false }) {
   const hoy = new Date()
   const [mes, setMes] = useState(hoy.getMonth() + 1)
   const [anio, setAnio] = useState(hoy.getFullYear())
@@ -86,15 +86,17 @@ export default function ReporteFacturacion() {
 
   return (
     <div className="rf-wrap">
-      <WorkflowGuide steps={RF_STEPS} />
+      {!embebido && <WorkflowGuide steps={RF_STEPS} />}
 
       <header className="rf-header">
-        <div>
-          <h1 className="rf-title">📊 Reporte y comparativo de facturación</h1>
-          <p className="rf-sub">
-            Quién declaró (todo o en parte), a quién falta facturarle y qué tiene Odoo realmente emitido en el mes.
-          </p>
-        </div>
+        {!embebido && (
+          <div>
+            <h1 className="rf-title">📊 Reporte y comparativo de facturación</h1>
+            <p className="rf-sub">
+              Quién declaró (todo o en parte), a quién falta facturarle y qué tiene Odoo realmente emitido en el mes.
+            </p>
+          </div>
+        )}
         <div className="rf-periodo">
           <select value={mes} onChange={(e) => setMes(Number(e.target.value))}>
             {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}

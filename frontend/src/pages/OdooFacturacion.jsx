@@ -15,11 +15,11 @@ function fmtMoney(v) {
 const OF_STEPS = [
   { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
   { icon: '🧾', label: 'Facturar en Odoo', current: true },
-  { icon: '✅', label: 'Facturas procesadas', path: '/odoo-facturacion/procesadas' },
-  { icon: '🔍', label: 'Cruce mensual', path: '/odoo-facturacion/cruce' },
+  { icon: '✅', label: 'Facturas procesadas', path: '/facturacion/procesadas' },
+  { icon: '🔍', label: 'Cruce mensual', path: '/facturacion/cruce' },
 ]
 
-export default function OdooFacturacion() {
+export default function OdooFacturacion({ embebido = false }) {
   const navigate = useNavigate()
   const { identsForSvc } = useClients()
   const idents_svc = identsForSvc('declaracion_iva,declaracion_ice,declaracion_renta,devolucion_iva')
@@ -363,8 +363,8 @@ export default function OdooFacturacion() {
 
   return (
     <div className="of-wrap">
-      <WorkflowGuide steps={OF_STEPS} />
-      <div className="of-header">
+      {!embebido && <WorkflowGuide steps={OF_STEPS} />}
+      {!embebido && <div className="of-header">
         <div>
           <h1 className="of-title">Facturación Odoo</h1>
           <p className="of-sub">Crea y confirma facturas de honorarios directamente en Odoo.</p>
@@ -374,7 +374,7 @@ export default function OdooFacturacion() {
             ? `Odoo conectado · ${estadoOdoo.db}`
             : 'Odoo no disponible'}
         </div>
-      </div>
+      </div>}
 
       {/* Período que se está facturando: sin esto no se sabía a qué mes
           correspondían las facturas que se iban a emitir. */}
@@ -392,7 +392,7 @@ export default function OdooFacturacion() {
 
       {/* Arrastres: meses anteriores con honorario registrado y sin factura en Odoo */}
       {Object.keys(atrasos).length > 0 && (
-        <button type="button" className="of-atrasos-banner" onClick={() => navigate('/odoo-facturacion/cruce')}>
+        <button type="button" className="of-atrasos-banner" onClick={() => navigate('/facturacion/cruce')}>
           ⚠ {Object.keys(atrasos).length} contribuyente(s) arrastran meses anteriores sin facturar
           {' · '}
           {fmtMoney(Object.values(atrasos).reduce((a, x) => a + (x.total || 0), 0))}
@@ -611,7 +611,7 @@ export default function OdooFacturacion() {
           {/* Aviso: ya procesados este mes → viven en el submenú "Facturas procesadas" */}
           {gruposProcesados.length > 0 && (
             <div className="of-procesados">
-              <button type="button" className="of-procesados-head" onClick={() => navigate('/odoo-facturacion/procesadas')}>
+              <button type="button" className="of-procesados-head" onClick={() => navigate('/facturacion/procesadas')}>
                 ✅ {gruposProcesados.length} contribuyente(s) ya procesado(s) este mes — no se vuelven a facturar · ver en «Facturas procesadas» ›
               </button>
             </div>

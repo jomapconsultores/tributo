@@ -214,13 +214,13 @@ export default function Reportes({ modo }) {
     { icon: '🗂', label: 'Clasificar comprobantes', path: '/clasificador' },
     { icon: '📄', label: 'Declaraciones IVA / ICE', path: '/declaracion-iva' },
     { icon: '📑', label: 'Revisar cobros pendientes', current: true },
-    { icon: '🧾', label: 'Emitir facturas en Odoo', path: '/odoo-facturacion' },
+    { icon: '🧾', label: 'Emitir facturas en Odoo', path: '/facturacion' },
   ]
   const STEPS_REALIZADOS = [
     { icon: '📑', label: 'Cobros pendientes', path: '/reportes/faltantes' },
-    { icon: '🧾', label: 'Emitir facturas en Odoo', path: '/odoo-facturacion' },
+    { icon: '🧾', label: 'Emitir facturas en Odoo', path: '/facturacion' },
     { icon: '✅', label: 'Realizados (aquí)', current: true },
-    { icon: '📋', label: 'Facturas procesadas', path: '/odoo-facturacion/procesadas' },
+    { icon: '📋', label: 'Facturas procesadas', path: '/facturacion/procesadas' },
   ]
   const guideSteps = modo === 'realizados' ? STEPS_REALIZADOS : STEPS_FALTANTES
 
@@ -336,7 +336,7 @@ export default function Reportes({ modo }) {
         <span className="rp-iva-hint" title="El IVA se define por cada valor: +IVA suma el 15%, o IVA incluido si ya viene con IVA.">ⓘ El IVA se marca por cada valor (+IVA / incl.)</span>
         <button className="rp-btn" onClick={() => exportar('excel')} disabled={!rows.length}>⬇ Excel</button>
         <button className="rp-btn" onClick={() => exportar('pdf')} disabled={!rows.length}>⬇ PDF</button>
-        <button className="rp-btn rp-btn-odoo" onClick={() => navigate('/odoo-facturacion')} disabled={!rows.length} title="Pasar al módulo de Facturación Odoo para crear las facturas de lo marcado">🧾 Enviar a Odoo (facturación)</button>
+        <button className="rp-btn rp-btn-odoo" onClick={() => navigate('/facturacion')} disabled={!rows.length} title="Pasar al módulo de Facturación Odoo para crear las facturas de lo marcado">🧾 Enviar a Odoo (facturación)</button>
       </div>
 
       {error && <div className="rp-error">⚠ {error}</div>}
