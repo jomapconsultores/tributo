@@ -175,6 +175,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         items: [
           L('📤', 'Emitir facturas', '/odoo-facturacion'),
           L('✅', 'Facturas procesadas', '/odoo-facturacion/procesadas'),
+          L('📊', 'Reporte y comparativo', '/odoo-facturacion/reporte'),
           L('🔍', 'Cruce mensual', '/odoo-facturacion/cruce'),
         ],
       },

@@ -1317,6 +1317,197 @@ async def cruce_mensual(meses: int = 12, user_id: str = Depends(get_current_user
     return _cruce_mensual(meses, user_id)
 
 
+# Trabajo declarativo que se espera CADA MES de un contribuyente, según los
+# servicios que tenga contratados. La renta es anual: no cuenta para el "parcial
+# o total" del mes, se informa aparte cuando se declaró.
+_SERV_MENSUAL = {
+    "declaracion_iva": "Declaración IVA",
+    "declaracion_ice": "Declaración ICE",
+}
+_TIPO_DECL = {"IVA": "declaracion_iva", "ICE": "declaracion_ice", "RENTA": "declaracion_renta"}
+
+
+@router.get("/reporte-facturacion")
+async def reporte_facturacion(mes: Optional[int] = None, anio: Optional[int] = None,
+                              user_id: str = Depends(get_current_user)):
+    """Quién declaró (total o parcial), quién falta por facturar, y el comparativo
+    contra lo que Odoo tiene realmente emitido en el mes.
+
+    Junta las tres cosas que antes había que mirar en pantallas distintas:
+      · el TRABAJO: qué declaraciones y anexos se hicieron en el mes, contra las
+        que le tocan al contribuyente por los servicios que tiene contratados;
+      · el COBRO registrado en el sistema (honorarios del mes);
+      · la FACTURA de Odoo: número, autorización del SRI y estado de pago.
+
+    'total' = se hicieron todas las declaraciones mensuales esperadas; 'parcial' =
+    algunas; 'ninguna' = ninguna. Un contribuyente sin servicios mensuales
+    contratados queda como 'sin_obligaciones' y no cuenta como faltante."""
+    from routers.reportes import _fetch_in_chunks, _es_mes_actual   # import diferido: reportes usa este módulo
+
+    sb = get_supabase_client()
+    hoy = datetime.now(_EC_TZ_ODOO)
+    mes = int(mes or hoy.month)
+    anio = int(anio or hoy.year)
+    if not (1 <= mes <= 12):
+        raise HTTPException(status_code=400, detail="Mes inválido")
+    clave = f"{anio:04d}-{mes:02d}"
+
+    clientes = visible_clients(user_id, "id,identificacion,nombre")
+    id_to_ruc, nombre_por_ruc = {}, {}
+    for c in clientes:
+        ident = (c.get("identificacion") or "").strip()
+        if not ident:
+            continue
+        id_to_ruc[str(c["id"])] = ident
+        nombre_por_ruc.setdefault(ident, c.get("nombre") or "")
+    ids = list(id_to_ruc)
+    periodo = {"mes": mes, "anio": anio, "etiqueta": _etiqueta_mes(anio, mes).title(), "clave": clave}
+    if not ids:
+        return {"periodo": periodo, "data": [], "resumen": {}, "facturas_odoo": [], "odoo_ok": False}
+
+    # --- Trabajo del mes: servicios contratados, declaraciones y anexos -------
+    servicios = [r for r in _fetch_in_chunks(sb, "client_services", "client_id,service,active", "client_id", ids)
+                 if r.get("active")]
+    serv_por_ruc = {}
+    for s in servicios:
+        ruc = id_to_ruc.get(str(s["client_id"]))
+        if ruc:
+            serv_por_ruc.setdefault(ruc, set()).add(s["service"])
+
+    decls = _fetch_in_chunks(sb, "declaraciones", "client_id,tipo,created_at", "client_id", ids)
+    hechas = {}       # ruc -> {key de declaración hecha en el mes}
+    for d in decls:
+        ruc = id_to_ruc.get(str(d["client_id"]))
+        key = _TIPO_DECL.get((d.get("tipo") or "").upper())
+        if ruc and key and _es_mes_actual(d.get("created_at"), mes, anio):
+            hechas.setdefault(ruc, set()).add(key)
+
+    anexos = _fetch_in_chunks(sb, "anexos", "client_id,created_at", "client_id", ids)
+    anexo_mes, anexo_ever = set(), set()
+    for a in anexos:
+        ruc = id_to_ruc.get(str(a["client_id"]))
+        if not ruc:
+            continue
+        anexo_ever.add(ruc)
+        if _es_mes_actual(a.get("created_at"), mes, anio):
+            anexo_mes.add(ruc)
+
+    # --- Cobro registrado en el sistema, del mes -----------------------------
+    guardados = fetch_all(lambda: sb.table("reportes_honorarios").select(
+        "identificacion,producto,cobrar,valor,iva_incluido,mes,anio").eq("user_id", user_id))
+    hon = {}
+    for g in guardados:
+        ruc = (g.get("identificacion") or "").strip()
+        if ruc not in nombre_por_ruc or not g.get("cobrar"):
+            continue
+        if int(g.get("mes") or 0) != mes or int(g.get("anio") or 0) != anio:
+            continue
+        valor = float(g.get("valor") or 0)
+        if valor <= 0:
+            continue
+        bruto = round(valor if g.get("iva_incluido") else valor * (1 + IVA_RATE), 2)
+        d = hon.setdefault(ruc, {"total": 0.0, "conceptos": []})
+        d["total"] = round(d["total"] + bruto, 2)
+        d["conceptos"].append({"concepto": g.get("producto") or "", "bruto": bruto})
+
+    # --- Lo que Odoo tiene realmente emitido de ese mes ----------------------
+    fact = facturas_por_mes_por_ruc(set(nombre_por_ruc), anio, mes)
+    odoo_ok = bool(fact)
+
+    resumen = {
+        "contribuyentes": 0,
+        "decl_total": 0, "decl_parcial": 0, "decl_ninguna": 0, "sin_obligaciones": 0,
+        "facturados": 0, "pendientes": 0, "difieren": 0, "solo_odoo": 0,
+        "monto_registrado": 0.0, "monto_facturado": 0.0, "monto_pendiente": 0.0,
+        "facturas": 0, "autorizadas": 0, "pagadas": 0, "por_cobrar": 0.0,
+    }
+    data, facturas_odoo = [], []
+
+    for ruc, nombre in sorted(nombre_por_ruc.items(), key=lambda kv: (kv[1] or "").upper()):
+        svcs = serv_por_ruc.get(ruc, set())
+        esperadas = [k for k in _SERV_MENSUAL if k in svcs]
+        # El anexo PVP+ICE acompaña al ICE; también se espera de quien ya los viene
+        # presentando, aunque el servicio no esté marcado.
+        if "declaracion_ice" in svcs or ruc in anexo_ever:
+            esperadas.append("anexo")
+        hechas_ruc = set(hechas.get(ruc, set()))
+        if ruc in anexo_mes:
+            hechas_ruc.add("anexo")
+        cumplidas = [k for k in esperadas if k in hechas_ruc]
+
+        if not esperadas:
+            estado_decl = "sin_obligaciones"
+        elif len(cumplidas) == len(esperadas):
+            estado_decl = "total"
+        elif cumplidas:
+            estado_decl = "parcial"
+        else:
+            estado_decl = "ninguna"
+
+        h = hon.get(ruc)
+        registrado = round(h["total"], 2) if h else 0.0
+        fs = (fact.get(_solo_digitos(ruc)) or {}).get(clave) or []
+        facturado = round(sum(f["total"] for f in fs), 2)
+        dif = round(facturado - registrado, 2)
+
+        if fs and registrado:
+            estado_fact = "facturado" if abs(dif) <= 0.02 else "difiere"
+        elif fs:
+            estado_fact = "solo_odoo"
+        elif registrado:
+            estado_fact = "pendiente"
+        else:
+            estado_fact = "sin_movimiento"
+
+        if not (esperadas or registrado or fs):
+            continue          # ni trabajo ni cobro ni factura: no dice nada
+
+        resumen["contribuyentes"] += 1
+        resumen[{"total": "decl_total", "parcial": "decl_parcial",
+                 "ninguna": "decl_ninguna", "sin_obligaciones": "sin_obligaciones"}[estado_decl]] += 1
+        if estado_fact == "facturado":
+            resumen["facturados"] += 1
+        elif estado_fact == "pendiente":
+            resumen["pendientes"] += 1
+            resumen["monto_pendiente"] = round(resumen["monto_pendiente"] + registrado, 2)
+        elif estado_fact == "difiere":
+            resumen["difieren"] += 1
+        elif estado_fact == "solo_odoo":
+            resumen["solo_odoo"] += 1
+        resumen["monto_registrado"] = round(resumen["monto_registrado"] + registrado, 2)
+        resumen["monto_facturado"] = round(resumen["monto_facturado"] + facturado, 2)
+        for f in fs:
+            resumen["facturas"] += 1
+            resumen["autorizadas"] += 1 if f.get("autorizada") else 0
+            resumen["pagadas"] += 1 if f.get("pagada") else 0
+            resumen["por_cobrar"] = round(resumen["por_cobrar"] + float(f.get("por_cobrar") or 0), 2)
+            facturas_odoo.append({**f, "ruc": ruc, "nombre": nombre})
+
+        data.append({
+            "ruc": ruc, "nombre": nombre,
+            "servicios": sorted(svcs),
+            "declaracion": {
+                "estado": estado_decl,
+                "esperadas": esperadas,
+                "hechas": cumplidas,
+                "faltan": [k for k in esperadas if k not in hechas_ruc],
+                "renta": "declaracion_renta" in hechas_ruc,
+            },
+            "registrado": registrado,
+            "conceptos": (h or {}).get("conceptos", []),
+            "facturado": facturado,
+            "diferencia": dif,
+            "estado_facturacion": estado_fact,
+            "facturas": fs,
+        })
+
+    facturas_odoo.sort(key=lambda f: (f.get("fecha") or "", f.get("numero") or ""), reverse=True)
+    return {"periodo": periodo, "data": data, "resumen": resumen,
+            "facturas_odoo": facturas_odoo, "odoo_ok": odoo_ok,
+            "etiquetas": {**_SERV_MENSUAL, "anexo": "Anexo PVP+ICE",
+                          "declaracion_renta": "Declaración Renta"}}
+
+
 @router.get("/por-facturar")
 async def por_facturar(meses: int = 12, user_id: str = Depends(get_current_user)):
     """Honorarios de meses ANTERIORES que siguen sin factura, agrupados POR MES.

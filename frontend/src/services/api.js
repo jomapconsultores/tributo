@@ -597,6 +597,9 @@ export const odooAPI = {
   cruceMensual: (meses = 12) => api.get('/api/odoo/cruce-mensual', { params: { meses } }),
   pendientesPorMes: (meses = 12) => api.get('/api/odoo/pendientes-por-mes', { params: { meses } }),
   porFacturar: (meses = 12) => api.get('/api/odoo/por-facturar', { params: { meses } }),  // meses anteriores sin facturar, con sus líneas
+  // Reporte del mes: quién declaró (todo/parcial), a quién falta facturarle
+  // y qué tiene Odoo emitido, con el comparativo entre lo uno y lo otro.
+  reporteFacturacion: (mes, anio) => api.get('/api/odoo/reporte-facturacion', { params: { mes, anio } }),
 }
 
 // Helper de descarga de blobs

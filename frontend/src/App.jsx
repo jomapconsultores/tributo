@@ -44,6 +44,7 @@ const Movimientos              = lazy(() => import('./pages/Movimientos'))
 const OdooFacturacion          = lazy(() => import('./pages/OdooFacturacion'))
 const FacturasProcesadas       = lazy(() => import('./pages/FacturasProcesadas'))
 const CruceOdoo                = lazy(() => import('./pages/CruceOdoo'))
+const ReporteFacturacion       = lazy(() => import('./pages/ReporteFacturacion'))
 const AdminClientAccess        = lazy(() => import('./pages/AdminClientAccess'))
 const AdminPermisos            = lazy(() => import('./pages/AdminPermisos'))
 const AdminEmpresas            = lazy(() => import('./pages/AdminEmpresas'))
@@ -265,6 +266,9 @@ function App() {
               {/* Cruce mes a mes contra Odoo: lee honorarios propios del rol, por eso
                   va con el mismo guard que la emisión. */}
               <Route path="/odoo-facturacion/cruce" element={<RequireAdmin><CruceOdoo /></RequireAdmin>} />
+              {/* Reporte del mes (trabajo declarado + cobro + Odoo): lee honorarios
+                  y declaraciones propias del rol, mismo guard que la emisión. */}
+              <Route path="/odoo-facturacion/reporte" element={<RequireAdmin><ReporteFacturacion /></RequireAdmin>} />
               <Route path="/admin/acceso-clientes" element={<RequireSuperAdmin><AdminClientAccess /></RequireSuperAdmin>} />
               <Route path="/admin/permisos" element={<RequireSuperAdmin><AdminPermisos /></RequireSuperAdmin>} />
               <Route path="/admin/empresas" element={<RequireOrgAdmin><AdminEmpresas /></RequireOrgAdmin>} />
