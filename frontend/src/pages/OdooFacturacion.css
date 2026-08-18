@@ -427,3 +427,45 @@
   text-transform: capitalize;
 }
 .of-atraso-nota { font-size: 0.72rem; color: #78716c; }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   MESES ANTERIORES SIN FACTURAR — una sección por mes, con su propia emisión.
+   Antes todo caía en el mismo paquete del mes en curso: no se veía a qué mes
+   correspondía cada factura ni había forma de emitir la de un mes atrasado.
+   ────────────────────────────────────────────────────────────────────────── */
+.of-mes {
+  background: #fffdf5; border: 1px solid #fcd34d; border-radius: 12px;
+  padding: 14px 16px; margin-bottom: 16px;
+}
+.of-mes-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.of-mes-titulo { margin: 0 0 2px; font-size: 1rem; font-weight: 700; color: #92400e; }
+.of-mes-sub { margin: 0; font-size: 0.78rem; color: #78716c; line-height: 1.45; }
+.of-btn-emitir {
+  background: linear-gradient(135deg, #d97706, #92400e); color: #fff; border: none;
+  border-radius: 8px; padding: 9px 18px; font-size: 0.84rem; font-weight: 700;
+  cursor: pointer; white-space: nowrap; transition: opacity .15s, transform .1s;
+}
+.of-btn-emitir:hover:not(:disabled) { opacity: .92; transform: translateY(-1px); }
+.of-btn-emitir:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+.of-mes-tabla { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.of-mes-tabla tr { border-bottom: 1px solid #f3e8cf; }
+.of-mes-tabla tr:last-child { border-bottom: none; }
+.of-mes-tabla tr.sel { background: #fef9e7; }
+.of-mes-tabla td { padding: 7px 6px; vertical-align: top; }
+.of-mes-check { width: 28px; }
+.of-mes-nombre { font-weight: 600; color: #1f2937; }
+.of-mes-ruc { font-size: 0.72rem; color: #9ca3af; }
+.of-mes-conceptos { display: flex; flex-wrap: wrap; gap: 4px; }
+.of-mes-concepto {
+  background: #fff; border: 1px solid #e7e5e4; border-radius: 12px;
+  padding: 1px 8px; font-size: 0.72rem; color: #57534e;
+}
+.of-mes-total { text-align: right; font-weight: 700; color: #166534; white-space: nowrap; }
+.of-mes-pie { margin: 8px 0 0; font-size: 0.78rem; color: #92400e; font-weight: 600; }
+.of-mes-res { margin: 10px 0 0; padding-left: 18px; font-size: 0.8rem; }
+.of-mes-res li.ok { color: #166534; }
+.of-mes-res li.err { color: #991b1b; }

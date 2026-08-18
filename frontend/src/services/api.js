@@ -596,6 +596,7 @@ export const odooAPI = {
   // Cruce mes a mes: honorarios registrados en el sistema ↔ facturas en Odoo
   cruceMensual: (meses = 12) => api.get('/api/odoo/cruce-mensual', { params: { meses } }),
   pendientesPorMes: (meses = 12) => api.get('/api/odoo/pendientes-por-mes', { params: { meses } }),
+  porFacturar: (meses = 12) => api.get('/api/odoo/por-facturar', { params: { meses } }),  // meses anteriores sin facturar, con sus líneas
 }
 
 // Helper de descarga de blobs

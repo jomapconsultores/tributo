@@ -43,6 +43,12 @@ export default function OdooFacturacion() {
   const [periodo, setPeriodo] = useState(null)              // período que se está facturando (mes/año)
   const [atrasos, setAtrasos] = useState({})                // { ruc: {total, meses:[...]} } — meses anteriores sin facturar
   const [atrasosOk, setAtrasosOk] = useState(false)         // ¿el cruce con Odoo respondió?
+  // Meses ANTERIORES pendientes, cada uno con sus contribuyentes y sus líneas:
+  // se emiten por separado, no mezclados con el mes en curso.
+  const [mesesPend, setMesesPend] = useState([])
+  const [selPend, setSelPend] = useState(new Set())         // "AAAA-MM|ruc" marcados
+  const [enviandoMes, setEnviandoMes] = useState('')
+  const [resultadosPend, setResultadosPend] = useState({})  // { "AAAA-MM": [resultados] }
   const [destino, setDestino] = useDraft('draft:odoofac:destino', {})           // { ruc: 'cobrar' | journalId } — por cobrar o banco
   const [creandoCta, setCreandoCta] = useState('')
 
@@ -83,7 +89,22 @@ export default function OdooFacturacion() {
     odooAPI.pendientesPorMes(12)
       .then((r) => { setAtrasos(r.data?.data || {}); setAtrasosOk(!!r.data?.odoo_ok) })
       .catch(() => { setAtrasos({}); setAtrasosOk(false) })
+
+    cargarMesesPendientes()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Cada mes anterior sin facturar, con sus líneas, para emitirlo aparte.
+  const cargarMesesPendientes = () => {
+    odooAPI.porFacturar(12)
+      .then((r) => {
+        const ms = r.data?.meses || []
+        setMesesPend(ms)
+        // Vienen todos marcados: lo normal es emitir el mes completo.
+        setSelPend(new Set(ms.flatMap((m) => m.contribuyentes.map((c) => `${m.clave}|${c.ruc}`))))
+      })
+      .catch(() => setMesesPend([]))
+  }
 
   // Agrupar filas por contribuyente — solo cobrar=true, valor>0 y sin factura ya emitida
   const grupos = useMemo(() => {
@@ -233,6 +254,9 @@ export default function OdooFacturacion() {
         facturas: facturasSeleccionadas.map((g) => ({
           ruc: g.ruc,            // receptor = el contribuyente del honorario
           nombre: g.nombre,
+          // Mes de honorarios que cubre (va en la referencia y en el concepto)
+          mes: periodo?.mes || null,
+          anio: periodo?.anio || null,
           company_id: Number(emisorPorGrupo[g.ruc] || companyId) || null,  // emisor INDIVIDUAL de esta factura
           cuenta_cobrar_id: cuentas[g.ruc]?.cuenta_id || null,             // cuenta por cobrar del cliente
           banco_journal_id: (destino[g.ruc] && destino[g.ruc] !== 'cobrar') ? Number(destino[g.ruc]) : null,  // si va directo a banco
@@ -255,6 +279,66 @@ export default function OdooFacturacion() {
       setResultados([{ ok: false, error: e.response?.data?.detail || e.message }])
     } finally {
       setEnviando(false)
+    }
+  }
+
+  // Emisión de un MES ANTERIOR. La factura sale con fecha de hoy —el SRI no
+  // autoriza comprobantes fechados hacia atrás— pero declara el mes que cubre en
+  // el concepto de cada línea y en su referencia, así el cruce mensual la
+  // atribuye a ese mes y no al de emisión.
+  const togglePend = (clave, ruc) => {
+    setSelPend((prev) => {
+      const s = new Set(prev)
+      const k = `${clave}|${ruc}`
+      if (s.has(k)) s.delete(k)
+      else s.add(k)
+      return s
+    })
+  }
+
+  const elegidosDelMes = (m) => m.contribuyentes.filter((c) => selPend.has(`${m.clave}|${c.ruc}`))
+
+  const enviarMes = async (m) => {
+    const elegidos = elegidosDelMes(m)
+    if (!elegidos.length) return
+    if (!window.confirm(
+      `Se emitirán ${elegidos.length} factura(s) por los honorarios de ${m.etiqueta}.
+
+` +
+      'Salen con fecha de HOY y cada concepto dice el mes que cubre. ¿Continuar?')) return
+    setEnviandoMes(m.clave)
+    try {
+      const r = await odooAPI.facturar({
+        company_id: companyId ? Number(companyId) : null,
+        facturas: elegidos.map((c) => ({
+          ruc: c.ruc,
+          nombre: c.nombre,
+          mes: m.mes,
+          anio: m.anio,
+          company_id: Number(emisorPorGrupo[c.ruc] || companyId) || null,
+          lineas: c.lineas.map((l) => ({
+            concepto: l.concepto,
+            // Base neta: si el valor guardado ya trae IVA, se le quita (Odoo lo agrega).
+            valor: l.iva_incluido ? Math.round((l.valor / (1 + IVA)) * 100) / 100 : l.valor,
+            precio_oficial: l.precio_oficial
+              ? (l.iva_incluido ? Math.round((l.precio_oficial / (1 + IVA)) * 100) / 100 : l.precio_oficial)
+              : null,
+            descuento: l.descuento || 0,
+            producto_nombre: l.concepto,
+          })),
+          iva_incluido: false,
+        })),
+      })
+      const res = r.data.resultados || []
+      setResultadosPend((p) => ({ ...p, [m.clave]: res }))
+      verificarSri(res.filter((x) => x.ok && x.odoo_id).map((x) => x.odoo_id))
+      cargarMesesPendientes()   // lo emitido deja de ofrecerse
+    } catch (e) {
+      setResultadosPend((p) => ({
+        ...p, [m.clave]: [{ ok: false, error: e.response?.data?.detail || e.message }],
+      }))
+    } finally {
+      setEnviandoMes('')
     }
   }
 
@@ -300,7 +384,9 @@ export default function OdooFacturacion() {
           Se emitirán las facturas del período <strong>{(periodo?.etiqueta || '').toUpperCase()}</strong>
         </span>
         <span className="of-periodo-nota">
-          Un contribuyente = una factura de este mes. Los meses anteriores se revisan en «Cruce mensual».
+          Un contribuyente = una factura de este mes.{mesesPend.length > 0
+            ? ` Los ${mesesPend.length} mes(es) anteriores sin facturar se emiten abajo, cada uno por separado.`
+            : ' Los meses anteriores se revisan en «Cruce mensual».'}
         </span>
       </div>
 
@@ -310,7 +396,7 @@ export default function OdooFacturacion() {
           ⚠ {Object.keys(atrasos).length} contribuyente(s) arrastran meses anteriores sin facturar
           {' · '}
           {fmtMoney(Object.values(atrasos).reduce((a, x) => a + (x.total || 0), 0))}
-          {' — ver el cruce mes a mes ›'}
+          {mesesPend.length > 0 ? ' — se emiten abajo, mes por mes · ver el cruce ›' : ' — ver el cruce mes a mes ›'}
         </button>
       )}
       {!atrasosOk && (
@@ -318,6 +404,103 @@ export default function OdooFacturacion() {
           ℹ El cruce con la facturación de Odoo no respondió: los meses anteriores no pudieron verificarse.
         </div>
       )}
+
+      {/* Empresa EMISORA (compañía Odoo) + ver productos existentes */}
+      <div className="of-emisor-bar">
+        <label className="of-emisor">
+          <span>🏢 Emisor por defecto (aplica a todos):</span>
+          <select value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+            {companias.length === 0 && <option value="">(cargando…)</option>}
+            {companias.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+          </select>
+        </label>
+        <button type="button" className="of-ver-prod" onClick={() => setVerProductos((v) => !v)}>
+          {verProductos ? 'Ocultar' : 'Ver'} productos de Odoo ({productos.length})
+        </button>
+      </div>
+      {verProductos && (
+        <div className="of-prod-panel">
+          <div className="of-prod-panel-head">Productos / servicios que ya existen en Odoo ({productos.length})</div>
+          <div className="of-prod-list">
+            {productos.map((p) => <span key={p.id} className="of-prod-chip">{p.name}</span>)}
+            {productos.length === 0 && <span className="of-dim">No se pudieron cargar productos de Odoo.</span>}
+          </div>
+        </div>
+      )}
+
+      {/* MESES ANTERIORES sin facturar: uno por sección, con su propia emisión.
+          Antes todo caía en el mismo paquete del mes en curso y no había forma
+          de emitir la factura de julio estando en agosto. */}
+      {mesesPend.map((m) => {
+        const elegidos = elegidosDelMes(m)
+        const totalMes = elegidos.reduce((a, c) => a + (c.total || 0), 0)
+        const res = resultadosPend[m.clave]
+        return (
+          <section key={m.clave} className="of-mes">
+            <header className="of-mes-head">
+              <div>
+                <h2 className="of-mes-titulo">🗓️ {m.etiqueta} — sin facturar</h2>
+                <p className="of-mes-sub">
+                  {m.contribuyentes.length} contribuyente(s) · {fmtMoney(m.total)}.
+                  {' '}La factura se emite <strong>hoy</strong> y dice en cada concepto que cubre {m.etiqueta}.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="of-btn-emitir"
+                disabled={!elegidos.length || enviandoMes === m.clave}
+                onClick={() => enviarMes(m)}
+              >
+                {enviandoMes === m.clave
+                  ? 'Emitiendo…'
+                  : `Crear en Odoo (${elegidos.length}) · ${m.etiqueta}`}
+              </button>
+            </header>
+
+            <table className="of-mes-tabla">
+              <tbody>
+                {m.contribuyentes.map((c) => (
+                  <tr key={c.ruc} className={selPend.has(`${m.clave}|${c.ruc}`) ? 'sel' : ''}>
+                    <td className="of-mes-check">
+                      <input
+                        type="checkbox"
+                        checked={selPend.has(`${m.clave}|${c.ruc}`)}
+                        onChange={() => togglePend(m.clave, c.ruc)}
+                      />
+                    </td>
+                    <td>
+                      <div className="of-mes-nombre">{c.nombre}</div>
+                      <div className="of-mes-ruc">RUC {c.ruc}</div>
+                    </td>
+                    <td className="of-mes-conceptos">
+                      {c.lineas.map((l, i) => (
+                        <span key={i} className="of-mes-concepto">{l.concepto}</span>
+                      ))}
+                    </td>
+                    <td className="of-mes-total">{fmtMoney(c.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {totalMes > 0 && (
+              <p className="of-mes-pie">Marcados: {elegidos.length} · {fmtMoney(totalMes)}</p>
+            )}
+
+            {res && (
+              <ul className="of-mes-res">
+                {res.map((r, i) => (
+                  <li key={i} className={r.ok ? 'ok' : 'err'}>
+                    {r.ok
+                      ? `✔ ${r.nombre || r.ruc}: ${r.numero || 'emitida'}${r.ya_existia ? ' (ya existía)' : ''}`
+                      : `✖ ${r.nombre || r.ruc || ''}: ${r.error}`}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )
+      })}
 
       {grupos.length === 0 ? (
         <div className="of-empty">
@@ -327,29 +510,6 @@ export default function OdooFacturacion() {
         </div>
       ) : (
         <>
-          {/* Empresa EMISORA (compañía Odoo) + ver productos existentes */}
-          <div className="of-emisor-bar">
-            <label className="of-emisor">
-              <span>🏢 Emisor por defecto (aplica a todos):</span>
-              <select value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
-                {companias.length === 0 && <option value="">(cargando…)</option>}
-                {companias.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
-              </select>
-            </label>
-            <button type="button" className="of-ver-prod" onClick={() => setVerProductos((v) => !v)}>
-              {verProductos ? 'Ocultar' : 'Ver'} productos de Odoo ({productos.length})
-            </button>
-          </div>
-          {verProductos && (
-            <div className="of-prod-panel">
-              <div className="of-prod-panel-head">Productos / servicios que ya existen en Odoo ({productos.length})</div>
-              <div className="of-prod-list">
-                {productos.map((p) => <span key={p.id} className="of-prod-chip">{p.name}</span>)}
-                {productos.length === 0 && <span className="of-dim">No se pudieron cargar productos de Odoo.</span>}
-              </div>
-            </div>
-          )}
-
           {/* Barra de acciones */}
           <div className="of-toolbar">
             <label className="of-check-all">

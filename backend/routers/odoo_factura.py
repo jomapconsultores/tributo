@@ -32,6 +32,32 @@ router = APIRouter(prefix="/api/odoo", tags=["odoo"])
 
 IVA_RATE = 0.15
 
+# El período de HONORARIOS que cubre una factura viaja en su referencia
+# (`ref` de Odoo) como HON-AAAA-MM. La fecha de emisión sigue siendo la del
+# día —el SRI no autoriza comprobantes fechados hacia atrás—, así que sin
+# esta marca no había forma de saber qué mes cubre cada factura ni de emitir
+# julio y agosto por separado el mismo día.
+_MESES_HON = ["", "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+              "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
+
+
+def _ref_honorarios(anio, mes):
+    if not anio or not mes:
+        return None
+    return f"HON-{int(anio):04d}-{int(mes):02d}"
+
+
+def _periodo_de_ref(ref):
+    """'HON-2026-07' -> '2026-07'; cualquier otra cosa -> None."""
+    m = re.match(r"^HON-(\d{4})-(\d{2})$", str(ref or "").strip().upper())
+    return f"{m.group(1)}-{m.group(2)}" if m else None
+
+
+def _etiqueta_mes(anio, mes):
+    if not anio or not mes or not (1 <= int(mes) <= 12):
+        return ""
+    return f"{_MESES_HON[int(mes)]} {int(anio)}"
+
 # Destino del aviso de facturación (la responsable de facturación en Odoo).
 ODOO_NOTIFY_EMAIL = os.getenv("ODOO_NOTIFY_EMAIL", "johannanievecela@hotmail.com")
 # Empresa EMISORA que NO genera recordatorio de cobro (se excluye por nombre).
@@ -459,6 +485,11 @@ class FacturaIn(BaseModel):
     nombre: str
     lineas: List[LineaIn]
     iva_incluido: bool = False
+    # Mes de HONORARIOS que cubre esta factura (no es la fecha de emisión: se
+    # emite hoy). Sin esto, facturar julio en agosto dejaba las dos facturas
+    # indistinguibles y el cruce mensual las atribuía al mes en que se emitieron.
+    mes: Optional[int] = None
+    anio: Optional[int] = None
     company_id: Optional[int] = None   # empresa EMISORA de ESTA factura (override del global)
     cuenta_cobrar_id: Optional[int] = None  # cuenta por cobrar a asignar al cliente (registro contable)
     banco_journal_id: Optional[int] = None  # si se setea, se registra el cobro en ese banco (queda PAGADA)
@@ -952,11 +983,22 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
 
             partner_id = _find_or_create_partner(models, db, uid, key, fac.ruc, fac.nombre)
 
-            # ANTI-DUPLICADO: si este cliente YA tiene una factura de este mes por esta
-            # empresa, NO se crea otra; se devuelve la existente para pasar al SRI.
-            ini_mes = datetime.now(_EC_TZ_ODOO).strftime("%Y-%m-01")
+            # Período de HONORARIOS que cubre la factura (puede ser un mes
+            # anterior: se emite hoy, pero cobra julio).
+            ref_hon = _ref_honorarios(fac.anio, fac.mes)
+            etiqueta_hon = _etiqueta_mes(fac.anio, fac.mes)
+
+            # ANTI-DUPLICADO. Con período declarado se busca por ESE período (su
+            # referencia): así se pueden emitir julio y agosto el mismo día sin
+            # que el segundo se tome por repetido, y volver a mandar julio no
+            # duplica. Sin período, se mantiene el criterio viejo: el mes en curso.
             dom_dup = [["move_type", "=", "out_invoice"], ["partner_id", "=", partner_id],
-                       ["state", "=", "posted"], ["invoice_date", ">=", ini_mes]]
+                       ["state", "=", "posted"]]
+            if ref_hon:
+                dom_dup.append(["ref", "=", ref_hon])
+            else:
+                ini_mes = datetime.now(_EC_TZ_ODOO).strftime("%Y-%m-01")
+                dom_dup.append(["invoice_date", ">=", ini_mes])
             if company:
                 dom_dup.append(["company_id", "=", company])
             ya = _x(models, db, uid, key, "account.move", "search", [dom_dup],
@@ -967,6 +1009,7 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
                                    "l10n_ec_authorization_number"], "context": _ctx_emp(company)})[0]
                 resultados.append({
                     "ruc": fac.ruc, "nombre": fac.nombre, "ok": True, "ya_existia": True,
+                    "periodo": ref_hon, "periodo_etiqueta": etiqueta_hon or None,
                     "odoo_id": ya[0], "numero": m.get("name"), "total": m.get("amount_total"),
                     "estado": m.get("state"), "payment_state": m.get("payment_state"),
                     "emisor_nombre": emp_nombre.get(company, ""),
@@ -984,7 +1027,9 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
                 product_id = ln.product_id or _find_or_create_product(models, db, uid, key, nombre_prod)
                 line_vals = {
                     "product_id": product_id,
-                    "name": ln.concepto,
+                    # El mes va en el concepto: la factura se emite hoy, así que
+                    # sin esto nadie —ni el cliente— sabe qué mes está pagando.
+                    "name": f"{ln.concepto} — {etiqueta_hon}" if etiqueta_hon else ln.concepto,
                     "quantity": 1.0,
                 }
                 if tax_id:
@@ -1016,6 +1061,10 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
                 "partner_id": partner_id,
                 "invoice_line_ids": invoice_lines,
             }
+            if ref_hon:
+                # Con qué mes cuadra esta factura. El cruce mensual la atribuye
+                # por acá, no por la fecha de emisión.
+                move_vals["ref"] = ref_hon
             if company:
                 move_vals["company_id"] = company
             inv_id = _x(models, db, uid, key, "account.move", "create", [move_vals])
@@ -1042,6 +1091,8 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
                 "ruc": fac.ruc,
                 "nombre": fac.nombre,
                 "ok": True,
+                "periodo": ref_hon,
+                "periodo_etiqueta": etiqueta_hon or None,
                 "odoo_id": inv_id,
                 "numero": inv_info.get("name"),
                 "total": inv_info.get("amount_total"),
@@ -1112,7 +1163,7 @@ def facturas_por_mes_por_ruc(idents: set, desde_anio: int, desde_mes: int) -> di
                  {"order": "invoice_date desc, id desc", "limit": 4000, "context": ctx})
         rows = _x(models, db, uid, key, "account.move", "read", [ids],
                   {"fields": ["name", "invoice_date", "partner_id", "amount_total",
-                              "amount_residual", "payment_state", "company_id",
+                              "amount_residual", "payment_state", "company_id", "ref",
                               "l10n_ec_authorization_number"], "context": ctx}) if ids else []
         pids = list({r["partner_id"][0] for r in rows if r.get("partner_id")})
         vat = {}
@@ -1126,10 +1177,16 @@ def facturas_por_mes_por_ruc(idents: set, desde_anio: int, desde_mes: int) -> di
             fecha = str(r.get("invoice_date") or "")
             if len(fecha) < 7:
                 continue
+            # El mes que cubre la factura lo dice su referencia (HON-AAAA-MM)
+            # cuando la emitió este sistema; si no la trae —facturas viejas o
+            # cargadas a mano en Odoo— se la atribuye al mes en que se emitió.
+            periodo = _periodo_de_ref(r.get("ref")) or fecha[:7]
             pstate = r.get("payment_state") or "not_paid"
-            out.setdefault(v, {}).setdefault(fecha[:7], []).append({
+            out.setdefault(v, {}).setdefault(periodo, []).append({
                 "numero": r.get("name"),
                 "fecha": fecha,
+                "periodo": periodo,
+                "por_referencia": bool(_periodo_de_ref(r.get("ref"))),
                 "total": round(float(r.get("amount_total") or 0), 2),
                 "autorizada": bool(r.get("l10n_ec_authorization_number")),
                 "autorizacion": r.get("l10n_ec_authorization_number") or None,
@@ -1258,6 +1315,99 @@ def _cruce_mensual(meses: int, user_id: str) -> dict:
 async def cruce_mensual(meses: int = 12, user_id: str = Depends(get_current_user)):
     """Cruce mes a mes entre los honorarios del sistema y las facturas de Odoo."""
     return _cruce_mensual(meses, user_id)
+
+
+@router.get("/por-facturar")
+async def por_facturar(meses: int = 12, user_id: str = Depends(get_current_user)):
+    """Honorarios de meses ANTERIORES que siguen sin factura, agrupados POR MES.
+
+    La pantalla de emisión trabajaba solo con el mes en curso y los atrasos eran
+    una advertencia: todo terminaba en un mismo paquete y no había cómo emitir la
+    factura de julio estando en agosto. Acá cada mes viene con sus contribuyentes
+    y sus líneas, listo para emitirse aparte —la factura sale con fecha de hoy y
+    declara el mes que cubre en su referencia (HON-AAAA-MM) y en cada concepto—.
+
+    El mes en curso NO viene por acá: lo arma /api/reportes/cobros, que además
+    pre-marca lo que todavía no se guardó."""
+    meses = max(1, min(int(meses or 12), 36))
+    sb = get_supabase_client()
+
+    visibles = visible_clients(user_id, "identificacion,nombre")
+    nombre_por_ruc = {}
+    for c in visibles:
+        ident = (c.get("identificacion") or "").strip()
+        if ident:
+            nombre_por_ruc.setdefault(ident, c.get("nombre") or "")
+    hoy = datetime.now(_EC_TZ_ODOO)
+    periodo_actual = {"anio": hoy.year, "mes": hoy.month,
+                      "etiqueta": _etiqueta_mes(hoy.year, hoy.month).title()}
+    clave_actual = f"{hoy.year:04d}-{hoy.month:02d}"
+    if not nombre_por_ruc:
+        return {"meses": [], "odoo_ok": False, "periodo_actual": periodo_actual}
+
+    total_m = (hoy.year * 12 + hoy.month - 1) - (meses - 1)
+    desde_anio, desde_mes = divmod(total_m, 12)
+    desde_mes += 1
+    clave_desde = f"{desde_anio:04d}-{desde_mes:02d}"
+
+    guardados = fetch_all(lambda: sb.table("reportes_honorarios").select(
+        "identificacion,producto,cobrar,valor,precio_oficial,descuento,iva_incluido,mes,anio"
+    ).eq("user_id", user_id))
+
+    # (clave del mes) -> (ruc) -> líneas
+    por_mes = {}
+    for g in guardados:
+        ruc = (g.get("identificacion") or "").strip()
+        if ruc not in nombre_por_ruc or not g.get("cobrar"):
+            continue
+        valor = float(g.get("valor") or 0)
+        if valor <= 0:
+            continue
+        anio, mes = int(g.get("anio") or 0), int(g.get("mes") or 0)
+        if not (1 <= mes <= 12) or anio < 2000:
+            continue
+        clave = f"{anio:04d}-{mes:02d}"
+        if clave < clave_desde or clave >= clave_actual:
+            continue          # el mes en curso lo arma la pantalla con /cobros
+        por_mes.setdefault(clave, {}).setdefault(ruc, []).append({
+            "concepto": g.get("producto") or "",
+            "valor": round(valor, 2),
+            "iva_incluido": bool(g.get("iva_incluido")),
+            "precio_oficial": float(g.get("precio_oficial") or 0) or None,
+            "descuento": float(g.get("descuento") or 0),
+        })
+
+    # Lo ya facturado no vuelve a ofrecerse. Se mira por el mes de HONORARIOS
+    # (la referencia), no por la fecha de emisión: julio facturado en agosto
+    # tiene que contar como julio hecho.
+    fact = facturas_por_mes_por_ruc(set(nombre_por_ruc), desde_anio, desde_mes)
+    odoo_ok = bool(fact)
+
+    salida = []
+    for clave in sorted(por_mes, reverse=True):
+        anio, mes = int(clave[:4]), int(clave[5:7])
+        contribuyentes = []
+        for ruc, lineas in por_mes[clave].items():
+            if (fact.get(_solo_digitos(ruc)) or {}).get(clave):
+                continue      # ese mes ya tiene su factura
+            total = 0.0
+            for ln in lineas:
+                total += ln["valor"] if ln["iva_incluido"] else ln["valor"] * (1 + IVA_RATE)
+            contribuyentes.append({
+                "ruc": ruc, "nombre": nombre_por_ruc.get(ruc, ""),
+                "total": round(total, 2), "lineas": lineas,
+            })
+        if not contribuyentes:
+            continue
+        contribuyentes.sort(key=lambda c: (c["nombre"] or "").upper())
+        salida.append({
+            "clave": clave, "anio": anio, "mes": mes,
+            "etiqueta": _etiqueta_mes(anio, mes).title(),
+            "total": round(sum(c["total"] for c in contribuyentes), 2),
+            "contribuyentes": contribuyentes,
+        })
+
+    return {"meses": salida, "odoo_ok": odoo_ok, "periodo_actual": periodo_actual}
 
 
 @router.get("/pendientes-por-mes")
