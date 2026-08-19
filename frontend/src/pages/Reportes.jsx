@@ -4,6 +4,7 @@ import { reportesAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import WorkflowGuide from '../components/WorkflowGuide'
 import { filterBySearch } from '../utils/search'
+import { MESES, clavePeriodo, etiquetaPeriodo, parsePeriodo, periodoHoy, esPeriodoActual } from '../utils/periodo'
 import './Reportes.css'
 
 import { fmtMoney as money } from '../utils/format'
@@ -21,7 +22,7 @@ export default function Reportes({ modo }) {
   const navigate = useNavigate()
   const { identsForSvc } = useClients()
   const idents_svc = identsForSvc('declaracion_iva,declaracion_ice,declaracion_renta,devolucion_iva')
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -32,6 +33,21 @@ export default function Reportes({ modo }) {
     const q = searchParams.get('q')
     if (q) setSearch(q)
   }, [searchParams])
+  // Período que se está cargando (?p=AAAA-MM). Los honorarios se registran mes a
+  // mes: si el de julio no se cargó a tiempo, en agosto tiene que poder cargarse
+  // igual, o ese mes nunca llega a facturarse.
+  const per = useMemo(() => {
+    const p = parsePeriodo(searchParams.get('p')) || periodoHoy()
+    return { ...p, clave: clavePeriodo(p.mes, p.anio), actual: esPeriodoActual(p.mes, p.anio) }
+  }, [searchParams])
+  const irAPeriodo = (mes, anio) => {
+    // Un mes que todavía no llegó no tiene honorarios que cargar.
+    const h = periodoHoy()
+    const m = (anio * 100 + mes > h.anio * 100 + h.mes) ? h.mes : mes
+    const sp = new URLSearchParams(searchParams)
+    sp.set('p', clavePeriodo(m, anio))
+    setSearchParams(sp, { replace: true })
+  }
   const [guardando, setGuardando] = useState('')
   const [colapsados, setColapsados] = useState(() => new Set())
   const [historial, setHistorial] = useState({})  // { ruc: [{anio,mes,etiqueta,subtotal,items}] }
@@ -51,15 +67,16 @@ export default function Reportes({ modo }) {
   const cargar = useCallback(async () => {
     setLoading(true); setError('')
     try {
-      const r = await reportesAPI.cobros()
+      const r = await reportesAPI.cobros(per.mes, per.anio)
       const data = r.data?.data || []
       setHistorial(r.data?.historial || {})
       setPeriodo(r.data?.periodo || null)
       // Sobreponer los borradores locales pendientes (valores aún no confirmados
-      // por el servidor, p.ej. si se cayó el internet) para no perderlos.
+      // por el servidor, p.ej. si se cayó el internet) para no perderlos. La
+      // clave lleva el período: lo tecleado en julio no puede aparecer en agosto.
       const drafts = readRpDrafts()
       setRows(data.map((row) => {
-        const k = row.identificacion + '|' + row.concepto
+        const k = per.clave + '|' + row.identificacion + '|' + row.concepto
         return drafts[k] ? { ...row, ...drafts[k] } : row
       }))
       // Inicializar iva por client_id desde los datos
@@ -71,11 +88,13 @@ export default function Reportes({ modo }) {
     } catch (e) {
       setError(e.response?.data?.detail || e.message)
     } finally { setLoading(false) }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [per.clave])
   useEffect(() => { cargar() }, [cargar])
 
   const guardarFila = async (fila) => {
-    const key = fila.identificacion + '|' + fila.concepto
+    const key = fila.identificacion + '|' + fila.concepto   // fila en pantalla
+    const draftKey = per.clave + '|' + key                  // borrador local, por período
     setGuardando(key)
     try {
       await reportesAPI.guardarCobro({
@@ -84,8 +103,9 @@ export default function Reportes({ modo }) {
         precio_oficial: fila.precio_oficial != null && fila.precio_oficial !== '' ? parseFloat(fila.precio_oficial) || 0 : null,
         descuento: parseFloat(fila.descuento) || 0,
         iva_incluido: !!fila.iva_incluido,
+        mes: per.mes, anio: per.anio,
       })
-      clearRpDraft(key)  // guardado confirmado: ya no hace falta el borrador local
+      clearRpDraft(draftKey)  // guardado confirmado: ya no hace falta el borrador local
     } catch (e) {
       alert('No se pudo guardar: ' + (e.response?.data?.detail || e.message))
     } finally { setGuardando('') }
@@ -109,7 +129,7 @@ export default function Reportes({ modo }) {
         return f
       })
       if (f) {
-        writeRpDraft(f.identificacion + '|' + f.concepto, { valor: f.valor, cobrar: f.cobrar, iva_incluido: f.iva_incluido, precio_oficial: f.precio_oficial, descuento: f.descuento })
+        writeRpDraft(per.clave + '|' + f.identificacion + '|' + f.concepto, { valor: f.valor, cobrar: f.cobrar, iva_incluido: f.iva_incluido, precio_oficial: f.precio_oficial, descuento: f.descuento })
         if (guardar) guardarFila(f)
       }
       return next
@@ -126,7 +146,7 @@ export default function Reportes({ modo }) {
       })
       if (f) {
         // Guardar al instante en el navegador cada cambio (sobrevive a cortes de internet)
-        writeRpDraft(f.identificacion + '|' + f.concepto, { valor: f.valor, cobrar: f.cobrar, iva_incluido: f.iva_incluido, precio_oficial: f.precio_oficial, descuento: f.descuento })
+        writeRpDraft(per.clave + '|' + f.identificacion + '|' + f.concepto, { valor: f.valor, cobrar: f.cobrar, iva_incluido: f.iva_incluido, precio_oficial: f.precio_oficial, descuento: f.descuento })
         if (guardar) guardarFila(f)
       }
       return next
@@ -150,7 +170,7 @@ export default function Reportes({ modo }) {
     const nombre = (prompt(`Nuevo rubro / servicio para ${contribuyente}:`) || '').trim()
     if (!nombre) return
     try {
-      await reportesAPI.guardarCobro({ identificacion: ident, producto: nombre, cobrar: true, valor: 0 })
+      await reportesAPI.guardarCobro({ identificacion: ident, producto: nombre, cobrar: true, valor: 0, mes: per.mes, anio: per.anio })
       await cargar()
     } catch (e) { alert('No se pudo agregar: ' + (e.response?.data?.detail || e.message)) }
   }
@@ -158,7 +178,7 @@ export default function Reportes({ modo }) {
   const borrarRubro = async (fila) => {
     if (!window.confirm(`Quitar el rubro "${fila.concepto}" de ${fila.contribuyente}?`)) return
     try {
-      await reportesAPI.borrarCobro(fila.identificacion, fila.concepto)
+      await reportesAPI.borrarCobro(fila.identificacion, fila.concepto, per.mes, per.anio)
       await cargar()
     } catch (e) { alert('No se pudo quitar: ' + (e.response?.data?.detail || e.message)) }
   }
@@ -227,7 +247,8 @@ export default function Reportes({ modo }) {
 
   const exportar = async (tipo) => {
     try {
-      const r = tipo === 'excel' ? await reportesAPI.exportExcel(ivaIncluido) : await reportesAPI.exportPdf(ivaIncluido)
+      const r = tipo === 'excel' ? await reportesAPI.exportExcel(ivaIncluido, per.mes, per.anio)
+        : await reportesAPI.exportPdf(ivaIncluido, per.mes, per.anio)
       downloadBlob(r.data, `Reporte_Honorarios.${tipo === 'excel' ? 'xlsx' : 'pdf'}`,
         tipo === 'excel' ? undefined : 'application/pdf')
     } catch (e) { alert('Error al exportar: ' + (e.response?.data?.detail || e.message)) }
@@ -252,7 +273,7 @@ export default function Reportes({ modo }) {
   // Intenta el envío automático (servidor); si no está configurado, abre el redactado.
   const enviarAJohanna = async () => {
     try {
-      const r = await reportesAPI.enviarCorreo(ivaIncluido)
+      const r = await reportesAPI.enviarCorreo(ivaIncluido, per.mes, per.anio)
       if (r.data?.ok) {
         const extra = ivaIncluido && r.data.base != null ? ` (Base ${money(r.data.base)} + IVA ${money(r.data.iva)})` : ''
         alert(`✔ Correo enviado a Johanna (${r.data.destinatario}). Total: ${money(r.data.total)}${extra}`); return
@@ -316,6 +337,25 @@ export default function Reportes({ modo }) {
           <h1>📑 Reportes — {tituloModo} {periodo && <span className="rp-periodo">· {periodo.etiqueta}</span>}</h1>
           <p className="rp-sub">Cada contribuyente (desplegable) con los servicios que se le hacen. <strong>Faltantes</strong> = aún no facturados en Odoo este período; <strong>Realizados</strong> = ya facturados (✅), con la insignia de <strong>certificación SRI</strong> si tienen número de autorización. Cada concepto muestra el <strong>precio sugerido de Odoo</strong> (💡); el botón <strong>"usar"</strong> lo aplica. Lo que cargues a mano se respeta y se guarda.</p>
         </div>
+        {/* Mes que se está cargando. Sin esto solo se podía tocar el mes en
+            curso: lo que no se registró a tiempo quedaba sin cobrar. */}
+        <div className="rp-periodo-sel">
+          <span className="rp-periodo-lbl">🗓️ Período</span>
+          <select value={per.mes} onChange={(e) => irAPeriodo(Number(e.target.value), per.anio)}>
+            {MESES.map((m, i) => (
+              <option key={m} value={i + 1}
+                disabled={per.anio * 100 + (i + 1) > periodoHoy().anio * 100 + periodoHoy().mes}>{m}</option>
+            ))}
+          </select>
+          <select value={per.anio} onChange={(e) => irAPeriodo(per.mes, Number(e.target.value))}>
+            {[0, 1, 2].map((d) => periodoHoy().anio - d).map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+          {!per.actual && (
+            <button type="button" className="rp-periodo-hoy"
+              onClick={() => irAPeriodo(periodoHoy().mes, periodoHoy().anio)}
+              title="Volver al mes en curso">↩ mes actual</button>
+          )}
+        </div>
         <div className="rp-total-box">
           <span className="rp-total-lbl">{modo === 'realizados' ? 'Ya facturado en Odoo' : 'Pendiente a cobrar'}{search ? ' (filtrado)' : ''}{ivaIncluido ? ' (IVA incl.)' : ''}</span>
           <span className="rp-total-val">{money(totalActivo)}</span>
@@ -325,6 +365,13 @@ export default function Reportes({ modo }) {
           {!modo && totalProcesado > 0 && <span className="rp-total-proc">Ya facturado en Odoo: {money(totalProcesado)}</span>}
         </div>
       </header>
+
+      {!per.actual && (
+        <div className="rp-aviso-periodo">
+          Estás cargando <strong>{etiquetaPeriodo(per.mes, per.anio)}</strong>, no el mes en curso.
+          Lo que guardes queda registrado en ese período y desde ahí se factura.
+        </div>
+      )}
 
       <div className="rp-toolbar">
         <input className="rp-search" placeholder="🔍 Buscar contribuyente o concepto…"

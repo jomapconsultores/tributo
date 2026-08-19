@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { odooAPI } from '../services/api'
 import WorkflowGuide from '../components/WorkflowGuide'
-import { MESES } from '../utils/periodo'
+import { MESES, clavePeriodo } from '../utils/periodo'
 import './ReporteFacturacion.css'
 
 const RF_STEPS = [
@@ -28,10 +29,15 @@ const FACT = {
   sin_movimiento: { txt: '—', cls: 'dim' },
 }
 
-export default function ReporteFacturacion({ embebido = false }) {
+// `periodo` (mes/año) lo manda el módulo de Facturación: uno solo para las
+// cuatro pestañas. Suelta —abriendo esta pantalla por su cuenta— elige su mes.
+export default function ReporteFacturacion({ embebido = false, periodo = null, onFacturarMes = null }) {
+  const navigate = useNavigate()
   const hoy = new Date()
-  const [mes, setMes] = useState(hoy.getMonth() + 1)
-  const [anio, setAnio] = useState(hoy.getFullYear())
+  const [mesLocal, setMes] = useState(hoy.getMonth() + 1)
+  const [anioLocal, setAnio] = useState(hoy.getFullYear())
+  const mes = periodo ? periodo.mes : mesLocal
+  const anio = periodo ? periodo.anio : anioLocal
   const [datos, setDatos] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
@@ -84,6 +90,13 @@ export default function ReporteFacturacion({ embebido = false }) {
   const r = datos?.resumen || {}
   const anios = [hoy.getFullYear(), hoy.getFullYear() - 1, hoy.getFullYear() - 2]
 
+  // Del reporte a la emisión SIN cambiar de mes: leer que faltan 12 facturas y
+  // tener que ir a buscar el período a mano era el paso que se saltaba.
+  const irAFacturar = () => {
+    if (onFacturarMes) return onFacturarMes()
+    navigate(`/facturacion?p=${clavePeriodo(mes, anio)}`)
+  }
+
   return (
     <div className="rf-wrap">
       {!embebido && <WorkflowGuide steps={RF_STEPS} />}
@@ -97,14 +110,18 @@ export default function ReporteFacturacion({ embebido = false }) {
             </p>
           </div>
         )}
-        <div className="rf-periodo">
-          <select value={mes} onChange={(e) => setMes(Number(e.target.value))}>
-            {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-          </select>
-          <select value={anio} onChange={(e) => setAnio(Number(e.target.value))}>
-            {anios.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
-        </div>
+        {/* Con período del módulo no se repite el selector: mandaría dos meses
+            distintos en la misma pantalla. */}
+        {!periodo && (
+          <div className="rf-periodo">
+            <select value={mes} onChange={(e) => setMes(Number(e.target.value))}>
+              {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+            </select>
+            <select value={anio} onChange={(e) => setAnio(Number(e.target.value))}>
+              {anios.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+        )}
       </header>
 
       {cargando && <div className="rf-cargando">Cargando el mes…</div>}
@@ -165,7 +182,15 @@ export default function ReporteFacturacion({ embebido = false }) {
                 Sin declarar ({r.decl_ninguna || 0})
               </button>
             </div>
-            <button className="rf-csv" onClick={descargarCsv} disabled={!filas.length}>⬇ Descargar CSV</button>
+            <div className="rf-acciones">
+              {r.pendientes > 0 && (
+                <button className="rf-facturar" onClick={irAFacturar}
+                  title={`Ir a emitir las facturas de ${datos.periodo.etiqueta}`}>
+                  📤 Facturar {r.pendientes} pendiente(s) de {datos.periodo.etiqueta} · {fmt(r.monto_pendiente)}
+                </button>
+              )}
+              <button className="rf-csv" onClick={descargarCsv} disabled={!filas.length}>⬇ Descargar CSV</button>
+            </div>
           </div>
 
           <div className="rf-tabla-wrap">
@@ -210,6 +235,10 @@ export default function ReporteFacturacion({ embebido = false }) {
                       <span className={`rf-chip ${FACT[f.estado_facturacion]?.cls}`}>
                         {FACT[f.estado_facturacion]?.txt}
                       </span>
+                      {f.estado_facturacion === 'pendiente' && (
+                        <button className="rf-fact-ir" onClick={irAFacturar}
+                          title={`Emitir la factura de ${datos.periodo.etiqueta}`}>emitir ›</button>
+                      )}
                       {f.facturas.map((x) => (
                         <div key={x.numero} className="rf-fact">
                           {x.numero}

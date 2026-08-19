@@ -32,6 +32,27 @@ def _periodo_actual():
     return now.month, now.year
 
 
+def _periodo_pedido(mes: Optional[int], anio: Optional[int]):
+    """Período (mes, año) sobre el que se trabaja. Sin datos, el mes en curso.
+
+    Los honorarios se registran mes a mes: si el de julio no se cargó en julio,
+    en agosto tiene que poder cargarse igual —si no, ese mes nunca aparece ni en
+    'por facturar' ni en el reporte y se pierde el cobro—. Lo único que no se
+    acepta es un mes que todavía no llegó."""
+    cur_mes, cur_anio = _periodo_actual()
+    if mes is None and anio is None:
+        return cur_mes, cur_anio
+    mes = int(mes or cur_mes)
+    anio = int(anio or cur_anio)
+    if not (1 <= mes <= 12):
+        raise HTTPException(status_code=400, detail="Mes inválido")
+    if anio < 2000 or anio > cur_anio + 1:
+        raise HTTPException(status_code=400, detail="Año fuera de rango")
+    if anio * 100 + mes > cur_anio * 100 + cur_mes:
+        raise HTTPException(status_code=400, detail="No se puede trabajar un período futuro")
+    return mes, anio
+
+
 def _es_mes_actual(created_at, mes, anio) -> bool:
     """¿La fecha (ISO) cae dentro del mes calendario (mes/anio) en hora Ecuador?"""
     if not created_at:
@@ -128,19 +149,24 @@ class CobroIn(BaseModel):
     precio_oficial: Optional[float] = None  # precio de lista (price_unit en Odoo)
     descuento: Optional[float] = 0      # % de descuento sobre el oficial (discount en Odoo)
     iva_incluido: Optional[bool] = False   # False = "+IVA" (se suma 15%); True = IVA ya incluido
+    # Período al que pertenece el honorario. Sin él, el mes en curso.
+    mes: Optional[int] = None
+    anio: Optional[int] = None
 
 
-def _filas_y_total(user_id):
-    """Construye las filas (contribuyente × concepto) del PERÍODO ACTUAL con
-    cobrar/valor guardados, pre-marcando lo relevante (servicios contratados,
-    anexos y declaraciones). Marca en verde (`hecho`) lo declarado ESTE mes
-    calendario y arrastra los valores del mes anterior cuando no hay del actual.
-    Devuelve (filas, total_a_cobrar, historial) donde historial es
-    {ruc: [{anio, mes, etiqueta, subtotal, items:[...]}]} de meses anteriores."""
+def _filas_y_total(user_id, mes: Optional[int] = None, anio: Optional[int] = None):
+    """Construye las filas (contribuyente × concepto) del PERÍODO pedido (por
+    omisión el actual) con cobrar/valor guardados, pre-marcando lo relevante
+    (servicios contratados, anexos y declaraciones). Marca en verde (`hecho`) lo
+    declarado en ESE mes calendario y arrastra los valores del mes anterior
+    cuando no hay del período. Devuelve (filas, total_a_cobrar, historial) donde
+    historial es {ruc: [{anio, mes, etiqueta, subtotal, items:[...]}]} de los
+    meses previos al período."""
     from tenancy import visible_clients
     sb = get_supabase_client()
-    cur_mes, cur_anio = _periodo_actual()
+    cur_mes, cur_anio = _periodo_pedido(mes, anio)
     cur_key = cur_anio * 100 + cur_mes
+    es_periodo_actual = (cur_mes, cur_anio) == _periodo_actual()
     # Contribuyentes visibles SEGÚN EL ROL: admin ve todos; socio ve los de los
     # clientes y los suyos; cliente ve los propios y compartidos. Así aparecen
     # TODAS las personas creadas, sea del administrador, del socio o de los clientes.
@@ -388,12 +414,16 @@ def _filas_y_total(user_id):
             sug = sug_por_label.get(label)  # línea de Odoo de mayor relación
             ofi = PRECIO_OFICIAL.get(key, 0.0)
             if es_vacio:
-                # Vacío: no se arrastra del mes anterior; lo llena Odoo (o queda en blanco).
-                if sug:
+                # Vacío: no se arrastra del mes anterior; lo llena Odoo (o queda
+                # en blanco). El relleno automático es SOLO para el mes en curso:
+                # en un mes cerrado, la última factura de Odoo puede ser posterior
+                # y daría por cobrado algo que nunca se registró en ese período.
+                if sug and es_periodo_actual:
                     _fila(label, relevante, hecho, False, None, oficial_std=ofi,
                           odoo_sug=sug, origen="odoo", sugerido=sug)
                 else:
-                    _fila(label, relevante, hecho, False, None, oficial_std=ofi)
+                    _fila(label, relevante, hecho, False, None, oficial_std=ofi,
+                          sugerido=sug)
             else:
                 g_cur = guardados_cur.get((ruc, label))
                 g_prev = prev_por_prod.get((ruc, label))
@@ -425,24 +455,30 @@ async def set_cliente_iva(client_id: str, iva_incluido: bool, user_id: str = Dep
 
 
 @router.get("/cobros")
-async def cobros(user_id: str = Depends(get_current_user)):
-    filas, total, historial = _filas_y_total(user_id)
-    cur_mes, cur_anio = _periodo_actual()
+async def cobros(mes: Optional[int] = None, anio: Optional[int] = None,
+                 user_id: str = Depends(get_current_user)):
+    """Honorarios del período pedido (por omisión, el mes en curso)."""
+    cur_mes, cur_anio = _periodo_pedido(mes, anio)
+    filas, total, historial = _filas_y_total(user_id, cur_mes, cur_anio)
+    hoy_mes, hoy_anio = _periodo_actual()
     return {"data": filas, "total_a_cobrar": total, "historial": historial,
             "periodo": {"mes": cur_mes, "anio": cur_anio,
-                        "etiqueta": f"{MESES_ES[cur_mes]} {cur_anio}"}}
+                        "etiqueta": f"{MESES_ES[cur_mes]} {cur_anio}",
+                        "clave": f"{cur_anio:04d}-{cur_mes:02d}",
+                        "actual": (cur_mes, cur_anio) == (hoy_mes, hoy_anio)}}
 
 
 @router.put("/cobros")
 async def guardar_cobro(entry: CobroIn, user_id: str = Depends(get_current_user)):
     """Guarda (upsert) el 'cobrar' y 'valor' de un contribuyente + concepto en el
-    período (mes/año) ACTUAL. Los meses anteriores quedan intactos como histórico."""
+    período (mes/año) indicado —por omisión el ACTUAL—. Los demás meses quedan
+    intactos: cada uno guarda su propia fila."""
     sb = get_supabase_client()
     concepto = (entry.producto or "").strip()
     ident = (entry.identificacion or "").strip()
     if not ident or not concepto:
         raise HTTPException(status_code=400, detail="Contribuyente y concepto son obligatorios")
-    cur_mes, cur_anio = _periodo_actual()
+    cur_mes, cur_anio = _periodo_pedido(entry.mes, entry.anio)
     # Neto = oficial × (1 - descuento/100) si vienen oficial+descuento; si no, el valor enviado.
     oficial = entry.precio_oficial
     descuento = float(entry.descuento or 0)
@@ -470,12 +506,14 @@ async def guardar_cobro(entry: CobroIn, user_id: str = Depends(get_current_user)
 
 
 @router.delete("/cobros")
-async def borrar_cobro(identificacion: str, producto: str, user_id: str = Depends(get_current_user)):
-    """Elimina una fila guardada del período ACTUAL (sirve para quitar un rubro
-    personalizado). Antes no filtraba por mes/año y borraba el rubro de todos
-    los períodos históricos del contribuyente."""
+async def borrar_cobro(identificacion: str, producto: str,
+                       mes: Optional[int] = None, anio: Optional[int] = None,
+                       user_id: str = Depends(get_current_user)):
+    """Elimina una fila guardada del período indicado —por omisión el ACTUAL—
+    (sirve para quitar un rubro personalizado). Antes no filtraba por mes/año y
+    borraba el rubro de todos los períodos históricos del contribuyente."""
     sb = get_supabase_client()
-    cur_mes, cur_anio = _periodo_actual()
+    cur_mes, cur_anio = _periodo_pedido(mes, anio)
     sb.table("reportes_honorarios").delete().eq("user_id", user_id).eq(
         "identificacion", (identificacion or "").strip()).eq("producto", (producto or "").strip()).eq(
         "mes", cur_mes).eq("anio", cur_anio).execute()
@@ -483,14 +521,16 @@ async def borrar_cobro(identificacion: str, producto: str, user_id: str = Depend
 
 
 @router.post("/enviar-correo")
-async def enviar_correo_reporte(iva_incluido: bool = False, user_id: str = Depends(get_current_user)):
+async def enviar_correo_reporte(iva_incluido: bool = False, mes: Optional[int] = None,
+                                anio: Optional[int] = None,
+                                user_id: str = Depends(get_current_user)):
     """Envía a Johanna (Odoo) el detalle de honorarios y el total a facturar.
     Requiere SMTP configurado; si no, devuelve configurado=False para que el
     front abra el correo redactado (mailto)."""
     if not email_configurado():
         return {"ok": False, "configurado": False,
                 "error": "El envío automático no está configurado en el servidor."}
-    filas, total, _ = _filas_y_total(user_id)
+    filas, total, _ = _filas_y_total(user_id, mes, anio)
     # 'bruto' = valor con IVA incluido por ítem (base + 15%). El total ya es con IVA.
     por_ruc = {}
     for f in filas:
@@ -521,9 +561,11 @@ async def enviar_correo_reporte(iva_incluido: bool = False, user_id: str = Depen
 
 
 @router.get("/export/excel")
-async def export_excel(iva_incluido: bool = False, user_id: str = Depends(get_current_user)):
+async def export_excel(iva_incluido: bool = False, mes: Optional[int] = None,
+                       anio: Optional[int] = None,
+                       user_id: str = Depends(get_current_user)):
     import xlsxwriter
-    filas, total, _ = _filas_y_total(user_id)
+    filas, total, _ = _filas_y_total(user_id, mes, anio)
     out = io.BytesIO()
     wb = xlsxwriter.Workbook(out, {"in_memory": True})
     ws = wb.add_worksheet("Honorarios")
@@ -583,13 +625,15 @@ async def export_excel(iva_incluido: bool = False, user_id: str = Depends(get_cu
 
 
 @router.get("/export/pdf")
-async def export_pdf(iva_incluido: bool = False, user_id: str = Depends(get_current_user)):
+async def export_pdf(iva_incluido: bool = False, mes: Optional[int] = None,
+                     anio: Optional[int] = None,
+                     user_id: str = Depends(get_current_user)):
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.units import inch
     from reportlab.lib import colors
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    filas, total, _ = _filas_y_total(user_id)
+    filas, total, _ = _filas_y_total(user_id, mes, anio)
     out = io.BytesIO()
     doc = SimpleDocTemplate(out, pagesize=letter, topMargin=0.5 * inch, bottomMargin=0.5 * inch)
     st = getSampleStyleSheet()

@@ -19,7 +19,10 @@ const OF_STEPS = [
   { icon: '🔍', label: 'Cruce mensual', path: '/facturacion/cruce' },
 ]
 
-export default function OdooFacturacion({ embebido = false }) {
+// `periodoSel` (mes/año) lo manda el módulo de Facturación: es el mes que se
+// está emitiendo. Suelta —sin período— trabaja el mes en curso, que es lo que
+// devuelve el backend por omisión.
+export default function OdooFacturacion({ embebido = false, periodo: periodoSel = null }) {
   const navigate = useNavigate()
   const { identsForSvc } = useClients()
   const idents_svc = identsForSvc('declaracion_iva,declaracion_ice,declaracion_renta,devolucion_iva')
@@ -40,7 +43,7 @@ export default function OdooFacturacion({ embebido = false }) {
   const [bancosPorEmpresa, setBancosPorEmpresa] = useState({})  // { companyId: [bancos] }
   const [impuestoPorEmpresa, setImpuestoPorEmpresa] = useState({})  // { companyId: bool } — tiene IVA 15% (411,S)
   const [cuentas, setCuentas] = useState({})                // { ruc: {existe, cuenta_id, cuenta_nombre, asignada, siguiente_codigo} }
-  const [periodo, setPeriodo] = useState(null)              // período que se está facturando (mes/año)
+  const [periodo, setPeriodo] = useState(periodoSel)        // período que se está facturando (mes/año)
   const [atrasos, setAtrasos] = useState({})                // { ruc: {total, meses:[...]} } — meses anteriores sin facturar
   const [atrasosOk, setAtrasosOk] = useState(false)         // ¿el cruce con Odoo respondió?
   // Meses ANTERIORES pendientes, cada uno con sus contribuyentes y sus líneas:
@@ -53,9 +56,11 @@ export default function OdooFacturacion({ embebido = false }) {
   const [creandoCta, setCreandoCta] = useState('')
 
   useEffect(() => {
+    setLoading(true)
+    setResultados(null)
     // Cargamos cobros y estado Odoo por separado para que un fallo
     // en Odoo no bloquee la visualización de los honorarios.
-    reportesAPI.cobros()
+    reportesAPI.cobros(periodoSel?.mes, periodoSel?.anio)
       .then((r) => {
         const data = r.data.data || []
         setFilas(data)
@@ -66,6 +71,18 @@ export default function OdooFacturacion({ embebido = false }) {
       .catch((e) => setError(e.response?.data?.detail || e.message))
       .finally(() => setLoading(false))
 
+    // Meses ANTERIORES al período elegido que quedaron sin facturar (cruce con
+    // Odoo). Es lo que evita que se mezclen períodos: acá se ve qué arrastra
+    // cada contribuyente.
+    odooAPI.pendientesPorMes(12, periodoSel?.mes, periodoSel?.anio)
+      .then((r) => { setAtrasos(r.data?.data || {}); setAtrasosOk(!!r.data?.odoo_ok) })
+      .catch(() => { setAtrasos({}); setAtrasosOk(false) })
+
+    cargarMesesPendientes()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodoSel?.clave])
+
+  useEffect(() => {
     odooAPI.estado()
       .then((r) => setEstadoOdoo(r.data))
       .catch(() => setEstadoOdoo({ ok: false, error: 'No disponible' }))
@@ -83,20 +100,13 @@ export default function OdooFacturacion({ embebido = false }) {
     odooAPI.productos()
       .then((r) => setProductos(r.data?.data || []))
       .catch(() => setProductos([]))
-
-    // Meses ANTERIORES que quedaron sin facturar (cruce con Odoo). Es lo que
-    // evita que se mezclen períodos: acá se ve qué arrastra cada contribuyente.
-    odooAPI.pendientesPorMes(12)
-      .then((r) => { setAtrasos(r.data?.data || {}); setAtrasosOk(!!r.data?.odoo_ok) })
-      .catch(() => { setAtrasos({}); setAtrasosOk(false) })
-
-    cargarMesesPendientes()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Cada mes anterior sin facturar, con sus líneas, para emitirlo aparte.
+  // Cada mes anterior al período elegido que sigue sin facturar, con sus líneas,
+  // para emitirlo aparte.
   const cargarMesesPendientes = () => {
-    odooAPI.porFacturar(12)
+    odooAPI.porFacturar(12, periodoSel?.mes, periodoSel?.anio)
       .then((r) => {
         const ms = r.data?.meses || []
         setMesesPend(ms)
@@ -211,16 +221,21 @@ export default function OdooFacturacion({ embebido = false }) {
     setSeleccionados(s)
   }
 
-  // Verificación BIDIRECCIONAL con Odoo: los que YA tienen factura de este mes en
+  // Verificación BIDIRECCIONAL con Odoo: los que YA tienen factura del período en
   // Odoo se consideran "procesados" y NO se pueden volver a procesar/duplicar.
-  const mesActualISO = (new Date()).toISOString().slice(0, 7)
+  // Para un mes anterior esta comprobación no aplica —`ultima_factura` mira el
+  // mes en curso—: ahí la señal la da el backend, que ya excluye lo facturado.
+  const claveSel = periodo ? `${periodo.anio}-${String(periodo.mes).padStart(2, '0')}`
+    : (new Date()).toISOString().slice(0, 7)
   const esProcesadoEsteMes = (g) => {
     const uf = cuentas[g.ruc]?.ultima_factura
-    return !!uf && (uf.fecha || '').slice(0, 7) === mesActualISO
+    return !!uf && (uf.fecha || '').slice(0, 7) === claveSel
   }
   const verificando = grupos.some((g) => !cuentas[g.ruc])  // aún consultando a Odoo
-  const gruposPorProcesar = useMemo(() => grupos.filter((g) => !esProcesadoEsteMes(g)), [grupos, cuentas])
-  const gruposProcesados = useMemo(() => grupos.filter((g) => esProcesadoEsteMes(g)), [grupos, cuentas])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const gruposPorProcesar = useMemo(() => grupos.filter((g) => !esProcesadoEsteMes(g)), [grupos, cuentas, claveSel])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const gruposProcesados = useMemo(() => grupos.filter((g) => esProcesadoEsteMes(g)), [grupos, cuentas, claveSel])
 
   // Sacar de la selección cualquiera que ya esté procesado este mes (no duplicar).
   useEffect(() => {
@@ -383,8 +398,14 @@ export default function OdooFacturacion({ embebido = false }) {
         <span className="of-periodo-txt">
           Se emitirán las facturas del período <strong>{(periodo?.etiqueta || '').toUpperCase()}</strong>
         </span>
+        {periodoSel && !periodoSel.actual && (
+          <span className="of-periodo-atras">
+            ↩ Período anterior: la factura sale con fecha de <strong>hoy</strong> y declara
+            en su referencia y en cada concepto que cubre {periodoSel.etiqueta}.
+          </span>
+        )}
         <span className="of-periodo-nota">
-          Un contribuyente = una factura de este mes.{mesesPend.length > 0
+          Un contribuyente = una factura de ese mes.{mesesPend.length > 0
             ? ` Los ${mesesPend.length} mes(es) anteriores sin facturar se emiten abajo, cada uno por separado.`
             : ' Los meses anteriores se revisan en «Cruce mensual».'}
         </span>
@@ -612,7 +633,7 @@ export default function OdooFacturacion({ embebido = false }) {
           {gruposProcesados.length > 0 && (
             <div className="of-procesados">
               <button type="button" className="of-procesados-head" onClick={() => navigate('/facturacion/procesadas')}>
-                ✅ {gruposProcesados.length} contribuyente(s) ya procesado(s) este mes — no se vuelven a facturar · ver en «Facturas procesadas» ›
+                ✅ {gruposProcesados.length} contribuyente(s) ya procesado(s) en {periodo?.etiqueta || 'este mes'} — no se vuelven a facturar · ver en «Facturas procesadas» ›
               </button>
             </div>
           )}
@@ -620,7 +641,7 @@ export default function OdooFacturacion({ embebido = false }) {
           {/* Tabla de contribuyentes POR PROCESAR */}
           <div className="of-grupos">
             {gruposPorProcesar.length === 0 && !verificando && (
-              <div className="of-dim" style={{ padding: '12px' }}>Todos los contribuyentes ya tienen su factura de este mes en Odoo. No hay nada por procesar.</div>
+              <div className="of-dim" style={{ padding: '12px' }}>Todos los contribuyentes ya tienen su factura de {periodo?.etiqueta || 'este mes'} en Odoo. No hay nada por procesar.</div>
             )}
             {gruposPorProcesar.map((g) => {
               const sel = seleccionados.has(g.ruc)
@@ -668,8 +689,7 @@ export default function OdooFacturacion({ embebido = false }) {
                     : (() => {
                         const info = cuentas[g.ruc]
                         const uf = info.ultima_factura
-                        const mesActual = (new Date()).toISOString().slice(0, 7)
-                        const emitidaEsteMes = uf && (uf.fecha || '').slice(0, 7) === mesActual
+                        const emitidaEsteMes = uf && (uf.fecha || '').slice(0, 7) === claveSel
                         return (
                           <div className="of-estado">
                             {info.partner_id
@@ -681,9 +701,9 @@ export default function OdooFacturacion({ embebido = false }) {
                                   </button>
                                 </span>}
                             {emitidaEsteMes
-                              ? <span className="of-est-warn" title="Ya hay una factura de este mes — evitá duplicar">🧾 Ya emitida este mes: {uf.numero}{uf.autorizada ? ' · SRI autorizada ✓' : ' · SRI pendiente'}</span>
+                              ? <span className="of-est-warn" title="Ya hay una factura de este período — evitá duplicar">🧾 Ya emitida en {periodo?.etiqueta || 'este mes'}: {uf.numero}{uf.autorizada ? ' · SRI autorizada ✓' : ' · SRI pendiente'}</span>
                               : uf
-                                ? <span className="of-est-info">🧾 Última: {uf.numero} ({uf.fecha}){uf.autorizada ? ' · SRI ✓' : ''} — falta emitir la de este mes</span>
+                                ? <span className="of-est-info">🧾 Última: {uf.numero} ({uf.fecha}){uf.autorizada ? ' · SRI ✓' : ''} — falta emitir la de {periodo?.etiqueta || 'este mes'}</span>
                                 : <span className="of-est-pend">🧾 Sin factura emitida — falta emitir</span>}
                           </div>
                         )

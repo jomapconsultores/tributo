@@ -144,3 +144,24 @@
 .rp-pc-neto input { border-color: #1e8449; font-weight: 700; color: #1e8449; }
 .rp-pc input:disabled { background: #f4f6f9; color: #b6bfca; }
 .rp-pc input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,.12); }
+
+/* Selector de período: los honorarios se cargan mes a mes y un mes que se pasó
+   tiene que poder registrarse igual, o nunca llega a facturarse. */
+.rp-periodo-sel {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 5px 10px;
+}
+.rp-periodo-lbl { font-size: .78rem; font-weight: 700; color: #475569; }
+.rp-periodo-sel select {
+  border: 1px solid #cbd5e1; border-radius: 7px; padding: 4px 7px;
+  font-family: inherit; font-size: .8rem; font-weight: 600; color: #1e3a6e; background: #fff;
+}
+.rp-periodo-hoy {
+  border: none; background: transparent; color: #1e3a6e; cursor: pointer;
+  font-family: inherit; font-size: .76rem; font-weight: 700; text-decoration: underline;
+}
+.rp-aviso-periodo {
+  margin: 0 0 12px; padding: 8px 14px;
+  background: #fef9e7; border: 1px solid #f6e2a8; border-radius: 9px;
+  color: #7d6608; font-size: .82rem;
+}

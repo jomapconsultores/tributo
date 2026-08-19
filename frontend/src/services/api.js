@@ -404,13 +404,14 @@ export const normativaAPI = {
 
 // REPORTES: honorarios a cobrar por contribuyente y concepto (servicio)
 export const reportesAPI = {
-  cobros: () => api.get('/api/reportes/cobros'),
-  guardarCobro: (entry) => api.put('/api/reportes/cobros', entry),
-  borrarCobro: (identificacion, producto) => api.delete('/api/reportes/cobros', { params: { identificacion, producto } }),
+  // Honorarios del período (mes/año). Sin período = el mes en curso.
+  cobros: (mes, anio) => api.get('/api/reportes/cobros', { params: { mes, anio } }),
+  guardarCobro: (entry) => api.put('/api/reportes/cobros', entry),   // entry.mes/anio = período a escribir
+  borrarCobro: (identificacion, producto, mes, anio) => api.delete('/api/reportes/cobros', { params: { identificacion, producto, mes, anio } }),
   setClienteIva: (clientId, iva_incluido) => api.put(`/api/reportes/cliente-iva/${clientId}`, null, { params: { iva_incluido } }),
-  enviarCorreo: (iva_incluido = false) => api.post('/api/reportes/enviar-correo', null, { params: { iva_incluido } }),
-  exportExcel: (iva_incluido = false) => api.get('/api/reportes/export/excel', { params: { iva_incluido }, responseType: 'blob' }),
-  exportPdf: (iva_incluido = false) => api.get('/api/reportes/export/pdf', { params: { iva_incluido }, responseType: 'blob' }),
+  enviarCorreo: (iva_incluido = false, mes, anio) => api.post('/api/reportes/enviar-correo', null, { params: { iva_incluido, mes, anio } }),
+  exportExcel: (iva_incluido = false, mes, anio) => api.get('/api/reportes/export/excel', { params: { iva_incluido, mes, anio }, responseType: 'blob' }),
+  exportPdf: (iva_incluido = false, mes, anio) => api.get('/api/reportes/export/pdf', { params: { iva_incluido, mes, anio }, responseType: 'blob' }),
   // Informe consolidado del período: lo realizado, lo declarado y los cobros.
   // El alcance y las columnas de valores dependen del rol del usuario.
   general: (mes = null, anio = null) =>
@@ -591,12 +592,14 @@ export const odooAPI = {
   crearCuentaCobrar: (ruc, nombre, company_id, codigo) => api.post('/api/odoo/crear-cuenta-cobrar', { ruc, nombre, company_id, codigo }),
   crearCliente: (ruc, nombre) => api.post('/api/odoo/crear-cliente', { ruc, nombre }),  // crea el cliente (res.partner) en Odoo
   estadoSri: (ids) => api.post('/api/odoo/estado-sri', { ids }),   // verifica/reintenta el envío al SRI
-  facturas: () => api.get('/api/odoo/facturas'),                   // facturas procesadas (emitidas) en Odoo
+  // Facturas procesadas (emitidas) en Odoo. Con período, solo las de ese mes
+  // de honorarios; sin período, las más recientes de todos los meses.
+  facturas: (mes, anio) => api.get('/api/odoo/facturas', { params: { mes, anio } }),
   facturar: (body) => api.post('/api/odoo/facturar', body),
   // Cruce mes a mes: honorarios registrados en el sistema ↔ facturas en Odoo
-  cruceMensual: (meses = 12) => api.get('/api/odoo/cruce-mensual', { params: { meses } }),
-  pendientesPorMes: (meses = 12) => api.get('/api/odoo/pendientes-por-mes', { params: { meses } }),
-  porFacturar: (meses = 12) => api.get('/api/odoo/por-facturar', { params: { meses } }),  // meses anteriores sin facturar, con sus líneas
+  cruceMensual: (meses = 12, mes, anio) => api.get('/api/odoo/cruce-mensual', { params: { meses, mes, anio } }),
+  pendientesPorMes: (meses = 12, mes, anio) => api.get('/api/odoo/pendientes-por-mes', { params: { meses, mes, anio } }),
+  porFacturar: (meses = 12, mes, anio) => api.get('/api/odoo/por-facturar', { params: { meses, mes, anio } }),  // meses anteriores al período, sin facturar
   // Reporte del mes: quién declaró (todo/parcial), a quién falta facturarle
   // y qué tiene Odoo emitido, con el comparativo entre lo uno y lo otro.
   reporteFacturacion: (mes, anio) => api.get('/api/odoo/reporte-facturacion', { params: { mes, anio } }),

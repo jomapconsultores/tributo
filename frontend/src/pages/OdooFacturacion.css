@@ -396,6 +396,12 @@
 .of-periodo-txt { font-size: 0.86rem; color: #1e3a6e; }
 .of-periodo-txt strong { letter-spacing: 0.03em; }
 .of-periodo-nota { font-size: 0.75rem; color: #475569; margin-left: auto; }
+/* Se está emitiendo un mes anterior: el SRI no autoriza comprobantes con
+   fecha hacia atrás, así que conviene decirlo antes de emitir. */
+.of-periodo-atras {
+  flex-basis: 100%; font-size: 0.78rem; color: #7d6608;
+  background: #fef9e7; border: 1px solid #f6e2a8; border-radius: 8px; padding: 5px 10px;
+}
 
 .of-atrasos-banner {
   display: block; width: 100%; text-align: left; cursor: pointer;

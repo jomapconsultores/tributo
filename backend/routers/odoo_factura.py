@@ -58,6 +58,22 @@ def _etiqueta_mes(anio, mes):
         return ""
     return f"{_MESES_HON[int(mes)]} {int(anio)}"
 
+
+def _periodo_ancla(mes=None, anio=None):
+    """Mes/año sobre el que se apoya una consulta: el pedido, o el actual. Todo
+    el módulo de facturación trabaja sobre UN período; los endpoints que miran
+    'los meses anteriores' necesitan saber cuál es el mes de referencia, que no
+    siempre es el de hoy."""
+    hoy = datetime.now(_EC_TZ_ODOO)
+    if mes is None and anio is None:
+        return hoy.month, hoy.year
+    m = int(mes or hoy.month)
+    a = int(anio or hoy.year)
+    if not (1 <= m <= 12) or a < 2000 or a > hoy.year + 1:
+        raise HTTPException(status_code=400, detail="Período inválido")
+    return m, a
+
+
 # Destino del aviso de facturación (la responsable de facturación en Odoo).
 ODOO_NOTIFY_EMAIL = os.getenv("ODOO_NOTIFY_EMAIL", "johannanievecela@hotmail.com")
 # Empresa EMISORA que NO genera recordatorio de cobro (se excluye por nombre).
@@ -351,13 +367,19 @@ def facturas_periodo_por_ruc(idents: set, mes: int, anio: int, cache_key=None) -
         # Tope = primer día del mes siguiente (evita fechas inválidas tipo 06-31,
         # que Odoo rechaza al parsear el dominio).
         nxt = f"{anio + 1:04d}-01-01" if mes == 12 else f"{anio:04d}-{mes + 1:02d}-01"
+        # El mes que cubre una factura lo dice su referencia (HON-AAAA-MM); la
+        # fecha de emisión solo sirve para las que no la traen. Sin esto, julio
+        # facturado en agosto figuraba como "sin facturar" en julio y como
+        # facturado en agosto: el mes atrasado se emitía dos veces.
+        ref_hon = _ref_honorarios(anio, mes)
         dom = [["move_type", "=", "out_invoice"], ["state", "=", "posted"],
-               ["invoice_date", ">=", ini], ["invoice_date", "<", nxt]]
+               "|", ["ref", "=", ref_hon],
+               "&", ["invoice_date", ">=", ini], ["invoice_date", "<", nxt]]
         ids = _x(models, db, uid, key, "account.move", "search", [dom],
                  {"order": "invoice_date desc, id desc", "limit": 2000})
         rows = _x(models, db, uid, key, "account.move", "read", [ids],
                   {"fields": ["name", "invoice_date", "partner_id", "amount_total",
-                              "amount_residual", "payment_state",
+                              "amount_residual", "payment_state", "ref",
                               "l10n_ec_authorization_number"]}) if ids else []
         pids = list({r["partner_id"][0] for r in rows if r.get("partner_id")})
         vat = {}
@@ -367,6 +389,10 @@ def facturas_periodo_por_ruc(idents: set, mes: int, anio: int, cache_key=None) -
         for r in rows:  # fecha desc → la primera de cada RUC es la más reciente
             v = vat.get((r.get("partner_id") or [None])[0], "")
             if not v or v not in norm or v in out:
+                continue
+            # Emitida en este mes pero declarando OTRO período: es del otro mes.
+            per_ref = _periodo_de_ref(r.get("ref"))
+            if per_ref and per_ref != f"{anio:04d}-{mes:02d}":
                 continue
             # payment_state: 'paid'/'in_payment' = cobrada; 'partial' = a medias.
             # amount_residual es lo que queda por cobrar de esa factura.
@@ -795,25 +821,43 @@ async def estado_sri(body: IdsIn, user_id: str = Depends(get_current_user)):
 
 
 @router.get("/facturas")
-async def odoo_facturas(user_id: str = Depends(get_current_user)):
-    """Facturas de venta (honorarios) emitidas/posteadas en Odoo, para el submenú
-    'Facturas procesadas' (con búsqueda por fecha/RUC/nombre). Las más recientes."""
+async def odoo_facturas(mes: Optional[int] = None, anio: Optional[int] = None,
+                        user_id: str = Depends(get_current_user)):
+    """Facturas de venta (honorarios) emitidas/posteadas en Odoo, para la pestaña
+    'Facturas de Odoo'. Cada una viene con el MES DE HONORARIOS que cubre —el de
+    su referencia HON-AAAA-MM, o el de emisión si no la trae—, de modo que la
+    pantalla pueda agruparlas por mes en lugar de mostrar una lista corrida.
+
+    Con mes/anio devuelve solo las de ese período; sin ellos, las más recientes
+    de todos los meses."""
     sb = get_supabase_client()
     idents_ok = _idents_autorizadas(sb, user_id) if rol_de(user_id) == "cliente" else None
+    filtra_periodo = mes is not None or anio is not None
+    if filtra_periodo:
+        p_mes, p_anio = _periodo_ancla(mes, anio)
+        clave_per = f"{p_anio:04d}-{p_mes:02d}"
     try:
         models, uid, db, key = _connect()
     except Exception:
-        return {"data": []}
+        return {"data": [], "periodo": None}
     try:
         comp = _x(models, db, uid, key, "res.company", "search", [[]])
     except Exception:
         comp = []
     ctx = {"allowed_company_ids": comp} if comp else {}
     dom = [["move_type", "=", "out_invoice"], ["state", "=", "posted"]]
+    if filtra_periodo:
+        # Emitidas EN el mes o marcadas COMO de ese mes: la factura de julio
+        # emitida en agosto pertenece a julio, y la de agosto que salió en
+        # agosto pero cubre julio, no.
+        ini = f"{p_anio:04d}-{p_mes:02d}-01"
+        nxt = f"{p_anio + 1:04d}-01-01" if p_mes == 12 else f"{p_anio:04d}-{p_mes + 1:02d}-01"
+        dom += ["|", ["ref", "=", _ref_honorarios(p_anio, p_mes)],
+                "&", ["invoice_date", ">=", ini], ["invoice_date", "<", nxt]]
     ids = _x(models, db, uid, key, "account.move", "search", [dom],
              {"order": "invoice_date desc, id desc", "limit": 800, "context": ctx})
     rows = _x(models, db, uid, key, "account.move", "read", [ids],
-              {"fields": ["name", "invoice_date", "partner_id", "amount_total",
+              {"fields": ["name", "invoice_date", "partner_id", "amount_total", "ref",
                           "edi_state", "l10n_ec_authorization_number", "company_id"],
                "context": ctx}) if ids else []
     pids = list({r["partner_id"][0] for r in rows if r.get("partner_id")})
@@ -827,6 +871,13 @@ async def odoo_facturas(user_id: str = Depends(get_current_user)):
         ruc = vat.get(pid[0], "")
         if idents_ok is not None and ruc not in idents_ok:
             continue
+        fecha = str(r.get("invoice_date") or "")
+        # Mes de honorarios que cubre: lo dice la referencia; si no la trae, es
+        # el de emisión (facturas viejas o cargadas a mano en Odoo).
+        per = _periodo_de_ref(r.get("ref")) or (fecha[:7] if len(fecha) >= 7 else "")
+        if filtra_periodo and per != clave_per:
+            continue
+        p_a, p_m = (int(per[:4]), int(per[5:7])) if len(per) == 7 else (0, 0)
         data.append({
             "numero": r.get("name"),
             "fecha": r.get("invoice_date"),
@@ -837,8 +888,15 @@ async def odoo_facturas(user_id: str = Depends(get_current_user)):
             "edi_state": r.get("edi_state"),
             "autorizada": bool(r.get("l10n_ec_authorization_number")),
             "autorizacion": r.get("l10n_ec_authorization_number") or None,
+            "periodo": per or None,
+            "periodo_etiqueta": _etiqueta_mes(p_a, p_m).title() or None,
+            "por_referencia": bool(_periodo_de_ref(r.get("ref"))),
         })
-    return {"data": data}
+    periodo = None
+    if filtra_periodo:
+        periodo = {"mes": p_mes, "anio": p_anio, "clave": clave_per,
+                   "etiqueta": _etiqueta_mes(p_anio, p_mes).title()}
+    return {"data": data, "periodo": periodo}
 
 
 @router.get("/cobros-pendientes")
@@ -1201,14 +1259,18 @@ def facturas_por_mes_por_ruc(idents: set, desde_anio: int, desde_mes: int) -> di
     return out
 
 
-def _cruce_mensual(meses: int, user_id: str) -> dict:
+def _cruce_mensual(meses: int, user_id: str, hasta_mes=None, hasta_anio=None) -> dict:
     """Cruza, MES A MES, lo que el sistema registró como honorario a cobrar contra
     lo que efectivamente se facturó en Odoo. Responde qué mes está cuadrado, cuál
     tiene diferencia de monto, cuál quedó sin facturar y qué se facturó en Odoo
     sin respaldo en el sistema. Así deja de estar todo mezclado: cada factura
-    queda atribuida al mes del honorario que la origina."""
+    queda atribuida al mes del honorario que la origina.
+
+    La ventana termina en `hasta_mes/hasta_anio` (por omisión, el mes en curso):
+    el módulo trabaja sobre un período y el cruce tiene que hablar del mismo."""
     meses = max(1, min(int(meses or 12), 36))
     sb = get_supabase_client()
+    p_mes, p_anio = _periodo_ancla(hasta_mes, hasta_anio)
 
     # Contribuyentes visibles según el rol
     visibles = visible_clients(user_id, "identificacion,nombre")
@@ -1217,15 +1279,14 @@ def _cruce_mensual(meses: int, user_id: str) -> dict:
         ident = (c.get("identificacion") or "").strip()
         if ident:
             nombre_por_ruc.setdefault(ident, c.get("nombre") or "")
-    hoy = datetime.now(_EC_TZ_ODOO)
-    periodo_actual = {"anio": hoy.year, "mes": hoy.month,
-                      "etiqueta": f"{MESES_CRUCE[hoy.month]} {hoy.year}"}
+    periodo_actual = {"anio": p_anio, "mes": p_mes,
+                      "etiqueta": f"{MESES_CRUCE[p_mes]} {p_anio}"}
     if not nombre_por_ruc:
         return {"data": [], "resumen": {}, "meses": [], "odoo_ok": False,
                 "periodo_actual": periodo_actual}
 
     # Primer mes de la ventana
-    total_m = (hoy.year * 12 + hoy.month - 1) - (meses - 1)
+    total_m = (p_anio * 12 + p_mes - 1) - (meses - 1)
     desde_anio, desde_mes = divmod(total_m, 12)
     desde_mes += 1
     clave_desde = f"{desde_anio:04d}-{desde_mes:02d}"
@@ -1259,7 +1320,7 @@ def _cruce_mensual(meses: int, user_id: str) -> dict:
     # Etiquetas de los meses de la ventana, del más reciente al más antiguo
     etiquetas = []
     for i in range(meses):
-        t = (hoy.year * 12 + hoy.month - 1) - i
+        t = (p_anio * 12 + p_mes - 1) - i
         a, m = divmod(t, 12)
         m += 1
         etiquetas.append({"clave": f"{a:04d}-{m:02d}", "anio": a, "mes": m,
@@ -1312,9 +1373,12 @@ def _cruce_mensual(meses: int, user_id: str) -> dict:
 
 
 @router.get("/cruce-mensual")
-async def cruce_mensual(meses: int = 12, user_id: str = Depends(get_current_user)):
-    """Cruce mes a mes entre los honorarios del sistema y las facturas de Odoo."""
-    return _cruce_mensual(meses, user_id)
+async def cruce_mensual(meses: int = 12, mes: Optional[int] = None,
+                        anio: Optional[int] = None,
+                        user_id: str = Depends(get_current_user)):
+    """Cruce mes a mes entre los honorarios del sistema y las facturas de Odoo.
+    La ventana termina en el período pedido (por omisión, el mes en curso)."""
+    return _cruce_mensual(meses, user_id, mes, anio)
 
 
 # Trabajo declarativo que se espera CADA MES de un contribuyente, según los
@@ -1509,8 +1573,10 @@ async def reporte_facturacion(mes: Optional[int] = None, anio: Optional[int] = N
 
 
 @router.get("/por-facturar")
-async def por_facturar(meses: int = 12, user_id: str = Depends(get_current_user)):
-    """Honorarios de meses ANTERIORES que siguen sin factura, agrupados POR MES.
+async def por_facturar(meses: int = 12, mes: Optional[int] = None, anio: Optional[int] = None,
+                       user_id: str = Depends(get_current_user)):
+    """Honorarios de meses ANTERIORES al período que siguen sin factura,
+    agrupados POR MES.
 
     La pantalla de emisión trabajaba solo con el mes en curso y los atrasos eran
     una advertencia: todo terminaba en un mismo paquete y no había cómo emitir la
@@ -1518,10 +1584,13 @@ async def por_facturar(meses: int = 12, user_id: str = Depends(get_current_user)
     y sus líneas, listo para emitirse aparte —la factura sale con fecha de hoy y
     declara el mes que cubre en su referencia (HON-AAAA-MM) y en cada concepto—.
 
-    El mes en curso NO viene por acá: lo arma /api/reportes/cobros, que además
-    pre-marca lo que todavía no se guardó."""
+    El período que la pantalla arma aparte (mes/anio, por omisión el actual) NO
+    viene por acá: lo trae /api/reportes/cobros, que además pre-marca lo que
+    todavía no se guardó. Sin ese recorte, al elegir un mes pasado el mismo mes
+    saldría dos veces en la pantalla."""
     meses = max(1, min(int(meses or 12), 36))
     sb = get_supabase_client()
+    p_mes, p_anio = _periodo_ancla(mes, anio)
 
     visibles = visible_clients(user_id, "identificacion,nombre")
     nombre_por_ruc = {}
@@ -1529,14 +1598,13 @@ async def por_facturar(meses: int = 12, user_id: str = Depends(get_current_user)
         ident = (c.get("identificacion") or "").strip()
         if ident:
             nombre_por_ruc.setdefault(ident, c.get("nombre") or "")
-    hoy = datetime.now(_EC_TZ_ODOO)
-    periodo_actual = {"anio": hoy.year, "mes": hoy.month,
-                      "etiqueta": _etiqueta_mes(hoy.year, hoy.month).title()}
-    clave_actual = f"{hoy.year:04d}-{hoy.month:02d}"
+    periodo_actual = {"anio": p_anio, "mes": p_mes,
+                      "etiqueta": _etiqueta_mes(p_anio, p_mes).title()}
+    clave_actual = f"{p_anio:04d}-{p_mes:02d}"
     if not nombre_por_ruc:
         return {"meses": [], "odoo_ok": False, "periodo_actual": periodo_actual}
 
-    total_m = (hoy.year * 12 + hoy.month - 1) - (meses - 1)
+    total_m = (p_anio * 12 + p_mes - 1) - (meses - 1)
     desde_anio, desde_mes = divmod(total_m, 12)
     desde_mes += 1
     clave_desde = f"{desde_anio:04d}-{desde_mes:02d}"
@@ -1554,12 +1622,12 @@ async def por_facturar(meses: int = 12, user_id: str = Depends(get_current_user)
         valor = float(g.get("valor") or 0)
         if valor <= 0:
             continue
-        anio, mes = int(g.get("anio") or 0), int(g.get("mes") or 0)
-        if not (1 <= mes <= 12) or anio < 2000:
+        g_anio, g_mes = int(g.get("anio") or 0), int(g.get("mes") or 0)
+        if not (1 <= g_mes <= 12) or g_anio < 2000:
             continue
-        clave = f"{anio:04d}-{mes:02d}"
+        clave = f"{g_anio:04d}-{g_mes:02d}"
         if clave < clave_desde or clave >= clave_actual:
-            continue          # el mes en curso lo arma la pantalla con /cobros
+            continue          # el período elegido lo arma la pantalla con /cobros
         por_mes.setdefault(clave, {}).setdefault(ruc, []).append({
             "concepto": g.get("producto") or "",
             "valor": round(valor, 2),
@@ -1576,7 +1644,7 @@ async def por_facturar(meses: int = 12, user_id: str = Depends(get_current_user)
 
     salida = []
     for clave in sorted(por_mes, reverse=True):
-        anio, mes = int(clave[:4]), int(clave[5:7])
+        m_anio, m_mes = int(clave[:4]), int(clave[5:7])
         contribuyentes = []
         for ruc, lineas in por_mes[clave].items():
             if (fact.get(_solo_digitos(ruc)) or {}).get(clave):
@@ -1592,8 +1660,8 @@ async def por_facturar(meses: int = 12, user_id: str = Depends(get_current_user)
             continue
         contribuyentes.sort(key=lambda c: (c["nombre"] or "").upper())
         salida.append({
-            "clave": clave, "anio": anio, "mes": mes,
-            "etiqueta": _etiqueta_mes(anio, mes).title(),
+            "clave": clave, "anio": m_anio, "mes": m_mes,
+            "etiqueta": _etiqueta_mes(m_anio, m_mes).title(),
             "total": round(sum(c["total"] for c in contribuyentes), 2),
             "contribuyentes": contribuyentes,
         })
@@ -1602,11 +1670,13 @@ async def por_facturar(meses: int = 12, user_id: str = Depends(get_current_user)
 
 
 @router.get("/pendientes-por-mes")
-async def pendientes_por_mes(meses: int = 12, user_id: str = Depends(get_current_user)):
-    """Solo los meses ANTERIORES al actual que quedaron sin facturar, por RUC.
+async def pendientes_por_mes(meses: int = 12, mes: Optional[int] = None,
+                             anio: Optional[int] = None,
+                             user_id: str = Depends(get_current_user)):
+    """Solo los meses ANTERIORES al período que quedaron sin facturar, por RUC.
     Lo consume la pantalla de facturación para advertir, en cada contribuyente,
-    qué meses arrastra pendientes antes de emitir la factura del mes en curso."""
-    cruce = _cruce_mensual(meses, user_id)
+    qué meses arrastra pendientes antes de emitir la factura del mes elegido."""
+    cruce = _cruce_mensual(meses, user_id, mes, anio)
     actual = cruce.get("periodo_actual") or {}
     clave_actual = "{:04d}-{:02d}".format(actual.get("anio", 0), actual.get("mes", 0))
     out = {}

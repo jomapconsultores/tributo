@@ -84,3 +84,17 @@
   padding: 14px 16px; }
 .rf-odoo-tit { margin: 0 0 10px; font-size: .95rem; font-weight: 700; color: #1e3a6e; }
 .rf-nota { margin: 10px 0 0; font-size: .74rem; color: #94a3b8; line-height: 1.45; }
+
+/* Del reporte a la emisión, sin cambiar de mes ni buscar el período a mano. */
+.rf-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rf-facturar {
+  border: 1px solid #1e3a6e; background: #1e3a6e; color: #fff; border-radius: 8px;
+  padding: 7px 13px; cursor: pointer; font-family: inherit; font-size: .82rem; font-weight: 700;
+}
+.rf-facturar:hover { background: #16305c; }
+.rf-fact-ir {
+  margin-left: 7px; border: 1px solid #cbd5e1; background: #fff; color: #1e3a6e;
+  border-radius: 6px; padding: 1px 7px; cursor: pointer;
+  font-family: inherit; font-size: .72rem; font-weight: 700;
+}
+.rf-fact-ir:hover { background: #eef2f7; }

@@ -50,3 +50,37 @@ export function periodoCorto(client) {
   if (!client?.periodo_mes || !client?.periodo_anio) return ''
   return `${MESES_CORTO[client.periodo_mes - 1]} ${client.periodo_anio}`
 }
+
+// --- Período de facturación (mes/año) --------------------------------------
+// El módulo de Facturación trabaja siempre sobre UN mes. Se escribe igual en
+// todos lados —'AAAA-MM'— para que la URL, las pestañas y el backend hablen del
+// mismo período sin traducciones a mano.
+
+export function clavePeriodo(mes, anio) {
+  return `${anio}-${String(mes).padStart(2, '0')}`
+}
+
+export function etiquetaPeriodo(mes, anio) {
+  return `${nombreMes(mes)} ${anio}`
+}
+
+export function periodoHoy() {
+  const h = new Date()
+  return { mes: h.getMonth() + 1, anio: h.getFullYear() }
+}
+
+// 'AAAA-MM' → {mes, anio}. Devuelve null si no es un período utilizable.
+export function parsePeriodo(txt) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(txt || ''))
+  if (!m) return null
+  const anio = parseInt(m[1], 10)
+  const mes = parseInt(m[2], 10)
+  if (mes < 1 || mes > 12 || anio < 2000 || anio > 2100) return null
+  return { mes, anio }
+}
+
+// ¿El período es el mes calendario en curso?
+export function esPeriodoActual(mes, anio) {
+  const h = periodoHoy()
+  return h.mes === Number(mes) && h.anio === Number(anio)
+}

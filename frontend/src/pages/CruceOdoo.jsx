@@ -19,7 +19,10 @@ const ESTADOS = {
   solo_odoo: { ico: '↯', txt: 'Solo en Odoo',        hint: 'Hay factura en Odoo sin honorario registrado en el sistema' },
 }
 
-export default function CruceOdoo({ embebido = false }) {
+// `periodo` (mes/año) lo manda el módulo de Facturación: la ventana de meses
+// termina en ese mes, así el cruce habla del mismo período que las demás
+// pestañas. Suelta, la ventana termina en el mes en curso.
+export default function CruceOdoo({ embebido = false, periodo = null }) {
   const [datos, setDatos] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
@@ -31,13 +34,14 @@ export default function CruceOdoo({ embebido = false }) {
   const cargar = (n) => {
     setCargando(true)
     setError(null)
-    odooAPI.cruceMensual(n)
+    odooAPI.cruceMensual(n, periodo?.mes, periodo?.anio)
       .then((r) => setDatos(r.data))
       .catch((e) => setError(e.response?.data?.detail || e.message))
       .finally(() => setCargando(false))
   }
 
-  useEffect(() => { cargar(meses) }, [meses])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { cargar(meses) }, [meses, periodo?.clave])
 
   // Filas visibles: por texto y, si se pide, solo lo que no cuadra
   const filas = useMemo(() => {
