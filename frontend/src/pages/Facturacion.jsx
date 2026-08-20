@@ -161,7 +161,7 @@ export default function Facturacion() {
           {actual.key === 'honorarios' && (
             <Reportes embebido periodo={periodo} modo={sp.get('modo') || undefined} />
           )}
-          {actual.key === 'emitir' && <OdooFacturacion embebido periodo={periodo} />}
+          {actual.key === 'emitir' && <OdooFacturacion embebido periodo={periodo} estadoOdoo={estadoOdoo} />}
           {actual.key === 'reporte' && (
             <ReporteFacturacion
               embebido

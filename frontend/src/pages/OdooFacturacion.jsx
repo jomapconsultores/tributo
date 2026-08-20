@@ -21,8 +21,10 @@ const OF_STEPS = [
 
 // `periodoSel` (mes/año) lo manda el módulo de Facturación: es el mes que se
 // está emitiendo. Suelta —sin período— trabaja el mes en curso, que es lo que
-// devuelve el backend por omisión.
-export default function OdooFacturacion({ embebido = false, periodo: periodoSel = null }) {
+// devuelve el backend por omisión. `estadoSrv` viene del módulo, que ya preguntó
+// por Odoo para su insignia: sin esto se preguntaba dos veces al abrir.
+export default function OdooFacturacion({ embebido = false, periodo: periodoSel = null,
+                                          estadoOdoo: estadoSrv = null }) {
   const navigate = useNavigate()
   const { identsForSvc } = useClients()
   const idents_svc = identsForSvc('declaracion_iva,declaracion_ice,declaracion_renta,devolucion_iva')
@@ -32,7 +34,8 @@ export default function OdooFacturacion({ embebido = false, periodo: periodoSel 
   const [seleccionados, setSeleccionados] = useState(new Set())
   const [enviando, setEnviando] = useState(false)
   const [resultados, setResultados] = useState(null)
-  const [estadoOdoo, setEstadoOdoo] = useState(null)
+  const [estadoLocal, setEstadoLocal] = useState(null)
+  const estadoOdoo = estadoSrv || estadoLocal
   const [companias, setCompanias] = useState([])   // empresas EMISORAS (compañías Odoo)
   // Opciones del usuario: se autoguardan en el navegador (sobreviven recargas)
   const [companyId, setCompanyId] = useDraft('draft:odoofac:companyId', '')   // emisor elegido
@@ -83,9 +86,14 @@ export default function OdooFacturacion({ embebido = false, periodo: periodoSel 
   }, [periodoSel?.clave])
 
   useEffect(() => {
-    odooAPI.estado()
-      .then((r) => setEstadoOdoo(r.data))
-      .catch(() => setEstadoOdoo({ ok: false, error: 'No disponible' }))
+    // Embebida, el estado lo pregunta el módulo y llega por props: preguntarlo
+    // acá también sería la misma consulta dos veces al abrir la pestaña. (No se
+    // mira `estadoSrv`: en el primer render todavía viene vacío.)
+    if (!embebido) {
+      odooAPI.estado()
+        .then((r) => setEstadoLocal(r.data))
+        .catch(() => setEstadoLocal({ ok: false, error: 'No disponible' }))
+    }
 
     // Empresas emisoras (compañías Odoo) y productos existentes en Odoo
     odooAPI.empresas()
