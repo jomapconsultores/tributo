@@ -165,3 +165,13 @@
   background: #fef9e7; border: 1px solid #f6e2a8; border-radius: 9px;
   color: #7d6608; font-size: .82rem;
 }
+
+/* Faltantes / Realizados dentro del módulo de Facturación: un filtro de la
+   misma pestaña, no dos entradas de menú. */
+.rp-modos { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 12px; }
+.rp-modo {
+  border: 1px solid #cbd5e1; background: #fff; color: #475569; border-radius: 8px;
+  padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: .82rem; font-weight: 600;
+}
+.rp-modo:hover { background: #f1f5f9; }
+.rp-modo.act { background: #1e3a6e; border-color: #1e3a6e; color: #fff; }

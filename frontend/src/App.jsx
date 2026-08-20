@@ -3,7 +3,7 @@
  * ------------------------------------------------------------ */
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom'
 import { AccessProvider, useAccess, homeFor } from './context/AccessContext'
 import { ClientProvider, SELECTED_CLIENT_KEY } from './context/ClientContext'
 import { SELECTED_ORG_KEY } from './services/api'
@@ -35,7 +35,6 @@ const CatalogoProductos        = lazy(() => import('./pages/CatalogoProductos'))
 const Compradores              = lazy(() => import('./pages/Compradores'))
 const RebajasExenciones        = lazy(() => import('./pages/RebajasExenciones'))
 const Normativa                = lazy(() => import('./pages/Normativa'))
-const Reportes                 = lazy(() => import('./pages/Reportes'))
 const InformeGeneral           = lazy(() => import('./pages/InformeGeneral'))
 const Capacitaciones           = lazy(() => import('./pages/Capacitaciones'))
 const Admin                    = lazy(() => import('./pages/Admin'))
@@ -143,6 +142,18 @@ const REVISAR_VERSION_MS = 5 * 60 * 1000
 function RedirFacturacion() {
   const { tab } = useParams()
   return <Navigate to={`/facturacion/${tab || ''}`} replace />
+}
+
+// La carga de honorarios se mudó a la primera pestaña de Facturación: cargar y
+// facturar son el mismo trabajo y estaban en dos menús con meses distintos. Las
+// direcciones viejas (/reportes, /reportes/faltantes, /reportes/realizados)
+// siguen sirviendo —hay enlaces a ellas por toda la app— y conservan lo que
+// traían: el buscador (?q=) del aviso de cobros y el período (?p=).
+function RedirHonorarios({ modo }) {
+  const { search } = useLocation()
+  const sp = new URLSearchParams(search)
+  if (modo) sp.set('modo', modo)
+  return <Navigate to={`/facturacion/honorarios?${sp.toString()}`} replace />
 }
 
 function UpdateBanner() {
@@ -262,9 +273,9 @@ function App() {
                   módulo: todo usuario con sesión debe poder administrar su cuenta. */}
               <Route path="/mi-cuenta" element={<MiCuenta />} />
               <Route path="/normativa" element={<Normativa />} />
-              <Route path="/reportes" element={<Reportes modo="faltantes" />} />
-              <Route path="/reportes/faltantes" element={<Reportes modo="faltantes" />} />
-              <Route path="/reportes/realizados" element={<Reportes modo="realizados" />} />
+              <Route path="/reportes" element={<RedirHonorarios modo="faltantes" />} />
+              <Route path="/reportes/faltantes" element={<RedirHonorarios modo="faltantes" />} />
+              <Route path="/reportes/realizados" element={<RedirHonorarios modo="realizados" />} />
               <Route path="/informe-general" element={<InformeGeneral />} />
               <Route path="/capacitaciones" element={<Capacitaciones />} />
               <Route path="/admin" element={<RequireSuperAdmin><Admin /></RequireSuperAdmin>} />

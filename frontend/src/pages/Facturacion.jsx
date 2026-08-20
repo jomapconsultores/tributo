@@ -7,17 +7,25 @@ import {
 } from '../utils/periodo'
 import './Facturacion.css'
 
-// Todo el módulo en UNA pantalla: emitir, el reporte del mes, lo que Odoo tiene
-// emitido y el cruce histórico. Antes eran cuatro entradas de menú que se
-// parecían entre sí y obligaban a saltar de una a otra para entender el mes.
+// Todo el ciclo de cobro en UNA pantalla: cargar el honorario del mes, emitir la
+// factura, ver cómo quedó el mes, lo que Odoo tiene emitido y el cruce histórico.
+// Antes eran entradas de menú sueltas —dos módulos distintos— que se parecían
+// entre sí y obligaban a saltar de una a otra, cada una con su propio mes.
+const Reportes           = lazy(() => import('./Reportes'))
 const OdooFacturacion    = lazy(() => import('./OdooFacturacion'))
 const ReporteFacturacion = lazy(() => import('./ReporteFacturacion'))
 const FacturasProcesadas = lazy(() => import('./FacturasProcesadas'))
 const CruceOdoo          = lazy(() => import('./CruceOdoo'))
 
-// `admin: true` = solo administrador o socio. "Facturas de Odoo" es de solo
-// lectura y el backend ya filtra por RUC autorizado, así que un cliente la ve.
+// `admin: true` = solo administrador o socio. "Honorarios" y "Facturas de Odoo"
+// quedan como estaban antes de unificar: el backend filtra por los RUC que el
+// rol puede ver, así que un cliente ve lo suyo y nada más.
 const TABS = [
+  // El ciclo completo, en orden: cargar el honorario, emitirlo, ver cómo quedó
+  // el mes y cruzarlo. La carga vivía en otro menú (📑 Reportes) con su propio
+  // mes, así que facturar obligaba a saltar de módulo y a repetir el período.
+  { key: 'honorarios', ruta: 'honorarios', ico: '💵', label: 'Honorarios',
+    nota: 'Qué se le cobra a cada contribuyente por el trabajo del mes', admin: false },
   { key: 'emitir',     ruta: '',           ico: '📤', label: 'Emitir',
     nota: 'Facturas del mes elegido y de los meses que quedaron sin facturar', admin: true },
   { key: 'reporte',    ruta: 'reporte',    ico: '📊', label: 'Reporte del mes',
@@ -93,7 +101,7 @@ export default function Facturacion() {
           <p className="fc-nota">{actual.nota}</p>
         </div>
         <div className="fc-head-der">
-          {/* El mes que manda en las cuatro pestañas */}
+          {/* El mes que manda en todas las pestañas */}
           <div className="fc-periodo">
             <span className="fc-periodo-lbl">🗓️ Período</span>
             <select
@@ -150,6 +158,9 @@ export default function Facturacion() {
 
       <div className="fc-cuerpo">
         <Suspense fallback={<div className="fc-cargando">Cargando…</div>}>
+          {actual.key === 'honorarios' && (
+            <Reportes embebido periodo={periodo} modo={sp.get('modo') || undefined} />
+          )}
           {actual.key === 'emitir' && <OdooFacturacion embebido periodo={periodo} />}
           {actual.key === 'reporte' && (
             <ReporteFacturacion

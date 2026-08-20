@@ -35,7 +35,7 @@ export default function CobrosPendientesModal() {
   }
   const irAlCliente = (it) => {
     cerrar()
-    navigate('/reportes?q=' + encodeURIComponent(it.ruc || it.cliente || ''))
+    navigate('/facturacion/honorarios?q=' + encodeURIComponent(it.ruc || it.cliente || ''))
   }
 
   if (!abierto || !items) return null

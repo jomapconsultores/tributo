@@ -16,9 +16,16 @@ const readRpDrafts = () => { try { return JSON.parse(localStorage.getItem(RP_DRA
 const writeRpDraft = (k, v) => { try { const d = readRpDrafts(); d[k] = v; localStorage.setItem(RP_DRAFT, JSON.stringify(d)) } catch { /* noop */ } }
 const clearRpDraft = (k) => { try { const d = readRpDrafts(); delete d[k]; localStorage.setItem(RP_DRAFT, JSON.stringify(d)) } catch { /* noop */ } }
 
-export default function Reportes({ modo }) {
+// Carga de honorarios del mes: primera pestaña del módulo de Facturación
+// (`embebido`), donde el período lo manda el módulo. Suelta —fuera de él— trae
+// su propio selector de mes.
+export default function Reportes({ modo: modoProp, embebido = false, periodo: periodoSel = null }) {
   // modo: 'faltantes' (pendientes por facturar) | 'realizados' (ya facturados en
-  // Odoo) | undefined (ambas secciones). Define qué submenú se está viendo.
+  // Odoo) | undefined (ambas secciones). Fuera del módulo lo fija la dirección;
+  // embebido se cambia acá mismo, sin salir de la pestaña.
+  const [modoLocal, setModoLocal] = useState(modoProp || 'faltantes')
+  useEffect(() => { if (modoProp) setModoLocal(modoProp) }, [modoProp])
+  const modo = embebido ? modoLocal : modoProp
   const navigate = useNavigate()
   const { identsForSvc } = useClients()
   const idents_svc = identsForSvc('declaracion_iva,declaracion_ice,declaracion_renta,devolucion_iva')
@@ -37,9 +44,10 @@ export default function Reportes({ modo }) {
   // mes: si el de julio no se cargó a tiempo, en agosto tiene que poder cargarse
   // igual, o ese mes nunca llega a facturarse.
   const per = useMemo(() => {
+    if (periodoSel) return periodoSel      // el módulo manda: un solo mes para todo
     const p = parsePeriodo(searchParams.get('p')) || periodoHoy()
     return { ...p, clave: clavePeriodo(p.mes, p.anio), actual: esPeriodoActual(p.mes, p.anio) }
-  }, [searchParams])
+  }, [searchParams, periodoSel])
   const irAPeriodo = (mes, anio) => {
     // Un mes que todavía no llegó no tiene honorarios que cargar.
     const h = periodoHoy()
@@ -237,7 +245,7 @@ export default function Reportes({ modo }) {
     { icon: '🧾', label: 'Emitir facturas en Odoo', path: '/facturacion' },
   ]
   const STEPS_REALIZADOS = [
-    { icon: '📑', label: 'Cobros pendientes', path: '/reportes/faltantes' },
+    { icon: '📑', label: 'Cobros pendientes', path: '/facturacion/honorarios' },
     { icon: '🧾', label: 'Emitir facturas en Odoo', path: '/facturacion' },
     { icon: '✅', label: 'Realizados (aquí)', current: true },
     { icon: '📋', label: 'Facturas procesadas', path: '/facturacion/procesadas' },
@@ -331,15 +339,29 @@ export default function Reportes({ modo }) {
 
   return (
     <div className="rp-page">
-      <WorkflowGuide steps={guideSteps} />
+      {!embebido && <WorkflowGuide steps={guideSteps} />}
+      {/* Faltantes / Realizados: dentro del módulo es un filtro de la misma
+          pestaña, no dos entradas de menú distintas. */}
+      {embebido && (
+        <div className="rp-modos">
+          {[['faltantes', '🟠 Faltantes (por facturar)'],
+            ['realizados', '✅ Realizados (facturados en Odoo)'],
+            ['', '📋 Todos']].map(([k, txt]) => (
+            <button key={k || 'todos'} type="button"
+              className={`rp-modo ${modoLocal === k ? 'act' : ''}`}
+              onClick={() => setModoLocal(k)}>{txt}</button>
+          ))}
+        </div>
+      )}
       <header className="rp-header">
         <div>
-          <h1>📑 Reportes — {tituloModo} {periodo && <span className="rp-periodo">· {periodo.etiqueta}</span>}</h1>
+          {!embebido && <h1>📑 Reportes — {tituloModo} {periodo && <span className="rp-periodo">· {periodo.etiqueta}</span>}</h1>}
           <p className="rp-sub">Cada contribuyente (desplegable) con los servicios que se le hacen. <strong>Faltantes</strong> = aún no facturados en Odoo este período; <strong>Realizados</strong> = ya facturados (✅), con la insignia de <strong>certificación SRI</strong> si tienen número de autorización. Cada concepto muestra el <strong>precio sugerido de Odoo</strong> (💡); el botón <strong>"usar"</strong> lo aplica. Lo que cargues a mano se respeta y se guarda.</p>
         </div>
         {/* Mes que se está cargando. Sin esto solo se podía tocar el mes en
-            curso: lo que no se registró a tiempo quedaba sin cobrar. */}
-        <div className="rp-periodo-sel">
+            curso: lo que no se registró a tiempo quedaba sin cobrar. Embebido lo
+            elige el módulo, uno solo para todas sus pestañas. */}
+        {!embebido && <div className="rp-periodo-sel">
           <span className="rp-periodo-lbl">🗓️ Período</span>
           <select value={per.mes} onChange={(e) => irAPeriodo(Number(e.target.value), per.anio)}>
             {MESES.map((m, i) => (
@@ -355,7 +377,7 @@ export default function Reportes({ modo }) {
               onClick={() => irAPeriodo(periodoHoy().mes, periodoHoy().anio)}
               title="Volver al mes en curso">↩ mes actual</button>
           )}
-        </div>
+        </div>}
         <div className="rp-total-box">
           <span className="rp-total-lbl">{modo === 'realizados' ? 'Ya facturado en Odoo' : 'Pendiente a cobrar'}{search ? ' (filtrado)' : ''}{ivaIncluido ? ' (IVA incl.)' : ''}</span>
           <span className="rp-total-val">{money(totalActivo)}</span>
@@ -366,7 +388,7 @@ export default function Reportes({ modo }) {
         </div>
       </header>
 
-      {!per.actual && (
+      {!per.actual && !embebido && (
         <div className="rp-aviso-periodo">
           Estás cargando <strong>{etiquetaPeriodo(per.mes, per.anio)}</strong>, no el mes en curso.
           Lo que guardes queda registrado en ese período y desde ahí se factura.
@@ -383,7 +405,8 @@ export default function Reportes({ modo }) {
         <span className="rp-iva-hint" title="El IVA se define por cada valor: +IVA suma el 15%, o IVA incluido si ya viene con IVA.">ⓘ El IVA se marca por cada valor (+IVA / incl.)</span>
         <button className="rp-btn" onClick={() => exportar('excel')} disabled={!rows.length}>⬇ Excel</button>
         <button className="rp-btn" onClick={() => exportar('pdf')} disabled={!rows.length}>⬇ PDF</button>
-        <button className="rp-btn rp-btn-odoo" onClick={() => navigate('/facturacion')} disabled={!rows.length} title="Pasar al módulo de Facturación Odoo para crear las facturas de lo marcado">🧾 Enviar a Odoo (facturación)</button>
+        {/* A emitir, con el mismo mes: es el paso siguiente del ciclo. */}
+        <button className="rp-btn rp-btn-odoo" onClick={() => navigate(`/facturacion?p=${per.clave}`)} disabled={!rows.length} title={`Pasar a emitir las facturas de ${etiquetaPeriodo(per.mes, per.anio)}`}>🧾 Emitir facturas de {etiquetaPeriodo(per.mes, per.anio)}</button>
       </div>
 
       {error && <div className="rp-error">⚠ {error}</div>}

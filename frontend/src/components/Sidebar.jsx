@@ -162,20 +162,30 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
       },
       {
         key: 'reportes', ico: '📑', rail: 'Reportes', title: 'Reportes',
-        visible: true, match: (p) => p.startsWith('/reportes') || p.startsWith('/informe-general'),
+        // Faltantes y Realizados se mudaron a Facturación → Honorarios: cargar
+        // el cobro y facturarlo son el mismo trabajo, y acá quedaban lejos del
+        // módulo que los usa. Queda el informe de gestión, que no es del ciclo
+        // de cobro (procesos, declaraciones y devoluciones del período).
+        visible: true, autoNav: true,
+        match: (p) => p.startsWith('/informe-general'),
         items: [
-          L('🟠', 'Faltantes', '/reportes/faltantes'),
-          L('✅', 'Realizados', '/reportes/realizados'),
           L('📊', 'Informe general', '/informe-general'),
         ],
       },
       {
         key: 'odoo', ico: '🧾', rail: 'Facturación', title: 'Facturación',
-        // Un solo destino: adentro son pestañas. Cuatro entradas parecidas en el
-        // menú obligaban a adivinar en cuál estaba cada cosa.
+        // Adentro son pestañas: el ciclo entero, del honorario a la factura.
+        // Entradas sueltas y parecidas obligaban a adivinar dónde estaba cada
+        // cosa. Queda el atajo a Honorarios, que es por donde se empieza el mes.
+        // autoNav + 'Facturación' primero: el clic en el ícono sigue llevando
+        // al módulo, como antes de mudar la carga de honorarios acá.
         visible: true, autoNav: true,
-        match: (p) => p.startsWith('/facturacion') || p.startsWith('/odoo-facturacion'),
-        items: [L('🧾', 'Facturación', '/facturacion')],
+        match: (p) => p.startsWith('/facturacion') || p.startsWith('/odoo-facturacion')
+          || p.startsWith('/reportes'),
+        items: [
+          L('🧾', 'Facturación', '/facturacion'),
+          L('💵', 'Honorarios del mes', '/facturacion/honorarios'),
+        ],
       },
       {
         key: 'capacitaciones', ico: '🎓', rail: 'Capacitaciones', title: 'Capacitaciones',
