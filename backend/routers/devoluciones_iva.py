@@ -215,6 +215,24 @@ def _serie_de_id(id_) -> str:
     return str(id_ or "")[len(PORTAL_PREFIJO):]
 
 
+def _con_datos_de_gastos(fila_portal: dict, de_gastos: dict) -> dict:
+    """La fila del portal, completada con lo que la grilla del SRI no informa.
+
+    El portal da proveedor, serie, fecha y monto de IVA; no da RUC, ni clave de
+    acceso, ni la clasificación del proveedor. Si ese mismo comprobante está en
+    Gastos, esos datos ya se conocen y no hay razón para perderlos."""
+    return {
+        **fila_portal,
+        "unique_id": fila_portal.get("unique_id") or de_gastos.get("unique_id"),
+        "ruc_proveedor": fila_portal.get("ruc_proveedor") or de_gastos.get("ruc_proveedor"),
+        "clasificacion": fila_portal.get("clasificacion") or de_gastos.get("clasificacion"),
+        "nombre_proveedor": fila_portal.get("nombre_proveedor") or de_gastos.get("nombre_proveedor"),
+        # El id del comprobante en Gastos, para no perderle el rastro aunque la
+        # fila que se muestre sea la del portal.
+        "invoice_id": de_gastos.get("id"),
+    }
+
+
 def _resumen_portal(row: dict) -> dict:
     """Comprobante tal como lo lista el portal.
 
@@ -877,17 +895,31 @@ async def comprobantes(
         # Los comprobantes que entraron desde la grilla del SRI no están en
         # Gastos: viven en la solicitud y son los únicos que los tienen, así que
         # salen de ahí para poder marcarlos y clasificarlos en la pantalla.
-        vistas = {c.get("factura_numero") for c in comps if c.get("factura_numero")}
+        #
+        # Y el MISMO comprobante puede estar de los dos lados: el contribuyente
+        # lo cargó en Gastos y el portal además lo lista. Antes, esa fila se
+        # descartaba por repetida —y con ella se perdía la marca—, así que una
+        # solicitud con sus diez comprobantes guardados aparecía como "0 de 36
+        # marcados" y $0,00 a solicitar. Manda la fila del PORTAL: es la que el
+        # SRI va a procesar y trae SU monto de IVA, que no siempre es el de la
+        # factura. De la de Gastos se hereda lo que la grilla no informa.
+        por_serie = {c["factura_numero"]: i for i, c in enumerate(comps) if c.get("factura_numero")}
         for it in items:
             if it.get("invoice_id"):
                 continue
             serie = str(it.get("factura_numero") or "").strip()
-            if not serie or serie in vistas:
+            if not serie:
                 continue
-            vistas.add(serie)
             c = _resumen_portal({**it, "serie": serie, "proveedor": it.get("nombre_proveedor")})
-            comps.append(c)
-            seleccionados.append(c["id"])
+            pos = por_serie.get(serie)
+            if pos is None:
+                por_serie[serie] = len(comps)
+                comps.append(c)
+            else:
+                c = _con_datos_de_gastos(c, comps[pos])
+                comps[pos] = c
+            if c["id"] not in seleccionados:
+                seleccionados.append(c["id"])
             rubros_guardados[c["id"]] = it.get("rubro")
         comps.sort(key=lambda c: str(c.get("fecha") or ""), reverse=True)
 
@@ -897,13 +929,19 @@ async def comprobantes(
     grilla = _portal_de_periodo(sb, client_id, pmes, panio)
     guardadas = _filas_portal(grilla)
     if guardadas:
-        vistas = {c.get("factura_numero") for c in comps if c.get("factura_numero")}
+        por_serie = {c["factura_numero"]: i for i, c in enumerate(comps) if c.get("factura_numero")}
         for f in guardadas:
             serie = str(f.get("serie") or f.get("factura_numero") or "").strip()
-            if not serie or serie in vistas:
+            if not serie:
                 continue
-            vistas.add(serie)
-            comps.append(_resumen_portal(f))
+            pos = por_serie.get(serie)
+            if pos is None:
+                por_serie[serie] = len(comps)
+                comps.append(_resumen_portal(f))
+            elif comps[pos].get("origen") != "portal":
+                # Está en Gastos y el SRI también lo lista: se muestra el del
+                # portal, que es el que cuenta para la devolución.
+                comps[pos] = _con_datos_de_gastos(_resumen_portal(f), comps[pos])
         comps.sort(key=lambda c: str(c.get("fecha") or ""), reverse=True)
 
     # Rubro de cada comprobante. Manda el ya guardado en la solicitud; si no,
@@ -930,6 +968,9 @@ async def comprobantes(
 
     # Lo que el usuario sacó de esta devolución no se muestra en la grilla
     # (sigue en Gastos, y se puede volver a mostrar).
+    presentes = {c["id"] for c in comps}
+    seleccionados = [i for i in seleccionados if i in presentes]
+
     fuera = _excluidos_de(grilla)
     ocultos = [c for c in comps if c["id"] in fuera]
     if fuera:

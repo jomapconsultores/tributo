@@ -50,6 +50,7 @@ def check(que, cond, detalle=""):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--api", default="http://127.0.0.1:8000")
+    ap.add_argument("--ruc", help="contribuyente a usar (por defecto, el primero con gasto)")
     args = ap.parse_args()
 
     sb = get_supabase_client()
@@ -57,9 +58,17 @@ def main():
 
     # Un contribuyente con el servicio activo y comprobantes cargados: es el
     # único caso donde la pantalla tiene algo que mostrar.
-    svc = sb.table("client_services").select("client_id").eq(
-        "service", "devolucion_iva").execute().data or []
-    ids = [x["client_id"] for x in svc]
+    if args.ruc:
+        # Con RUC a mano se busca por contribuyente: el servicio se contrata por
+        # identificación, y puede estar anotado en otro de sus períodos.
+        ids = [c["id"] for c in (sb.table("clients").select("id").eq(
+            "identificacion", args.ruc).execute().data or [])]
+        if not ids:
+            sys.exit(f"No hay ningún contribuyente {args.ruc}.")
+    else:
+        svc = sb.table("client_services").select("client_id").eq(
+            "service", "devolucion_iva").execute().data or []
+        ids = [x["client_id"] for x in svc]
     if not ids:
         sys.exit("No hay contribuyentes con el servicio 'devolucion_iva'.")
     cliente = None
@@ -131,7 +140,46 @@ def main():
         check("vuelve a la lista", victima in [c["id"] for c in d3.get("comprobantes") or []])
         check("y 'ocultos' queda vacío", not (d3.get("ocultos") or []))
 
-    print("=== 4. vaciar el período ===")
+    print("=== 4. lo guardado en la solicitud llega MARCADO ===")
+    # El mismo comprobante puede estar en Gastos y en la grilla del SRI. Cuando
+    # eso pasaba, la fila del portal se descartaba por repetida y con ella se
+    # perdía la marca: la pantalla mostraba "0 de 36 marcados" y $0,00 sobre una
+    # solicitud que en la base tenía sus diez comprobantes y su monto.
+    # Entre TODOS los períodos de este contribuyente: la solicitud vive en el
+    # client_id del mes que se trabajó, que no tiene por qué ser el abierto.
+    sol = []
+    for cid in ids:
+        sol += sb.table("devoluciones_iva_solicitudes").select(
+            "id,client_id,mes,anio,total_iva").eq("client_id", cid).execute().data or []
+    caso = None
+    for x in sol:
+        items = sb.table("devoluciones_iva_items").select("factura_numero,invoice_id").eq(
+            "solicitud_id", x["id"]).execute().data or []
+        delportal = [i for i in items if not i.get("invoice_id")]
+        if delportal:
+            caso = (x, delportal)
+            break
+    if not caso:
+        print("  (este contribuyente no tiene ninguna solicitud armada con la grilla del SRI)")
+    else:
+        x, delportal = caso
+        dd = requests.get(f"{base}/comprobantes",
+                          params={"client_id": x["client_id"], "mes": x["mes"], "anio": x["anio"]},
+                          headers=H).json()
+        por_id = {c["id"]: c for c in dd.get("comprobantes") or []}
+        sel = [i for i in dd.get("seleccionados") or []]
+        check(f"vienen marcados los {len(delportal)} del portal", len(sel) == len(delportal),
+              f"marcados: {len(sel)}")
+        check("todos los marcados tienen su fila en la lista",
+              all(i in por_id for i in sel), [i for i in sel if i not in por_id])
+        iva = round(sum(por_id[i]["iva"] for i in sel if i in por_id), 2)
+        check(f"el IVA marcado es el de la solicitud ({x['total_iva']})",
+              abs(iva - float(x["total_iva"] or 0)) < 0.02, iva)
+        series = [c.get("factura_numero") for c in (dd.get("comprobantes") or []) if c.get("factura_numero")]
+        check("ningún comprobante aparece dos veces", len(series) == len(set(series)),
+              len(series) - len(set(series)))
+
+    print("=== 5. vaciar el período ===")
     hay_solicitud = bool(sb.table("devoluciones_iva_solicitudes").select("id").eq(
         "client_id", cliente["id"]).eq("mes", mes).eq("anio", anio).execute().data)
     if hay_solicitud:
