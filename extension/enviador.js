@@ -1305,30 +1305,64 @@
     catch (e) { win = null; }
     if (!win) { resolve({ abierta: false, ok: false }); return; }
     let listo = false;
+    let ofrecido = 0;
+
+    // El listado se OFRECE una y otra vez hasta que alguien lo tome.
+    //
+    // Esperar a que la app lo pida parecía suficiente —lo pide al abrir la
+    // pantalla de devoluciones—, pero ese pedido no sale si la pestaña que se
+    // abre cae antes en otro lado: la clave, o el listado de contribuyentes
+    // cuando no hay ninguno abierto. Ahí el usuario ve el sistema abierto, sin
+    // comprobantes y sin explicación, y el mes se queda del lado del portal.
+    // Un `postMessage` a una ventana que todavía no escucha se pierde sin
+    // error, así que la única forma de no depender del instante es repetirlo.
+    const ofrecer = () => {
+      if (listo) return;
+      ofrecido += 1;
+      try { win.postMessage({ tipo: 'jomap-devolucion-comprobantes-app', bulto }, base); }
+      catch (e) { /* la pestaña se cerró */ }
+      if (aviso && ofrecido === 4) {
+        aviso('Esperando al sistema… Si te pidió la clave o el contribuyente, ' +
+          'entrá a Devolución IVA con el suyo abierto: los comprobantes entran solos.');
+      }
+    };
+    const cada = setInterval(ofrecer, 2000);
+
     const escuchar = (ev) => {
       if (String(ev.origin || '') !== base) return;      // solo el sistema
       const d = ev.data;
       if (!d) return;
       if (d.tipo === 'jomap-devolucion-comprobantes-pedido') {
-        // La pantalla ya está montada y lo pide: se lo damos. Puede pedirlo más
-        // de una vez (recarga, cambio de contribuyente) y se responde siempre.
-        try { win.postMessage({ tipo: 'jomap-devolucion-comprobantes-app', bulto }, base); }
-        catch (e) { /* la pestaña se cerró */ }
+        // La pantalla ya está montada y lo pide: se lo damos en el acto, sin
+        // esperar al próximo intento.
+        ofrecer();
         if (aviso) aviso('El sistema pidió el listado: entregándolo…');
         return;
       }
       if (d.tipo === 'jomap-devolucion-comprobantes-ingresados') {
+        // El sistema puede rechazarlo por tener abierto a otro contribuyente.
+        // Eso no es el final del viaje: se sigue ofreciendo, y al abrir a quien
+        // corresponde entra solo —igual que con la extensión, que tampoco
+        // suelta el listado hasta que alguien lo ingresa—.
+        if (d.ok === false && d.soltar === false) {
+          if (aviso) aviso('El sistema tiene abierto a otro contribuyente. Abrí el de estos ' +
+            'comprobantes en Devolución IVA y entran solos.');
+          return;
+        }
         listo = true;
+        clearInterval(cada);
         window.removeEventListener('message', escuchar);
         resolve({ abierta: true, ok: d.ok !== false });
       }
     };
     window.addEventListener('message', escuchar);
+    ofrecer();
     // La app puede tardar: cargar, pedir la clave, llegar a la pantalla. Si en
-    // dos minutos no contestó se deja de esperar, pero el listado sigue acá y
+    // dos minutos no contestó se deja de ofrecer, pero el listado sigue acá y
     // el botón se puede volver a tocar.
     setTimeout(() => {
       if (listo) return;
+      clearInterval(cada);
       window.removeEventListener('message', escuchar);
       resolve({ abierta: true, ok: false, sinRespuesta: true });
     }, 120000);

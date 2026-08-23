@@ -22,6 +22,9 @@ contestar si entró—, sin backend.
 
 Variantes:
     entrega   el sistema abierto en el contribuyente del portal -> entra
+    tarde     la pantalla tarda en engancharse y NO pide nada (cayó antes en la
+              clave o en elegir contribuyente) -> el listado se ofrece hasta que
+              alguien lo toma, en vez de perderse
     otro      el sistema abierto en OTRA persona -> el sistema lo rechaza y el
               enviador lo dice (el listado no se pierde: sigue en el panel)
 
@@ -44,6 +47,7 @@ APP_FALSA = RAIZ / "scripts/app_falsa_devolucion.html"
 
 IDENT_PORTAL = "0912345678"          # a quien muestra abierto el portal falso
 IDENT_ABIERTO = ""                   # a quien tiene abierto el sistema simulado
+DEMORA_MS = 0                        # cuánto tarda el sistema en enganchar
 
 
 def codigo_del_marcador(fuente: str) -> str:
@@ -63,7 +67,8 @@ class ManejadorApp(http.server.BaseHTTPRequestHandler):
     def do_GET(self):                                   # noqa: N802 (API de la clase)
         # A quién tiene abierto el sistema se lo dice el servidor: el enviador
         # abre una ruta fija y no hay dónde poner un query string.
-        cuerpo = ("<script>window.__identAbierto = %s;</script>" % json.dumps(IDENT_ABIERTO)
+        cuerpo = ("<script>window.__identAbierto = %s; window.__demora = %d;</script>"
+                  % (json.dumps(IDENT_ABIERTO), DEMORA_MS)
                   + APP_FALSA.read_text(encoding="utf-8")).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -83,9 +88,12 @@ def servir(handler) -> tuple:
 
 
 def correr(modo: str, fuente: str) -> bool:
-    global IDENT_ABIERTO
+    global IDENT_ABIERTO, DEMORA_MS
     # 'otro': el sistema está abierto en una persona distinta a la del portal.
     IDENT_ABIERTO = "1702086305" if modo == "otro" else ""
+    # 'tarde': la pantalla engancha recién a los 8 segundos y NO pide nada, como
+    # cuando la pestaña cae primero en la clave o en elegir contribuyente.
+    DEMORA_MS = 8000 if modo == "tarde" else 0
     codigo = codigo_del_marcador(fuente)
     # El portal falso se sirve por HTTP (no file://) para que tenga un origen
     # de verdad: es lo que hace que el `postMessage` entre ventanas se comporte
@@ -141,6 +149,8 @@ def correr(modo: str, fuente: str) -> bool:
             app.wait_for_load_state()
             pg.wait_for_timeout(1500)
 
+            if modo == "tarde":
+                pg.wait_for_timeout(12000)              # que la pantalla llegue a engancharse
             recibidos = app.evaluate("window.__recibidos || []")
             estado = app.evaluate("(document.getElementById('estado')||{}).textContent||''")
             texto = pg.evaluate(f"document.querySelector('{panel}').innerText")
@@ -159,13 +169,25 @@ def correr(modo: str, fuente: str) -> bool:
             ok = ok and suyo
 
             if modo == "otro":
-                # Rechazado por el sistema: el enviador tiene que decirlo, no
-                # dar por bueno un viaje que no terminó.
-                dice = "no los ingresó" in texto and "rechazado" in estado
-                print(f"  {'✔' if dice else '✖'} el enviador avisa que el sistema no los ingresó")
+                # Rechazado por el sistema: el enviador tiene que decir por qué,
+                # no dar por bueno un viaje que no terminó.
+                dice = "otro contribuyente" in texto and "rechazado" in estado
+                print(f"  {'✔' if dice else '✖'} el enviador avisa que hay otro contribuyente abierto")
                 if not dice:
                     print("  panel:", texto[-300:], "| app:", estado)
                 ok = ok and dice
+
+                # Y no lo suelta: al abrir en el sistema a quien corresponde,
+                # entra solo. Antes había que volver al portal y empezar de nuevo.
+                app.evaluate("i => { window.__identAbierto = i; }", IDENT_PORTAL)
+                app.wait_for_timeout(4000)
+                estado2 = app.evaluate("(document.getElementById('estado')||{}).textContent||''")
+                texto2 = pg.evaluate(f"document.querySelector('{panel}').innerText")
+                entra = estado2.startswith("ingresados") and "entraron en el sistema" in texto2
+                print(f"  {'✔' if entra else '✖'} al abrir al contribuyente correcto, entran solos")
+                if not entra:
+                    print("  panel:", texto2[-300:], "| app:", estado2)
+                ok = ok and entra
             else:
                 entraron = "entraron en el sistema" in texto and estado.startswith("ingresados")
                 print(f"  {'✔' if entraron else '✖'} el enviador confirma que entraron")
@@ -184,7 +206,7 @@ def correr(modo: str, fuente: str) -> bool:
 
 
 if __name__ == "__main__":
-    modos = [sys.argv[1]] if len(sys.argv) > 1 else ["entrega", "otro"]
+    modos = [sys.argv[1]] if len(sys.argv) > 1 else ["entrega", "tarde", "otro"]
     fuente = sys.argv[2] if len(sys.argv) > 2 else "min"
     print(f"Entrega directa del listado al sistema ({fuente})")
     todo_bien = True

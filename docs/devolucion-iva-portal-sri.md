@@ -165,6 +165,13 @@ comprobantes estén cargados en Gastos:
     quedaba el camino de copiar y pegar, con el mes colgando del portapapeles.
     - La app **solo acepta el bulto de un origen del SRI** (`*.sri.gob.ec`); de
       cualquier otra ventana, nada.
+    - **El listado se ofrece hasta que alguien lo toma** (cada 2 s, hasta 2 min).
+      Esperar el pedido de la app no alcanzaba: ese pedido sale al montar la
+      pantalla de devoluciones, y la pestaña recién abierta puede caer antes en
+      el login o en el listado de contribuyentes —ahí no hay nadie escuchando, y
+      un `postMessage` a una ventana sin listener se pierde sin error—. Tampoco
+      lo suelta si el sistema lo rechaza por tener abierto a otro contribuyente:
+      al abrir a quien corresponde, entra solo (igual que con la extensión).
     - El enviador sabe dónde vive la app por dos vías: la extensión lo anota
       (`contenido-app.js` guarda `app_origen` y `contenido-sri.js` lo inyecta
       como `window.__jomapAppOrigen`), y el marcador lo trae incrustado desde la
