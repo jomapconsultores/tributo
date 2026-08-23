@@ -952,6 +952,18 @@
   // marcador informaba "no encontré el botón Buscar", que manda a buscar el
   // problema donde no está —en el marcador, no en el registro—.
   const RE_SIN_REGISTRO = /ministerio de salud publica|ministerio de trabajo|ministerio de inclusion economica|carne de discapacidad|no registra discapacidad|sin registro de discapacidad/;
+  // Ese mes ya tiene devolución presentada. Es un final legítimo del trámite, no
+  // un fallo: el portal no deja volver a cargar el mismo período.
+  const RE_EN_TRAMITE = /ya esta en tramite un proceso de devolucion|ya se encuentra en tramite/;
+  const avisoDeTramiteEnCurso = () => {
+    const t = norm((document.body.innerText || '').slice(0, 3000));
+    if (!RE_EN_TRAMITE.test(t)) return '';
+    return 'ese período YA tiene una devolución en trámite en el SRI: el portal no ' +
+      'admite presentarlo dos veces. Si la presentaste vos, marcala como presentada ' +
+      'en el sistema con "📋 Ya presentada"; si no, revisá el estado del trámite en ' +
+      'el buzón del contribuyente.';
+  };
+
   const avisoDeRegistro = () => {
     const t = norm((document.body.innerText || '').slice(0, 3000));
     if (!RE_SIN_REGISTRO.test(t)) return '';
@@ -1187,7 +1199,15 @@
     contar('Buscando los comprobantes…');
     b.click();
     await esperarPortal();
-    await esperar(() => filasGrilla().length > 0, 15000);
+    await esperar(() => filasGrilla().length > 0 || !!avisoDeTramiteEnCurso(), 15000);
+
+    // El mes cuya devolución YA se presentó no trae grilla: el portal contesta
+    // "Ya está en trámite un proceso de devolución de IVA por el período
+    // solicitado". Sin reconocerlo, el marcador se quedaba esperando filas que
+    // no iban a llegar y terminaba diciendo que el portal no muestra
+    // comprobantes, que manda a buscar el problema donde no está.
+    const enTramite = avisoDeTramiteEnCurso();
+    if (enTramite) return enTramite;
 
     // Buscar NO reinicia el paginador: la grilla se queda en la página de la
     // consulta anterior. Y cuando eso pasa, el paginador deja de responder

@@ -52,11 +52,11 @@
   <span class="ui-paginator-next">›</span>
 </div>
 <button id="btnProcesar" style="display:none">Procesar facturas seleccionadas</button>
-<button id="btnGuardar" style="display:none">Guardar seleccion realizada</button>
+<button id="btnGuardar" style="display:none">Guardar selección realizada</button>
 <!-- Como en el portal real: guardar la seleccion no muestra el boton de enviar.
      El envio vive en la OTRA entrada del menu de dos pasos, y hay que entrar. -->
 <a href="#" id="lnkEnvio" style="display:none">Envio de solicitud</a>
-<button id="btnCargar" style="display:none">Cargar Informacion</button>
+<button id="btnCargar" style="display:none">Cargar Información</button>
 <div id="constancia"></div>
 <button id="btnVerDetalle" style="display:none">Ver detalle</button>
 <div id="detalle"></div>
@@ -122,15 +122,25 @@ if (MODO_URL === 'otro') {
     'Servicios en Linea 0400533824001 CORAL LIDIA MAGOLA Perfil Cerrar sesion';
 }
 let mesElegido = 7;
+// Mensaje textual del portal cuando el mes ya tiene devolución presentada
+// (visto el 2026-08-23 al consultar junio de un contribuyente con el trámite
+// hecho). No hay grilla: solo el aviso y "Volver a intentar".
+const YA_EN_TRAMITE = 'No se puede continuar con la carga de información: Ya está en ' +
+  'trámite un proceso de devolución de IVA por el período solicitado, por favor ' +
+  'seleccione uno diferente.';
 const delMes = () => DATOS.filter((d) => d.mes === mesElegido);
 // Los códigos del catálogo son los de ADULTOS MAYORES. En la entrada de
 // discapacidad nadie los verificó nunca, así que el modo 'discapacidad' simula
 // lo peor plausible: los mismos nombres con los códigos cambiados de lugar. Si
 // el marcador eligiera por código, pondría "vivienda" donde va "alimentación" y
 // el trámite saldría mal sin que nadie lo note.
+// Adultos mayores: leido del portal REAL el 2026-08-23. Las opciones van en
+// orden alfabetico y sus codigos NO siguen ese orden (alimentacion=4,
+// educacion=5, salud=3, vestimenta=1, vivienda=2), que es justo lo que obliga a
+// elegir por etiqueta y no por posicion ni por numero.
 const TIPOS = MODO_URL === 'discapacidad'
-  ? [['5','VESTIMENTA'],['4','VIVIENDA'],['3','SALUD'],['2','ALIMENTACION'],['1','EDUCACION']]
-  : [['1','VESTIMENTA'],['2','VIVIENDA'],['3','SALUD'],['4','ALIMENTACION'],['5','EDUCACION']];
+  ? [['5','vestimenta'],['4','vivienda'],['3','salud'],['2','alimentación'],['1','educación']]
+  : [['4','alimentación'],['5','educación'],['3','salud'],['1','vestimenta'],['2','vivienda']];
 let pagina = 0, porPagina = 10, marcadas = {};
 
 const ajax = (ms, fn) => {
@@ -239,6 +249,19 @@ document.getElementById('cmbAnio_input').onchange = function () {
 };
 document.getElementById('btnBuscar').onclick = () => {
   const v = parseInt(document.getElementById('cmbPeriodo_input').value, 10);
+  // El mes cuya devolucion ya se presento no trae grilla: el portal contesta
+  // con el aviso y un boton para reintentar con otro periodo.
+  if (MODO_URL === 'en_tramite') {
+    ajax(600, () => {
+      document.getElementById('grilla').innerHTML =
+        '<div id="avisoTramite">' + YA_EN_TRAMITE + '</div>' +
+        '<button id="btnReintentar">Volver a intentar</button>';
+      document.getElementById('btnReintentar').onclick = () => {
+        ajax(400, () => { document.getElementById('grilla').innerHTML = ''; });
+      };
+    });
+    return;
+  }
   ajax(600, () => { if (v) mesElegido = v; pagina = 0; pintarGrilla(); });
 };
 document.querySelector('.ui-paginator-next').onclick = () => {

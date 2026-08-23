@@ -34,6 +34,8 @@ Variantes del portal (el SRI cambia el widget entre versiones):
     otro         el portal abierto con otra persona   -> ni carga la solicitud
     sin_rubro    un comprobante sin tipo de gasto     -> no toca el portal y dice
                  cuál falta (el combo del SRI no admite vacío)
+    en_tramite   el mes YA tiene devolución presentada -> el portal no trae grilla
+                 y hay que decirlo, no esperar filas que no llegan
     cruzado      el marcador dentro de la app, con la solicitud de otro copiada
     muerto       no escucha nadie                     -> tiene que CORTAR y avisar
 
@@ -265,13 +267,15 @@ def correr(modo: str, fuente: str) -> bool:
         # portal no admite el combo vacío, así que el trámite quedaría trabado a
         # mitad de camino: hay que cortar ANTES de tocar nada.
         sin_rubro = modo == "sin_rubro"
+        # 'en_tramite': el portal contesta que ese período ya está presentado.
+        en_tramite = modo == "en_tramite"
         # 'inicio': el portal recién abierto. El marcador tiene que caminar el
         # aviso legal, la cuenta bancaria y el menú de dos pasos antes de poder
         # trabajar; antes exigía que eso estuviera hecho a mano.
         inicio = modo == "inicio"
         auto = modo in ("auto", "extension", "semestral", "quejoso", "otro",
-                        "discapacidad", "inicio", "sin_rubro")
-        propio = quejoso or otro or discapacidad or inicio
+                        "discapacidad", "inicio", "sin_rubro", "en_tramite")
+        propio = quejoso or otro or discapacidad or inicio or en_tramite
         modo_portal = ("otro" if traer_otro
                        else modo if propio
                        else "widget" if (auto or cruzado or traer)
@@ -465,13 +469,23 @@ def correr(modo: str, fuente: str) -> bool:
                                     ".ui-selectonemenu-label')].map(e=>e.textContent)")
             ok = ("Solicitud presentada" in panel
                   and bool(valores) and all(v == "2" for v in valores)
-                  and all("ALIMENTACION" in e for e in etiquetas)
+                  and all("alimentaci" in e.lower() for e in etiquetas)
                   and "catálogo del portal" in panel)
             print(f"  {'✔' if ok else '✖'} eligió por la etiqueta, no por el código, "
                   f"y lo avisó ({tardo:.0f}s)")
             if not ok:
                 print("  valores:", valores, "| etiquetas:", etiquetas)
                 print("  panel:", panel[-400:])
+        elif en_tramite:
+            # Nada marcado y el motivo dicho con todas las letras: ese mes ya
+            # tiene devolución presentada y el portal no admite repetirla.
+            avisos = pg.evaluate("window.__constancias || []")
+            ok = ("tiene una devolución en trámite" in panel
+                  and marcadas == 0 and not avisos)
+            print(f"  {'✔' if ok else '✖'} avisa que el período ya está presentado "
+                  f"({tardo:.0f}s)")
+            if not ok:
+                print("  panel:", panel[-400:], "| marcadas:", marcadas)
         elif sin_rubro:
             # Ni una casilla tocada: sin tipo de gasto el portal no deja
             # procesar, y descubrirlo a mitad del recorrido dejaba el trámite
@@ -550,7 +564,7 @@ def correr(modo: str, fuente: str) -> bool:
             ok = False
             print("  ✖ errores en la página:", errores)
         # En la última página quedan 2 filas: las dos tienen que estar marcadas.
-        if modo not in ("muerto", "otro", "sin_rubro") and marcadas != procesados:
+        if modo not in ("muerto", "otro", "sin_rubro", "en_tramite") and marcadas != procesados:
             print(f"  ⚠ marcadas en pantalla: {marcadas} de {procesados}")
         nav.close()
         return ok
@@ -560,7 +574,7 @@ if __name__ == "__main__":
     modos = [sys.argv[1]] if len(sys.argv) > 1 else ["semestral", "extension", "traer", "traer_otro",
                                                      "auto", "widget", "nativo", "discapacidad", "quejoso",
                                                      "cruzado", "inicio", "otro", "sin_rubro",
-                                                     "muerto"]
+                                                     "en_tramite", "muerto"]
     fuente = sys.argv[2] if len(sys.argv) > 2 else "min"
     print(f"Enviador-DEVOLUCIÓN contra el portal simulado ({fuente})")
     todo_bien = True

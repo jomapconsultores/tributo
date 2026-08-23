@@ -245,6 +245,33 @@ Sigue funcionando el camino viejo (subir TXT/XML a Gastos), pero es secundario:
 el SRI puede listar comprobantes que el contribuyente nunca cargó, y deja fuera
 los de devolución automática total aunque estén en Gastos.
 
+## El portal, verificado a mano (2026-08-23)
+
+Se recorrió el trámite entero en el portal real —adultos mayores, Julio 2026,
+presentado con constancia— para dejar por escrito lo que hay del otro lado. El
+simulador (`scripts/portal_devolucion_falso.html`) replica esto:
+
+- **El catálogo de "Tipo de gasto"** va en orden alfabético y sus códigos NO
+  siguen ese orden: `alimentación=4`, `educación=5`, `salud=3`, `vestimenta=1`,
+  `vivienda=2`, con `Seleccione` vacío al inicio. Coincide con `RUBRO_SRI`. Es la
+  razón por la que el enviador elige por ETIQUETA y nunca por posición ni número.
+- **La grilla** trae: No · RIDE · razón social · "Factura - 004-003-000064906" ·
+  fecha **ISO** (`2026-07-04`) · Monto IVA · IVA solicitado · Tipo de gasto ·
+  Seleccionar. Al marcar la casilla, el portal **autocompleta el IVA solicitado**
+  y habilita el combo (los dos llegan por ajax).
+- **Los botones**: `Procesar facturas seleccionadas` → `Guardar selección
+  realizada` (vuelve al menú) → *Envío de solicitud* → `Cargar Información`
+  (definitivo) → `Ver detalle`.
+- **La confirmación** dice solo "Carga de archivo realizada exitosamente". La
+  fecha (`23-08-2026 01:13:34`), el total y **el RUC de cada proveedor** están en
+  *Ver detalle*, que además escribe la serie sin ceros de relleno
+  (`004-003-64906`).
+- **Un mes ya presentado no trae grilla**: el portal contesta *"No se puede
+  continuar con la carga de información: Ya está en trámite un proceso de
+  devolución de IVA por el período solicitado"* y ofrece "Volver a intentar". El
+  enviador lo reconoce y lo dice, en vez de esperar filas que no van a llegar
+  (modo `en_tramite` de la prueba).
+
 ## Qué automatiza el enviador
 
 `sri_downloader/bookmarklet_devolucion.js`, botón **"Llenar y presentar en el
