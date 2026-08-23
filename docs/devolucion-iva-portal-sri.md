@@ -422,3 +422,37 @@ buscar esos controles por etiqueta o por posición dentro de la fila, no por id.
 Con RBU 2026 = 482, el tope de adultos mayores es **361.50/mes**
 (5 × 482 × 15 %). **Revisar cada enero** contra el acuerdo ministerial y contra
 la *Guía para contribuyentes* que el propio portal publica en su primera pantalla.
+
+## Los bajadores no son de uso libre (2026-08-23)
+
+Los tres marcadores —gastos, ingresos y el enviador de devoluciones— llevan una
+**llave** que se incrusta al generarlos desde el sistema, con la sesión de quien
+los baja. Antes de tocar el portal del SRI preguntan a
+`POST /api/bajadores/permiso` si esa llave sigue habilitada y si la máquina es la
+suya. Sin respuesta afirmativa no hacen nada: ni abren su panel.
+
+- **La autorización es de a uno.** Se habilita a la persona (no al módulo) en
+  *Administración → Bajadores SRI*. Al administrador de la plataforma se le crea
+  sola. Quien no tenga llave activa no puede usarlos aunque tenga acceso a
+  Gastos o a Devoluciones: el panel se lo dice y no le entrega el script.
+- **Una sola máquina.** La primera PC que estrena la llave queda registrada por
+  su huella (plataforma, pantalla, zona horaria, núcleos: nada que identifique a
+  la persona). Desde otra no corre, hasta que se libere el equipo.
+- **Revocar apaga el marcador en el acto**, esté donde esté: la llave se
+  comprueba en cada uso, no al instalarlo.
+- **Bitácora**: cada intento queda en `bajadores_usos` con quién, cuándo, qué
+  máquina y sobre qué contribuyente. Un *marcador no reconocido* es alguien
+  probando con una copia.
+
+**Hasta dónde llega, con honestidad.** Esto ata el uso a una persona, a una
+máquina y a un registro, y se apaga cuando haga falta. Lo que NO puede hacer
+—ni esto ni nada que corra en el navegador— es impedir que alguien con
+conocimientos edite el marcador y le saque la verificación: el código está en su
+computadora. La protección de verdad contra eso sería que la parte que sabe
+manejar el portal viva en el servidor y se descargue ya autorizada en cada uso;
+se evaluó y quedó fuera de alcance por ahora (agrega una dependencia dura: sin
+internet o con el backend caído, los bajadores no correrían).
+
+Se prueba con `python scripts/smoke_permiso_bajadores.py --api http://127.0.0.1:8017`
+(llave desconocida, activación, otra máquina, revocada y bitácora) y con el modo
+`sin_permiso` de `scripts/test_enviador_devolucion.py`.

@@ -32,10 +32,15 @@ const origenDelSistema = (guardado) => {
   }
 };
 
-const inyectarOrigen = (origen) => {
-  if (!origen) return;
+const inyectarDatos = (origen, llave, api) => {
+  if (!origen && !llave) return;
   const s = document.createElement('script');
-  s.textContent = 'window.__jomapAppOrigen = ' + JSON.stringify(origen) + ';';
+  s.textContent =
+    (origen ? 'window.__jomapAppOrigen = ' + JSON.stringify(origen) + ';' : '') +
+    // Sin llave el enviador no trabaja: es lo que ata el bajador a una persona
+    // autorizada y a una máquina.
+    (llave ? 'window.__jomapLlave = ' + JSON.stringify(llave) + ';' : '') +
+    (api ? 'window.__jomapApi = ' + JSON.stringify(api) + ';' : '');
   (document.head || document.documentElement).appendChild(s);
   s.remove();
 };
@@ -89,8 +94,14 @@ window.addEventListener('message', (ev) => {
   });
 });
 
-chrome.storage.local.get(['solicitud', 'app_origen'], ({ solicitud, app_origen }) => {
-  inyectarOrigen(origenDelSistema(app_origen));
+chrome.storage.local.get(
+  ['solicitud', 'app_origen', 'bajadores_llave', 'bajadores_api'],
+  ({ solicitud, app_origen, bajadores_llave, bajadores_api }) => {
+  const origen = origenDelSistema(app_origen);
+  // La API se inyecta SOLO si la publicó la app: el origen del sistema no es la
+  // dirección del backend, y adivinarla dejaba al marcador preguntando permiso
+  // donde no hay a quién.
+  inyectarDatos(origen, bajadores_llave, bajadores_api);
   if (!solicitud || !solicitud.paquete) return;
   const minutos = (Date.now() - (solicitud.cuando || 0)) / 60000;
   if (minutos > VIGENCIA_MINUTOS) {

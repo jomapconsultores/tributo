@@ -50,12 +50,37 @@ IDENT_ABIERTO = ""                   # a quien tiene abierto el sistema simulado
 DEMORA_MS = 0                        # cuánto tarda el sistema en enganchar
 
 
-def codigo_del_marcador(fuente: str) -> str:
+class PermisoFalso(http.server.BaseHTTPRequestHandler):
+    """El sistema autorizando el marcador: sin esto no trabaja."""
+
+    def do_POST(self):                                  # noqa: N802
+        self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        cuerpo = b'{"ok": true, "motivo": "ok"}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(cuerpo)))
+        self.end_headers()
+        self.wfile.write(cuerpo)
+
+    def do_OPTIONS(self):                               # noqa: N802
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "content-type")
+        self.end_headers()
+
+    def log_message(self, *_):
+        return
+
+
+def codigo_del_marcador(fuente: str, api: str = "") -> str:
     if fuente == "src":
         js = FUENTE_JS.read_text(encoding="utf-8")
-        return js[js.index("(async () => {"):]
-    url = TXT.read_text(encoding="utf-8").strip()
-    return unquote(url[len("javascript:"):])
+        codigo = js[js.index("(async () => {"):]
+    else:
+        url = TXT.read_text(encoding="utf-8").strip()
+        codigo = unquote(url[len("javascript:"):])
+    return codigo.replace("JOMAP_API", api).replace("JOMAP_LLAVE", "llave-de-prueba")
 
 
 class ManejadorApp(http.server.BaseHTTPRequestHandler):
@@ -94,7 +119,8 @@ def correr(modo: str, fuente: str) -> bool:
     # 'tarde': la pantalla engancha recién a los 8 segundos y NO pide nada, como
     # cuando la pestaña cae primero en la clave o en elegir contribuyente.
     DEMORA_MS = 8000 if modo == "tarde" else 0
-    codigo = codigo_del_marcador(fuente)
+    permiso_srv, permiso_url = servir(PermisoFalso)
+    codigo = codigo_del_marcador(fuente, permiso_url)
     # El portal falso se sirve por HTTP (no file://) para que tenga un origen
     # de verdad: es lo que hace que el `postMessage` entre ventanas se comporte
     # como en el SRI.
@@ -202,6 +228,7 @@ def correr(modo: str, fuente: str) -> bool:
     finally:
         portal_srv.shutdown()
         app_srv.shutdown()
+        permiso_srv.shutdown()
     return ok
 
 

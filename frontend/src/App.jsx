@@ -43,6 +43,7 @@ const Movimientos              = lazy(() => import('./pages/Movimientos'))
 const Facturacion              = lazy(() => import('./pages/Facturacion'))
 const AdminClientAccess        = lazy(() => import('./pages/AdminClientAccess'))
 const AdminPermisos            = lazy(() => import('./pages/AdminPermisos'))
+const AdminBajadores          = lazy(() => import('./pages/AdminBajadores'))
 const AdminEmpresas            = lazy(() => import('./pages/AdminEmpresas'))
 
 const PageLoader = () => <div className="loading">Cargando…</div>
@@ -292,6 +293,7 @@ function App() {
               <Route path="/odoo-facturacion/:tab" element={<RedirFacturacion />} />
               <Route path="/admin/acceso-clientes" element={<RequireSuperAdmin><AdminClientAccess /></RequireSuperAdmin>} />
               <Route path="/admin/permisos" element={<RequireSuperAdmin><AdminPermisos /></RequireSuperAdmin>} />
+              <Route path="/admin/bajadores" element={<RequireSuperAdmin><AdminBajadores /></RequireSuperAdmin>} />
               <Route path="/admin/empresas" element={<RequireOrgAdmin><AdminEmpresas /></RequireOrgAdmin>} />
               <Route path="/movimientos" element={<RequireSuperAdmin><Movimientos /></RequireSuperAdmin>} />
               <Route path="/sin-acceso" element={<SinAcceso onLogout={handleLogout} />} />

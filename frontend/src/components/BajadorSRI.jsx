@@ -1,12 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { bajadoresAPI } from '../services/api'
+import { conPermiso, publicarLlave, sinPrefijo } from '../utils/permisoBajadores'
 import {
-  BAJADOR_GASTOS_HREF, BAJADOR_GASTOS_CODIGO, setBajadorGastosHref, SRI_RECIBIDOS_URL,
+  BAJADOR_GASTOS_HREF, SRI_RECIBIDOS_URL,
 } from '../utils/bajadorGastos'
 import {
-  BAJADOR_EMITIDOS_HREF, BAJADOR_EMITIDOS_CODIGO, setBajadorEmitidosHref, SRI_EMITIDOS_URL,
+  BAJADOR_EMITIDOS_HREF, SRI_EMITIDOS_URL,
 } from '../utils/bajadorEmitidos'
 import {
-  ENVIADOR_DEVOLUCION_HREF, ENVIADOR_DEVOLUCION_CODIGO, setEnviadorDevolucionHref, SRI_DEVOLUCION_URL,
+  ENVIADOR_DEVOLUCION_HREF, SRI_DEVOLUCION_URL,
 } from '../utils/enviadorDevolucion'
 import './BajadorSRI.css'
 
@@ -29,8 +31,6 @@ const BAJADORES = {
   gastos: {
     titulo: '📥 Bajador-GASTOS (SRI)',
     href: BAJADOR_GASTOS_HREF,
-    codigo: BAJADOR_GASTOS_CODIGO,
-    setHref: setBajadorGastosHref,
     url: SRI_RECIBIDOS_URL,
     donde: 'Facturación Electrónica → Comprobantes electrónicos RECIBIDOS (hasta ver el formulario con Año / Mes / Tipo de comprobante y el botón Consultar).',
     hace: [
@@ -44,8 +44,6 @@ const BAJADORES = {
   emitidos: {
     titulo: '📥 Bajador-INGRESOS (SRI)',
     href: BAJADOR_EMITIDOS_HREF,
-    codigo: BAJADOR_EMITIDOS_CODIGO,
-    setHref: setBajadorEmitidosHref,
     url: SRI_EMITIDOS_URL,
     donde: 'Facturación Electrónica → Comprobantes electrónicos EMITIDOS (hasta ver el formulario con Fecha de emisión y el botón Consultar).',
     hace: [
@@ -58,8 +56,6 @@ const BAJADORES = {
   devolucion: {
     titulo: '📤 Enviador-DEVOLUCIÓN (SRI)',
     href: ENVIADOR_DEVOLUCION_HREF,
-    codigo: ENVIADOR_DEVOLUCION_CODIGO,
-    setHref: setEnviadorDevolucionHref,
     url: SRI_DEVOLUCION_URL,
     donde: 'Devoluciones (TAX refund) → Devolución de IVA, hasta "Ingresar facturas electrónicas" (la pantalla con Año, Período y Buscar).',
     hace: [
@@ -95,15 +91,48 @@ async function copiar(texto) {
   }
 }
 
+// Qué llave pedir según el marcador: la autorización se da por bajador.
+const CUAL = { gastos: 'gastos', emitidos: 'emitidos', devolucion: 'devolucion' }
+
 export default function BajadorSRI({ which = 'gastos', onClose }) {
   const b = BAJADORES[which] || BAJADORES.gastos
   const [copiado, setCopiado] = useState('')   // 'codigo' | 'marcador' | 'error'
 
+  // El marcador se genera CON la llave de quien lo baja. Sin autorización no se
+  // entrega el script: el panel lo dice y no muestra nada que copiar. Es lo que
+  // hace que el bajador sea de quien tiene permiso y no de quien lo consiga.
+  const [permiso, setPermiso] = useState(null)   // null = pidiendo
+  const [negado, setNegado] = useState('')
+  useEffect(() => {
+    let vigente = true
+    setPermiso(null)
+    setNegado('')
+    bajadoresAPI.miLlave(CUAL[which] || 'todos')
+      .then((r) => {
+        if (!vigente) return
+        setPermiso(r.data)
+        publicarLlave(r.data?.llave)
+      })
+      .catch((e) => {
+        if (!vigente) return
+        setPermiso(false)
+        setNegado(e.response?.data?.detail ||
+          'No estás autorizado a usar los bajadores del SRI.')
+      })
+    return () => { vigente = false }
+  }, [which])
+
+  const href = permiso ? conPermiso(b.href, permiso.llave) : ''
+  const codigo = href ? sinPrefijo(href) : ''
+
   const onCopiar = async (que) => {
-    const ok = await copiar(que === 'codigo' ? b.codigo : b.href)
+    if (!href) return
+    const ok = await copiar(que === 'codigo' ? codigo : href)
     setCopiado(ok ? que : 'error')
     if (ok) setTimeout(() => setCopiado(''), 2500)
   }
+
+  const fijarHref = (el) => { if (el && href) el.setAttribute('href', href) }
 
   return (
     <div className="bsri-bg" onClick={onClose}>
@@ -114,6 +143,24 @@ export default function BajadorSRI({ which = 'gastos', onClose }) {
         </div>
 
         <div className="bsri-body">
+          {permiso === null && (
+            <p className="bsri-intro">Comprobando tu permiso de uso…</p>
+          )}
+          {permiso === false && (
+            <div className="bsri-negado">
+              <p><strong>Este bajador no es de uso libre.</strong> {negado}</p>
+              <p className="bsri-nota">
+                La autorización se da de a una persona, desde el sistema, y queda atada a
+                una sola máquina. Si te corresponde tenerlo, pedilo al administrador.
+              </p>
+            </div>
+          )}
+          {permiso && permiso.equipo_activado && (
+            <p className="bsri-nota">
+              🔒 Tu permiso ya está activado en un equipo{permiso.equipo ? ` (${permiso.equipo})` : ''}.
+              En otra máquina no va a funcionar hasta que lo liberen.
+            </p>
+          )}
           <p className="bsri-intro">
             El portal del SRI pide iniciar sesión en cada navegación, así que esto corre
             <strong> dentro de tu sesión</strong>, no desde el sistema. Llevalo de una de estas dos formas:
@@ -149,7 +196,7 @@ export default function BajadorSRI({ which = 'gastos', onClose }) {
               <strong> arrastrá</strong> este botón hasta ella. Después alcanza con tocarlo estando en el SRI.
             </p>
             <a
-              ref={b.setHref}
+              ref={fijarHref}
               className="bsri-drag"
               draggable="true"
               onClick={(e) => e.preventDefault()}

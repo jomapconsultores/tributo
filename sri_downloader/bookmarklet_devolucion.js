@@ -40,6 +40,92 @@
 
 // ---- Fuente legible (mantener/editar acá; el .txt es esta misma, minificada) ----
 (async () => {
+  // --- Permiso de uso -------------------------------------------------------
+  // Este marcador NO es de uso libre. Antes de tocar el portal le pregunta al
+  // sistema si su llave sigue habilitada y si esta es la máquina donde se
+  // activó. La llave se incrusta al generarlo desde el sistema, con la sesión
+  // de quien lo baja: el marcador que se pasa de mano en mano no sirve, y el
+  // que se revoca deja de andar en el acto.
+  //
+  // No es infalible —esto corre en el navegador, y quien sepa editar el código
+  // puede sacarle esta parte—, pero sí deja el uso atado a una persona, a una
+  // máquina y a una bitácora, que es lo que se puede sostener de este lado.
+  // Dos caminos, según cómo llegó el marcador:
+  //   - instalado desde el sistema: la llave viene incrustada en el código;
+  //   - inyectado por la extensión: la deja en la página, porque el archivo de
+  //     la extensión es uno solo para todos y no puede llevar la de nadie.
+  const JOMAP_API_URL = window.__jomapApi || 'JOMAP_API';
+  const JOMAP_LLAVE_USO = window.__jomapLlave || 'JOMAP_LLAVE';
+
+  // Huella de la máquina: nada que identifique a la persona, solo lo que
+  // distingue un equipo de otro. Sin la versión del navegador, que cambia con
+  // cada actualización y dejaría afuera al dueño legítimo.
+  const jomapHuella = async () => {
+    const p = [navigator.platform || '', navigator.language || '',
+      (screen.width + 'x' + screen.height + 'x' + screen.colorDepth),
+      ((Intl.DateTimeFormat().resolvedOptions() || {}).timeZone || ''),
+      String(navigator.hardwareConcurrency || ''),
+      String(navigator.deviceMemory || '')].join('|');
+    try {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p));
+      return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+    } catch (e) {
+      let h = 0;
+      for (let i = 0; i < p.length; i++) h = (h * 31 + p.charCodeAt(i)) | 0;
+      return 'x' + Math.abs(h).toString(16);
+    }
+  };
+  const jomapEquipo = () => (navigator.platform || 'equipo') + ' - ' +
+    ((/(Chrome|Firefox|Edg|Safari)\/[\d.]+/i.exec(navigator.userAgent) || ['navegador'])[0]);
+
+  const jomapPedirPermiso = async (cual, extra) => {
+    if (!/^https?:\/\//.test(JOMAP_API_URL) || JOMAP_LLAVE_USO.indexOf('JOMAP') === 0) {
+      return { ok: false, detalle: 'Este marcador se generó sin permiso de uso. ' +
+        'Volvé a bajarlo desde el sistema, con tu cuenta.' };
+    }
+    const datos = { llave: JOMAP_LLAVE_USO, cual: cual,
+      dispositivo: await jomapHuella(), dispositivo_nombre: jomapEquipo() };
+    if (extra && extra.identificacion) datos.identificacion = extra.identificacion;
+    if (extra && extra.periodo) datos.periodo = extra.periodo;
+    try {
+      const r = await fetch(JOMAP_API_URL + '/api/bajadores/permiso', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datos),
+      });
+      return await r.json();
+    } catch (e) {
+      return { ok: false, detalle: 'No pude verificar el permiso: no hay conexión con el ' +
+        'sistema. El marcador no trabaja sin autorización.' };
+    }
+  };
+
+  const jomapCartel = (titulo, texto) => {
+    const c = document.createElement('div');
+    c.style.cssText = 'position:fixed;top:60px;right:20px;z-index:2147483647;width:420px;' +
+      'background:#fff5f5;border:2px solid #8b1e1e;border-radius:10px;padding:12px;' +
+      'font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#333;line-height:1.5;' +
+      'box-shadow:0 8px 24px rgba(0,0,0,.35)';
+    const t = document.createElement('div');
+    t.style.cssText = 'font-weight:700;color:#8b1e1e;margin-bottom:6px';
+    t.textContent = titulo;
+    const p = document.createElement('div');
+    p.textContent = texto;
+    const b = document.createElement('button');
+    b.textContent = 'Cerrar';
+    b.style.cssText = 'margin-top:8px;padding:6px 9px;border:1px solid #ccc;border-radius:6px;' +
+      'background:#f5f5f5;cursor:pointer';
+    b.onclick = () => c.remove();
+    c.appendChild(t); c.appendChild(p); c.appendChild(b);
+    document.body.appendChild(c);
+  };
+
+  const jomapPermiso = await jomapPedirPermiso('devolucion');
+  if (!jomapPermiso.ok) {
+    jomapCartel('Marcador no autorizado',
+      jomapPermiso.detalle || 'No tenes permiso para usar este marcador.');
+    return;
+  }
+
   const ID = 'jomap-enviador-devolucion';
   const previo = document.getElementById(ID);
   if (previo) { previo.remove(); return; }

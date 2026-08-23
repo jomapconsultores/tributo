@@ -209,6 +209,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
           { kind: 'link', ico: '📜', label: 'Movimientos', path: '/movimientos', visible: true, badge: movNuevos },
           L('🔑', 'Acceso a clientes', '/admin/acceso-clientes'),
           L('🛡️', 'Permisos', '/admin/permisos'),
+          L('🔐', 'Bajadores SRI', '/admin/bajadores'),
           L('🏢', 'Empresas', '/admin/empresas'),
         ],
       },

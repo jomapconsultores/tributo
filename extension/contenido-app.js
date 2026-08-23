@@ -29,6 +29,17 @@ const VIGENCIA_CONSTANCIA_HORAS = 24;
 // acá se sabe sin preguntar: es la página en la que corre este script.
 chrome.storage.local.set({ app_origen: location.origin });
 
+// Y la LLAVE de uso de quien está en el sistema. El enviador que inyecta la
+// extensión es un archivo igual para todos: no puede traerla incrustada como el
+// marcador que cada uno se lleva. Así que la app la publica —solo si esa persona
+// está autorizada— y acá se guarda para pasársela en el portal.
+window.addEventListener('message', (ev) => {
+  if (ev.source !== window) return;
+  const d = ev.data;
+  if (!d || d.tipo !== 'jomap-bajadores-llave' || !d.llave) return;
+  chrome.storage.local.set({ bajadores_llave: d.llave, bajadores_api: d.api || '' });
+});
+
 window.addEventListener('message', (ev) => {
   if (ev.source !== window) return;                 // nada de otras ventanas
   const dato = ev.data;

@@ -479,6 +479,19 @@ export const declaracionesAPI = {
 }
 
 // Devolución de IVA (adultos mayores / personas con discapacidad)
+// Permiso de uso de los bajadores del SRI. La llave se incrusta en el marcador
+// al generarlo: sin ella —o revocada, o en otra máquina— el marcador no trabaja.
+export const bajadoresAPI = {
+  // La llave de quien está usando el sistema (403 si no está autorizado).
+  miLlave: (cual = 'todos') => api.get('/api/bajadores/mi-llave', { params: { cual } }),
+  // Administración (solo el administrador de la plataforma).
+  llaves: () => api.get('/api/bajadores/llaves'),
+  autorizar: (body) => api.post('/api/bajadores/llaves', body),
+  estado: (id, activa) => api.post(`/api/bajadores/llaves/${id}/estado`, { activa }),
+  liberarEquipo: (id) => api.post(`/api/bajadores/llaves/${id}/liberar-equipo`),
+  usos: (limite = 100) => api.get('/api/bajadores/usos', { params: { limite } }),
+}
+
 export const devolucionesIvaAPI = {
   // Comprobantes del período pedido (mes/anio) o, si no se indica, el del cliente
   comprobantes: (clientId, mes = null, anio = null) =>

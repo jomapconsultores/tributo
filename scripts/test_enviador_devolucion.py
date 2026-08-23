@@ -32,6 +32,8 @@ Variantes del portal (el SRI cambia el widget entre versiones):
                  tiene que elegir por la ETIQUETA, no por el código
     quejoso      el portal RECHAZA la selección       -> corta sin presentar
     otro         el portal abierto con otra persona   -> ni carga la solicitud
+    sin_permiso  la llave del marcador está revocada  -> no hace nada, ni abre
+                 el panel: el bajador no es de uso libre
     sin_rubro    un comprobante sin tipo de gasto     -> no toca el portal y dice
                  cuál falta (el combo del SRI no admite vacío)
     en_tramite   el mes YA tiene devolución presentada -> el portal no trae grilla,
@@ -43,9 +45,11 @@ Variantes del portal (el SRI cambia el widget entre versiones):
 
 Necesita Playwright (pip install playwright && playwright install chromium).
 """
+import http.server
 import json
 import pathlib
 import sys
+import threading
 import time
 from urllib.parse import unquote
 
@@ -61,12 +65,55 @@ SERIES = ["003-301-0000891%02d" % (n + 10) for n in range(1, 13)]          # jul
 SERIES_JUNIO = ["003-301-0000892%02d" % (n + 10) for n in range(1, 5)]    # junio
 
 
-def codigo_del_marcador(fuente: str) -> str:
+# Qué contesta el sistema cuando el marcador pide permiso. La prueba lo cambia
+# para el caso en que el permiso está revocado.
+PERMISO_OK = True
+
+
+class PermisoFalso(http.server.BaseHTTPRequestHandler):
+    """El sistema diciendo que sí. El marcador no trabaja sin este permiso.
+
+    Se levanta acá porque el marcador REAL pregunta antes de tocar el portal, y
+    una prueba que se saltara ese paso estaría probando otro marcador."""
+
+    def do_POST(self):                                  # noqa: N802
+        self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        cuerpo = (b'{"ok": true, "motivo": "ok"}' if PERMISO_OK else
+                  '{"ok": false, "motivo": "revocada", "detalle": "Este marcador fue dado de baja."}'
+                  .encode("utf-8"))
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(cuerpo)))
+        self.end_headers()
+        self.wfile.write(cuerpo)
+
+    def do_OPTIONS(self):                               # noqa: N802
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "content-type")
+        self.end_headers()
+
+    def log_message(self, *_):
+        return
+
+
+def servidor_permiso():
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), PermisoFalso)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, f"http://127.0.0.1:{srv.server_address[1]}"
+
+
+def codigo_del_marcador(fuente: str, api: str = "") -> str:
     if fuente == "src":
         js = FUENTE_JS.read_text(encoding="utf-8")
-        return js[js.index("(async () => {"):]
-    url = TXT.read_text(encoding="utf-8").strip()
-    return unquote(url[len("javascript:"):])
+        codigo = js[js.index("(async () => {"):]
+    else:
+        url = TXT.read_text(encoding="utf-8").strip()
+        codigo = unquote(url[len("javascript:"):])
+    # Los huecos que la app rellena al generar el marcador: a dónde preguntar el
+    # permiso y con qué llave.
+    return codigo.replace("JOMAP_API", api).replace("JOMAP_LLAVE", "llave-de-prueba")
 
 
 def paquete_semestral() -> dict:
@@ -148,6 +195,13 @@ def paquete_discapacidad() -> dict:
     return p
 
 
+# Lo que hace la app al abrir la pantalla: publicar la llave de quien está
+# autorizado, para que la extensión pueda pasársela al enviador.
+PUBLICAR_LLAVE = (
+    "a => window.postMessage({ tipo: 'jomap-bajadores-llave', "
+    "llave: 'llave-de-prueba', api: a }, '*')"
+)
+
 PANEL = "(document.getElementById('jomap-enviador-devolucion')||{}).innerText||''"
 DEL_PANEL = "[...document.querySelectorAll('#jomap-enviador-devolucion button')]"
 BOTONES = DEL_PANEL + ".map(b=>b.textContent)"
@@ -175,6 +229,7 @@ def probar_traida(pg, ruc_esperado: str = "0912345678") -> bool:
     }""")
     if not tocar(pg, "/^Traer comprobantes al sistema$/"):
         print(f"  ✖ el panel no ofrece traer comprobantes: {pg.evaluate(BOTONES)}")
+        print("  permiso:", pg.evaluate("window.__jomapApi || null"))
         return False
     pg.wait_for_timeout(600)
     if not tocar(pg, "/^2026$/"):
@@ -229,7 +284,17 @@ def probar_traida(pg, ruc_esperado: str = "0912345678") -> bool:
 
 
 def correr(modo: str, fuente: str) -> bool:
-    codigo = codigo_del_marcador(fuente)
+    global PERMISO_OK
+    PERMISO_OK = modo != "sin_permiso"
+    permiso_srv, permiso_url = servidor_permiso()
+    codigo = codigo_del_marcador(fuente, permiso_url)
+    try:
+        return _correr(modo, codigo, permiso_url)
+    finally:
+        permiso_srv.shutdown()
+
+
+def _correr(modo: str, codigo: str, permiso_url: str) -> bool:
     with sync_playwright() as p:
         nav = p.chromium.launch(headless=True)
         ctx = nav.new_context(permissions=["clipboard-read", "clipboard-write"])
@@ -274,6 +339,9 @@ def correr(modo: str, fuente: str) -> bool:
         # 'cuentas': dos cuentas bancarias registradas. A cuál se acredita la
         # devolución lo decide el contribuyente, no el orden de la tabla.
         cuentas = modo == "cuentas"
+        # 'sin_permiso': la llave del marcador está revocada. No es un fallo del
+        # portal: el marcador no debe hacer NADA, ni pintar su panel.
+        sin_permiso = modo == "sin_permiso"
         # 'inicio': el portal recién abierto. El marcador tiene que caminar el
         # aviso legal, la cuenta bancaria y el menú de dos pasos antes de poder
         # trabajar; antes exigía que eso estuviera hecho a mano.
@@ -341,6 +409,11 @@ def correr(modo: str, fuente: str) -> bool:
               };
             }""", (EXT / "enviador.js").as_uri())
             pg.evaluate((EXT / "contenido-app.js").read_text(encoding="utf-8"))
+            # La llave viaja como en la vida real: la app la publica, la extensión
+            # la guarda y se la pasa al enviador en el portal. Su copia del
+            # enviador es igual para todos y no la lleva incrustada.
+            pg.evaluate(PUBLICAR_LLAVE, permiso_url)
+            pg.wait_for_timeout(300)
             pg.evaluate("p => window.postMessage({ tipo: 'jomap-devolucion-paquete', paquete: p }, '*')",
                         paquete_de_prueba(not traer))
             pg.wait_for_timeout(300)
@@ -371,6 +444,16 @@ def correr(modo: str, fuente: str) -> bool:
             if errores:
                 ok = False
                 print("  ✖ errores en la página:", errores)
+            nav.close()
+            return ok
+
+        if sin_permiso:
+            hay_panel = pg.evaluate("!!document.getElementById('jomap-enviador-devolucion')")
+            texto = pg.evaluate("(document.body.innerText||'')")
+            ok = (not hay_panel) and "Marcador no autorizado" in texto
+            print(f"  {'✔' if ok else '✖'} no abre el panel y avisa que no está autorizado")
+            if not ok:
+                print("  panel:", hay_panel, "| texto:", texto[-300:])
             nav.close()
             return ok
 
@@ -608,7 +691,8 @@ if __name__ == "__main__":
     modos = [sys.argv[1]] if len(sys.argv) > 1 else ["semestral", "extension", "traer", "traer_otro",
                                                      "auto", "widget", "nativo", "discapacidad", "quejoso",
                                                      "cruzado", "inicio", "otro", "sin_rubro",
-                                                     "en_tramite", "cuentas", "muerto"]
+                                                     "en_tramite", "cuentas", "sin_permiso",
+                                                     "muerto"]
     fuente = sys.argv[2] if len(sys.argv) > 2 else "min"
     print(f"Enviador-DEVOLUCIÓN contra el portal simulado ({fuente})")
     todo_bien = True

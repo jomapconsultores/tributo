@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { useClients } from '../context/ClientContext'
-import { devolucionesIvaAPI, invoicesAPI, downloadBlob } from '../services/api'
+import { devolucionesIvaAPI, invoicesAPI, downloadBlob, bajadoresAPI } from '../services/api'
 import { fmtMoney, msgFueraPeriodo, msgIdentAjena } from '../utils/format'
 import { nombreMes } from '../utils/periodo'
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import UploadPanel from '../components/UploadPanel'
 import WorkflowGuide from '../components/WorkflowGuide'
-import { setEnviadorDevolucionHref, urlDevolucion } from '../utils/enviadorDevolucion'
+import { ENVIADOR_DEVOLUCION_HREF, urlDevolucion } from '../utils/enviadorDevolucion'
+import { conPermiso, publicarLlave } from '../utils/permisoBajadores'
 import BajadorSRI from '../components/BajadorSRI'
 import './DevolucionesIva.css'
 
@@ -803,6 +804,27 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
   // con la sesión del contribuyente, así que tenerla que ir a buscar a otra
   // pantalla en cada devolución es fricción pura. El backend la entrega con la
   // misma autorización que el módulo de claves y deja registro del acceso.
+  // El marcador que se arrastra desde acá va con la llave de quien lo baja: sin
+  // ella no trabaja en el portal. Si esta persona no está autorizada, el enlace
+  // queda sin href y el panel (que se abre al tocarlo) explica por qué.
+  const [llaveBajador, setLlaveBajador] = useState('')
+  useEffect(() => {
+    let vigente = true
+    bajadoresAPI.miLlave('devolucion')
+      .then((r) => {
+        if (!vigente) return
+        setLlaveBajador(r.data?.llave || '')
+        // Y se la pasamos a la extensión, que inyecta el enviador en el portal:
+        // su copia es igual para todos y sin llave no puede pedir permiso.
+        publicarLlave(r.data?.llave)
+      })
+      .catch(() => { if (vigente) setLlaveBajador('') })
+    return () => { vigente = false }
+  }, [])
+  const hrefEnviador = (el) => {
+    if (el && llaveBajador) el.setAttribute('href', conPermiso(ENVIADOR_DEVOLUCION_HREF, llaveBajador))
+  }
+
   const [claveSri, setClaveSri] = useState(null)
   const [verClave, setVerClave] = useState(false)
   useEffect(() => {
@@ -1114,7 +1136,7 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
           title="Consulta al SRI la actividad económica de los proveedores: es de donde sale la propuesta de tipo de gasto"
         >{sincronizando ? '⏳ Consultando al SRI…' : '🔄 Actividades del SRI'}</button>
         <a
-          ref={setEnviadorDevolucionHref}
+          ref={hrefEnviador}
           className="dv-enviador"
           draggable="true"
           onClick={(e) => { e.preventDefault(); setPanelSri('devolucion') }}
