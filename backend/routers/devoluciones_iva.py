@@ -1530,6 +1530,20 @@ async def payload_envio(solicitud_id: str, user_id: str = Depends(get_current_us
 
     rubro_por_item = {it["id"]: _rubro_de(it) for it in items}
 
+    # Y lo que se va a declarar queda ESCRITO en la solicitud. El paquete sale
+    # con la propuesta, así que sin esto el histórico —y el Excel, y el reporte
+    # por tipo de gasto— seguirían diciendo "sin asignar" de comprobantes que se
+    # presentaron al SRI como vivienda o salud.
+    for it in items:
+        elegido = rubro_por_item.get(it["id"]) or ""
+        if elegido and elegido != (it.get("rubro") or ""):
+            try:
+                sb.table("devoluciones_iva_items").update({"rubro": elegido}).eq(
+                    "id", it["id"]).execute()
+                it["rubro"] = elegido
+            except Exception:
+                pass        # que no se pueda anotar no puede frenar el envío
+
     return {
         "solicitud_id": sol["id"],
         "contribuyente": {"identificacion": c.get("identificacion", ""), "nombre": c.get("nombre", "")},
