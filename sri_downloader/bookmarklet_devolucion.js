@@ -1934,8 +1934,13 @@
   // que no se dispara solo: se pide un toque más, ya con los números a la vista.
   const confirmarEnvio = (cuantos, total, mes) => {
     const zona = el('div', 'margin:10px 0;padding:10px;border:2px solid #8b1e1e;border-radius:8px;background:#fff5f5');
-    zona.appendChild(el('div', 'font-weight:700;color:#8b1e1e;margin-bottom:4px', 'Envío de la solicitud'));
+    zona.appendChild(el('div', 'font-weight:700;color:#8b1e1e;margin-bottom:4px',
+      'FALTA PRESENTARLA: el trámite está guardado, no enviado'));
     zona.appendChild(el('div', 'color:#555;line-height:1.5;font-size:12px',
+      'La selección quedó guardada en el portal, pero la solicitud NO está presentada: ' +
+      'el recorrido se detiene acá porque así se pidió (en el sistema, al tocar CANCELAR en el ' +
+      'aviso de "Enviar al SRI"; o acá, con "Solo llenar"). Para terminar, tocá el botón rojo.'));
+    zona.appendChild(el('div', 'color:#555;line-height:1.5;font-size:12px;margin-top:4px',
       'Se van a presentar ' + cuantos + ' comprobante(s) por ' + money(total) + ' de ' +
       (MESES[mes - 1] || mes) + '. Al cargar la información la solicitud queda presentada ante el ' +
       'SRI y no se puede deshacer; el portal advierte el art. 298 del COIP.'));
@@ -2170,7 +2175,9 @@
     cuerpo.appendChild(boton('Sí, presentar automáticamente', () => presentarMeses(meses, true),
       'padding:9px 12px;margin:3px;border:1px solid #8b1e1e;border-radius:6px;' +
       'background:#8b1e1e;color:#fff;font-weight:700;font-size:12px;cursor:pointer'));
-    cuerpo.appendChild(boton('Solo llenar; me detengo antes de presentar',
+    cuerpo.appendChild(boton(meses.length > 1
+      ? 'Solo llenar el primer mes; me detengo antes de presentar'
+      : 'Solo llenar; me detengo antes de presentar',
       () => presentarMeses(meses.slice(0, 1), false), CSS_GRIS));
     cuerpo.appendChild(boton('Volver', pintar, CSS_GRIS));
   };
