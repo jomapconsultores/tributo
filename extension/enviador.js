@@ -1234,6 +1234,51 @@
   // Lo que NO se toca es el menú lateral: entrar por ahí desde código rebota a
   // Keycloak y tira la sesión (verificado el 2026-08-11). Abrir la aplicación
   // sigue siendo del usuario; de ahí en adelante, esto se encarga.
+  // --- La cuenta bancaria de acreditación -----------------------------------
+  // El portal pide elegir a qué cuenta acreditar la devolución. Con una sola
+  // cuenta no hay nada que decidir; con VARIAS sí, y esa decisión es del
+  // contribuyente: es la cuenta donde va a caer su plata. Antes se tomaba la
+  // primera de la lista sin preguntar ni decirlo.
+  const cuentasDelPortal = () => visibles('tr')
+    .filter((tr) => tr.querySelector('input[type="radio"], .ui-radiobutton-box'))
+    .map((tr) => {
+      const celdas = [...tr.querySelectorAll('td')]
+        .map((td) => (td.textContent || '').trim()).filter(Boolean);
+      return {
+        tr,
+        radio: tr.querySelector('.ui-radiobutton-box') || tr.querySelector('input[type="radio"]'),
+        // Banco · tipo · número, que es con lo que una persona la reconoce.
+        etiqueta: celdas.join('  ·  ').slice(0, 90),
+        // El número de cuenta identifica la fila aunque el portal cambie el orden.
+        numero: (celdas.find((c) => /^\d{6,}$/.test(c.replace(/\D/g, ''))) || '').trim(),
+      };
+    });
+
+  const CLAVE_CUENTA = () => 'jomapDevIvaCuenta:' +
+    ((paquete && paquete.contribuyente && paquete.contribuyente.identificacion) ||
+     identificacionEnPantalla() || 'sin-id');
+  const cuentaRecordada = () => {
+    try { return localStorage.getItem(CLAVE_CUENTA()) || ''; } catch (e) { return ''; }
+  };
+  const recordarCuenta = (numero) => {
+    try { if (numero) localStorage.setItem(CLAVE_CUENTA(), numero); } catch (e) { /* sin espacio */ }
+  };
+
+  // Se pregunta UNA vez por contribuyente y se recuerda: el trámite es mensual y
+  // la cuenta no cambia todos los meses.
+  const preguntarCuenta = (cuentas) => new Promise((resolve) => {
+    limpiar();
+    linea('¿A qué cuenta querés que el SRI acredite la devolución?',
+      'font-weight:700;color:#1e6b33;margin-bottom:4px');
+    linea('Este contribuyente tiene ' + cuentas.length + ' cuentas registradas en el portal. ' +
+      'La que elijas queda recordada para los próximos meses.',
+      'margin:4px 0;color:#555;line-height:1.45;font-size:12px');
+    cuentas.forEach((c, i) => {
+      cuerpo.appendChild(boton(c.etiqueta, () => resolve(i)));
+    });
+    cuerpo.appendChild(boton('Cancelar', () => resolve(-1), CSS_GRIS));
+  });
+
   const pasarPantallasPrevias = async (avisar) => {
     for (let vuelta = 0; vuelta < 4; vuelta++) {
       if (hayFormulario() || enlaceIngresarFacturas()) return true;
@@ -1241,16 +1286,31 @@
       const aceptar = visibles('button,input[type="submit"],input[type="button"],a')
         .find((b) => /^aceptar$/.test(norm((b.value || b.textContent) || '')));
       if (!aceptar) return false;
-      // La pantalla de la cuenta pide elegirla antes de aceptar; si ninguna está
-      // marcada se toma la primera, que es lo que hace el usuario cuando tiene
-      // una sola cuenta registrada.
-      const radios = visibles('input[type="radio"],.ui-radiobutton-box');
-      if (/cuenta/.test(texto) && radios.length) {
-        const marcado = radios.some((r) => r.checked ||
-          (r.classList && r.classList.contains('ui-state-active')));
-        if (!marcado) {
+      const cuentas = /cuenta/.test(texto) ? cuentasDelPortal() : [];
+      if (cuentas.length) {
+        const marcada = cuentas.some((c) => (c.radio && c.radio.checked) ||
+          (c.radio && c.radio.classList && c.radio.classList.contains('ui-state-active')));
+        if (!marcada) {
+          let elegida = 0;
+          if (cuentas.length > 1) {
+            // ¿Ya se eligió antes para este contribuyente?
+            const recordada = cuentaRecordada();
+            const iRec = recordada
+              ? cuentas.findIndex((c) => c.numero && c.numero === recordada) : -1;
+            if (iRec >= 0) {
+              elegida = iRec;
+              if (avisar) avisar('Acreditando en la cuenta de siempre: ' + cuentas[iRec].etiqueta);
+            } else {
+              const i = await preguntarCuenta(cuentas);
+              if (i < 0) return false;      // el usuario prefirió hacerlo a mano
+              elegida = i;
+              recordarCuenta(cuentas[i].numero);
+              limpiar();
+              linea('Llenando el portal', 'font-weight:700;color:#1e6b33;margin-bottom:4px');
+            }
+          }
           if (avisar) avisar('Eligiendo la cuenta bancaria…');
-          clickReal(radios[0]);
+          clickReal(cuentas[elegida].radio);
           await esperarPortal();
         }
       } else if (avisar) {
@@ -1615,7 +1675,23 @@
     // 1) Consultar el período en el portal
     const lConsulta = paso('Consultando ' + (MESES[mes - 1] || mes) + ' ' + anio + '…');
     const errConsulta = await consultarPeriodo(mes, anio, (t) => { lConsulta.textContent = t; });
-    if (errConsulta) return fallar(errConsulta);
+    if (errConsulta) {
+      // El portal manda sobre el estado: si dice que ese período YA está en
+      // trámite, el trámite está hecho —no es un fallo del recorrido— y el
+      // sistema tiene que enterarse. Sin esto había que ir a marcarlo a mano, y
+      // mientras tanto el mes figuraba pendiente en una lista y presentado en el
+      // SRI: dos verdades distintas sobre el mismo período.
+      if (avisoDeTramiteEnCurso()) {
+        avisarALaApp({
+          comprobantes: null,
+          monto: null,
+          fecha_carga: null,
+          mensaje: 'El portal del SRI informa que este período ya está en trámite',
+          ya_en_tramite: true,
+        });
+      }
+      return fallar(errConsulta);
+    }
     lConsulta.textContent = (MESES[mes - 1] || mes) + ' ' + anio + ': grilla en pantalla';
 
     if (!filasGrilla().length) {

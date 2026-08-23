@@ -30,7 +30,11 @@
   <p>Seleccione la cuenta bancaria a la que desea la acreditacion.</p>
   <table id="frmConvenioDebito:tblConvenios_data">
     <tr><td><div class="ui-radiobutton"><div class="ui-radiobutton-box"></div></div></td>
-        <td>BANCO DE PRUEBA</td><td>0912345678</td></tr>
+        <td>BANCO DE PRUEBA</td><td>0912345678</td><td>Ahorros</td><td>2100456789</td></tr>
+    <!-- La segunda solo aparece en el modo 'cuentas': con una sola no hay nada
+         que preguntar, y con dos la elección es del contribuyente. -->
+    <tr id="cuenta2" style="display:none"><td><div class="ui-radiobutton"><div class="ui-radiobutton-box"></div></div></td>
+        <td>BANCO DEL AUSTRO</td><td>0912345678</td><td>Corriente</td><td>3300998877</td></tr>
   </table>
   <button id="btnAceptaConvenio">Aceptar</button>
 </div>
@@ -94,7 +98,9 @@ for (let i = 1; i <= 4; i++) {
 // otro    = el portal está abierto con OTRA persona que la de la solicitud.
 const MODO_URL = new URLSearchParams(location.search).get('modo') || 'widget';
 // 'inicio': el portal recién abierto, con el asistente entero por delante.
-if (MODO_URL === 'inicio') {
+// 'cuentas': lo mismo, pero con DOS cuentas bancarias registradas.
+if (MODO_URL === 'cuentas') document.getElementById('cuenta2').style.display = '';
+if (MODO_URL === 'inicio' || MODO_URL === 'cuentas') {
   document.getElementById('aviso').style.display = '';
   document.getElementById('menu').style.display = 'none';
   document.getElementById('btnAceptaAviso').onclick = () => {
@@ -104,8 +110,14 @@ if (MODO_URL === 'inicio') {
     });
   };
   // La caja del radio se marca sola al tocarla, como PrimeFaces.
-  document.querySelector('#convenio .ui-radiobutton-box').addEventListener('click', function () {
-    ajax(300, () => this.classList.add('ui-state-active'));
+  [...document.querySelectorAll('#convenio .ui-radiobutton-box')].forEach((caja) => {
+    caja.addEventListener('click', function () {
+      ajax(300, () => {
+        [...document.querySelectorAll('#convenio .ui-radiobutton-box')]
+          .forEach((o) => o.classList.remove('ui-state-active'));
+        this.classList.add('ui-state-active');
+      });
+    });
   });
   document.getElementById('btnAceptaConvenio').onclick = () => {
     ajax(400, () => {

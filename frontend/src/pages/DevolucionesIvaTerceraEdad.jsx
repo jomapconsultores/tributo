@@ -869,6 +869,22 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
       const sol = solicitudes.find((s) => s.id === d.solicitud_id)
       if (!sol) return
       if (sol.estado === 'presentada' || sol.estado === 'aprobada') return
+      // El portal manda sobre el estado. Si dice que ese período YA está en
+      // trámite, el mes está presentado —lo haya hecho el enviador o alguien a
+      // mano, hoy o el mes pasado— y así queda registrado, con esa constancia y
+      // sin inventar cifras: el SRI no las muestra en ese aviso.
+      if (c.ya_en_tramite) {
+        registrarEnvio(sol, {
+          comprobantes: null, monto: null, fecha_carga: null, mensaje: c.mensaje,
+        })
+        setMsg({
+          tipo: 'ok',
+          texto: 'El portal del SRI informa que ese período ya estaba en trámite: ' +
+            'quedó marcado como presentado. Los montos son los del sistema; el SRI no ' +
+            'los detalla en ese aviso.',
+        })
+        return
+      }
       // Sin el «Carga de archivo realizada exitosamente» del portal no se da
       // nada por presentado: el enviador llegó al final pero el SRI no confirmó,
       // y marcarlo igual sería registrar un envío que puede no existir.
