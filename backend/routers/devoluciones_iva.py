@@ -81,7 +81,10 @@ RUBROS_LEGACY = {"servicios_basicos": "vivienda", "turismo": RUBRO_VACIO, "otros
 # Los servicios básicos (luz, agua, teléfono) van a Vivienda, que es donde el
 # SRI los admite.
 _PISTAS_RUBRO = [
-    ("salud",        ("SALUD", "MEDIC", "FARMAC", "CLINIC", "HOSPITAL", "LABORATORIO", "ODONT", "OPTIC")),
+    # "MEDICINA PREPAGADA" es salud sin ambigüedad; un seguro a secas no —puede
+    # ser del auto o de la casa—, así que ese se sigue eligiendo a mano.
+    ("salud",        ("SALUD", "MEDIC", "FARMAC", "CLINIC", "HOSPITAL", "LABORATORIO", "ODONT",
+                      "OPTIC", "PREPAGADA", "FISIOTERAP")),
     # Los hipermercados (Coral, comisariatos) van a alimentación aunque vendan de
     # todo: es el rubro con el que se presentan sus compras.
     # Con el listado del portal la única pista suele ser la RAZÓN SOCIAL, que no
@@ -98,9 +101,13 @@ _PISTAS_RUBRO = [
                       "ALMACENES TIA", "SANTA MARIA", "DELICAT", "PIZZ",
                       "BURGER", "POLLO", "CAFE", "CAFETER", "HELAD", "CHUZO",
                       "ASADERO", "MARISQU", "CEVICH", "SANDUCH", "FRUT", "CARNIC")),
+    # Ferretería y materiales entran acá: son gastos de la vivienda, y el portal
+    # los lista (ACEROSCENTER, KYWI, COMFERVAL). Sin estas pistas quedaban sin
+    # proponer, y un comprobante sin tipo de gasto traba el envío en el portal.
     ("vivienda",     ("VIVIENDA", "ARRIEND", "ALQUILER", "CONDOMIN", "FERRETER", "MUEBL", "HOGAR",
                       "LUZ", "ELECTRIC", "AGUA", "TELEFON", "INTERNET", "TELECOM", "GAS",
-                      "INMUEBLE")),
+                      "INMUEBLE", "ACERO", "CONSTRUC", "CEMENTO", "PINTURA", "VIDRIO",
+                      "SANITARIO", "CERAMIC", "TUBERIA", "MADERA")),
     ("vestimenta",   ("VESTIMENTA", "ROPA", "CALZAD", "TEXTIL", "BOUTIQUE", "VESTIR", "PRENDAS")),
     ("educacion",    ("EDUCAC", "COLEGIO", "ESCUELA", "UNIVERSID", "CAPACITAC", "LIBRER", "UTILES",
                       "ENSENANZ")),

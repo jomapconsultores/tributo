@@ -139,6 +139,7 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
   const portalEnCursoRef = useRef(null) // listado del portal que ya se está ingresando (no entra dos veces)
   const [ocultos, setOcultos] = useState([])  // comprobantes que el usuario sacó de esta devolución
   const [noListado, setNoListado] = useState(0)  // gasto del mes que el SRI no reconoce
+  const [soloSinRubro, setSoloSinRubro] = useState(false)  // ver solo lo que falta clasificar
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null) // { tipo: 'ok'|'err', texto }
 
@@ -550,6 +551,15 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
       .sort((a, b) => orden.indexOf(a.rubro) - orden.indexOf(b.rubro))
   }, [comps, seleccion, rubroDe, rubros])
 
+  // Lo que el SRI no admite enviar vacío. Se mira acá, en la misma tabla donde
+  // se resuelve: el aviso al intentar enviar decía cuáles faltaban, pero había
+  // que ir a buscarlos a ojo entre todas las filas.
+  const sinRubro = useMemo(
+    () => comps.filter((c) => !(rubroDe[c.id] ?? c.rubro_sugerido ?? '')),
+    [comps, rubroDe],
+  )
+  const visibles = soloSinRubro ? sinRubro : comps
+
   const toggle = (id) => {
     setSeleccion((prev) => {
       const s = new Set(prev)
@@ -648,6 +658,7 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
       // donde el usuario puede resolverlo con un clic.
       const faltan = r.data.faltan_rubro || []
       if (faltan.length) {
+        setSoloSinRubro(true)     // la tabla queda mostrando lo que hay que resolver
         setMsg({
           tipo: 'err',
           texto: `Falta el tipo de gasto en ${faltan.length} comprobante(s): ` +
@@ -1119,6 +1130,20 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
         </button>
       </div>
 
+      {sinRubro.length > 0 && (
+        <p className="dv-fuera dv-falta-rubro">
+          ⚠ <strong>{sinRubro.length} comprobante(s) sin tipo de gasto.</strong> El SRI no
+          admite enviarlos vacíos: el trámite se traba en el portal al llegar a esas filas.{' '}
+          <button className="dv-fuera-btn" onClick={() => setSoloSinRubro((v) => !v)}>
+            {soloSinRubro ? 'ver todos' : 'mostrar solo esos'}
+          </button>
+          {' · '}
+          <button className="dv-fuera-btn" onClick={sincronizarActividades} disabled={sincronizando}>
+            {sincronizando ? 'consultando…' : 'proponer con la actividad del SRI'}
+          </button>
+        </p>
+      )}
+
       {seleccion.size > 0 && porRubro.length > 0 && (
         <div className="dv-rubros-resumen">
           <span className="dv-rubros-lbl">Direccionado a:</span>
@@ -1185,7 +1210,7 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
           <table className="dv-tabla">
             <thead>
               <tr>
-                <th><input type="checkbox" checked={seleccion.size === comps.length && comps.length > 0} onChange={toggleTodos} title="Marcar/desmarcar todos" /></th>
+                <th><input type="checkbox" checked={seleccion.size === comps.length && comps.length > 0} onChange={toggleTodos} title="Marcar/desmarcar todos (los del período, no solo los que se ven)" /></th>
                 <th>Fecha</th>
                 <th>Proveedor</th>
                 <th>Tipo de gasto</th>
@@ -1198,7 +1223,7 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
               </tr>
             </thead>
             <tbody>
-              {comps.map((c) => (
+              {visibles.map((c) => (
                 <tr key={c.id} className={seleccion.has(c.id) ? 'sel' : ''} onClick={() => toggle(c.id)}>
                   <td><input type="checkbox" checked={seleccion.has(c.id)} onChange={() => toggle(c.id)} onClick={(e) => e.stopPropagation()} /></td>
                   <td>{c.fecha}</td>

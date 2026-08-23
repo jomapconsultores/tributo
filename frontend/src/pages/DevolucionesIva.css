@@ -447,3 +447,13 @@
   border-radius: 8px;
 }
 .dv-avisos p { margin: 4px 0; font-size: .83rem; color: #7a5b00; }
+
+/* Lo que falta clasificar: el SRI no admite el tipo de gasto vacío, así que es
+   un pendiente que bloquea el envío, no un detalle. */
+.dv-falta-rubro {
+  border: 1px solid #e0b4b4;
+  background: #fff5f5;
+  color: #8b1e1e;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
