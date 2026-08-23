@@ -876,10 +876,22 @@ async def comprobantes(
         "base_0,base_15,iva_15,base_8,iva_8,base_5,iva_5,total"
     ).eq("client_id", client_id).order("fecha", desc=True))
     comps = [_resumen_comprobante(i) for i in invs if (i.get("estado") or "OK") == "OK"]
-    # Cuando se pide un mes concreto se acota a ese mes: si no, al validar un mes
-    # viejo aparecería el gasto de todos los períodos cargados del contribuyente.
-    if mes and anio:
-        comps = [c for c in comps if mes_anio_de_fecha(c.get("fecha")) == (int(mes), int(anio))]
+
+    # CADA PERÍODO ES INDEPENDIENTE: nunca se acumulan comprobantes de otros
+    # meses. Se acota al mes pedido o, si no se pidió ninguno, a los meses que
+    # cubre el período del contribuyente (un semestral son seis). Antes el
+    # filtro solo corría cuando el mes venía explícito, así que abrir la
+    # pantalla en el período del cliente mostraba TODO el gasto cargado, de
+    # cualquier mes, y la solicitud de un mes podía llevarse comprobantes de otro.
+    del_periodo = ({(int(m), int(panio)) for m in (meses or ([pmes] if pmes else []))}
+                   if panio else set())
+    if del_periodo:
+        comps = [c for c in comps
+                 # Sin fecha legible no se puede atribuir a otro mes: se deja a
+                 # la vista (el cálculo lo imputa al último mes del período) en
+                 # vez de hacerlo desaparecer del sistema.
+                 if mes_anio_de_fecha(c.get("fecha")) in del_periodo
+                 or mes_anio_de_fecha(c.get("fecha")) == (None, None)]
 
     for c in comps:
         c["origen"] = "gastos"
@@ -944,6 +956,19 @@ async def comprobantes(
                 comps[pos] = _con_datos_de_gastos(_resumen_portal(f), comps[pos])
         comps.sort(key=lambda c: str(c.get("fecha") or ""), reverse=True)
 
+    # LA DEVOLUCIÓN SE ARMA CON LO QUE EL SRI LISTA. Cuando el portal ya entregó
+    # su grilla del período, esa es la lista: el gasto que el contribuyente tenga
+    # cargado y el SRI no reconozca —bancos, seguros, servicios, lo que no
+    # califica— no va en la solicitud, y en pantalla solo estorbaba: había que
+    # sacarlo a mano de a uno para poder trabajar. Lo que ya está guardado en la
+    # solicitud se respeta aunque venga de Gastos: es una decisión tomada.
+    gasto_no_listado = 0
+    if _filas_portal(grilla) or any(c.get("origen") == "portal" for c in comps):
+        marcados = set(seleccionados)
+        del_sri = [c for c in comps if c.get("origen") == "portal" or c["id"] in marcados]
+        gasto_no_listado = len(comps) - len(del_sri)
+        comps = del_sri
+
     # Rubro de cada comprobante. Manda el ya guardado en la solicitud; si no,
     # lo APRENDIDO de ese proveedor en solicitudes anteriores; y recién después
     # la pista por palabra clave. Para los del portal no hay clasificación de
@@ -990,6 +1015,9 @@ async def comprobantes(
         "seleccionados": seleccionados,
         "rubros": RUBROS,
         "portal_traido_at": (grilla or {}).get("traido_at"),
+        # Comprobantes del mes que están en Gastos y el SRI no lista: no van en
+        # la devolución, pero decir cuántos son evita la duda de si falta algo.
+        "gasto_no_listado": gasto_no_listado,
     }
 
 

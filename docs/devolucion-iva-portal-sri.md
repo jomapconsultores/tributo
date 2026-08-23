@@ -205,6 +205,22 @@ comprobantes estén cargados en Gastos:
     escritas para DOS vocabularios distintos —el del catastro ("ENSEÑANZA",
     "PRENDAS DE VESTIR") y el de los nombres comerciales—, y la comparación va
     sin tildes ni Ñ.
+- **La devolución lleva SOLO lo que el SRI lista** (2026-08-22). Traída la
+  grilla del período, el gasto que el contribuyente tenga cargado y el portal no
+  reconozca —bancos, seguros, servicios— no entra en la lista: no va en la
+  solicitud y en pantalla obligaba a sacarlo a mano de a uno. Se informa cuántos
+  quedaron fuera (`gasto_no_listado`) para que no parezca que falta algo. Lo ya
+  guardado en la solicitud se respeta aunque venga de Gastos.
+  - **El mismo comprobante puede estar de los dos lados** (cargado en Gastos y
+    listado por el SRI). Es UNO: manda la fila del portal —es la que el SRI
+    procesa, con SU monto de IVA— y de la de Gastos hereda RUC, clave y
+    clasificación. Antes se descartaba por repetida y con ella se perdía la
+    marca: una solicitud guardada se veía como "0 de 36 marcados" y $0,00.
+- **Cada período es independiente**: la lista se acota siempre a los meses que
+  cubre el período (uno, o seis si es semestral), venga o no el mes en el
+  pedido. Antes el filtro solo corría con mes explícito, así que abrir la
+  pantalla en el período del cliente mostraba todo el gasto cargado, de
+  cualquier mes.
 - Esos items van **sin `invoice_id`** —no son facturas de Gastos— y se
   distinguen en la pantalla con el chip `SRI`. Como la grilla no informa la
   base imponible, van con base y total en cero y la pantalla muestra "—".

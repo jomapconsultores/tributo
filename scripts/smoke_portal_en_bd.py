@@ -37,6 +37,19 @@ from database import get_supabase_client  # noqa: E402
 _ok = _fail = 0
 
 
+def _mes_anio(fecha):
+    """(mes, anio) de una fecha 'dd/mm/aaaa' o 'aaaa-mm-dd'."""
+    import re
+    t = str(fecha or "").strip()
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})", t)
+    if m:
+        return (int(m.group(2)), int(m.group(3)))
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})", t)
+    if m:
+        return (int(m.group(2)), int(m.group(1)))
+    return (None, None)
+
+
 def check(que, cond, detalle=""):
     global _ok, _fail
     if cond:
@@ -96,6 +109,16 @@ def main():
     d = r.json()
     check("trae 'ocultos'", isinstance(d.get("ocultos"), list), d.get("ocultos"))
     check("trae 'portal_traido_at'", "portal_traido_at" in d)
+
+    # Cada período es independiente: pedida SIN mes, la lista tiene que traer el
+    # período del contribuyente y NADA de otros meses. Antes, sin mes explícito
+    # no se filtraba nada y salía todo el gasto cargado, de cualquier fecha.
+    dentro = {(m, d["anio"]) for m in (d.get("meses") or [d["mes"]])}
+    fuera_de_periodo = [c["fecha"] for c in (d.get("comprobantes") or [])
+                        if _mes_anio(c.get("fecha")) not in dentro
+                        and _mes_anio(c.get("fecha")) != (None, None)]
+    check(f"no acumula otros meses (período {sorted(dentro)})",
+          not fuera_de_periodo, fuera_de_periodo[:5])
 
     # Se trabaja sobre un mes CON gasto cargado y todavía sin presentar: es el
     # mes que el usuario abriría. El período configurado del contribuyente puede
@@ -178,6 +201,16 @@ def main():
         series = [c.get("factura_numero") for c in (dd.get("comprobantes") or []) if c.get("factura_numero")]
         check("ningún comprobante aparece dos veces", len(series) == len(set(series)),
               len(series) - len(set(series)))
+        # Y la devolución lleva SOLO lo que el SRI lista: el gasto del mes que el
+        # portal no reconoce (bancos, seguros) no entra, pero se informa cuánto
+        # es para que la pantalla lo pueda decir.
+        ajenos = [c for c in (dd.get("comprobantes") or [])
+                  if c.get("origen") != "portal" and c["id"] not in sel]
+        check("no se cuela gasto que el SRI no lista", not ajenos,
+              [c.get("nombre_proveedor") for c in ajenos[:3]])
+        check("informa cuántos quedaron fuera", isinstance(dd.get("gasto_no_listado"), int),
+              dd.get("gasto_no_listado"))
+        print(f"  ({dd.get('gasto_no_listado')} comprobante(s) del mes no los lista el SRI)")
 
     print("=== 5. vaciar el período ===")
     hay_solicitud = bool(sb.table("devoluciones_iva_solicitudes").select("id").eq(

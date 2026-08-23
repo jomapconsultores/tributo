@@ -138,6 +138,7 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
   const [avisoSubida, setAvisoSubida] = useState(null) // { tipo: 'work'|'ok'|'err', texto }
   const portalEnCursoRef = useRef(null) // listado del portal que ya se está ingresando (no entra dos veces)
   const [ocultos, setOcultos] = useState([])  // comprobantes que el usuario sacó de esta devolución
+  const [noListado, setNoListado] = useState(0)  // gasto del mes que el SRI no reconoce
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null) // { tipo: 'ok'|'err', texto }
 
@@ -178,11 +179,13 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
       ])
       if (pedidoRef.current !== pedido) return   // llegó tarde: manda el pedido nuevo
       setResumen(rr?.data?.totales || null)
-      // El servidor devuelve la lista ya armada: el gasto del mes, más la grilla
-      // que trajo el portal —que no está en Gastos—, menos lo que se sacó de
-      // esta devolución (eso viene aparte, para poder volver a mostrarlo).
+      // El servidor devuelve la lista ya armada: cuando el portal entregó su
+      // grilla del período, son ESOS comprobantes —la devolución se arma con lo
+      // que el SRI lista, no con todo el gasto del mes—, menos lo que se sacó de
+      // esta devolución (viene aparte, para poder volver a mostrarlo).
       const lista = rc.data.comprobantes || []
       setOcultos(rc.data.ocultos || [])
+      setNoListado(rc.data.gasto_no_listado || 0)
       setComps(lista)
       setMesPeriodo(rc.data.mes)
       setPeriodo(rc.data.periodo || '')
@@ -1225,9 +1228,17 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
         </div>
       )}
 
+      {noListado > 0 && (
+        <p className="dv-fuera">
+          Esta devolución lleva <strong>solo lo que el SRI lista</strong>: {noListado} comprobante(s)
+          más del mes están cargados en Gastos y el portal no los reconoce (bancos, seguros,
+          lo que no califica), así que no van en la solicitud. Siguen en Gastos, intactos.
+        </p>
+      )}
+
       {ocultos.length > 0 && (
         <p className="dv-fuera">
-          {ocultos.length} comprobante(s) fuera de esta devolución (siguen en Gastos).{' '}
+          {ocultos.length} comprobante(s) que sacaste de esta devolución (siguen en Gastos).{' '}
           <button className="dv-fuera-btn" onClick={mostrarOcultos}>volver a mostrarlos</button>
         </p>
       )}
