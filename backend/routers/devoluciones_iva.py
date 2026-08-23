@@ -1503,6 +1503,33 @@ async def payload_envio(solicitud_id: str, user_id: str = Depends(get_current_us
         "id", sol["client_id"]).execute().data
     c = cl[0] if cl else {}
     pfreq = (c.get("periodicidad") or "mensual")
+
+    # El tipo de gasto que le falte al ítem se completa con la MISMA propuesta
+    # que muestra la pantalla (lo aprendido del proveedor, su actividad económica
+    # en el SRI, su clasificación en Gastos, su nombre).
+    #
+    # Sin esto, el trámite dependía de acordarse de volver a guardar: la
+    # solicitud que nace de la grilla del portal se graba con la propuesta que
+    # había EN ESE MOMENTO —y si entonces no había ninguna, el ítem quedaba
+    # vacío para siempre—. La pantalla mostraba el tipo de gasto propuesto al
+    # abrirla, pero el envío miraba la base y se negaba a salir: dos verdades
+    # distintas sobre lo mismo, y el usuario en el medio.
+    aprendidos = _rubros_aprendidos(sb, user_id)
+    actividades = _actividades_por_nombre(sb, sol["client_id"])
+    claves_act = _claves_por_largo(actividades)
+
+    def _rubro_de(it) -> str:
+        guardado = (it.get("rubro") or "").strip()
+        if guardado:
+            return guardado
+        nombre = it.get("nombre_proveedor")
+        actividad = _resolver_actividad(actividades, claves_act, nombre).get("actividad") or ""
+        return (aprendidos.get(_nombre_clave(nombre))
+                or (_rubro_sugerido(actividad) if actividad else RUBRO_VACIO)
+                or _rubro_sugerido(it.get("clasificacion") or nombre))
+
+    rubro_por_item = {it["id"]: _rubro_de(it) for it in items}
+
     return {
         "solicitud_id": sol["id"],
         "contribuyente": {"identificacion": c.get("identificacion", ""), "nombre": c.get("nombre", "")},
@@ -1531,7 +1558,7 @@ async def payload_envio(solicitud_id: str, user_id: str = Depends(get_current_us
         "faltan_rubro": [
             f"{it.get('fecha') or '?'} · {it.get('nombre_proveedor') or it.get('ruc_proveedor') or '?'}"
             for it in sorted(items, key=lambda x: (x.get("fecha") or ""))
-            if not (it.get("rubro") or "").strip()
+            if not rubro_por_item.get(it["id"])
         ],
         "items": [
             {
@@ -1542,10 +1569,10 @@ async def payload_envio(solicitud_id: str, user_id: str = Depends(get_current_us
                 "fecha": it.get("fecha"),
                 "ruc_proveedor": it.get("ruc_proveedor"),
                 "proveedor": it.get("nombre_proveedor"),
-                "rubro": it.get("rubro") or RUBRO_VACIO,
-                "rubro_label": RUBRO_LABEL.get(it.get("rubro") or "", "Sin asignar"),
+                "rubro": rubro_por_item.get(it["id"]) or RUBRO_VACIO,
+                "rubro_label": RUBRO_LABEL.get(rubro_por_item.get(it["id"]) or "", "Sin asignar"),
                 # Código del combo "Tipo de gasto" del portal (1..5).
-                "rubro_sri": RUBRO_SRI.get(it.get("rubro") or "", ""),
+                "rubro_sri": RUBRO_SRI.get(rubro_por_item.get(it["id"]) or "", ""),
                 "base": _num(it.get("base")),
                 "iva": _num(it.get("iva")),
                 "total": _num(it.get("total")),
