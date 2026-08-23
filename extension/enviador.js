@@ -149,15 +149,32 @@
     return (c && c.identificacion) ? c : null;
   };
   // Lo que el portapapeles trae no es de fiar: ahí queda la solicitud del último
-  // "Enviar al SRI", de cualquier contribuyente y de cualquier día. Si el sistema
-  // dice a quién tiene abierto y no es el mismo, se descarta —se veía el panel de
-  // un contribuyente con la solicitud, los comprobantes y los montos de otro—.
+  // "Enviar al SRI", de cualquier contribuyente y de cualquier día. Si hay con qué
+  // contradecirlo y no es el mismo, se descarta —se veía el panel de un
+  // contribuyente con la solicitud, los comprobantes y los montos de otro—.
   let avisoDePaquete = '';
-  const esDeOtro = (p) => {
+  // Contra quién se contrasta la solicitud: si el marcador corre dentro de la
+  // app, contra quién está abierto ahí; si corre en el portal —que es lo
+  // normal—, contra quién tiene la sesión abierta en el SRI. Antes solo se
+  // miraba lo primero, y en el portal no había con qué contradecir al
+  // portapapeles: se cargaba la solicitud del ÚLTIMO envío, de cualquier
+  // contribuyente, y el panel mostraba su nombre, sus comprobantes y sus montos.
+  const duenoEsperado = () => {
     const ctx = contextoDeLaApp();
-    if (!ctx || !p || !p.contribuyente) return false;
+    if (ctx) {
+      return { identificacion: String(ctx.identificacion).trim(), nombre: ctx.nombre || '', donde: 'el sistema' };
+    }
+    const quien = quienEstaEnElPortal();
+    if (quien && quien.identificacion) {
+      return { identificacion: String(quien.identificacion).trim(), nombre: quien.nombre || '', donde: 'el portal' };
+    }
+    return null;   // nadie dice quién es: no hay con qué contradecir
+  };
+  const esDeOtro = (p) => {
+    const dueno = duenoEsperado();
+    if (!dueno || !p || !p.contribuyente) return false;
     const mio = String(p.contribuyente.identificacion || '').trim();
-    return !!mio && mio !== String(ctx.identificacion).trim();
+    return !!mio && mio !== dueno.identificacion;
   };
 
   const leerDelPortapapeles = async () => {
@@ -168,12 +185,12 @@
       const p = JSON.parse(txt);
       if (!valido(p)) return null;
       if (esDeOtro(p)) {
-        const ctx = contextoDeLaApp();
+        const dueno = duenoEsperado();
         avisoDePaquete = 'Lo que hay copiado es la solicitud de ' +
           (p.contribuyente.nombre || p.contribuyente.identificacion) +
-          ', y en el sistema está abierto ' + (ctx.nombre || ctx.identificacion) +
+          ', y en ' + dueno.donde + ' está ' + (dueno.nombre || dueno.identificacion) +
           '. No se carga: sería trabajar con los datos de otro contribuyente. ' +
-          'Abrí la solicitud de ' + (ctx.nombre || ctx.identificacion) +
+          'Abrí en el sistema la devolución de ' + (dueno.nombre || dueno.identificacion) +
           ' y tocá "Enviar al SRI".';
         return null;
       }
@@ -200,10 +217,10 @@
       // Pegar a mano no puede saltarse la comprobación: es el mismo error, con
       // un paso más.
       if (esDeOtro(p)) {
-        const ctx = contextoDeLaApp();
+        const dueno = duenoEsperado();
         aviso.textContent = 'Esa solicitud es de ' +
           (p.contribuyente.nombre || p.contribuyente.identificacion) +
-          ' y acá está abierto ' + (ctx.nombre || ctx.identificacion) + '.';
+          ' y en ' + dueno.donde + ' está ' + (dueno.nombre || dueno.identificacion) + '.';
         return;
       }
       resolve(p);
@@ -249,16 +266,20 @@
   // "Servicios en Línea ⋮ 0400533824001 CORAL LIDIA MAGOLA" —el número primero y
   // el nombre enseguida, en mayúsculas—. El nombre se toma por palabras
   // completas en mayúscula, que es lo que corta antes de "Perfil".
-  const quienEstaEnElPortal = () => {
+  // Declaradas con `function` a propósito: se usan más arriba, al decidir si la
+  // solicitud que se leyó es de otro contribuyente.
+  function quienEstaEnElPortal() {
     const cab = (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 400);
     const m = /\b(\d{10}(?:\d{3})?)\b[\s.:-]*([A-ZÁÉÍÓÚÑ]{2,}(?: [A-ZÁÉÍÓÚÑ]{2,})*)?/.exec(cab);
     if (!m) return null;
     return { identificacion: m[1], nombre: (m[2] || '').trim() };
-  };
+  }
 
   // Identificación del contribuyente segun la propia pantalla del SRI: sirve
   // para que el sistema no cargue los comprobantes de uno en la ficha de otro.
-  const identificacionEnPantalla = () => (quienEstaEnElPortal() || {}).identificacion || '';
+  function identificacionEnPantalla() {
+    return (quienEstaEnElPortal() || {}).identificacion || '';
+  }
 
   // En qué aplicación está parado el portal. Las dos entradas viven bajo el
   // mismo contexto `devolucionTerceraEdad-internet`, así que discapacidad se
@@ -1318,9 +1339,16 @@
       return;
     }
     const total = filas.reduce((s, f) => s + (Number(f.iva) || 0), 0);
+    // De quién es la grilla lo dice EL PORTAL, no el paquete: lo que se acaba de
+    // leer son los comprobantes del contribuyente con la sesión abierta acá.
+    // Preguntándoselo primero al paquete, una solicitud vieja —la del último
+    // "Enviar al SRI", que puede ser de otra persona— le ponía su cédula a los
+    // comprobantes de este, y en el sistema entraban en la ficha equivocada.
+    // El paquete queda de respaldo para cuando el portal no diga quién es.
     const bulto = {
       tipo: 'devolucion-iva-portal',
-      identificacion: (paquete && paquete.contribuyente.identificacion) || identificacionEnPantalla(),
+      identificacion: identificacionEnPantalla() ||
+        (paquete && paquete.contribuyente.identificacion) || '',
       mes, anio,
       filas,
     };

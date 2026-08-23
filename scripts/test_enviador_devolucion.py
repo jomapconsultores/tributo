@@ -22,13 +22,16 @@ Variantes del portal (el SRI cambia el widget entre versiones):
     extension    solicitud inyectada como hace la extension -> corre SOLA
     traer        "Traer comprobantes al sistema" -> el listado viaja SOLO a la
                  app por la extension, y no se suelta hasta que ella lo ingresa
+    traer_otro   lo mismo, pero el portal esta abierto con OTRA persona -> el
+                 listado tiene que viajar a nombre de quien lo muestra, no del
+                 de la solicitud que quedo del envio anterior
     auto         solicitud autorizada desde el sistema -> corre SOLA, sin click
     widget       el click va a la caja del checkbox   -> marca los 12
     nativo       la caja no escucha, sí el checkbox   -> marca los 12
     discapacidad la otra entrada, con el catálogo de tipo de gasto cambiado ->
                  tiene que elegir por la ETIQUETA, no por el código
     quejoso      el portal RECHAZA la selección       -> corta sin presentar
-    otro         el portal abierto con otra persona   -> no toca nada
+    otro         el portal abierto con otra persona   -> ni carga la solicitud
     cruzado      el marcador dentro de la app, con la solicitud de otro copiada
     muerto       no escucha nadie                     -> tiene que CORTAR y avisar
 
@@ -151,7 +154,7 @@ def tocar(pg, patron: str) -> bool:
         " if (!b) return false; b.click(); return true; }")
 
 
-def probar_traida(pg) -> bool:
+def probar_traida(pg, ruc_esperado: str = "0912345678") -> bool:
     """El listado del portal tiene que viajar SOLO al sistema.
 
     Antes terminaba en el portapapeles y había que acordarse de pegarlo en la
@@ -195,8 +198,9 @@ def probar_traida(pg) -> bool:
     pg.wait_for_timeout(600)
     entregas = pg.evaluate("window.__alaApp || []")
     b = (entregas[0] or {}).get("bulto") if entregas else None
-    llego = bool(b) and len(b.get("filas") or []) == 12 and b.get("identificacion") == "0912345678"
-    print(f"  {'✔' if llego else '✖'} la extensión se lo entrega a la app (12 filas, con su RUC)")
+    llego = bool(b) and len(b.get("filas") or []) == 12 and b.get("identificacion") == ruc_esperado
+    print(f"  {'✔' if llego else '✖'} la extensión se lo entrega a la app "
+          f"(12 filas, a nombre de {ruc_esperado})")
     if not llego:
         print("  entregas:", entregas)
 
@@ -233,15 +237,21 @@ def correr(modo: str, fuente: str) -> bool:
         # inyectada en la página, sin pasar por el portapapeles.
         # 'traer' corre el mismo puente de la extensión, pero para el camino de
         # IDA de los comprobantes: el listado del portal hacia el sistema.
-        traer = modo == "traer"
-        extension = modo in ("extension", "traer")
+        # 'traer_otro': la grilla se trae con el portal abierto en un
+        # contribuyente distinto al de la solicitud que quedó del envío
+        # anterior. Los comprobantes son de quien los muestra: etiquetarlos con
+        # el de la solicitud los mandaba a la ficha equivocada del sistema.
+        traer_otro = modo == "traer_otro"
+        traer = modo in ("traer", "traer_otro")
+        extension = modo in ("extension", "traer", "traer_otro")
         semestral = modo == "semestral"
         # 'quejoso' marca bien pero el portal rechaza la selección al procesar:
         # corre en automático porque es ahí donde el rechazo hace daño —el
         # recorrido seguía de largo y presentaba como si nada—.
         quejoso = modo == "quejoso"
         # 'otro': el portal abierto con una persona distinta a la de la
-        # solicitud. Tiene que cortar ANTES de tocar nada.
+        # solicitud copiada. Tiene que descartarla ANTES de tocar nada: acá el
+        # desacuerdo lo canta el portal, no la app (que ni siquiera está).
         otro = modo == "otro"
         # 'discapacidad': la otra entrada del portal, con su catálogo de tipo de
         # gasto sin verificar.
@@ -256,8 +266,11 @@ def correr(modo: str, fuente: str) -> bool:
         auto = modo in ("auto", "extension", "semestral", "quejoso", "otro",
                         "discapacidad", "inicio")
         propio = quejoso or otro or discapacidad or inicio
-        pg.goto(PORTAL.as_uri() + "?modo=" +
-                (modo if propio else ("widget" if (auto or cruzado or traer) else modo)))
+        modo_portal = ("otro" if traer_otro
+                       else modo if propio
+                       else "widget" if (auto or cruzado or traer)
+                       else modo)
+        pg.goto(PORTAL.as_uri() + "?modo=" + modo_portal)
         # En 'inicio' NO se toca nada: el portal queda en el aviso legal y es el
         # marcador el que tiene que abrirse paso hasta la grilla.
         if not inicio:
@@ -316,27 +329,36 @@ def correr(modo: str, fuente: str) -> bool:
         pg.wait_for_timeout(1500)
 
         if traer:
-            ok = probar_traida(pg)
+            ok = probar_traida(pg, "0400533824001" if traer_otro else "0912345678")
             if errores:
                 ok = False
                 print("  ✖ errores en la página:", errores)
             nav.close()
             return ok
 
-        if cruzado:
+        if cruzado or otro:
             panel = pg.evaluate(PANEL)
             marcadas = pg.evaluate(
                 "[...document.querySelectorAll('.ui-chkbox-box.ui-state-active')].length")
+            avisos = pg.evaluate("window.__constancias || []")
+            # La solicitud ajena no se carga ni cuando el desacuerdo lo canta la
+            # app ('cruzado') ni cuando lo canta el propio portal ('otro'): en
+            # los dos casos el panel se queda en "traer los comprobantes" y
+            # explica qué descartó. Antes, en el portal no había con qué
+            # contradecir al portapapeles y el panel mostraba el nombre, los
+            # comprobantes y los montos del contribuyente anterior.
+            quien = "JUDITH RODRIGUEZ" if cruzado else "0400533824001"
             # El nombre ajeno SÍ aparece —el aviso explica de quién es lo que se
             # descartó—; lo que no puede aparecer es la solicitud cargada, que es
             # la cabecera con el monto y la lista de comprobantes.
             ok = ("IVA a solicitar" not in panel
                   and "Traer los comprobantes al sistema" in panel
-                  and "JUDITH RODRIGUEZ" in panel             # quién está abierto
-                  and "No se carga" in panel and marcadas == 0)
+                  and quien in panel                          # quién está abierto
+                  and "No se carga" in panel and marcadas == 0
+                  and not avisos)
             print(f"  {'✔' if ok else '✖'} no cargó la solicitud de otro contribuyente")
             if not ok:
-                print("  panel:", panel[:600])
+                print("  panel:", panel[:600], "| marcadas:", marcadas, "| avisos:", avisos)
             nav.close()
             return ok
 
@@ -421,18 +443,6 @@ def correr(modo: str, fuente: str) -> bool:
             if not ok:
                 print("  valores:", valores, "| etiquetas:", etiquetas)
                 print("  panel:", panel[-400:])
-        elif otro:
-            # Ni una casilla tocada: presentar la solicitud de uno dentro de la
-            # sesión de otro es declarar a nombre equivocado. Antes el marcador
-            # ni miraba quién había abierto el portal.
-            avisos = pg.evaluate("window.__constancias || []")
-            ok = ("No presento nada" in panel
-                  and "0400533824001" in panel and "0912345678" in panel
-                  and marcadas == 0 and not avisos)
-            print(f"  {'✔' if ok else '✖'} no tocó nada: el portal está con otra persona "
-                  f"({tardo:.0f}s)")
-            if not ok:
-                print("  panel:", panel[-500:], "| marcadas:", marcadas, "| avisos:", avisos)
         elif quejoso:
             # Lo que importa: que corte con el texto del SRI, que no presente y
             # que NO le avise a la app. Antes seguía de largo, pintaba
@@ -506,9 +516,9 @@ def correr(modo: str, fuente: str) -> bool:
 
 
 if __name__ == "__main__":
-    modos = [sys.argv[1]] if len(sys.argv) > 1 else ["semestral", "extension", "traer", "auto", "widget",
-                                                     "nativo", "discapacidad", "quejoso", "cruzado", "inicio",
-                                                     "otro", "muerto"]
+    modos = [sys.argv[1]] if len(sys.argv) > 1 else ["semestral", "extension", "traer", "traer_otro",
+                                                     "auto", "widget", "nativo", "discapacidad", "quejoso",
+                                                     "cruzado", "inicio", "otro", "muerto"]
     fuente = sys.argv[2] if len(sys.argv) > 2 else "min"
     print(f"Enviador-DEVOLUCIÓN contra el portal simulado ({fuente})")
     todo_bien = True

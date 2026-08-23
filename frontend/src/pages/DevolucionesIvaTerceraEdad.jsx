@@ -85,6 +85,32 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
     return new Set([...idents_con_servicio].filter((i) => permitidas.has(i)))
   }, [idents_con_servicio, identsDelTipo])
 
+  if (!selectedClient || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
+    return <ClientPickerScreen icon={cfg.icono} title={cfg.titulo} subtitle={cfg.subtitulo} idents_svc={idents_svc} onNewClient={openNewClient} svcLabel="Devolución IVA" />
+  }
+
+  // Una pantalla por contribuyente (y por período suyo): la `key` la vuelve a
+  // montar al cambiar de cliente, así NADA del anterior sobrevive al cambio.
+  //
+  // Antes todo vivía en el estado de un componente que nunca se desmontaba:
+  // los comprobantes, lo marcado, la solicitud, el mes elegido, el % de
+  // discapacidad y los avisos seguían en pantalla al abrir a otra persona.
+  // En el mejor caso se veían los datos del anterior hasta que respondiera el
+  // servidor; si la carga fallaba se quedaban ahí, y el mes elegido para uno
+  // se le aplicaba al siguiente —incluido lo que se guardaba—.
+  return (
+    <PantallaDevolucion
+      key={selectedClient.id}
+      beneficiario={beneficiario}
+      cfg={cfg}
+      idents_svc={idents_svc}
+      openNewClient={openNewClient}
+      selectedClient={selectedClient}
+    />
+  )
+}
+
+function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, selectedClient }) {
   const [comps, setComps] = useState([])
   const [periodo, setPeriodo] = useState('')
   const [anio, setAnio] = useState(null)
@@ -185,8 +211,14 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
     })
   }
 
+  // El período se cambia con un clic y el servidor tarda lo que tarda: sin
+  // llevar cuenta del pedido, la respuesta de un mes que se dejó atrás llegaba
+  // después y pisaba la del mes que el usuario acaba de abrir.
+  const pedidoRef = useRef(0)
+
   const cargar = useCallback(async () => {
     if (!clientId) return
+    const pedido = ++pedidoRef.current
     setCargando(true)
     setMsg(null)
     try {
@@ -195,6 +227,7 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
         devolucionesIvaAPI.solicitudes(clientId),
         devolucionesIvaAPI.reporte(clientId).catch(() => null),
       ])
+      if (pedidoRef.current !== pedido) return   // llegó tarde: manda el pedido nuevo
       setResumen(rr?.data?.totales || null)
       // A lo que responde el servidor se le suman los comprobantes del portal
       // que se hayan desmarcado: el servidor solo devuelve los que están en la
@@ -225,9 +258,16 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
         setPorcentaje(sol.porcentaje_discapacidad ?? '')
       }
     } catch (e) {
+      if (pedidoRef.current !== pedido) return
+      // Se vacía la pantalla: dejar a la vista los comprobantes del período
+      // anterior al lado de un error es mostrar datos que no son los pedidos.
+      setComps([])
+      setOcultos([])
+      setSeleccion(new Set())
+      setSolicitudActual(null)
       setMsg({ tipo: 'err', texto: e.response?.data?.detail || 'No se pudieron cargar los comprobantes.' })
     } finally {
-      setCargando(false)
+      if (pedidoRef.current === pedido) setCargando(false)
     }
   }, [clientId, periodoSel])
 
@@ -929,10 +969,6 @@ export default function DevolucionesIvaTerceraEdad({ beneficiario = 'tercera_eda
     } catch (e) {
       setMsg({ tipo: 'err', texto: e.response?.data?.detail || 'No se pudo eliminar.' })
     }
-  }
-
-  if (!selectedClient || idents_svc === null || !idents_svc.has(selectedClient?.identificacion)) {
-    return <ClientPickerScreen icon={cfg.icono} title={cfg.titulo} subtitle={cfg.subtitulo} idents_svc={idents_svc} onNewClient={openNewClient} svcLabel="Devolución IVA" />
   }
 
   return (
