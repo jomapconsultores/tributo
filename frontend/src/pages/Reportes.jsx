@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { reportesAPI, downloadBlob } from '../services/api'
+import { reportesAPI, reportesTrabajoAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import WorkflowGuide from '../components/WorkflowGuide'
 import { filterBySearch } from '../utils/search'
@@ -213,6 +213,8 @@ export default function Reportes({ modo: modoProp, embebido = false, periodo: pe
         contribuyente: r.contribuyente,
         client_id: r.client_id,
         procesado: !!r.procesado,           // ya facturado en Odoo este período
+        periodicidad: r.periodicidad || 'mensual',
+        semestre: r.semestre || null,
         certificada: !!r.certificada,       // con autorización del SRI
         factura_numero: r.factura_numero,
         factura_fecha: r.factura_fecha,
@@ -222,9 +224,44 @@ export default function Reportes({ modo: modoProp, embebido = false, periodo: pe
       m.get(r.identificacion).rows.push(r)
     }
     const out = [...m.values()]
-    out.forEach((g) => { g.subtotal = g.rows.filter((r) => r.cobrar).reduce((s, r) => s + bruto(r), 0) })
+    out.forEach((g) => {
+      g.subtotal = g.rows.filter((r) => r.cobrar).reduce((s, r) => s + bruto(r), 0)
+      // Lo que se cobra es lo que hay que hacer: un servicio que no se factura
+      // no es trabajo pendiente de este período.
+      const suyas = g.rows.filter((r) => r.cobrar || r.relevante)
+      g.porHacer = suyas.filter((r) => !r.hecho).length
+      g.hechas = suyas.filter((r) => r.hecho).length
+      g.trabajoListo = suyas.length > 0 && g.porHacer === 0
+    })
     return out
   }, [filtradas])
+
+  // Marcar a mano lo hecho. El sistema deduce el trabajo de lo que quedó
+  // registrado (una declaración guardada, un anexo); lo que se hace por fuera no
+  // deja rastro que deducir y quedaba faltante para siempre.
+  const [marcando, setMarcando] = useState('')
+  const marcarHecho = async (r, realizado) => {
+    const key = r.identificacion + '|' + r.concepto
+    setMarcando(key)
+    // Se ve en el acto: el ida y vuelta al servidor no puede frenar la revisión.
+    setRows((prev) => prev.map((x) => (
+      x.identificacion === r.identificacion && x.concepto === r.concepto
+        ? { ...x, hecho: realizado === null ? x.hecho : realizado,
+            hecho_origen: realizado === null ? '' : 'manual' }
+        : x)))
+    try {
+      await reportesTrabajoAPI.marcar({
+        identificacion: r.identificacion, producto: r.concepto,
+        realizado, mes: per.mes, anio: per.anio,
+      })
+      if (realizado === null) cargar()   // vuelve a lo que el sistema deduzca
+    } catch (e) {
+      setError(e.response?.data?.detail || 'No se pudo guardar el estado del trabajo.')
+      cargar()
+    } finally {
+      setMarcando('')
+    }
+  }
 
   // Dos partes: pendientes (sin factura emitida en Odoo) y procesadas (ya facturadas).
   const pendientes = useMemo(() => grupos.filter((g) => !g.procesado), [grupos])
@@ -295,6 +332,31 @@ export default function Reportes({ modo: modoProp, embebido = false, periodo: pe
   }
 
   // Tabla de una de las dos partes (pendientes / procesadas).
+  // Mensuales y semestrales, cada uno en su bloque. Mezclados, el semestral
+  // parecía atrasado los cinco meses en que simplemente no le toca declarar.
+  const renderPorPeriodo = (lista, totalLista, totalLabel) => {
+    const mensuales = lista.filter((g) => g.periodicidad !== 'semestral')
+    const semestrales = lista.filter((g) => g.periodicidad === 'semestral')
+    if (!semestrales.length) return renderTabla(lista, totalLista, totalLabel)
+    const sem = per.mes <= 6 ? '1er' : '2do'
+    const suma = (gs) => gs.reduce((t, g) => t + g.subtotal, 0)
+    return (
+      <>
+        {mensuales.length > 0 && (
+          <div className="rp-bloque-periodo">
+            <h4>📅 Mensuales — {etiquetaPeriodo(per.mes, per.anio)}</h4>
+            {renderTabla(mensuales, suma(mensuales), totalLabel)}
+          </div>
+        )}
+        <div className="rp-bloque-periodo">
+          <h4>📆 Semestrales — {sem} semestre {per.anio}</h4>
+          <p>Declaran dos veces al año: lo de este bloque corresponde al semestre, no al mes.</p>
+          {renderTabla(semestrales, suma(semestrales), totalLabel)}
+        </div>
+      </>
+    )
+  }
+
   const renderTabla = (lista, totalLista, totalLabel) => (
     <table className="rp-table">
       <thead>
@@ -310,6 +372,7 @@ export default function Reportes({ modo: modoProp, embebido = false, periodo: pe
           <Grupo key={g.identificacion} g={g} cerrado={colapsados.has(g.identificacion)}
             onToggle={() => toggleGrupo(g.identificacion)}
             setFila={setFila} setPrecio={setPrecio} guardando={guardando}
+            marcando={marcando} marcarHecho={marcarHecho}
             onAddRubro={() => agregarRubro(g.identificacion, g.contribuyente)}
             onDelRubro={borrarRubro} money={money}
             bruto={bruto} desglosa={desglosa}
@@ -436,7 +499,7 @@ export default function Reportes({ modo: modoProp, embebido = false, periodo: pe
                           💰 Para cobrar — {paraCobrar.length} cliente(s)
                           <span className="rp-subsec-total">{money(totalPendiente)}</span>
                         </h3>
-                        {renderTabla(paraCobrar, totalPendiente, 'TOTAL a cobrar')}
+                        {renderPorPeriodo(paraCobrar, totalPendiente, 'TOTAL a cobrar')}
                       </div>
                     )}
 
@@ -450,7 +513,7 @@ export default function Reportes({ modo: modoProp, embebido = false, periodo: pe
                           <span>{potencialesOpen ? '▾' : '▸'}</span>
                           🔵 Potenciales — {potenciales.length} cliente(s) sin monto asignado
                         </button>
-                        {potencialesOpen && renderTabla(potenciales, 0, '')}
+                        {potencialesOpen && renderPorPeriodo(potenciales, 0, '')}
                       </div>
                     )}
 
@@ -470,7 +533,7 @@ export default function Reportes({ modo: modoProp, embebido = false, periodo: pe
                 <p className="rp-seccion-sub">Ya facturados en Odoo este período. La insignia indica si están <strong>certificados por el SRI</strong> (con número de autorización).</p>
                 {procesados.length === 0
                   ? <div className="rp-empty">{search ? 'Ninguno coincide con la búsqueda.' : 'Todavía no hay facturas emitidas en Odoo este período.'}</div>
-                  : renderTabla(procesados, totalProcesado, 'TOTAL ya facturado en Odoo')}
+                  : renderPorPeriodo(procesados, totalProcesado, 'TOTAL ya facturado en Odoo')}
               </div>
             )}
           </>
@@ -480,7 +543,7 @@ export default function Reportes({ modo: modoProp, embebido = false, periodo: pe
   )
 }
 
-function Grupo({ g, cerrado, onToggle, setFila, setPrecio, guardando, onAddRubro, onDelRubro, money, bruto, desglosa, historial, histAbierto, onToggleHist }) {
+function Grupo({ g, cerrado, onToggle, setFila, setPrecio, guardando, marcando, marcarHecho, onAddRubro, onDelRubro, money, bruto, desglosa, historial, histAbierto, onToggleHist }) {
   const d = g.subtotal > 0 ? desglosa(g.subtotal) : null
   return (
     <>
@@ -489,7 +552,14 @@ function Grupo({ g, cerrado, onToggle, setFila, setPrecio, guardando, onAddRubro
           <span className="rp-caret">{cerrado ? '▸' : '▾'}</span>
           <strong>{g.contribuyente || '—'}</strong>
           <span className="rp-grupo-ruc">{g.identificacion}</span>
-          {g.rows.some((r) => r.hecho) && <span className="rp-lista-badge" title="Tiene declaración/anexo realizado: lista para facturar">✓ Declaración lista</span>}
+          {g.periodicidad === 'semestral' && (
+            <span className="rp-semestre-badge" title="Contribuyente semestral: declara dos veces al año">
+              📆 {g.semestre === 1 ? '1er' : '2do'} semestre
+            </span>
+          )}
+          {g.trabajoListo
+            ? <span className="rp-lista-badge" title="Todo el trabajo del período está hecho: listo para facturar">✓ Trabajo completo</span>
+            : <span className="rp-falta-badge" title="Servicios del período que todavía figuran sin hacer">⏳ faltan {g.porHacer}</span>}
           {!g.procesado && g.rows.some((r) => r.sin_odoo) && <span className="rp-sinodoo-badge" title="No se encontró una factura de este cliente en Odoo: el valor quedó en blanco. Cárgalo a mano o emítele una factura en Odoo.">⚠ sin valor en Odoo</span>}
           {g.procesado && (
             g.certificada
@@ -509,8 +579,25 @@ function Grupo({ g, cerrado, onToggle, setFila, setPrecio, guardando, onAddRubro
         return (
           <tr key={key} className={`${!r.cobrar ? 'rp-row-off ' : ''}${r.hecho ? 'rp-row-hecho' : ''}`}>
             <td className="rp-concepto">
-              {r.hecho && <span className="rp-check" title="Declaración hecha este mes: se debe facturar">✓</span>}
+              {/* Hecho o faltante, y quién lo dice. Lo que el sistema pudo
+                  comprobar (una declaración guardada) va como ✓; lo que alguien
+                  afirmó, como ✓ a mano: no es lo mismo y conviene distinguirlo. */}
+              <button
+                className={`rp-hecho-btn ${r.hecho ? 'si' : 'no'} ${r.hecho_origen === 'manual' ? 'manual' : ''}`}
+                disabled={marcando === r.identificacion + '|' + r.concepto}
+                title={r.hecho
+                  ? (r.hecho_origen === 'manual'
+                    ? `Marcado a mano como hecho${r.hecho_nota ? ' · ' + r.hecho_nota : ''}. Tocá para volver a ponerlo pendiente.`
+                    : 'El sistema lo ve hecho (hay declaración o anexo de este período). Tocá para marcarlo pendiente.')
+                  : (r.hecho_origen === 'manual'
+                    ? 'Marcado a mano como pendiente. Tocá para darlo por hecho.'
+                    : 'Sin registro de este trabajo en el período. Si ya lo hiciste, tocá para darlo por hecho.')}
+                onClick={() => marcarHecho(r, !r.hecho)}
+              >{r.hecho ? '✓' : '○'}</button>
               {r.concepto}
+              {r.hecho_origen === 'manual' && (
+                <span className="rp-mano-tag" title="Este estado lo puso una persona, no el sistema">a mano</span>
+              )}
               {r.relevante && !r.hecho && <span className="rp-tag" title="Contratado o realizado">●</span>}
               {r.personalizado && <span className="rp-badge-custom">rubro propio</span>}
               {r.arrastrado && <span className="rp-arrastrado" title="Valor traído del mes anterior; ajústalo si cambió">↩ mes anterior</span>}

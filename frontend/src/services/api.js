@@ -492,6 +492,12 @@ export const bajadoresAPI = {
   usos: (limite = 100) => api.get('/api/bajadores/usos', { params: { limite } }),
 }
 
+// Marcar a mano si un servicio del período está hecho. Manda sobre lo que el
+// sistema deduce; con realizado=null se borra la marca y vuelve a deducirlo.
+export const reportesTrabajoAPI = {
+  marcar: (body) => api.put('/api/reportes/trabajo', body),
+}
+
 export const devolucionesIvaAPI = {
   // Comprobantes del período pedido (mes/anio) o, si no se indica, el del cliente
   comprobantes: (clientId, mes = null, anio = null) =>

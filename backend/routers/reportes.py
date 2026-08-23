@@ -170,17 +170,26 @@ def _filas_y_total(user_id, mes: Optional[int] = None, anio: Optional[int] = Non
     # Contribuyentes visibles SEGÚN EL ROL: admin ve todos; socio ve los de los
     # clientes y los suyos; cliente ve los propios y compartidos. Así aparecen
     # TODAS las personas creadas, sea del administrador, del socio o de los clientes.
-    rows_clients = visible_clients(user_id, "id,identificacion,nombre,iva_incluido")
+    rows_clients = visible_clients(
+        user_id, "id,identificacion,nombre,iva_incluido,periodicidad,periodo_semestre")
     nombre_por_ruc = {}
     id_to_ruc = {}
     iva_por_ruc = {}
     client_id_por_ruc = {}
+    # Periodicidad del contribuyente: el semestral declara dos veces al año, y en
+    # el reporte tiene que caer bajo SU semestre en vez de aparecer como faltante
+    # los otros cinco meses.
+    freq_por_ruc = {}
     for c in rows_clients:
         ident = c["identificacion"]
         nombre_por_ruc.setdefault(ident, c.get("nombre") or "")
         id_to_ruc[c["id"]] = ident
         iva_por_ruc.setdefault(ident, bool(c.get("iva_incluido")))
         client_id_por_ruc.setdefault(ident, str(c["id"]))
+        if (c.get("periodicidad") or "mensual") == "semestral":
+            freq_por_ruc[ident] = "semestral"
+        else:
+            freq_por_ruc.setdefault(ident, "mensual")
     all_ids = list(id_to_ruc.keys())
 
     serv_por_ruc = {}
@@ -208,7 +217,16 @@ def _filas_y_total(user_id, mes: Optional[int] = None, anio: Optional[int] = Non
         return fetch_all(lambda: sb.table("reportes_honorarios").select(
             "identificacion,producto,cobrar,valor,precio_oficial,descuento,iva_incluido,mes,anio").eq("user_id", user_id))
 
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    # Lo que alguien marcó A MANO como hecho (o como no hecho) en este período.
+    # Manda sobre lo deducido: el trabajo que se hizo fuera del sistema —o antes
+    # de usarlo— no deja rastro que deducir, y quedaba faltante para siempre.
+    def _q_trabajo():
+        return fetch_all(lambda: sb.table("reportes_trabajo").select(
+            "identificacion,producto,realizado,nota,updated_at"
+        ).eq("user_id", user_id).eq("mes", cur_mes).eq("anio", cur_anio))
+
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        f_trabajo = ex.submit(_q_trabajo)
         f_svc = ex.submit(_q_servicios)
         f_anx = ex.submit(_q_anexos)
         f_dec = ex.submit(_q_decls)
@@ -217,6 +235,10 @@ def _filas_y_total(user_id, mes: Optional[int] = None, anio: Optional[int] = Non
         anexos_r   = f_anx.result()
         decls_r    = f_dec.result()
         guardados  = f_grd.result()
+        marcas     = f_trabajo.result()
+
+    # (ruc, concepto) -> lo que se marcó a mano en este período.
+    marca_por = {(m["identificacion"], m["producto"]): m for m in marcas}
 
     for s in servicios:
         ruc = id_to_ruc.get(s["client_id"])
@@ -351,6 +373,12 @@ def _filas_y_total(user_id, mes: Optional[int] = None, anio: Optional[int] = Non
         def _fila(concepto, relevante, hecho, personalizado, g, oficial_std=0.0,
                   arrastrado=False, odoo_sug=None, origen="", sugerido=None):
             nonlocal total
+            marca = marca_por.get((ruc, concepto))
+            if marca is not None:
+                hecho_origen = "manual"
+                hecho = bool(marca.get("realizado"))
+            else:
+                hecho_origen = "auto" if hecho else ""
             if odoo_sug is not None:               # llenar desde Odoo (cliente vacío)
                 cobrar, iva_incl = True, False     # base sin IVA → "+IVA"
                 oficial = float(odoo_sug.get("oficial") or 0)
@@ -378,7 +406,17 @@ def _filas_y_total(user_id, mes: Optional[int] = None, anio: Optional[int] = Non
                 "iva_incluido": iva_incl,
                 "concepto": concepto,
                 "relevante": relevante,
+                # Trabajo hecho. Manda lo que alguien marcó a mano; si no hay
+                # marca, lo que el sistema pudo deducir (declaración guardada,
+                # anexo generado). `hecho_origen` dice cuál de los dos es, para
+                # que en pantalla se distinga lo comprobado de lo afirmado.
                 "hecho": hecho,
+                "hecho_origen": hecho_origen,
+                "hecho_nota": (marca or {}).get("nota") or "",
+                # Periodicidad del contribuyente: el semestral se agrupa bajo su
+                # semestre en vez de figurar faltante los meses que no declara.
+                "periodicidad": freq_por_ruc.get(ruc, "mensual"),
+                "semestre": (1 if cur_mes <= 6 else 2) if freq_por_ruc.get(ruc) == "semestral" else None,
                 "arrastrado": arrastrado,
                 "personalizado": personalizado,
                 "cobrar": cobrar,
@@ -503,6 +541,49 @@ async def guardar_cobro(entry: CobroIn, user_id: str = Depends(get_current_user)
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class TrabajoIn(BaseModel):
+    identificacion: str
+    producto: str
+    # true = hecho · false = pendiente · None = volver a lo que deduzca el sistema
+    realizado: Optional[bool] = True
+    nota: Optional[str] = None
+    mes: Optional[int] = None
+    anio: Optional[int] = None
+
+
+@router.put("/trabajo")
+async def marcar_trabajo(entry: TrabajoIn, user_id: str = Depends(get_current_user)):
+    """Deja dicho si un servicio del período está hecho.
+
+    El sistema deduce el trabajo de lo que quedó registrado —una declaración
+    guardada, un anexo generado—, y eso deja fuera todo lo que se hace por otro
+    lado: quedaba faltante para siempre y no había forma de corregirlo. Esta
+    marca manda sobre lo deducido, en los dos sentidos.
+
+    Con `realizado` en null se borra la marca y el período vuelve a mostrar lo
+    que el sistema puede comprobar por su cuenta."""
+    sb = get_supabase_client()
+    mes, anio = _periodo_pedido(entry.mes, entry.anio)
+    llave = {"user_id": user_id, "identificacion": entry.identificacion,
+             "producto": entry.producto, "mes": mes, "anio": anio}
+    previa = sb.table("reportes_trabajo").select("id").match(llave).execute().data or []
+
+    if entry.realizado is None:
+        if previa:
+            sb.table("reportes_trabajo").delete().eq("id", previa[0]["id"]).execute()
+        return {"ok": True, "realizado": None}
+
+    datos = {"realizado": bool(entry.realizado), "nota": entry.nota,
+             "marcado_por": user_id,
+             "updated_at": datetime.now(timezone.utc).isoformat()}
+    if previa:
+        sb.table("reportes_trabajo").update(datos).eq("id", previa[0]["id"]).execute()
+    else:
+        sb.table("reportes_trabajo").insert({**llave, **datos}).execute()
+    return {"ok": True, "realizado": bool(entry.realizado),
+            "periodo": {"mes": mes, "anio": anio}}
 
 
 @router.delete("/cobros")

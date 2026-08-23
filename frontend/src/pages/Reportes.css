@@ -175,3 +175,38 @@
 }
 .rp-modo:hover { background: #f1f5f9; }
 .rp-modo.act { background: #1e3a6e; border-color: #1e3a6e; color: #fff; }
+
+/* Estado del TRABAJO (distinto de la factura): hecho o faltante, y si lo dice el
+   sistema o lo puso una persona. */
+.rp-hecho-btn {
+  width: 20px; height: 20px; margin-right: 6px; padding: 0;
+  border-radius: 50%; border: 1px solid #c9c9c9; background: #fff;
+  color: #999; font-size: 12px; line-height: 1; cursor: pointer; vertical-align: middle;
+}
+.rp-hecho-btn:hover:not(:disabled) { border-color: #1e6b33; color: #1e6b33; }
+.rp-hecho-btn.si { background: #eaf6ec; border-color: #a9d3b3; color: #1e6b33; font-weight: 700; }
+.rp-hecho-btn.si.manual { background: #fff8e6; border-color: #e0c893; color: #8b6b1e; }
+.rp-hecho-btn:disabled { opacity: .5; cursor: default; }
+
+.rp-mano-tag {
+  margin-left: 6px; padding: 1px 5px; border-radius: 4px;
+  background: #fff8e6; border: 1px solid #e0c893; color: #8b6b1e; font-size: 10px;
+}
+
+.rp-falta-badge {
+  margin-left: 8px; padding: 1px 7px; border-radius: 10px;
+  background: #fff4e5; border: 1px solid #e8c99a; color: #8b6b1e; font-size: 11px;
+}
+.rp-semestre-badge {
+  margin-left: 8px; padding: 1px 7px; border-radius: 10px;
+  background: #eef2ff; border: 1px solid #c7d2fe; color: #3730a3; font-size: 11px;
+}
+
+/* Los semestrales, aparte: no declaran todos los meses y mezclarlos con los
+   mensuales hacía parecer faltante lo que simplemente no toca este mes. */
+.rp-bloque-periodo { margin-top: 10px; }
+.rp-bloque-periodo > h4 {
+  margin: 12px 0 4px; font-size: 13px; color: #3730a3;
+  border-bottom: 1px solid #e5e7eb; padding-bottom: 3px;
+}
+.rp-bloque-periodo > p { margin: 0 0 6px; font-size: 11px; color: #777; }
