@@ -641,12 +641,33 @@ async def enviar_correo_reporte(iva_incluido: bool = False, mes: Optional[int] =
             "total": total, "base": base_t, "iva": iva_t}
 
 
+def _estado_trabajo(f) -> str:
+    """El estado del trabajo, dicho para leerlo fuera del sistema.
+
+    En pantalla la diferencia entre lo comprobado y lo afirmado se ve por el
+    color; en un Excel o un PDF hay que escribirla, porque el que lo recibe no
+    tiene el sistema delante para preguntarle nada."""
+    if f.get("hecho"):
+        return "Hecho (a mano)" if f.get("hecho_origen") == "manual" else "Hecho"
+    if f.get("hecho_origen") == "manual":
+        return "Pendiente (a mano)"
+    return "Pendiente"
+
+
+def _periodo_de(f, mes: int, anio: int) -> str:
+    """El período que le corresponde a la fila: el mes, o su semestre."""
+    if f.get("periodicidad") == "semestral":
+        return f"{'1er' if mes <= 6 else '2do'} semestre {anio}"
+    return f"{MESES_ES[mes]} {anio}"
+
+
 @router.get("/export/excel")
 async def export_excel(iva_incluido: bool = False, mes: Optional[int] = None,
                        anio: Optional[int] = None,
                        user_id: str = Depends(get_current_user)):
     import xlsxwriter
-    filas, total, _ = _filas_y_total(user_id, mes, anio)
+    cur_mes, cur_anio = _periodo_pedido(mes, anio)
+    filas, total, _ = _filas_y_total(user_id, cur_mes, cur_anio)
     out = io.BytesIO()
     wb = xlsxwriter.Workbook(out, {"in_memory": True})
     ws = wb.add_worksheet("Honorarios")
@@ -655,18 +676,22 @@ async def export_excel(iva_incluido: bool = False, mes: Optional[int] = None,
     cell = wb.add_format({"border": 1})
     money = wb.add_format({"border": 1, "num_format": "$#,##0.00"})
     si = wb.add_format({"border": 1, "align": "center"})
+    # Lo pendiente se ve de un vistazo: es lo que se va a buscar en este papel.
+    pendiente = wb.add_format({"border": 1, "align": "center",
+                               "bg_color": "#fff4e5", "font_color": "#8b6b1e"})
     tot = wb.add_format({"bold": True, "border": 1, "num_format": "$#,##0.00", "bg_color": "#eafaf1"})
     sub_lbl = wb.add_format({"bold": True, "border": 1, "bg_color": "#eef5fb", "font_color": "#1a5276", "align": "right"})
     sub_val = wb.add_format({"bold": True, "border": 1, "num_format": "$#,##0.00", "bg_color": "#eef5fb", "font_color": "#1a5276"})
 
     ws.write(0, 0, "REPORTE DE HONORARIOS A COBRAR", title)
     r = 2
-    for j, h in enumerate(["Contribuyente", "RUC", "Concepto / Servicio", "¿Cobrar?", "Valor a cobrar"]):
+    for j, h in enumerate(["Contribuyente", "RUC", "Concepto / Servicio", "Período",
+                           "Trabajo", "¿Cobrar?", "Valor a cobrar"]):
         ws.write(r, j, h, head)
 
     def _subtotal(row, contrib, monto):
-        ws.merge_range(row, 0, row, 3, f"Subtotal {contrib}", sub_lbl)
-        ws.write_number(row, 4, round(monto, 2), sub_val)
+        ws.merge_range(row, 0, row, 5, f"Subtotal {contrib}", sub_lbl)
+        ws.write_number(row, 6, round(monto, 2), sub_val)
 
     curr = None
     sub = 0.0
@@ -680,23 +705,33 @@ async def export_excel(iva_incluido: bool = False, mes: Optional[int] = None,
         ws.write(r, 0, f["contribuyente"], cell)
         ws.write(r, 1, f["identificacion"], cell)
         ws.write(r, 2, f["concepto"], cell)
-        ws.write(r, 3, "Sí" if f["cobrar"] else "No", si)
-        ws.write_number(r, 4, f["bruto"] if f["cobrar"] else 0, money)
+        ws.write(r, 3, _periodo_de(f, cur_mes, cur_anio), cell)
+        ws.write(r, 4, _estado_trabajo(f), pendiente if not f.get("hecho") else si)
+        ws.write(r, 5, "Sí" if f["cobrar"] else "No", si)
+        ws.write_number(r, 6, f["bruto"] if f["cobrar"] else 0, money)
         if f["cobrar"]:
             sub += f["bruto"]
     if curr is not None:
         r += 1
         _subtotal(r, curr, sub)
     r += 1
-    ws.write(r, 3, "TOTAL (IVA incl.)", head)
-    ws.write_number(r, 4, total, tot)
+    ws.write(r, 5, "TOTAL (IVA incl.)", head)
+    ws.write_number(r, 6, total, tot)
     base_t, iva_t = _desglose_iva(total)
-    r += 1; ws.write(r, 3, "Base imponible", sub_lbl); ws.write_number(r, 4, base_t, sub_val)
-    r += 1; ws.write(r, 3, "IVA 15%", sub_lbl); ws.write_number(r, 4, iva_t, sub_val)
+    r += 1; ws.write(r, 5, "Base imponible", sub_lbl); ws.write_number(r, 6, base_t, sub_val)
+    r += 1; ws.write(r, 5, "IVA 15%", sub_lbl); ws.write_number(r, 6, iva_t, sub_val)
+    # Y lo que falta por hacer, contado: es la pregunta con la que se abre este
+    # archivo cuando el mes todavía está en curso.
+    faltan = sum(1 for f in filas if (f.get("cobrar") or f.get("relevante")) and not f.get("hecho"))
+    r += 2
+    ws.write(r, 0, ("Sin pendientes: todo el trabajo del período está hecho." if not faltan
+                    else f"Pendientes de hacer: {faltan} servicio(s)."), title)
     ws.set_column(0, 0, 34)
     ws.set_column(1, 1, 16)
     ws.set_column(2, 2, 24)
-    ws.set_column(3, 4, 14)
+    ws.set_column(3, 3, 20)
+    ws.set_column(4, 4, 18)
+    ws.set_column(5, 6, 14)
     wb.close()
     out.seek(0)
     return StreamingResponse(
@@ -714,34 +749,44 @@ async def export_pdf(iva_incluido: bool = False, mes: Optional[int] = None,
     from reportlab.lib import colors
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    filas, total, _ = _filas_y_total(user_id, mes, anio)
+    cur_mes, cur_anio = _periodo_pedido(mes, anio)
+    filas, total, _ = _filas_y_total(user_id, cur_mes, cur_anio)
     out = io.BytesIO()
     doc = SimpleDocTemplate(out, pagesize=letter, topMargin=0.5 * inch, bottomMargin=0.5 * inch)
     st = getSampleStyleSheet()
-    story = [Paragraph("Reporte de honorarios a cobrar", st["Title"]), Spacer(1, 0.15 * inch)]
-    data = [["Contribuyente", "RUC", "Concepto / Servicio", "Cobrar", "Valor"]]
+    story = [Paragraph("Reporte de honorarios a cobrar", st["Title"]),
+             Paragraph(f"Período: {MESES_ES[cur_mes]} {cur_anio}", st["Normal"]),
+             Spacer(1, 0.15 * inch)]
+    data = [["Contribuyente", "RUC", "Concepto / Servicio", "Período", "Trabajo",
+             "Cobrar", "Valor"]]
     sub_rows = []  # índices de filas de subtotal (para colorearlas)
+    pendientes_pdf = []  # filas con trabajo sin hacer: es lo que se busca acá
     curr = None
     sub = 0.0
     for f in filas:
         if curr is not None and f["contribuyente"] != curr:
-            data.append(["", "", "", f"Subtotal {curr}", f"${sub:.2f}"])
+            data.append(["", "", "", "", "", f"Subtotal {curr}", f"${sub:.2f}"])
             sub_rows.append(len(data) - 1)
             sub = 0.0
         curr = f["contribuyente"]
+        if not f.get("hecho"):
+            pendientes_pdf.append(len(data))     # se resalta lo que falta hacer
         data.append([f["contribuyente"], f["identificacion"], f["concepto"],
+                     _periodo_de(f, cur_mes, cur_anio), _estado_trabajo(f),
                      "Sí" if f["cobrar"] else "No",
                      f"${f['bruto']:.2f}" if f["cobrar"] else "$0.00"])
         if f["cobrar"]:
             sub += f["bruto"]
     if curr is not None:
-        data.append(["", "", "", f"Subtotal {curr}", f"${sub:.2f}"])
+        data.append(["", "", "", "", "", f"Subtotal {curr}", f"${sub:.2f}"])
         sub_rows.append(len(data) - 1)
-    data.append(["", "", "", "TOTAL (IVA incl.)", f"${total:.2f}"])
+    data.append(["", "", "", "", "", "TOTAL (IVA incl.)", f"${total:.2f}"])
     base_t, iva_t = _desglose_iva(total)
-    data.append(["", "", "", "Base imponible", f"${base_t:.2f}"])
-    data.append(["", "", "", "IVA 15%", f"${iva_t:.2f}"])
-    t = Table(data, repeatRows=1, colWidths=[2.2 * inch, 1.3 * inch, 1.7 * inch, 1.0 * inch, 0.9 * inch])
+    data.append(["", "", "", "", "", "Base imponible", f"${base_t:.2f}"])
+    data.append(["", "", "", "", "", "IVA 15%", f"${iva_t:.2f}"])
+    t = Table(data, repeatRows=1,
+              colWidths=[1.7 * inch, 1.0 * inch, 1.35 * inch, 1.15 * inch,
+                         0.95 * inch, 0.55 * inch, 0.75 * inch])
     estilo = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a5276")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -749,16 +794,26 @@ async def export_pdf(iva_incluido: bool = False, mes: Optional[int] = None,
         ("FONTSIZE", (0, 0), (-1, -1), 7.5),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
         ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#eafaf1")),
-        ("FONTNAME", (3, -1), (-1, -1), "Helvetica-Bold"),
-        ("ALIGN", (4, 0), (4, -1), "RIGHT"),
-        ("ALIGN", (3, 0), (3, -1), "CENTER"),
+        ("FONTNAME", (5, -1), (-1, -1), "Helvetica-Bold"),
+        ("ALIGN", (6, 0), (6, -1), "RIGHT"),
+        ("ALIGN", (4, 0), (5, -1), "CENTER"),
     ]
     for si in sub_rows:
         estilo.append(("BACKGROUND", (0, si), (-1, si), colors.HexColor("#eef5fb")))
-        estilo.append(("FONTNAME", (3, si), (-1, si), "Helvetica-Bold"))
+        estilo.append(("FONTNAME", (5, si), (-1, si), "Helvetica-Bold"))
         estilo.append(("TEXTCOLOR", (0, si), (-1, si), colors.HexColor("#1a5276")))
+    for pi in pendientes_pdf:
+        estilo.append(("BACKGROUND", (4, pi), (4, pi), colors.HexColor("#fff4e5")))
+        estilo.append(("TEXTCOLOR", (4, pi), (4, pi), colors.HexColor("#8b6b1e")))
     t.setStyle(TableStyle(estilo))
     story.append(t)
+    # Y el resumen de lo que falta, al pie: es la pregunta con la que se lee
+    # este papel mientras el mes está en curso.
+    faltan = sum(1 for f in filas if (f.get("cobrar") or f.get("relevante")) and not f.get("hecho"))
+    story.append(Spacer(1, 0.12 * inch))
+    story.append(Paragraph(
+        "Sin pendientes: todo el trabajo del período está hecho."
+        if not faltan else f"<b>Pendientes de hacer:</b> {faltan} servicio(s).", st["Normal"]))
     doc.build(story)
     out.seek(0)
     return StreamingResponse(
