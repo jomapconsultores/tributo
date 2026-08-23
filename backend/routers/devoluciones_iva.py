@@ -1516,6 +1516,16 @@ async def payload_envio(solicitud_id: str, user_id: str = Depends(get_current_us
         },
         "detalle_meses": sol.get("detalle_meses") or [],
         "estado": sol.get("estado"),
+        # Lo que impide presentar: el combo "Tipo de gasto" del portal no admite
+        # vacío, así que un comprobante sin clasificar deja el trámite trabado a
+        # mitad de camino —marcado, sin poder procesar—. La solicitud que nace
+        # de la grilla del SRI trae el tipo de gasto como PROPUESTA, y si nadie
+        # la revisó puede llegar hasta acá incompleta.
+        "faltan_rubro": [
+            f"{it.get('fecha') or '?'} · {it.get('nombre_proveedor') or it.get('ruc_proveedor') or '?'}"
+            for it in sorted(items, key=lambda x: (x.get("fecha") or ""))
+            if not (it.get("rubro") or "").strip()
+        ],
         "items": [
             {
                 "clave_acceso": it.get("unique_id"),

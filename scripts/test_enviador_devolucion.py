@@ -32,6 +32,8 @@ Variantes del portal (el SRI cambia el widget entre versiones):
                  tiene que elegir por la ETIQUETA, no por el código
     quejoso      el portal RECHAZA la selección       -> corta sin presentar
     otro         el portal abierto con otra persona   -> ni carga la solicitud
+    sin_rubro    un comprobante sin tipo de gasto     -> no toca el portal y dice
+                 cuál falta (el combo del SRI no admite vacío)
     cruzado      el marcador dentro de la app, con la solicitud de otro copiada
     muerto       no escucha nadie                     -> tiene que CORTAR y avisar
 
@@ -259,12 +261,16 @@ def correr(modo: str, fuente: str) -> bool:
         # 'cruzado': el marcador tocado DENTRO de la app, con el sistema abierto
         # en un contribuyente y el portapapeles trayendo la solicitud de otro.
         cruzado = modo == "cruzado"
+        # 'sin_rubro': la solicitud llega con un comprobante sin clasificar. El
+        # portal no admite el combo vacío, así que el trámite quedaría trabado a
+        # mitad de camino: hay que cortar ANTES de tocar nada.
+        sin_rubro = modo == "sin_rubro"
         # 'inicio': el portal recién abierto. El marcador tiene que caminar el
         # aviso legal, la cuenta bancaria y el menú de dos pasos antes de poder
         # trabajar; antes exigía que eso estuviera hecho a mano.
         inicio = modo == "inicio"
         auto = modo in ("auto", "extension", "semestral", "quejoso", "otro",
-                        "discapacidad", "inicio")
+                        "discapacidad", "inicio", "sin_rubro")
         propio = quejoso or otro or discapacidad or inicio
         modo_portal = ("otro" if traer_otro
                        else modo if propio
@@ -335,6 +341,12 @@ def correr(modo: str, fuente: str) -> bool:
             paquete = (paquete_semestral() if semestral
                        else paquete_discapacidad() if discapacidad
                        else paquete_de_prueba(auto))
+            if sin_rubro:
+                # Como llega del sistema cuando nadie revisó la propuesta de
+                # tipo de gasto que hace la grilla del portal.
+                paquete["items"][3]["rubro"] = ""
+                paquete["items"][3]["rubro_sri"] = ""
+                paquete["items"][3]["rubro_label"] = "Sin asignar"
             pg.evaluate("txt => navigator.clipboard.writeText(txt)", json.dumps(paquete))
         if cruzado:
             # Lo que publica la pantalla de devoluciones: a quién tiene abierto.
@@ -460,6 +472,18 @@ def correr(modo: str, fuente: str) -> bool:
             if not ok:
                 print("  valores:", valores, "| etiquetas:", etiquetas)
                 print("  panel:", panel[-400:])
+        elif sin_rubro:
+            # Ni una casilla tocada: sin tipo de gasto el portal no deja
+            # procesar, y descubrirlo a mitad del recorrido dejaba el trámite
+            # marcado a medias y el panel sin explicar por qué.
+            avisos = pg.evaluate("window.__constancias || []")
+            ok = ("sin tipo de gasto" in panel
+                  and "COMERCIAL PRUEBA 4" in panel
+                  and marcadas == 0 and not avisos)
+            print(f"  {'✔' if ok else '✖'} no tocó el portal: falta el tipo de gasto "
+                  f"({tardo:.0f}s)")
+            if not ok:
+                print("  panel:", panel[-400:], "| marcadas:", marcadas)
         elif quejoso:
             # Lo que importa: que corte con el texto del SRI, que no presente y
             # que NO le avise a la app. Antes seguía de largo, pintaba
@@ -526,7 +550,7 @@ def correr(modo: str, fuente: str) -> bool:
             ok = False
             print("  ✖ errores en la página:", errores)
         # En la última página quedan 2 filas: las dos tienen que estar marcadas.
-        if modo not in ("muerto", "otro") and marcadas != procesados:
+        if modo not in ("muerto", "otro", "sin_rubro") and marcadas != procesados:
             print(f"  ⚠ marcadas en pantalla: {marcadas} de {procesados}")
         nav.close()
         return ok
@@ -535,7 +559,8 @@ def correr(modo: str, fuente: str) -> bool:
 if __name__ == "__main__":
     modos = [sys.argv[1]] if len(sys.argv) > 1 else ["semestral", "extension", "traer", "traer_otro",
                                                      "auto", "widget", "nativo", "discapacidad", "quejoso",
-                                                     "cruzado", "inicio", "otro", "muerto"]
+                                                     "cruzado", "inicio", "otro", "sin_rubro",
+                                                     "muerto"]
     fuente = sys.argv[2] if len(sys.argv) > 2 else "min"
     print(f"Enviador-DEVOLUCIÓN contra el portal simulado ({fuente})")
     todo_bien = True

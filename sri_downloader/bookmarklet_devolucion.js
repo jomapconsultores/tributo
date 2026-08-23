@@ -305,6 +305,24 @@
   // siempre.
   const desacuerdoConElPortal = () => {
     if (!paquete) return null;
+    // Sin tipo de gasto no hay nada que hacer en el portal: su combo no admite
+    // vacío. Antes se descubría a mitad del recorrido —marcado todo, sin poder
+    // procesar— y el panel se quedaba sin explicar por qué.
+    const sinRubro = (paquete.items || []).filter((i) => !String(i.rubro_sri || '').trim());
+    if (sinRubro.length) {
+      return {
+        motivo: 'Hay ' + sinRubro.length + ' comprobante(s) sin tipo de gasto.',
+        detalles: [
+          sinRubro.slice(0, 4).map((i) => (i.fecha || '?') + '  ' +
+            String(i.proveedor || '').slice(0, 34)).join('   ·   ') +
+            (sinRubro.length > 4 ? '   ·   …' : ''),
+          'El combo "Tipo de gasto" del portal no admite vacío, así que el trámite ' +
+          'quedaría trabado a mitad de camino.',
+          'En el sistema, elegí el tipo de gasto de esos comprobantes, guardá la ' +
+          'solicitud y volvé a tocar "Enviar al SRI".',
+        ],
+      };
+    }
     const quien = quienEstaEnElPortal();
     const mio = String(paquete.contribuyente.identificacion || '').trim();
     if (quien && mio && quien.identificacion !== mio) {

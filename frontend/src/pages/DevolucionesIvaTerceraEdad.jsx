@@ -641,6 +641,21 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
     setMsg(null)
     try {
       const r = await devolucionesIvaAPI.envio(sol.id)
+      // Sin tipo de gasto no se va al SRI. El combo del portal no admite vacío:
+      // el enviador marca los comprobantes, llega a la fila sin clasificar y no
+      // tiene qué elegir, así que el trámite queda trabado a mitad de camino —y
+      // desde afuera parece que el marcador se colgó—. Se corta acá, que es
+      // donde el usuario puede resolverlo con un clic.
+      const faltan = r.data.faltan_rubro || []
+      if (faltan.length) {
+        setMsg({
+          tipo: 'err',
+          texto: `Falta el tipo de gasto en ${faltan.length} comprobante(s): ` +
+            faltan.slice(0, 4).join('; ') + (faltan.length > 4 ? '…' : '') +
+            '. Elegilo en la tabla (el SRI no admite enviarlos vacíos) y volvé a guardar.',
+        })
+        return
+      }
       // La autorización se da ACÁ, con los números delante. Si el usuario acepta,
       // el paquete viaja marcado como `auto` y el marcador, al abrirse en el
       // portal, hace el recorrido entero sin volver a preguntar nada. Preguntar
