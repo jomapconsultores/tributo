@@ -475,6 +475,75 @@ def _detalle_por_mes(items: List[dict], meses: List[int], anio, tipo: str, porce
     }
 
 
+# --- La grilla del portal, guardada -----------------------------------------
+# Lo que el SRI muestra no está en Gastos: existe solo en el trámite. Antes la
+# copia vivía en el localStorage del navegador, así que el listado traído en una
+# máquina no aparecía en otra y limpiar el navegador borraba el mes. Ahora es una
+# fila por contribuyente y período: traerlo de nuevo REEMPLAZA lo anterior.
+def _portal_de_periodo(sb, client_id: str, mes, anio) -> Optional[dict]:
+    if not mes or not anio:
+        return None
+    rows = sb.table("devoluciones_iva_portal").select("*").eq(
+        "client_id", client_id).eq("mes", int(mes)).eq("anio", int(anio)).execute().data or []
+    return rows[0] if rows else None
+
+
+def _filas_portal(grilla: Optional[dict]) -> List[dict]:
+    filas = (grilla or {}).get("filas") or []
+    return filas if isinstance(filas, list) else []
+
+
+def _excluidos_de(grilla: Optional[dict]) -> set:
+    ids = (grilla or {}).get("excluidos") or []
+    return {str(i) for i in ids} if isinstance(ids, list) else set()
+
+
+def _guardar_grilla_portal(sb, user_id: str, client_id: str, mes, anio,
+                           filas: List[dict], identificacion=None) -> dict:
+    """Deja la grilla del período, reemplazando la que hubiera.
+
+    Y con `excluidos` en blanco: llegó un listado nuevo, y lo que se había
+    sacado del anterior taparía justo lo que acaba de entrar."""
+    fila = {
+        "user_id": user_id,
+        "client_id": client_id,
+        "mes": int(mes),
+        "anio": int(anio),
+        "identificacion": identificacion or None,
+        "filas": filas,
+        "excluidos": [],
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    previa = _portal_de_periodo(sb, client_id, mes, anio)
+    if previa:
+        sb.table("devoluciones_iva_portal").update(fila).eq("id", previa["id"]).execute()
+        return {**previa, **fila}
+    res = sb.table("devoluciones_iva_portal").insert(fila).execute()
+    return (res.data or [fila])[0]
+
+
+def _guardar_excluidos(sb, user_id: str, client_id: str, mes, anio, ids) -> List[str]:
+    """Los comprobantes que el usuario sacó de ESTA devolución.
+
+    No se borran de Gastos —ahí siguen, son sus facturas—: dejan de estorbar en
+    la solicitud, que se arma con lo que el SRI lista."""
+    limpios = sorted({str(i) for i in (ids or []) if str(i).strip()})
+    previa = _portal_de_periodo(sb, client_id, mes, anio)
+    ahora = datetime.now(timezone.utc).isoformat()
+    if previa:
+        sb.table("devoluciones_iva_portal").update(
+            {"excluidos": limpios, "updated_at": ahora}).eq("id", previa["id"]).execute()
+    else:
+        # Sin grilla traída todavía se puede querer sacar gasto de la
+        # devolución: la fila nace para guardar esa decisión.
+        sb.table("devoluciones_iva_portal").insert({
+            "user_id": user_id, "client_id": client_id,
+            "mes": int(mes), "anio": int(anio),
+            "filas": [], "excluidos": limpios, "updated_at": ahora,
+        }).execute()
+    return limpios
+
+
 def _solicitud_de_periodo(sb, client_id: str, mes, anio) -> Optional[dict]:
     q = sb.table("devoluciones_iva_solicitudes").select("*").eq("client_id", client_id)
     if mes and anio:
@@ -822,6 +891,21 @@ async def comprobantes(
             rubros_guardados[c["id"]] = it.get("rubro")
         comps.sort(key=lambda c: str(c.get("fecha") or ""), reverse=True)
 
+    # Y la grilla que trajo el portal: el servidor solo devuelve los que están
+    # EN la solicitud, así que sin esto una fila desmarcada ya no se podría
+    # recuperar sin volver al SRI a buscarla.
+    grilla = _portal_de_periodo(sb, client_id, pmes, panio)
+    guardadas = _filas_portal(grilla)
+    if guardadas:
+        vistas = {c.get("factura_numero") for c in comps if c.get("factura_numero")}
+        for f in guardadas:
+            serie = str(f.get("serie") or f.get("factura_numero") or "").strip()
+            if not serie or serie in vistas:
+                continue
+            vistas.add(serie)
+            comps.append(_resumen_portal(f))
+        comps.sort(key=lambda c: str(c.get("fecha") or ""), reverse=True)
+
     # Rubro de cada comprobante. Manda el ya guardado en la solicitud; si no,
     # lo APRENDIDO de ese proveedor en solicitudes anteriores; y recién después
     # la pista por palabra clave. Para los del portal no hay clasificación de
@@ -844,6 +928,14 @@ async def comprobantes(
         c["rubro_sugerido"] = sugerido
         c["rubro"] = rubros_guardados.get(c["id"]) or sugerido
 
+    # Lo que el usuario sacó de esta devolución no se muestra en la grilla
+    # (sigue en Gastos, y se puede volver a mostrar).
+    fuera = _excluidos_de(grilla)
+    ocultos = [c for c in comps if c["id"] in fuera]
+    if fuera:
+        comps = [c for c in comps if c["id"] not in fuera]
+        seleccionados = [i for i in seleccionados if i not in fuera]
+
     return {
         "periodo": etiqueta_periodo(pmes, panio, pfreq, psem),
         "mes": pmes,
@@ -852,9 +944,11 @@ async def comprobantes(
         "semestre": psem,
         "meses": meses,
         "comprobantes": comps,
+        "ocultos": ocultos,
         "solicitud": solicitud,
         "seleccionados": seleccionados,
         "rubros": RUBROS,
+        "portal_traido_at": (grilla or {}).get("traido_at"),
     }
 
 
@@ -896,6 +990,14 @@ def _items_del_portal(sb, client_id: str, mes, anio, series: List[str],
         if r["factura_numero"]:
             por_serie[r["factura_numero"]] = r
     faltan = [s for s in series if s not in por_serie]
+    if faltan:
+        # La grilla guardada del período: es la copia de lo que mostró el portal,
+        # y alcanza aunque el navegador ya no la tenga en pantalla.
+        for f in _filas_portal(_portal_de_periodo(sb, client_id, mes, anio)):
+            r = _resumen_portal(f)
+            if r["factura_numero"] in faltan:
+                por_serie[r["factura_numero"]] = r
+        faltan = [x for x in faltan if x not in por_serie]
     if faltan:
         previa = _solicitud_de_periodo(sb, client_id, mes, anio)
         if previa:
@@ -1114,8 +1216,90 @@ async def ingresar_del_portal(body: PortalIn, user_id: str = Depends(get_current
         sb, user_id, body.client_id, body.tipo_beneficiario, body.porcentaje_discapacidad,
         [PORTAL_PREFIJO + f["serie"] for f in filas], rubros,
         None, body.mes, body.anio, portal_filas=filas, exigir_rubro=False)
+    # Y la grilla cruda, que es lo único que existe de lo que mostró el portal:
+    # reemplaza a la del período (traerla de nuevo NO acumula dos listados) y
+    # deja el mes sin nada excluido, para que lo que acaba de entrar se vea
+    # entero.
+    _guardar_grilla_portal(sb, user_id, body.client_id, sol["mes"], sol["anio"],
+                           filas, ident or pedida)
     sin_rubro = sum(1 for k in rubros.values() if not k)
     return {**sol, "comprobantes": len(filas), "sin_rubro": sin_rubro}
+
+
+class ExcluidosIn(BaseModel):
+    client_id: str
+    # Lista COMPLETA de lo que queda fuera de esta devolución (reemplaza).
+    ids: List[str] = []
+    mes: Optional[int] = None
+    anio: Optional[int] = None
+
+
+@router.post("/excluidos")
+async def guardar_excluidos(body: ExcluidosIn, user_id: str = Depends(get_current_user)):
+    """Qué comprobantes NO van en la devolución de este período.
+
+    El listado del SRI es el que manda: lo que el contribuyente tenga cargado en
+    Gastos ese mes (bancos, servicios, lo que no califica) solo estorba al armar
+    la solicitud. Se quita de la devolución, NO de Gastos."""
+    sb = get_supabase_client()
+    assert_client_owner(body.client_id, user_id)
+    pmes, panio, _, _, _ = _periodo_pedido(sb, body.client_id, body.mes, body.anio)
+    if not pmes or not panio:
+        raise HTTPException(status_code=400, detail="El cliente no tiene período (mes/año) definido.")
+    ids = _guardar_excluidos(sb, user_id, body.client_id, pmes, panio, body.ids)
+    return {"mes": pmes, "anio": panio, "excluidos": ids}
+
+
+class LimpiarIn(BaseModel):
+    client_id: str
+    mes: Optional[int] = None
+    anio: Optional[int] = None
+
+
+@router.post("/periodo/limpiar")
+async def limpiar_periodo(body: LimpiarIn, user_id: str = Depends(get_current_user)):
+    """Vacía la devolución del período para armarla de nuevo.
+
+    Borra la solicitud y el listado que se trajo del portal, y saca de la
+    devolución el gasto que quedaba en pantalla. Las facturas siguen en Gastos:
+    esto no las elimina."""
+    sb = get_supabase_client()
+    assert_client_owner(body.client_id, user_id)
+    pmes, panio, pfreq, psem, _ = _periodo_pedido(sb, body.client_id, body.mes, body.anio)
+    if not pmes or not panio:
+        raise HTTPException(status_code=400, detail="El cliente no tiene período (mes/año) definido.")
+
+    previa = _solicitud_de_periodo(sb, body.client_id, pmes, panio)
+    if previa:
+        sb.table("devoluciones_iva_solicitudes").delete().eq("id", previa["id"]).execute()
+
+    # El gasto del mes que hay en Gastos se saca de la devolución: es lo que
+    # deja la pantalla en blanco para volver a traer el listado del SRI desde
+    # cero. Traer una grilla nueva vuelve a mostrarlo todo.
+    invs = fetch_all(lambda: sb.table("invoices").select("id,estado,fecha")
+                     .eq("client_id", body.client_id))
+    fuera = [i["id"] for i in invs
+             if (i.get("estado") or "OK") == "OK"
+             and mes_anio_de_fecha(i.get("fecha")) == (int(pmes), int(panio))]
+
+    grilla = _portal_de_periodo(sb, body.client_id, pmes, panio)
+    ahora = datetime.now(timezone.utc).isoformat()
+    if grilla:
+        sb.table("devoluciones_iva_portal").update(
+            {"filas": [], "excluidos": fuera, "updated_at": ahora}).eq("id", grilla["id"]).execute()
+    elif fuera:
+        sb.table("devoluciones_iva_portal").insert({
+            "user_id": user_id, "client_id": body.client_id,
+            "mes": int(pmes), "anio": int(panio),
+            "filas": [], "excluidos": fuera, "updated_at": ahora,
+        }).execute()
+
+    registrar(actor_user_id=user_id, action="delete", module="declaraciones",
+              entity="Devolución IVA (vaciar período)", client_id=body.client_id,
+              cantidad=len(fuera))
+    return {"mes": pmes, "anio": panio, "excluidos": fuera,
+            "periodo": etiqueta_periodo(pmes, panio, pfreq, psem),
+            "solicitud_borrada": bool(previa)}
 
 
 class LoteIn(BaseModel):

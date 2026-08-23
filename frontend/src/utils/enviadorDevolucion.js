@@ -12,7 +12,13 @@
 // El .txt de acá se GENERA desde esa fuente: node scripts/build_bookmarklets.mjs
 import raw from './enviador-devolucion.bookmarklet.txt?raw'
 
-export const ENVIADOR_DEVOLUCION_HREF = raw.trim()
+// De dónde salió el marcador es de dónde vive el sistema: el enviador necesita
+// saberlo para ENTREGARLE el listado del portal —abre esta app en una pestaña y
+// se lo pasa—, y así el usuario no tiene que copiar y pegar nada. Se incrusta al
+// generar el href, que es el único momento en que se conoce el origen (local o
+// producción, según desde dónde se instale el marcador).
+export const ENVIADOR_DEVOLUCION_HREF =
+  raw.trim().replace('JOMAP_APP_ORIGEN', window.location.origin)
 
 // El mismo script SIN el prefijo "javascript:", para PEGARLO en la consola del
 // SRI (Chrome borra ese prefijo al pegar en la barra de direcciones).

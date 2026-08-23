@@ -1275,6 +1275,61 @@
     return filas;
   };
 
+  // --- Dónde vive el sistema ------------------------------------------------
+  // Hace falta para ENTREGARLE el listado sin extensión: se abre esa pestaña y
+  // se le pasa por `postMessage`. El origen llega por dos vías, y ninguna se
+  // adivina acá: la extensión lo guarda cuando corre en la app, y el marcador
+  // lo trae incrustado desde la app que lo generó. Si no hay ninguna, queda el
+  // camino de siempre —copiar y pegar—.
+  const APP_INCRUSTADA = 'JOMAP_APP_ORIGEN';
+  const origenDeLaApp = () => {
+    const inyectado = window.__jomapAppOrigen;
+    const cand = String(inyectado || APP_INCRUSTADA || '').trim().replace(/\/+$/, '');
+    return /^https?:\/\/[^/]+$/.test(cand) ? cand : '';
+  };
+
+  // Entregar el listado abriendo el sistema. Es el camino sin extensión, y el
+  // que saca del medio el copiar-pegar: la app, al abrir la pantalla de
+  // devoluciones, pide el listado a la ventana que la abrió y acá se le
+  // contesta con el bulto. Después avisa si entró.
+  const entregarAbriendoLaApp = (bulto, aviso) => new Promise((resolve) => {
+    const base = origenDeLaApp();
+    if (!base) { resolve({ abierta: false, ok: false }); return; }
+    const seccion = seccionDelPortal() === 'discapacidad' ? 'discapacidad' : 'tercera-edad';
+    let win = null;
+    try { win = window.open(base + '/devoluciones-iva/' + seccion, 'jomapGestorTributario'); }
+    catch (e) { win = null; }
+    if (!win) { resolve({ abierta: false, ok: false }); return; }
+    let listo = false;
+    const escuchar = (ev) => {
+      if (String(ev.origin || '') !== base) return;      // solo el sistema
+      const d = ev.data;
+      if (!d) return;
+      if (d.tipo === 'jomap-devolucion-comprobantes-pedido') {
+        // La pantalla ya está montada y lo pide: se lo damos. Puede pedirlo más
+        // de una vez (recarga, cambio de contribuyente) y se responde siempre.
+        try { win.postMessage({ tipo: 'jomap-devolucion-comprobantes-app', bulto }, base); }
+        catch (e) { /* la pestaña se cerró */ }
+        if (aviso) aviso('El sistema pidió el listado: entregándolo…');
+        return;
+      }
+      if (d.tipo === 'jomap-devolucion-comprobantes-ingresados') {
+        listo = true;
+        window.removeEventListener('message', escuchar);
+        resolve({ abierta: true, ok: d.ok !== false });
+      }
+    };
+    window.addEventListener('message', escuchar);
+    // La app puede tardar: cargar, pedir la clave, llegar a la pantalla. Si en
+    // dos minutos no contestó se deja de esperar, pero el listado sigue acá y
+    // el botón se puede volver a tocar.
+    setTimeout(() => {
+      if (listo) return;
+      window.removeEventListener('message', escuchar);
+      resolve({ abierta: true, ok: false, sinRespuesta: true });
+    }, 120000);
+  });
+
   // El listado, de vuelta al sistema por el mismo camino que la constancia: lo
   // escucha la extensión (`contenido-sri.js`), que lo guarda y se lo entrega a
   // la app cuando el usuario vuelve a esa pestaña. Devuelve si alguien lo
@@ -1366,13 +1421,50 @@
         'en Devolución IVA con este contribuyente abierto, y aparecen solos: ahí marcás, ' +
         'clasificás y se controla el tope del mes; después volvés acá a presentar.';
     } else {
-      viaje.textContent = 'Sin la extensión instalada no pueden viajar solos: tocá ' +
-        '"Copiar para el sistema" y, en el Gestor Tributario, "📥 Pegar comprobantes del portal". ' +
-        'Ahí marcás, clasificás y se controla el tope del mes; después volvés acá a presentar.';
+      viaje.textContent = origenDeLaApp()
+        ? 'Sin la extensión instalada no viajan solos, pero no hace falta copiar nada: tocá ' +
+          '"Enviar al sistema" y se los entrego al Gestor Tributario.'
+        : 'Sin la extensión instalada no pueden viajar solos: tocá ' +
+          '"Copiar para el sistema" y, en el Gestor Tributario, "📥 Pegar comprobantes del portal". ' +
+          'Ahí marcás, clasificás y se controla el tope del mes; después volvés acá a presentar.';
+    }
+    // Entregarlo al sistema es UN botón, no copiar y después ir a pegar. Con la
+    // extensión el listado ya viajó solo y esto sirve para abrir la pantalla; sin
+    // extensión, este es el camino: abre el sistema y se lo pasa. Copiar queda
+    // de respaldo para cuando no se sabe dónde vive la app.
+    if (origenDeLaApp()) {
+      const btn = boton(llego ? 'Abrir el sistema' : 'Enviar al sistema', async function () {
+        const b = this;
+        b.disabled = true;
+        b.textContent = 'Abriendo el sistema…';
+        viaje.style.color = '#555';
+        viaje.style.fontWeight = '400';
+        viaje.textContent = 'Abriendo el Gestor Tributario para entregarle los comprobantes…';
+        const r = await entregarAbriendoLaApp(bulto, (t) => { viaje.textContent = t; });
+        b.disabled = false;
+        b.textContent = 'Enviar al sistema';
+        if (r.ok) {
+          viaje.style.color = '#1e6b33';
+          viaje.style.fontWeight = '600';
+          viaje.textContent = '✔ Los comprobantes entraron en el sistema. Ahí los marcás, ' +
+            'les ponés el tipo de gasto y se controla el tope del mes; después volvés acá a presentar.';
+        } else if (!r.abierta) {
+          viaje.textContent = 'El navegador bloqueó la ventana del sistema. Permití las ventanas ' +
+            'emergentes de este sitio, o usá "Copiar para el sistema" y pegalo allá.';
+        } else if (r.sinRespuesta) {
+          viaje.textContent = 'El sistema no contestó todavía. Entrá en la pestaña que se abrió, ' +
+            'abrí Devolución IVA con este contribuyente y los comprobantes entran solos; ' +
+            'si ya lo hiciste, volvé a tocar este botón.';
+        } else {
+          viaje.textContent = 'El sistema no los ingresó: mirá el aviso en la pestaña que se abrió ' +
+            '(suele ser que ahí está abierto otro contribuyente).';
+        }
+      });
+      cuerpo.appendChild(btn);
     }
     cuerpo.appendChild(boton('Copiar para el sistema', function () {
       copiar(JSON.stringify(bulto), this);
-    }));
+    }, CSS_GRIS));
     const lista = el('div', 'margin-top:6px;max-height:30vh;overflow:auto;border:1px solid #e2e8e4;border-radius:6px');
     filas.forEach((f) => {
       const fila = el('div', 'padding:3px 6px;border-bottom:1px solid #f0f3f1;font-size:11px;color:#444');

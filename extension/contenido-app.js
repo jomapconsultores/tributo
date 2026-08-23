@@ -22,6 +22,13 @@ const MARCA_COMPROBANTES_PEDIDO = 'jomap-devolucion-comprobantes-pedido';
 // usuario puede tardar en volver a la pestaña de la app (o volver mañana).
 const VIGENCIA_CONSTANCIA_HORAS = 24;
 
+// Dónde vive el sistema, anotado desde el propio sistema. El enviador lo
+// necesita en el portal para poder ENTREGARLE el listado de comprobantes:
+// abre esta app en una pestaña y se lo pasa, sin copiar ni pegar. Nadie más
+// puede saberlo —el portal no tiene por qué conocer la dirección de la app— y
+// acá se sabe sin preguntar: es la página en la que corre este script.
+chrome.storage.local.set({ app_origen: location.origin });
+
 window.addEventListener('message', (ev) => {
   if (ev.source !== window) return;                 // nada de otras ventanas
   const dato = ev.data;

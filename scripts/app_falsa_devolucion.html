@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Gestor Tributario (simulado) — Devolución IVA</title>
+</head>
+<body>
+<!--
+  La pantalla de Devolución IVA, reducida a su CONTRATO con el portal del SRI.
+
+  Sirve para probar la entrega directa del listado: el enviador, en el portal,
+  abre esta página y le pasa los comprobantes por `postMessage`; acá se los
+  recibe y se contesta si entraron. Es lo que reemplaza al copiar-y-pegar.
+
+  Replica exactamente lo que hace `DevolucionesIvaTerceraEdad.jsx`:
+    1. al montar, le pide el listado a la ventana que la abrió;
+    2. acepta el bulto SOLO del portal del SRI (acá, del origen que lo abrió);
+    3. contesta `...-ingresados` con si pudo o no.
+  Lo que no hace es hablar con el backend: eso lo prueba el e2e del servidor.
+-->
+<h1>Devolución IVA (simulada)</h1>
+<pre id="estado">esperando</pre>
+<script>
+  window.__recibidos = [];
+  const estado = document.getElementById('estado');
+
+  // El contribuyente que esta "pantalla" tiene abierto. La prueba lo cambia
+  // por query string para el caso en que el listado sea de otro.
+  const abierto = window.__identAbierto
+    || new URLSearchParams(location.search).get('ident') || '';
+
+  window.addEventListener('message', (ev) => {
+    const d = ev.data;
+    if (!d || d.tipo !== 'jomap-devolucion-comprobantes-app' || !d.bulto) return;
+    window.__recibidos.push({ origin: ev.origin, bulto: d.bulto });
+    // Igual que la app: el listado es DE alguien, y entrarlo en el
+    // contribuyente que esté abierto sería armarle la devolución a otro.
+    const suyo = String(d.bulto.identificacion || '').replace(/\D/g, '');
+    const ok = !abierto || !suyo || suyo === abierto.replace(/\D/g, '');
+    estado.textContent = ok
+      ? 'ingresados ' + (d.bulto.filas || []).length
+      : 'rechazado: es de ' + suyo + ' y acá está ' + abierto;
+    if (ev.source) ev.source.postMessage({
+      tipo: 'jomap-devolucion-comprobantes-ingresados', ok, soltar: ok,
+    }, ev.origin);
+  });
+
+  // Y el pedido a quien la abrió: navegar hasta acá no dispara ningún `focus`,
+  // así que sin pedirlo el listado se quedaría esperando del otro lado.
+  if (window.opener) {
+    window.opener.postMessage({ tipo: 'jomap-devolucion-comprobantes-pedido' }, '*');
+    estado.textContent = 'pedido';
+  }
+</script>
+</body>
+</html>

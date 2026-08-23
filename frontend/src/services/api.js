@@ -492,6 +492,13 @@ export const devolucionesIvaAPI = {
   portal: (body) => api.post('/api/devoluciones-iva/portal', body),
   // Prepara de una sola vez la solicitud de varios meses: [{mes, anio}, ...]
   lote: (body) => api.post('/api/devoluciones-iva/solicitudes/lote', body),
+  // Qué comprobantes quedan FUERA de la devolución del período (lista completa:
+  // reemplaza). Siguen en Gastos; lo que se arma con el listado del SRI es la
+  // solicitud. Vive en el servidor: antes era del navegador, y el mes trabajado
+  // en una máquina no se veía en otra.
+  excluidos: (body) => api.post('/api/devoluciones-iva/excluidos', body),
+  // Vacía el período: borra la solicitud y el listado traído del portal.
+  limpiarPeriodo: (body) => api.post('/api/devoluciones-iva/periodo/limpiar', body),
   // Reporte de lo procesado y presentado (sin client_id: consolidado del rol)
   reporte: (clientId = null, anio = null) =>
     api.get('/api/devoluciones-iva/reporte', {

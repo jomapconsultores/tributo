@@ -19,6 +19,10 @@ const DV_STEPS = [
   { icon: '📑', label: 'Reportes y cobros', path: '/reportes' },
 ]
 
+// El portal del SRI puede entregar su listado directamente a esta pantalla:
+// abre la app y se lo pasa por `postMessage`. Solo se acepta de ahí.
+const ES_PORTAL_SRI = /^https:\/\/([a-z0-9-]+\.)*sri\.gob\.ec$/i
+
 const ESTADO_LABEL = {
   borrador: '📝 Borrador',
   presentada: '📤 Presentada',
@@ -150,66 +154,11 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
   const clientId = selectedClient?.id
   const clave = (p) => `${p.anio}-${p.mes}`
 
-  // Copia local de la grilla que trajo el portal, por período. Esos
-  // comprobantes no están en Gastos: viven en la solicitud, así que si se
-  // desmarca uno y se guarda, desaparecería del sistema y habría que volver al
-  // SRI a buscarlo. Guardada acá, la fila sigue en pantalla para re-marcarla.
-  const clavePortal = (mes, anio) => `devIvaPortal:${clientId}:${anio}-${mes}`
-  const guardarPortal = (mes, anio, filas) => {
-    try { localStorage.setItem(clavePortal(mes, anio), JSON.stringify(filas)) } catch { /* sin espacio */ }
-  }
-  const leerPortal = (mes, anio) => {
-    try { return JSON.parse(localStorage.getItem(clavePortal(mes, anio))) || [] } catch { return [] }
-  }
-
-  // Comprobantes que el usuario sacó de ESTA devolución. No se borran de
-  // Gastos —ahí siguen, son sus facturas— pero dejan de estorbar en la pantalla:
-  // el SRI lista lo suyo y lo demás no va en la solicitud. Se guarda por período
-  // y contribuyente, igual que la copia de la grilla del portal.
-  const claveFuera = (mes, anio) => `devIvaFuera:${clientId}:${anio}-${mes}`
-  const leerFuera = (mes, anio) => {
-    try { return new Set(JSON.parse(localStorage.getItem(claveFuera(mes, anio))) || []) } catch { return new Set() }
-  }
-  const guardarFuera = (mes, anio, ids) => {
-    try {
-      if (ids.size) localStorage.setItem(claveFuera(mes, anio), JSON.stringify([...ids]))
-      else localStorage.removeItem(claveFuera(mes, anio))
-    } catch { /* sin espacio */ }
-  }
-  const olvidarPortal = (mes, anio) => {
-    try { localStorage.removeItem(clavePortal(mes, anio)) } catch { /* noop */ }
-  }
-
-  const filaDePortal = (f) => ({
-    id: `portal:${f.serie}`,
-    unique_id: null,
-    factura_numero: f.serie,
-    fecha: f.fecha || '',
-    ruc_proveedor: null,
-    nombre_proveedor: f.proveedor || '',
-    clasificacion: null,
-    base: 0,
-    iva: Number(f.iva) || 0,
-    total: 0,
-    origen: 'portal',
-    rubro_sugerido: '',
-    rubro: '',
-  })
-
-  const mezclarPortal = (lista, mes, anio) => {
-    const guardadas = leerPortal(mes, anio)
-    if (!guardadas.length) return lista
-    const vistas = new Set(lista.map((c) => c.factura_numero).filter(Boolean))
-    const extra = guardadas.filter((f) => f.serie && !vistas.has(f.serie)).map(filaDePortal)
-    if (!extra.length) return lista
-    return [...lista, ...extra].sort((a, b) => {
-      const k = (c) => {
-        const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(c.fecha || ''))
-        return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : String(c.fecha || '')
-      }
-      return k(b).localeCompare(k(a))
-    })
-  }
+  // La grilla que trajo el portal y los comprobantes que se sacaron de esta
+  // devolución los guarda el SERVIDOR, junto al resto del trámite. Vivían en el
+  // localStorage de cada navegador: el mes traído en la oficina no aparecía en
+  // la laptop, limpiar el navegador borraba el listado del SRI —que no está en
+  // Gastos y solo existe ahí— y nada de eso quedaba respaldado.
 
   // El período se cambia con un clic y el servidor tarda lo que tarda: sin
   // llevar cuenta del pedido, la respuesta de un mes que se dejó atrás llegaba
@@ -229,16 +178,11 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
       ])
       if (pedidoRef.current !== pedido) return   // llegó tarde: manda el pedido nuevo
       setResumen(rr?.data?.totales || null)
-      // A lo que responde el servidor se le suman los comprobantes del portal
-      // que se hayan desmarcado: el servidor solo devuelve los que están en la
-      // solicitud, y sin esto una fila desmarcada ya no se podría recuperar.
-      const todos = mezclarPortal(rc.data.comprobantes || [], rc.data.mes, rc.data.anio)
-      // Lo que el usuario sacó de esta devolución no se muestra (sigue en
-      // Gastos): la solicitud se arma con lo que el SRI lista, no con todo lo
-      // que haya cargado el contribuyente ese mes.
-      const afuera = leerFuera(rc.data.mes, rc.data.anio)
-      const lista = afuera.size ? todos.filter((c) => !afuera.has(c.id)) : todos
-      setOcultos(afuera.size ? todos.filter((c) => afuera.has(c.id)) : [])
+      // El servidor devuelve la lista ya armada: el gasto del mes, más la grilla
+      // que trajo el portal —que no está en Gastos—, menos lo que se sacó de
+      // esta devolución (eso viene aparte, para poder volver a mostrarlo).
+      const lista = rc.data.comprobantes || []
+      setOcultos(rc.data.ocultos || [])
       setComps(lista)
       setMesPeriodo(rc.data.mes)
       setPeriodo(rc.data.periodo || '')
@@ -370,10 +314,9 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
         porcentaje_discapacidad: tipo === 'discapacidad' ? Number(porcentaje) || null : null,
         filas: d.filas,
       })
-      guardarPortal(d.mes, d.anio, d.filas)
-      // Llegó una devolución nueva: la vista del mes arranca limpia, o los
-      // comprobantes que se habían sacado antes taparían lo que acaba de entrar.
-      guardarFuera(d.mes, d.anio, new Set())
+      // La grilla queda guardada en el servidor, REEMPLAZANDO la del mes: traer
+      // el listado de nuevo no acumula dos, y el mes arranca sin nada excluido
+      // —lo sacado del listado anterior taparía lo que acaba de entrar—.
       const faltan = r.data.sin_rubro || 0
       setAvisoSubida({
         tipo: 'ok',
@@ -397,26 +340,30 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
   // El listado del SRI es el que manda: lo que el contribuyente tenga cargado
   // en Gastos ese mes (bancos, servicios, lo que no califica) solo estorba
   // cuando hay que armar la solicitud. Se quita de la devolución, NO de Gastos.
-  const quitarComprobante = (c) => {
-    const afuera = leerFuera(mesPeriodo, anio)
-    afuera.add(c.id)
-    guardarFuera(mesPeriodo, anio, afuera)
-    // Los del portal viven en la copia local: si no se los saca de ahí, la
-    // próxima carga los vuelve a mezclar.
-    if (c.origen === 'portal') {
-      const serie = String(c.factura_numero || '')
-      guardarPortal(mesPeriodo, anio, leerPortal(mesPeriodo, anio).filter((f) => f.serie !== serie))
-    }
+  const quitarComprobante = async (c) => {
+    // Se saca de la pantalla en el acto y se guarda después: la fila se va con
+    // el clic, no cuando conteste el servidor.
+    const fuera = [...ocultos.map((o) => o.id), c.id]
     setComps((cs) => cs.filter((x) => x.id !== c.id))
     setOcultos((os) => [...os, c])
     setSeleccion((sel) => {
       if (!sel.has(c.id)) return sel
       const s = new Set(sel); s.delete(c.id); return s
     })
+    try {
+      await devolucionesIvaAPI.excluidos({ client_id: clientId, mes: mesPeriodo, anio, ids: fuera })
+    } catch (e) {
+      setMsg({ tipo: 'err', texto: e.response?.data?.detail || 'No se pudo sacar el comprobante de la devolución.' })
+      cargar()
+    }
   }
 
-  const mostrarOcultos = () => {
-    guardarFuera(mesPeriodo, anio, new Set())
+  const mostrarOcultos = async () => {
+    try {
+      await devolucionesIvaAPI.excluidos({ client_id: clientId, mes: mesPeriodo, anio, ids: [] })
+    } catch (e) {
+      setMsg({ tipo: 'err', texto: e.response?.data?.detail || 'No se pudieron volver a mostrar.' })
+    }
     cargar()
   }
 
@@ -434,9 +381,7 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
     if (!window.confirm(aviso)) return
     setMsg(null)
     try {
-      if (solicitudActual?.id) await devolucionesIvaAPI.eliminar(solicitudActual.id)
-      olvidarPortal(mesPeriodo, anio)
-      guardarFuera(mesPeriodo, anio, new Set([...comps.map((c) => c.id), ...ocultos.map((c) => c.id)]))
+      await devolucionesIvaAPI.limpiarPeriodo({ client_id: clientId, mes: mesPeriodo, anio })
       setSeleccion(new Set())
       portalEnCursoRef.current = null
       setAvisoSubida({
@@ -461,9 +406,9 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
       // nada copiado": decirlo evita mandar a buscar el problema al SRI.
       setAvisoSubida({
         tipo: 'err',
-        texto: 'El navegador no dejó leer el portapapeles. Con la extensión instalada no hace ' +
-          'falta copiar ni pegar: al tocar «Traer comprobantes al sistema» en el portal, los ' +
-          'comprobantes entran solos al volver acá.',
+        texto: 'El navegador no dejó leer el portapapeles. Pero no hace falta copiar ni ' +
+          'pegar: en el portal, después de «Traer comprobantes al sistema», tocá «Enviar al ' +
+          'sistema» y entran solos.',
       })
       return
     }
@@ -931,7 +876,11 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
   // Sin extensión sigue estando «📥 Pegar comprobantes del portal».
   useEffect(() => {
     const alLlegarComprobantes = async (ev) => {
-      if (ev.source !== window) return              // nada de otras ventanas
+      // Dos remitentes posibles: la extensión, que publica en esta misma
+      // ventana, y el PORTAL DEL SRI, que abre esta pestaña para entregar el
+      // listado sin pasar por el portapapeles. De cualquier otro origen, nada.
+      const delPortal = ev.source !== window && ES_PORTAL_SRI.test(String(ev.origin || ''))
+      if (ev.source !== window && !delPortal) return
       const d = ev.data
       if (!d || d.tipo !== 'jomap-devolucion-comprobantes-app' || !d.bulto) return
       const b = d.bulto
@@ -945,6 +894,17 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
       setMsg(null)
       const r = await ingresarPortal(b, { automatico: true })
       if (r.soltar) window.postMessage({ tipo: 'jomap-devolucion-comprobantes-ingresados' }, '*')
+      // Al portal se le contesta SIEMPRE —entró o no—: es lo que le permite
+      // decir en su panel si el listado llegó, en vez de dejar al usuario
+      // adivinando entre dos pestañas.
+      if (delPortal && ev.source) {
+        try {
+          ev.source.postMessage({
+            tipo: 'jomap-devolucion-comprobantes-ingresados',
+            ok: r.ok, soltar: r.soltar,
+          }, ev.origin)
+        } catch { /* la pestaña del portal se cerró */ }
+      }
       if (!r.ok) portalEnCursoRef.current = null     // que se pueda reintentar
     }
     window.addEventListener('message', alLlegarComprobantes)
@@ -959,6 +919,13 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
   // del porcentaje de discapacidad.
   useEffect(() => {
     window.postMessage({ tipo: 'jomap-devolucion-comprobantes-pedido' }, '*')
+    // Y si a esta pestaña la abrió el portal del SRI para entregar su listado,
+    // se lo pedimos a él: sin extensión ese es el único camino, y es el que
+    // evita el copiar-y-pegar. El pedido no lleva dato alguno, así que puede ir
+    // a cualquier origen; lo que llega de vuelta sí se comprueba.
+    try {
+      if (window.opener) window.opener.postMessage({ tipo: 'jomap-devolucion-comprobantes-pedido' }, '*')
+    } catch { /* la pestaña del portal ya no está */ }
   }, [clientId])
 
   const eliminar = async (sol) => {
@@ -1377,15 +1344,16 @@ function SinComprobantes({ cliente, periodo, anio, conGasto, onElegirPeriodo, on
           <li>En el SRI, entrá a <em>Devolución de IVA → Ingresar facturas electrónicas</em>.</li>
           <li>Tocá el marcador <strong>📤 Enviador-DEVOLUCIÓN</strong> y después
             <strong> «Traer comprobantes al sistema»</strong>: elige el mes y lee la grilla.</li>
-          <li>Volvé a esta pantalla: <strong>los comprobantes entran solos</strong>, sin copiar
-            ni pegar (con la extensión instalada).</li>
+          <li>Ahí mismo, tocá <strong>«Enviar al sistema»</strong>: los comprobantes
+            <strong> entran solos</strong>, sin copiar ni pegar. Con la extensión instalada
+            entran igual con solo volver a esta pantalla.</li>
         </ol>
         <button className="dv-btn primary" onClick={onPegarPortal}>
           📥 Pegar comprobantes del portal
         </button>
         <p className="dv-vacio-nota">
-          El botón es el respaldo: sirve si trabajás con el marcador sin la extensión, o si
-          copiaste el listado desde el portal.
+          El botón es el respaldo: sirve si copiaste el listado desde el portal con
+          «Copiar para el sistema».
         </p>
       </div>
 

@@ -157,8 +157,24 @@ comprobantes estén cargados en Gastos:
   - **No entra en el contribuyente equivocado**: si el RUC del listado no es el
     que está abierto, la pantalla lo dice y lo deja esperando —al abrir a quien
     corresponde, entra solo—. Es la misma regla que ya frenaba al enviador.
-  - Sin la extensión no lo escucha nadie: el panel del portal lo dice y quedan
-    **"Copiar para el sistema"** y **"📥 Pegar comprobantes del portal"**.
+  - **Sin extensión también entra solo** (agregado 2026-08-22): el panel ofrece
+    **"Enviar al sistema"**, que abre la app en una pestaña y le pasa el listado
+    por `postMessage` cross-origin. La pantalla, al montar, se lo pide a la
+    ventana que la abrió (`...-pedido` al `window.opener`) y contesta si entró
+    (`...-ingresados` con `ok`), que es lo que el panel del portal muestra. Antes
+    quedaba el camino de copiar y pegar, con el mes colgando del portapapeles.
+    - La app **solo acepta el bulto de un origen del SRI** (`*.sri.gob.ec`); de
+      cualquier otra ventana, nada.
+    - El enviador sabe dónde vive la app por dos vías: la extensión lo anota
+      (`contenido-app.js` guarda `app_origen` y `contenido-sri.js` lo inyecta
+      como `window.__jomapAppOrigen`), y el marcador lo trae incrustado desde la
+      app que lo generó (`JOMAP_APP_ORIGEN`, reemplazado en
+      `enviadorDevolucion.js` por `location.origin`). Si no hay ninguna, queda
+      **"Copiar para el sistema"** y **"📥 Pegar comprobantes del portal"**.
+    - Se prueba con `python scripts/test_entrega_al_sistema.py`: dos servidores
+      locales en puertos distintos (portal y sistema) para que el `postMessage`
+      sea cross-origin de verdad, con `scripts/app_falsa_devolucion.html` de
+      pantalla.
 - En la app, `POST /devoluciones-iva/portal` crea la solicitud del mes con esas
   filas, proponiendo el tipo de gasto por la clasificación que el proveedor ya
   tenga en Gastos o, si no, por su nombre.
@@ -185,8 +201,22 @@ comprobantes estén cargados en Gastos:
 - Esos items van **sin `invoice_id`** —no son facturas de Gastos— y se
   distinguen en la pantalla con el chip `SRI`. Como la grilla no informa la
   base imponible, van con base y total en cero y la pantalla muestra "—".
-- La copia local de la grilla queda en `localStorage` por período, para poder
-  desmarcar y volver a marcar sin regresar al portal.
+- **La grilla y lo excluido viven en la BD** (`devoluciones_iva_portal`,
+  migración 062, 2026-08-22): una fila por contribuyente y período, con `filas`
+  (la grilla tal cual la mostró el portal) y `excluidos` (lo que el usuario sacó
+  de esa devolución, que sigue en Gastos). Traer el listado otra vez
+  **reemplaza** el anterior y deja el mes sin nada excluido: no se acumulan dos
+  grillas del mismo mes, ni tapa lo nuevo lo que se sacó de lo viejo.
+  - Estaba en el `localStorage` de cada navegador (`devIvaPortal:` /
+    `devIvaFuera:`), así que el mes traído en la oficina no aparecía en la
+    laptop, limpiar el navegador borraba el listado —que no está en Gastos y
+    solo existe ahí— y nada quedaba respaldado.
+  - `GET /comprobantes` devuelve la lista ya armada y `ocultos` aparte;
+    `POST /excluidos` guarda la lista completa de lo que queda fuera (reemplaza)
+    y `POST /periodo/limpiar` vacía el mes: borra la solicitud, la grilla, y saca
+    de la devolución el gasto que quedaba en pantalla.
+  - Se prueba con `python scripts/smoke_portal_en_bd.py --api http://127.0.0.1:8010`
+    (contra el backend y la BD reales; borra lo que crea).
 
 Sigue funcionando el camino viejo (subir TXT/XML a Gastos), pero es secundario:
 el SRI puede listar comprobantes que el contribuyente nunca cargó, y deja fuera

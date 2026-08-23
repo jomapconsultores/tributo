@@ -15,6 +15,31 @@
 
 const VIGENCIA_MINUTOS = 30;
 
+// El origen del sistema, para el enviador. Lo anota `contenido-app.js` la
+// primera vez que se abre la app con la extensión puesta; si todavía no pasó,
+// se toma del propio manifiesto, que es donde están declarados los sitios de la
+// app. Va inyectado SIEMPRE —haya o no solicitud— porque el primer paso del
+// trámite (traer la grilla al sistema) ocurre justo cuando no hay ninguna.
+const origenDelSistema = (guardado) => {
+  if (guardado) return guardado;
+  try {
+    const cs = (chrome.runtime.getManifest().content_scripts || [])
+      .find((x) => (x.js || []).indexOf('contenido-app.js') >= 0) || {};
+    const url = (cs.matches || []).filter((m) => m.indexOf('https://') === 0)[0];
+    return url ? new URL(url.replace(/\*$/, '')).origin : '';
+  } catch (e) {
+    return '';
+  }
+};
+
+const inyectarOrigen = (origen) => {
+  if (!origen) return;
+  const s = document.createElement('script');
+  s.textContent = 'window.__jomapAppOrigen = ' + JSON.stringify(origen) + ';';
+  (document.head || document.documentElement).appendChild(s);
+  s.remove();
+};
+
 const inyectar = (paquete) => {
   // 1) La solicitud, en el mundo de la página.
   const datos = document.createElement('script');
@@ -64,7 +89,8 @@ window.addEventListener('message', (ev) => {
   });
 });
 
-chrome.storage.local.get('solicitud', ({ solicitud }) => {
+chrome.storage.local.get(['solicitud', 'app_origen'], ({ solicitud, app_origen }) => {
+  inyectarOrigen(origenDelSistema(app_origen));
   if (!solicitud || !solicitud.paquete) return;
   const minutos = (Date.now() - (solicitud.cuando || 0)) / 60000;
   if (minutos > VIGENCIA_MINUTOS) {

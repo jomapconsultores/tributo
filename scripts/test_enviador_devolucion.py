@@ -302,10 +302,27 @@ def correr(modo: str, fuente: str) -> bool:
                     Object.keys(o).forEach((k) => window.__guardados.push(k));
                     Object.assign(datos, o); cb && cb();
                   },
-                  get: (k, cb) => cb({ [k]: datos[k] }),
+                  // Chrome acepta una clave o una lista; el enviador pide dos
+                  // de una (la solicitud y dónde vive el sistema).
+                  get: (k, cb) => {
+                    const claves = Array.isArray(k) ? k : [k];
+                    const out = {};
+                    claves.forEach((c) => { out[c] = datos[c]; });
+                    cb(out);
+                  },
                   remove: (k, cb) => { delete datos[k]; cb && cb(); },
                 } },
-                runtime: { getURL: () => url },
+                runtime: {
+                  getURL: () => url,
+                  // De acá saca la extensión dónde vive el sistema cuando
+                  // todavía nadie abrió la app con ella puesta.
+                  getManifest: () => ({
+                    content_scripts: [{
+                      js: ['contenido-app.js'],
+                      matches: ['https://tributos.pensamiento-libre.org/*'],
+                    }],
+                  }),
+                },
               };
             }""", (EXT / "enviador.js").as_uri())
             pg.evaluate((EXT / "contenido-app.js").read_text(encoding="utf-8"))
