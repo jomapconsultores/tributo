@@ -381,9 +381,11 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
           </span>
         </button>
       ))}
-      <button className="nav-item add-client" onClick={onNewClient}>
-        <span className="nav-ico">＋</span><span>Nuevo cliente</span>
-      </button>
+      {onNewClient && (
+        <button className="nav-item add-client" onClick={onNewClient}>
+          <span className="nav-ico">＋</span><span>Nuevo cliente</span>
+        </button>
+      )}
     </>
   )
 

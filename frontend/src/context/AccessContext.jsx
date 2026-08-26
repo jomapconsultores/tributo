@@ -58,6 +58,9 @@ export function AccessProvider({ children }) {
   // negaría con un 403, pero el menú ya estaría mintiendo). El fallback por rol
   // se conserva para cuando el modelo multiempresa aún no está activo.
   const isSuperAdmin = state.isPlatformAdmin || (!state.multiempresa && state.role === 'admin')
+  // Dar de alta contribuyentes es del administrador de la empresa: quien entra
+  // a ver lo suyo no llena la cartera de terceros. El backend manda igual.
+  const puedeCrearContribuyente = state.isPlatformAdmin || state.role === 'admin'
   const has = (m) => isSuperAdmin || state.modules.includes(m)
   // hasSub: ¿el usuario puede ver esta pantalla (submódulo)? Fail-open si aún no
   // se conocen los submódulos (null): el backend sigue siendo la autoridad.
@@ -91,7 +94,7 @@ export function AccessProvider({ children }) {
   }, [orgActivaId])
 
   return (
-    <AccessContext.Provider value={{ ...state, has, hasSub, isSuperAdmin, switchRole, switchOrg }}>
+    <AccessContext.Provider value={{ ...state, has, hasSub, isSuperAdmin, puedeCrearContribuyente, switchRole, switchOrg }}>
       {children}
     </AccessContext.Provider>
   )

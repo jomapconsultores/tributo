@@ -59,10 +59,12 @@ export default function Layout({ user, onLogout }) {
   // Acceso directo a las claves del SRI desde cualquier pantalla: es lo primero
   // que se necesita para entrar a declarar, y buscarlo en el menú cada vez era
   // el paso de más. Mismo alcance que la pantalla: el equipo del despacho.
-  const { isSuperAdmin, role } = useAccess()
+  const { isSuperAdmin, role, puedeCrearContribuyente } = useAccess()
   const verClaves = isSuperAdmin || ['admin', 'socio', 'trabajador'].includes(role)
 
-  const openNewClient = () => setModalOpen(true)
+  // null cuando no puede: los botones de alta se apagan solos con eso, en el
+  // menú, en el selector de contribuyente y en la pantalla de elección.
+  const openNewClient = puedeCrearContribuyente ? () => setModalOpen(true) : null
 
   // En móvil, al navegar se cierra el menú deslizable.
   useEffect(() => { setSidebarOpen(false) }, [location.pathname])
@@ -108,7 +110,9 @@ export default function Layout({ user, onLogout }) {
           Desarrollado por Marco Antonio Posligua San Martín
         </footer>
       </main>
-      <NewClientModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      {puedeCrearContribuyente && (
+        <NewClientModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      )}
       <CobrosPendientesModal />
     </div>
   )

@@ -123,9 +123,11 @@ export default function ClientSwitcher({ onNewClient, idents_svc = null }) {
                 </div>
               )
             })}
-            <button className="cs-drop-new" onMouseDown={() => { onNewClient?.(); setOpen(false) }}>
-              ＋ Nuevo cliente…
-            </button>
+            {onNewClient && (
+              <button className="cs-drop-new" onMouseDown={() => { onNewClient(); setOpen(false) }}>
+                ＋ Nuevo cliente…
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -143,7 +145,8 @@ export default function ClientSwitcher({ onNewClient, idents_svc = null }) {
         {periodos.map((c) => (
           <option key={c.id} value={c.id}>{periodoCorto(c)}</option>
         ))}
-        <option value="__new__">＋ Otro período…</option>
+        {/* Abrir otro período es dar de alta una fila del contribuyente: mismo permiso. */}
+        {onNewClient && <option value="__new__">＋ Otro período…</option>}
       </select>
     </div>
   )

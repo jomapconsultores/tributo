@@ -352,10 +352,28 @@ async def get_client(client_id: str, user_id: str = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _exigir_admin_para_alta(user_id: str):
+    """Dar de alta un contribuyente es del ADMINISTRADOR de la empresa.
+
+    Un contribuyente nuevo entra en la cartera de la empresa y con él llegan sus
+    datos, sus declaraciones y lo que se le cobra: no es una acción de quien
+    solo viene a ver lo suyo. La empresa de un contribuyente que se independizó
+    la administra él, y así no se llena su propia empresa de terceros."""
+    from routers.access import rol_de, es_super_admin
+    if es_super_admin(user_id) or rol_de(user_id) == "admin":
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="Solo el administrador de la empresa puede dar de alta contribuyentes. "
+               "Pídeselo a quien la administra.",
+    )
+
+
 @router.post("/")
 async def create_client(entry: ClientCreate, user_id: str = Depends(get_current_user)):
     """Crea un cliente para un período (mes+año). Si ya existe ese mismo
     contribuyente en ese período, devuelve el existente."""
+    _exigir_admin_para_alta(user_id)
     try:
         supabase = get_supabase_client()
         identificacion = entry.identificacion.strip().replace("'", "")

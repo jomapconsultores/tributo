@@ -60,7 +60,9 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
         <span className="cps-hero-icon">{icon}</span>
         <h1 className="cps-hero-title">{title}</h1>
         {subtitle && <p className="cps-hero-sub">{subtitle}</p>}
-        <button className="cps-hero-btn" onClick={onNewClient}>＋ Nuevo cliente</button>
+        {onNewClient && (
+          <button className="cps-hero-btn" onClick={onNewClient}>＋ Nuevo cliente</button>
+        )}
       </div>
 
       {/* Panel de búsqueda + lista */}

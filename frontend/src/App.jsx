@@ -89,14 +89,33 @@ function RequireCredenciales({ children }) {
 function SinAcceso({ onLogout }) {
   // Cierra la sesión actual y vuelve al login (evita quedar atrapado en esta
   // pantalla sin salida cuando la cuenta no tiene módulos habilitados).
+  const { subscription, org } = useAccess()
   const volverALogin = () => {
     onLogout?.()
     window.location.assign('/login')
   }
+  // Quedarse fuera por falta de pago no es lo mismo que no tener módulos, y
+  // decir «contacta al administrador» cuando lo que pasó es que se acabó la
+  // prueba deja a la persona sin saber qué tiene que hacer.
+  const porPago = subscription && (subscription.vencida || subscription.estado === 'suspendido')
+  const precio = Number(subscription?.precio_mensual || 0)
   return (
     <div style={{ padding: 40, textAlign: 'center', color: '#475569' }}>
-      <h2>Sin módulos contratados</h2>
-      <p>Tu cuenta aún no tiene módulos habilitados. Contacta al administrador para activar tu plan.</p>
+      <h2>{porPago ? 'El acceso está en pausa' : 'Sin módulos contratados'}</h2>
+      {porPago ? (
+        <p>
+          {subscription.estado === 'suspendido'
+            ? <>La suscripción{org?.nombre ? <> de <strong>{org.nombre}</strong></> : ''} está suspendida.</>
+            : <>La prueba gratuita{org?.nombre ? <> de <strong>{org.nombre}</strong></> : ''} terminó el {subscription.proximo_pago}.</>}
+          {precio > 0 && (
+            <> Para volver a entrar hay que pagar <strong>${precio.toFixed(2)} + IVA</strong>
+              {' '}(<strong>${(precio * 1.15).toFixed(2)}</strong>) al mes.</>
+          )}
+          {' '}Avisa a quien administra el sistema y se reactiva en cuanto se registre el pago.
+        </p>
+      ) : (
+        <p>Tu cuenta aún no tiene módulos habilitados. Contacta al administrador para activar tu plan.</p>
+      )}
       <button
         onClick={volverALogin}
         style={{
