@@ -31,11 +31,18 @@ from services.activity import registrar
 router = APIRouter(prefix="/api/declaraciones", tags=["declaraciones"])
 
 
+# Hasta cuántos meses se puede dejar pendiente el pago, por tipo de declaración.
+# No es el mismo plazo: el IVA admite hasta tres meses y el ICE solo uno. Lo que
+# se difiere no desaparece —queda en `pagos_aplazados` y vuelve, sumado, en la
+# declaración del mes en que vence—.
+TOPE_DIFERIMIENTO = {"IVA": 3, "ICE": 1}
+
+
 class SaveDecl(BaseModel):
     client_id: str
     tipo: str
     datos: dict
-    diferir_pago_meses: Optional[int] = 0  # 0 = pagar este mes; 1-3 (IVA); 1 (ICE max)
+    diferir_pago_meses: Optional[int] = 0  # 0 = pagar este mes; 1-3 (IVA); 1 (ICE)
 
 
 class AplazarPago(BaseModel):
@@ -326,7 +333,8 @@ def _calcular(supabase, client_id, tipo, user_id, override_credito_adq=None, ove
         decl = declaracion_ice(ice, anio, pagos_aplazados_vencen_este_periodo=aplazados_ice,
                                rebajas_productos=rebajas_prod,
                                override_rebaja=override_rebaja, override_exencion=override_exencion,
-                               marcar_rebaja=marcar_rebaja, marcar_exencion=marcar_exencion)
+                               marcar_rebaja=marcar_rebaja, marcar_exencion=marcar_exencion,
+                               diferir_meses=diferir_meses)
         decl["aplazados_vencen"] = aplazados_ice
         decl["cobertura"] = _cobertura(c, {"ingresos_ice": (ice, True)})
     elif tipo.upper() == "103":
@@ -411,7 +419,7 @@ async def calcular(
     tipo: str = Query("IVA"),
     credito_adq: Optional[float] = Query(None, description="Override crédito tributario mes anterior por adquisiciones (605)"),
     credito_ret: Optional[float] = Query(None, description="Override crédito tributario mes anterior por retenciones (606)"),
-    diferir_meses: int = Query(0, description="Preview: difiere el IVA generado N meses (1-3 IVA, 1 ICE max). Solo recálculo, no persiste."),
+    diferir_meses: int = Query(0, description="Preview: deja el pago pendiente N meses (hasta 3 en IVA, 1 en ICE). Solo recálculo, no persiste."),
     rebaja_ice: Optional[float] = Query(None, description="Override manual de la rebaja ICE (si no, se precalcula del módulo Rebajas y exenciones)"),
     exencion_ice: Optional[float] = Query(None, description="Override manual de exenciones ICE"),
     rebaja_manual: int = Query(0, description="Casilla manual: aplica rebaja 50% de la tarifa específica (con advertencia)"),
@@ -802,6 +810,28 @@ async def del_borrador(client_id: str = Query(...), tipo: str = Query("IVA"), us
         raise HTTPException(status_code=400, detail=str(e))
 
 
+def monto_que_se_traslada(resumen: dict) -> float:
+    """Cuánto queda pendiente para el mes en que vence.
+
+    Es el valor DIFERIDO, no el "total a pagar" del período: ese total ya viene
+    con el diferimiento restado (si se difirió todo, es cero), y anotarlo dejaba
+    el traslado en nada — el valor salía de este mes y no entraba en ninguno.
+    El total sirve de respaldo para una declaración vieja, guardada antes de que
+    el cálculo desglosara el diferido."""
+    resumen = resumen or {}
+    for clave in ("iva_diferido_actual", "ice_diferido_actual"):
+        try:
+            v = float(resumen.get(clave) or 0)
+        except (TypeError, ValueError):
+            v = 0.0
+        if v > 0:
+            return v
+    try:
+        return float(resumen.get("total_a_pagar") or resumen.get("iva_a_pagar") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _sumar_periodo(mes, anio, n_meses):
     """Devuelve (mes, anio) al sumar n_meses al período dado."""
     total = (mes - 1) + n_meses
@@ -821,14 +851,15 @@ async def guardar(entry: SaveDecl, user_id: str = Depends(get_current_user)):
         tipo = entry.tipo.upper()
         _verificar_submodulo(user_id, tipo)
 
-        # Validar aplazamiento (facilidades de pago: 1 a 3 meses, solo IVA por
-        # ahora — declaracion_ice no resta el monto diferido del casillero
-        # 902/899, así que permitirlo en ICE duplicaría el valor a pagar).
+        # Dejar pendiente el pago: hasta 3 meses en IVA, 1 en ICE, ninguno en el 103.
         diferir = max(0, int(entry.diferir_pago_meses or 0))
-        if diferir < 0 or diferir > 3:
-            raise HTTPException(status_code=400, detail="Meses a aplazar inválidos (0-3).")
-        if diferir > 0 and tipo != "IVA":
-            raise HTTPException(status_code=400, detail="El aplazamiento de pago aún no está disponible para ICE.")
+        tope = TOPE_DIFERIMIENTO.get(tipo, 0)
+        if diferir > tope:
+            raise HTTPException(status_code=400, detail=(
+                f"El pago de una declaración {tipo} no se puede dejar pendiente."
+                if tope == 0 else
+                f"En {tipo} el pago se puede dejar pendiente hasta {tope} "
+                f"{'mes' if tope == 1 else 'meses'}."))
 
         # Insertar declaración
         res = supabase.table("declaraciones").insert({
@@ -845,10 +876,10 @@ async def guardar(entry: SaveDecl, user_id: str = Depends(get_current_user)):
         except Exception:
             pass
 
-        # Si difirió pago, crear registro en pagos_aplazados
+        # Si dejó el pago pendiente, queda anotado para que VUELVA en la
+        # declaración del mes en que vence.
         if diferir > 0 and decl_record:
-            resumen = (entry.datos or {}).get("resumen") or {}
-            monto_a_pagar = float(resumen.get("total_a_pagar") or resumen.get("iva_a_pagar") or 0)
+            monto_a_pagar = monto_que_se_traslada((entry.datos or {}).get("resumen") or {})
             if monto_a_pagar > 0:
                 vence_mes, vence_anio = _sumar_periodo(mes or 1, anio or 2026, diferir)
                 supabase.table("pagos_aplazados").insert({

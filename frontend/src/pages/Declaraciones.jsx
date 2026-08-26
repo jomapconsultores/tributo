@@ -95,12 +95,14 @@ export default function Declaraciones({ tipo }) {
   const [marcaReb, setMarcaReb] = useDraft(dk('marcaReb'), false)
   const [marcaExe, setMarcaExe] = useDraft(dk('marcaExe'), false)
 
-  // Diferir pago al guardar: 0 (no diferir), 1, 2 o 3 meses
+  // Dejar el pago pendiente al guardar: 0 = pagar este mes.
   const [diferirMeses, setDiferirMeses] = useDraft(dk('diferirMeses'), 0)
 
   const isIVA = tipo === 'IVA'
-  // Facilidades de pago: 1 a 3 meses para ambos impuestos (IVA y ICE).
-  const maxDiferir = 3
+  const isICE = tipo === 'ICE'
+  // El plazo no es el mismo para los dos impuestos: el IVA se puede dejar
+  // pendiente hasta TRES meses y el ICE solo UNO. El 103 no admite nada.
+  const maxDiferir = isIVA ? 3 : isICE ? 1 : 0
 
   // Solo el cálculo depende de los overrides en vivo — separado de la carga de
   // guardados/aplazados para que editar un override no dispare de nuevo esas
@@ -224,13 +226,12 @@ export default function Declaraciones({ tipo }) {
     return () => clearTimeout(t)
   }, [draftBundle, selectedClientId, tipo])
 
-  // El aplazamiento de pago (diferir_meses) todavía no está implementado para
-  // ICE en el backend (declaracion_ice no lo resta del casillero 902/899);
-  // limpiar cualquier valor residual de un borrador anterior para no generar
-  // un pagos_aplazados duplicado sobre el 100% del ICE.
+  // Al cambiar de impuesto, un borrador de IVA con 3 meses no puede quedar
+  // colgado en una declaración de ICE, que admite uno solo: se recorta al tope
+  // del tipo abierto (y a cero en el 103).
   useEffect(() => {
-    if (!isIVA && diferirMeses > 0) setDiferirMeses(0)
-  }, [isIVA, diferirMeses, setDiferirMeses])
+    if (diferirMeses > maxDiferir) setDiferirMeses(maxDiferir)
+  }, [maxDiferir, diferirMeses, setDiferirMeses])
 
 
   // Servicios contratados + credencial del SRI del contribuyente.
@@ -275,7 +276,7 @@ export default function Declaraciones({ tipo }) {
       if (diferirMeses > 0) {
         const venceMes = (selectedClient.periodo_mes + diferirMeses - 1) % 12 + 1
         const venceAnio = selectedClient.periodo_anio + Math.floor((selectedClient.periodo_mes + diferirMeses - 1) / 12)
-        msg += `\n\n📅 Pago aplazado ${diferirMeses} mes(es). Vence en ${nombreMes(venceMes)} ${venceAnio}.`
+        msg += `\n\n📅 Pago de ${tipo} pendiente ${diferirMeses} mes(es): vuelve, sumado, en la declaración de ${nombreMes(venceMes)} ${venceAnio}.`
       }
       alert(msg)
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
@@ -411,21 +412,22 @@ export default function Declaraciones({ tipo }) {
                          (resumen.ice_a_pagar || 0) > 0 ||
                          (resumen.total_a_pagar || 0) > 0
 
-  // Vista previa del aplazamiento: el cálculo lo hace el backend cuando
+  // Vista previa de lo que queda pendiente: el cálculo lo hace el backend cuando
   // diferirMeses > 0 (se pasa como query param). Acá solo derivamos la fecha
   // de vencimiento y el monto para mostrar el resumen amigable.
   const previewAplazamiento = (() => {
-    if (!isIVA || !diferirMeses || diferirMeses < 1) return null
+    if (!maxDiferir || !diferirMeses || diferirMeses < 1) return null
     const m0 = selectedClient.periodo_mes
     const a0 = selectedClient.periodo_anio
     const total = (m0 - 1) + diferirMeses
     const venceMes = (total % 12) + 1
     const venceAnio = a0 + Math.floor(total / 12)
     return {
-      montoIvaDiferido: parseFloat(resumen.iva_diferido_actual || 0),
+      esIce: isICE,
+      montoDiferido: parseFloat((isICE ? resumen.ice_diferido_actual : resumen.iva_diferido_actual) || 0),
       ventasDiferidas: parseFloat(resumen.ventas_diferidas_monto || 0),
       saldoAFavor: parseFloat(resumen.saldo_a_favor_proximo_mes || 0),
-      aPagar: parseFloat(resumen.iva_a_pagar || 0),
+      aPagar: parseFloat((isICE ? resumen.total_a_pagar : resumen.iva_a_pagar) || 0),
       venceMes, venceAnio,
     }
   })()
@@ -779,17 +781,19 @@ export default function Declaraciones({ tipo }) {
       <div className="dc-toolbar">
         <button className="dc-btn primary" onClick={guardar} disabled={!decl}>💾 Guardar declaración</button>
         <label className="dc-aplazar-control">
-          Aplazar pago:
-          <select value={diferirMeses} onChange={(e) => setDiferirMeses(parseInt(e.target.value, 10))} disabled={!isIVA || !hayMontoAPagar}>
-            <option value={0}>No aplazar</option>
+          Dejar pendiente:
+          <select value={diferirMeses} onChange={(e) => setDiferirMeses(parseInt(e.target.value, 10))}
+            disabled={!maxDiferir || !hayMontoAPagar}>
+            <option value={0}>Pagar este mes</option>
             {Array.from({ length: maxDiferir }, (_, i) => i + 1).map((n) => (
               <option key={n} value={n}>{n} mes{n > 1 ? 'es' : ''}</option>
             ))}
           </select>
           <small>
-            {!isIVA
-              ? `(aplazamiento aún no disponible para ${tipo})`
-              : !hayMontoAPagar ? '(sin impuesto a pagar este período)' : 'Facilidades de pago: 1 a 3 meses'}
+            {!maxDiferir
+              ? `(el pago de ${tipo} no se difiere)`
+              : !hayMontoAPagar ? '(sin impuesto a pagar este período)'
+                : `Vuelve, sumado, en la declaración del mes en que vence (hasta ${maxDiferir} ${maxDiferir === 1 ? 'mes' : 'meses'} en ${tipo})`}
           </small>
         </label>
         <button className="dc-btn small" onClick={exportar} disabled={!decl}>⬇ Excel (código/valor)</button>
@@ -855,11 +859,40 @@ export default function Declaraciones({ tipo }) {
         </div>
       )}
 
-      {/* Vista previa del aplazamiento — cálculo real desde backend (casillero 481/484 SRI) */}
-      {previewAplazamiento && (
+      {/* Lo que queda pendiente en ICE: un solo mes, sobre el ICE neto del período */}
+      {previewAplazamiento && previewAplazamiento.esIce && (
         <div className="dc-aplazar-preview">
           <div className="dc-aplazar-preview-head">
-            🔄 <strong>Efecto del aplazamiento ({diferirMeses} mes{diferirMeses > 1 ? 'es' : ''})</strong>
+            🔄 <strong>Queda pendiente para el mes siguiente</strong>
+            <span className="dc-aplazar-preview-tag">borrador · ICE, 1 mes</span>
+          </div>
+          <div className="dc-aplazar-preview-grid">
+            <div>
+              <span className="dc-aplazar-preview-lbl">ICE que se deja pendiente</span>
+              <span className="dc-aplazar-preview-val warn">{money(previewAplazamiento.montoDiferido)}</span>
+            </div>
+            <div>
+              <span className="dc-aplazar-preview-lbl">A pagar HOY</span>
+              <span className="dc-aplazar-preview-val">{money(previewAplazamiento.aPagar)}</span>
+            </div>
+            <div>
+              <span className="dc-aplazar-preview-lbl">Se paga en</span>
+              <span className="dc-aplazar-preview-val">📅 {nombreMes(previewAplazamiento.venceMes)} {previewAplazamiento.venceAnio}</span>
+            </div>
+          </div>
+          <p className="dc-aplazar-preview-note">
+            En <strong>{nombreMes(previewAplazamiento.venceMes)} {previewAplazamiento.venceAnio}</strong> este
+            valor entra solo a la declaración de ese mes y se suma a lo que corresponda pagar
+            entonces. Volvé el selector a "Pagar este mes" para deshacerlo.
+          </p>
+        </div>
+      )}
+
+      {/* Vista previa del aplazamiento — cálculo real desde backend (casillero 481/484 SRI) */}
+      {previewAplazamiento && !previewAplazamiento.esIce && (
+        <div className="dc-aplazar-preview">
+          <div className="dc-aplazar-preview-head">
+            🔄 <strong>Queda pendiente {diferirMeses} mes{diferirMeses > 1 ? 'es' : ''}</strong>
             <span className="dc-aplazar-preview-tag">borrador · cálculo SRI 481/484</span>
           </div>
           <div className="dc-aplazar-preview-grid">
@@ -869,7 +902,7 @@ export default function Declaraciones({ tipo }) {
             </div>
             <div>
               <span className="dc-aplazar-preview-lbl">484 — IVA diferido (no se causa hoy)</span>
-              <span className="dc-aplazar-preview-val warn">{money(previewAplazamiento.montoIvaDiferido)}</span>
+              <span className="dc-aplazar-preview-val warn">{money(previewAplazamiento.montoDiferido)}</span>
             </div>
             <div>
               <span className="dc-aplazar-preview-lbl">{previewAplazamiento.saldoAFavor > 0 ? '699 — Saldo a favor próximo mes' : '902 — IVA a pagar HOY'}</span>
@@ -892,7 +925,7 @@ export default function Declaraciones({ tipo }) {
               <strong> {money(previewAplazamiento.aPagar)}</strong> este período.</>
             )}
             {' '}En <strong>{nombreMes(previewAplazamiento.venceMes)} {previewAplazamiento.venceAnio}</strong> el
-            IVA diferido entrará automáticamente como casillero 480. Cambiá el dropdown a "No aplazar" para deshacer.
+            IVA diferido entrará automáticamente como casillero 480. Volvé el selector a "Pagar este mes" para deshacerlo.
           </p>
         </div>
       )}

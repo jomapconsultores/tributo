@@ -395,7 +395,7 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
 
 def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
                     rebajas_productos=None, override_rebaja=None, override_exencion=None,
-                    marcar_rebaja=False, marcar_exencion=False):
+                    marcar_rebaja=False, marcar_exencion=False, diferir_meses=0):
     """Formulario ICE para bebidas alcohólicas (SRI).
     - ICE específico: tarifa por litro de alcohol puro × litros de alcohol puro.
     - ICE ad valorem: 75% del exceso del precio/litro sobre el umbral.
@@ -417,9 +417,16 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
     - `override_rebaja` / `override_exencion`: montos escritos a mano (tienen
       prioridad sobre las casillas y sobre el cálculo automático).
 
-    Aplazamientos: ICE permite hasta 1 mes adicional cuando hay compras a crédito
-    de procesos productivos (regla SRI). Si hay aplazamientos vencidos este
-    período, se suman al casillero 902 (a pagar)."""
+    Aplazamientos: el ICE se puede diferir UN mes —y solo uno, a diferencia del
+    IVA, que admite hasta tres— cuando hay ventas/compras a crédito de procesos
+    productivos (regla SRI). Funciona en los dos sentidos y por eso hay dos
+    números distintos:
+      · `diferir_meses=1` deja el ICE de ESTE período para el siguiente: se
+        resta del total a pagar de hoy y queda anotado como pendiente.
+      · `pagos_aplazados_vencen_este_periodo` es lo que se difirió ANTES y vence
+        ahora: se suma al total a pagar de hoy.
+    Sin las dos mitades el diferimiento sería una condonación: el valor saldría
+    de un mes y no entraría en ninguno."""
     if pagos_aplazados_vencen_este_periodo is None:
         pagos_aplazados_vencen_este_periodo = []
 
@@ -514,8 +521,13 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
     exencion = max(0.0, min(exencion, total_ice - rebaja))
     ice_neto = max(0.0, total_ice - rebaja - exencion)
 
+    # ── Diferimiento del pago (tope: 1 mes) ─────────────────────────────
+    # Lo que se difiere es el ICE NETO del período (ya con rebajas y exenciones):
+    # es el valor que efectivamente se iba a pagar hoy y pasa al mes siguiente.
+    diferir_meses = max(0, min(1, int(diferir_meses or 0)))
+    ice_diferido_actual = round(ice_neto, 2) if diferir_meses > 0 else 0.0
     monto_aplazados_que_vencen = sum(_f(p.get("monto")) for p in pagos_aplazados_vencen_este_periodo)
-    total_a_pagar = ice_neto + monto_aplazados_que_vencen
+    total_a_pagar = max(0.0, ice_neto - ice_diferido_actual + monto_aplazados_que_vencen)
 
     filas = [
         {"seccion": "AD VALOREM", "codigo": "303", "concepto": "Base imponible ad valorem (solo ventas con precio/litro sobre el umbral; 0 si ninguna)", "valor": round(base, 2)},
@@ -541,13 +553,19 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
          "valor": round(exencion, 2)},
         {"seccion": "RESULTADO", "codigo": "499", "concepto": "TOTAL ICE A PAGAR (399 − rebajas − exenciones)", "valor": round(ice_neto, 2)},
     ]
+    if ice_diferido_actual > 0:
+        filas.append({"seccion": "RESULTADO", "codigo": "DIF",
+                      "concepto": "(−) ICE con pago diferido al mes siguiente "
+                                  "(no se paga este período; se declara en el próximo)",
+                      "valor": round(ice_diferido_actual, 2)})
     if monto_aplazados_que_vencen > 0:
         filas.append({"seccion": "RESULTADO", "codigo": "903",
-                      "concepto": "Pagos aplazados que vencen este período",
+                      "concepto": "(+) ICE diferido de períodos anteriores que vence ahora",
                       "valor": round(monto_aplazados_que_vencen, 2),
                       "num_comprobantes": len(pagos_aplazados_vencen_este_periodo)})
+    if monto_aplazados_que_vencen > 0 or ice_diferido_actual > 0:
         filas.append({"seccion": "RESULTADO", "codigo": "904",
-                      "concepto": "Total a pagar (499 + 903)",
+                      "concepto": "TOTAL A PAGAR ESTE PERÍODO (499 − diferido + vencido)",
                       "valor": round(total_a_pagar, 2)})
     return {
         "tipo": "ICE",
@@ -570,6 +588,8 @@ def declaracion_ice(ice_rows, anio, pagos_aplazados_vencen_este_periodo=None,
             "ice_a_pagar": round(ice_neto, 2),  # alias para que la UI detecte hayMontoAPagar
             "monto_aplazados_vencen": round(monto_aplazados_que_vencen, 2),
             "total_a_pagar": round(total_a_pagar, 2),
+            "diferir_meses": diferir_meses,
+            "ice_diferido_actual": round(ice_diferido_actual, 2),
             "num_aplazados_vencen": len(pagos_aplazados_vencen_este_periodo),
             "num_registros": len([r for r in ice_rows if (r.get("estado") or "OK") == "OK"]),
         },
