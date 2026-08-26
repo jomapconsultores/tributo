@@ -56,7 +56,11 @@ class MemberIn(BaseModel):
     email: Optional[str] = None
     user_id: Optional[str] = None
     role: str = "cliente"
-    modules: Optional[List[str]] = None      # None = sin módulos propios (hereda los globales)
+    # None = entra SIN módulos, y el administrador le marca los que necesite.
+    # Antes esto significaba «hereda los globales del usuario», y como las
+    # cuentas se crean con un plan que los da todos, cualquiera entraba a una
+    # empresa ajena viéndolo todo desde el primer día.
+    modules: Optional[List[str]] = None
     submodules: Optional[List[str]] = None   # None = todas las pantallas de sus módulos
 
 
@@ -265,6 +269,20 @@ async def eliminar_empresa(org_id: str, _: str = Depends(require_plataforma)):
 # Miembros y sus permisos
 # ---------------------------------------------------------------------------
 
+def _modulos_globales(uid: str) -> list:
+    """Módulos que el usuario tiene por su cuenta (user_modules), que es lo que
+    hereda una membresía sin permisos propios. Sin esto, la pantalla mostraba
+    cero módulos marcados para alguien que los tenía TODOS."""
+    from datetime import date
+    try:
+        filas = _sb().table("user_modules").select("modulo,activo,valid_until")            .eq("user_id", uid).eq("activo", True).execute().data or []
+    except Exception:
+        return []
+    hoy = date.today().isoformat()
+    return [f["modulo"] for f in filas
+            if not (f.get("valid_until") and str(f["valid_until"]) < hoy)]
+
+
 def _modulos_de_miembro(org_id: str, uid: str) -> dict:
     filas = _sb().table("organization_member_modules")\
         .select("modulo,activo,valid_until").eq("org_id", org_id).eq("user_id", uid)\
@@ -308,11 +326,20 @@ async def listar_miembros(org_id: str, user_id: str = Depends(get_current_user))
     out = []
     for f in filas:
         uid = f["user_id"]
+        propios = por_usuario.get(uid, {})
+        # Sin filas propias la membresía HEREDA los módulos globales del usuario.
+        # Hay que decirlo: pintar todo desmarcado para quien entra y lo ve todo
+        # es lo que hacía creer que a los clientes no se les podía quitar nada.
+        hereda = not propios
+        efectivos = (_modulos_globales(uid) if hereda
+                     else [m for m, v in propios.items() if v.get("activo")])
         out.append({
             "user_id": uid,
             "email": emails.get(uid, "(usuario eliminado)"),
             "role": f.get("role") or "cliente",
-            "modules": por_usuario.get(uid, {}),
+            "modules": propios,
+            "modules_efectivos": sorted(efectivos),
+            "hereda_modulos": hereda,
             "submodules": sorted(_submodulos_permitidos_de(subs_guardados.get(uid, set()))),
             "created_at": str(f.get("created_at") or "")[:10],
         })
@@ -357,15 +384,30 @@ def _aplicar_modulos(org_id: str, uid: str, modules: Optional[List[str]]):
 
 def _aplicar_submodulos(org_id: str, uid: str, submodules: Optional[List[str]]):
     """Guarda la restricción de pantallas. Igual que en el panel por usuario: si
-    de un módulo están TODAS marcadas no se guarda nada (= sin restricción)."""
+    de un módulo están TODAS marcadas no se guarda nada (= sin restricción).
+
+    Y si no queda NINGUNA marcada, el módulo se apaga. «Sin filas» significa
+    «sin restricción» en este modelo, así que desmarcar hasta la última pantalla
+    de un módulo se leía como no haber restringido nada y las devolvía todas:
+    el administrador creía haber cerrado la puerta y la dejaba abierta de par en
+    par. Un módulo sin ninguna pantalla accesible no es un módulo."""
     if submodules is None:
         return
     pedido = set(submodules)
     filas = set()
+    apagar = []
     for mod, keys in _SUBS_KEYS.items():
         permitidos = pedido & keys
-        if permitidos and permitidos != keys:
+        if not permitidos:
+            apagar.append(mod)
+        elif permitidos != keys:
             filas |= permitidos
+    if apagar:
+        sb0 = _sb()
+        for mod in apagar:
+            # Solo los que estuvieran encendidos: los demás ya están apagados y
+            # los heredados no se tocan (esta ruta no crea permisos propios).
+            sb0.table("organization_member_modules").update({"activo": False})                .eq("org_id", org_id).eq("user_id", uid).eq("modulo", mod)                .eq("activo", True).execute()
     sb = _sb()
     sb.table("organization_member_submodules").delete()\
         .eq("org_id", org_id).eq("user_id", uid).execute()
@@ -399,7 +441,9 @@ async def agregar_miembro(org_id: str, body: MemberIn,
     sb.table("organization_members").insert({
         "org_id": org_id, "user_id": uid, "role": role, "granted_by": admin_id,
     }).execute()
-    _aplicar_modulos(org_id, uid, body.modules)
+    # Lista vacía, no None: se guardan las filas en cero y la membresía queda
+    # cerrada de verdad, en vez de caer a los módulos globales del usuario.
+    _aplicar_modulos(org_id, uid, body.modules if body.modules is not None else [])
     _aplicar_submodulos(org_id, uid, body.submodules)
     orgs.invalidar(user_id=uid, org_id=org_id)
     invalidar_cache_rol(uid)

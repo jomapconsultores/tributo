@@ -287,14 +287,29 @@ export default function AdminEmpresas() {
     actualizar(m.user_id, { role }, `${m.email}: ahora es ${ROL_LABEL[role]} en esta empresa.`)
   }
 
+  // Lo que el miembro TIENE, no lo que hay guardado: sin permisos propios
+  // hereda los módulos globales de su usuario, y pintarlos desmarcados hacía
+  // creer que no tenía acceso a nada cuando lo tenía a todo.
   const modulosActivos = (m) =>
-    new Set(Object.entries(m.modules || {}).filter(([, v]) => v.activo).map(([k]) => k))
+    new Set(m.modules_efectivos
+      || Object.entries(m.modules || {}).filter(([, v]) => v.activo).map(([k]) => k))
 
   const toggleModulo = (m, key) => {
     const next = modulosActivos(m)
     next.has(key) ? next.delete(key) : next.add(key)
+    // Guardar la lista fija los permisos EN esta empresa: deja de heredar.
     actualizar(m.user_id, { modules: [...next] },
-      `${m.email}: ${next.has(key) ? 'con' : 'sin'} acceso a ${MOD_LABEL[key] || key}.`)
+      `${m.email}: ${next.has(key) ? 'con' : 'sin'} acceso a ${MOD_LABEL[key] || key}` +
+      (m.hereda_modulos ? ', y sus permisos quedan fijados en esta empresa.' : '.'))
+  }
+
+  // Fija aquí lo que hoy hereda, sin cambiar nada de lo que ve: a partir de
+  // entonces los permisos de esta empresa son suyos y no siguen a los globales.
+  const fijarPermisos = (m, vaciar) => {
+    const modules = vaciar ? [] : [...modulosActivos(m)]
+    actualizar(m.user_id, { modules },
+      vaciar ? `${m.email}: sin ningún módulo en esta empresa.`
+             : `${m.email}: permisos fijados en esta empresa.`)
   }
 
   const toggleSubmodulo = (m, key) => {
@@ -673,9 +688,14 @@ export default function AdminEmpresas() {
                                     </div>
                                   )
                                 ))}
+                                {activos.size === 0 && (
+                                  <p className="submodulos-nota">
+                                    Sin ningún módulo marcado no hay pantallas que repartir.
+                                  </p>
+                                )}
                                 <p className="submodulos-nota">
-                                  Con todas marcadas no hay restricción. Para negar un módulo entero,
-                                  desmárcalo en la columna «Módulos».
+                                  Con todas marcadas no hay restricción. Si las desmarcas todas,
+                                  ese módulo se apaga: es lo mismo que negárselo.
                                 </p>
                               </div>
                             )}
@@ -690,6 +710,26 @@ export default function AdminEmpresas() {
                             </select>
                           </td>
                           <td>
+                            {m.hereda_modulos && (
+                              <div className="hereda-aviso">
+                                Hereda los módulos de su cuenta, no los de esta empresa.
+                                Lo marcado es lo que ve hoy; cualquier cambio los fija aquí.
+                                <div className="hereda-acciones">
+                                  <button
+                                    disabled={busy === m.user_id}
+                                    onClick={() => fijarPermisos(m, false)}
+                                  >
+                                    Fijar tal cual
+                                  </button>
+                                  <button
+                                    className="peligro" disabled={busy === m.user_id}
+                                    onClick={() => fijarPermisos(m, true)}
+                                  >
+                                    Dejarlo sin módulos
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                             <div className="modulos-chips">
                               {(catModulos.length ? catModulos : Object.keys(MOD_LABEL)).map((mod) => (
                                 <label key={mod} className={activos.has(mod) ? 'chip on' : 'chip'}>
