@@ -478,6 +478,52 @@ export default function AdminEmpresas() {
                 {contribuyentes.length} contribuyente(s) asignado(s) · {miembros.length} miembro(s)
               </p>
 
+              {/* ── Anexar contribuyentes de otra empresa ───────────────── */}
+              {isPlatformAdmin && empresas.length > 1 && (
+                /* Va arriba, y se destaca mientras la empresa esté vacía: recién
+                   creada, poblarla es lo único que hay que hacer aquí, y al
+                   final de la columna no se encontraba. */
+                <div className={`bloque ${contribuyentes.length === 0 ? 'destacado' : ''}`}>
+                  <h3>Anexar contribuyentes de otra empresa</h3>
+                  <p>
+                    {contribuyentes.length === 0
+                      ? `«${empresaSel?.nombre}» todavía no tiene contribuyentes. Tráelos desde otra empresa: `
+                      : `Trae a «${empresaSel?.nombre}» contribuyentes que hoy están en otra empresa. `}
+                    Se mueven enteros: todos sus períodos con sus facturas, declaraciones y anexos.
+                  </p>
+                  <form className="fila-form" onSubmit={(ev) => { ev.preventDefault(); anexar() }}>
+                    <select value={origenOrg} onChange={(ev) => setOrigenOrg(ev.target.value)}>
+                      <option value="">Desde la empresa…</option>
+                      {empresas.filter((e) => e.org_id !== selectedOrg).map((e) => (
+                        <option key={e.org_id} value={e.org_id}>{e.nombre}</option>
+                      ))}
+                    </select>
+                    <button type="submit" disabled={seleccionOrigen.size === 0 || anexando}>
+                      {anexando ? 'Anexando…' : `Anexar ${seleccionOrigen.size || ''}`}
+                    </button>
+                  </form>
+                  {origenOrg && (
+                    contribOrigen.length === 0 ? (
+                      <p className="vacio">Esa empresa no tiene contribuyentes que traer.</p>
+                    ) : (
+                      <div className="huerfanos-lista">
+                        {contribOrigen.map((c) => (
+                          <label key={c.identificacion}>
+                            <input
+                              type="checkbox"
+                              checked={seleccionOrigen.has(c.identificacion)}
+                              onChange={() => toggleOrigen(c.identificacion)}
+                            />
+                            {c.nombre} <span className="huerfano-ruc">{c.identificacion}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+
+
               <form className="miembro-nuevo" onSubmit={agregarMiembro}>
                 <select value={nuevoUid} onChange={(ev) => setNuevoUid(ev.target.value)}>
                   <option value="">Agregar usuario…</option>
@@ -622,46 +668,6 @@ export default function AdminEmpresas() {
                       Sin conservar el acceso, esta empresa dejará de ver ese contribuyente
                       en cuanto se exporte. Se puede volver a autorizar después, desde la empresa nueva.
                     </p>
-                  )}
-                </div>
-              )}
-
-              {/* ── Anexar contribuyentes de otra empresa ───────────────── */}
-              {isPlatformAdmin && empresas.length > 1 && (
-                <div className="bloque">
-                  <h3>Anexar contribuyentes de otra empresa</h3>
-                  <p>
-                    Trae a «{empresaSel?.nombre}» contribuyentes que hoy están en otra empresa.
-                    Se mueven enteros: todos sus períodos con sus facturas, declaraciones y anexos.
-                  </p>
-                  <form className="fila-form" onSubmit={(ev) => { ev.preventDefault(); anexar() }}>
-                    <select value={origenOrg} onChange={(ev) => setOrigenOrg(ev.target.value)}>
-                      <option value="">Desde la empresa…</option>
-                      {empresas.filter((e) => e.org_id !== selectedOrg).map((e) => (
-                        <option key={e.org_id} value={e.org_id}>{e.nombre}</option>
-                      ))}
-                    </select>
-                    <button type="submit" disabled={seleccionOrigen.size === 0 || anexando}>
-                      {anexando ? 'Anexando…' : `Anexar ${seleccionOrigen.size || ''}`}
-                    </button>
-                  </form>
-                  {origenOrg && (
-                    contribOrigen.length === 0 ? (
-                      <p className="vacio">Esa empresa no tiene contribuyentes que traer.</p>
-                    ) : (
-                      <div className="huerfanos-lista">
-                        {contribOrigen.map((c) => (
-                          <label key={c.identificacion}>
-                            <input
-                              type="checkbox"
-                              checked={seleccionOrigen.has(c.identificacion)}
-                              onChange={() => toggleOrigen(c.identificacion)}
-                            />
-                            {c.nombre} <span className="huerfano-ruc">{c.identificacion}</span>
-                          </label>
-                        ))}
-                      </div>
-                    )
                   )}
                 </div>
               )}

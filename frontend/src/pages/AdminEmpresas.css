@@ -143,6 +143,12 @@ button.peligro { background: #fee2e2; color: #b91c1c; }
   color: #94a3b8; margin: 16px 0 6px;
 }
 .bloque > p { font-size: 0.78rem; color: #64748b; margin: 0 0 10px; max-width: 640px; }
+/* Empresa sin cartera: lo único pendiente es poblarla, y el bloque lo dice. */
+.bloque.destacado {
+  border: 1px solid #bfdbfe; border-top-color: #bfdbfe; background: #f0f7ff;
+  border-radius: 10px; padding: 14px; margin-top: 16px;
+}
+.bloque.destacado h3 { color: #1d4ed8; }
 
 .fila-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .fila-form select {
