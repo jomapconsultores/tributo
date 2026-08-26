@@ -1406,7 +1406,8 @@ async def reporte_facturacion(mes: Optional[int] = None, anio: Optional[int] = N
     'total' = se hicieron todas las declaraciones mensuales esperadas; 'parcial' =
     algunas; 'ninguna' = ninguna. Un contribuyente sin servicios mensuales
     contratados queda como 'sin_obligaciones' y no cuenta como faltante."""
-    from routers.reportes import _fetch_in_chunks, _es_mes_actual   # import diferido: reportes usa este módulo
+    # import diferido: reportes usa este módulo
+    from routers.reportes import _fetch_in_chunks, _es_mes_actual, _filas_y_total
 
     sb = get_supabase_client()
     hoy = datetime.now(_EC_TZ_ODOO)
@@ -1456,23 +1457,27 @@ async def reporte_facturacion(mes: Optional[int] = None, anio: Optional[int] = N
         if _es_mes_actual(a.get("created_at"), mes, anio):
             anexo_mes.add(ruc)
 
-    # --- Cobro registrado en el sistema, del mes -----------------------------
-    guardados = fetch_all(lambda: sb.table("reportes_honorarios").select(
-        "identificacion,producto,cobrar,valor,iva_incluido,mes,anio").eq("user_id", user_id))
+    # --- Cobro del mes: lo mismo que ofrece la pantalla de emisión ------------
+    # Se toma de _filas_y_total, no de la tabla en crudo. Leyéndola directo, el
+    # reporte contaba solo lo GUARDADO en el mes y decía "registrado $0.00 · 0
+    # faltan facturar" mientras la pestaña Emitir ofrecía esas mismas facturas:
+    # los valores que vienen arrastrados del mes anterior (propuestos, todavía
+    # sin guardar) quedaban fuera. Una sola fuente, un solo número.
+    filas_hon, _tot_hon, _hist = _filas_y_total(user_id, mes, anio)
     hon = {}
-    for g in guardados:
-        ruc = (g.get("identificacion") or "").strip()
-        if ruc not in nombre_por_ruc or not g.get("cobrar"):
+    for f in filas_hon:
+        ruc = (f.get("identificacion") or "").strip()
+        if ruc not in nombre_por_ruc or not f.get("cobrar"):
             continue
-        if int(g.get("mes") or 0) != mes or int(g.get("anio") or 0) != anio:
+        bruto = round(float(f.get("bruto") or 0), 2)
+        if bruto <= 0:
             continue
-        valor = float(g.get("valor") or 0)
-        if valor <= 0:
-            continue
-        bruto = round(valor if g.get("iva_incluido") else valor * (1 + IVA_RATE), 2)
-        d = hon.setdefault(ruc, {"total": 0.0, "conceptos": []})
+        d = hon.setdefault(ruc, {"total": 0.0, "conceptos": [], "arrastrado": False})
         d["total"] = round(d["total"] + bruto, 2)
-        d["conceptos"].append({"concepto": g.get("producto") or "", "bruto": bruto})
+        d["conceptos"].append({"concepto": f.get("concepto") or "", "bruto": bruto,
+                               "arrastrado": bool(f.get("arrastrado"))})
+        if f.get("arrastrado"):
+            d["arrastrado"] = True      # viene del mes anterior: aún sin guardar
 
     # --- Lo que Odoo tiene realmente emitido de ese mes ----------------------
     fact = facturas_por_mes_por_ruc(set(nombre_por_ruc), anio, mes)
@@ -1481,7 +1486,7 @@ async def reporte_facturacion(mes: Optional[int] = None, anio: Optional[int] = N
     resumen = {
         "contribuyentes": 0,
         "decl_total": 0, "decl_parcial": 0, "decl_ninguna": 0, "sin_obligaciones": 0,
-        "facturados": 0, "pendientes": 0, "difieren": 0, "solo_odoo": 0,
+        "facturados": 0, "pendientes": 0, "difieren": 0, "solo_odoo": 0, "arrastrados": 0,
         "monto_registrado": 0.0, "monto_facturado": 0.0, "monto_pendiente": 0.0,
         "facturas": 0, "autorizadas": 0, "pagadas": 0, "por_cobrar": 0.0,
     }
@@ -1538,6 +1543,8 @@ async def reporte_facturacion(mes: Optional[int] = None, anio: Optional[int] = N
             resumen["difieren"] += 1
         elif estado_fact == "solo_odoo":
             resumen["solo_odoo"] += 1
+        if (h or {}).get("arrastrado"):
+            resumen["arrastrados"] += 1
         resumen["monto_registrado"] = round(resumen["monto_registrado"] + registrado, 2)
         resumen["monto_facturado"] = round(resumen["monto_facturado"] + facturado, 2)
         for f in fs:
@@ -1558,6 +1565,9 @@ async def reporte_facturacion(mes: Optional[int] = None, anio: Optional[int] = N
                 "renta": "declaracion_renta" in hechas_ruc,
             },
             "registrado": registrado,
+            # Alguno de sus valores viene arrastrado del mes anterior: se va a
+            # facturar así salvo que se corrija y se guarde.
+            "arrastrado": bool((h or {}).get("arrastrado")),
             "conceptos": (h or {}).get("conceptos", []),
             "facturado": facturado,
             "diferencia": dif,

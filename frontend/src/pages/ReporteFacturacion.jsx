@@ -151,6 +151,11 @@ export default function ReporteFacturacion({ embebido = false, periodo = null, o
               <div className="rf-kpi-linea"><b className="ok">{r.facturados || 0}</b> facturados</div>
               <div className="rf-kpi-linea"><b className="bad">{r.pendientes || 0}</b> faltan facturar · {fmt(r.monto_pendiente)}</div>
               {r.difieren > 0 && <div className="rf-kpi-linea"><b className="warn">{r.difieren}</b> con monto distinto</div>}
+              {r.arrastrados > 0 && (
+                <div className="rf-kpi-nota" title="Traen el valor del mes anterior porque no se cargó uno para este mes; se factura así salvo que se corrija en «Honorarios»">
+                  ↩ {r.arrastrados} con valor del mes anterior (sin guardar)
+                </div>
+              )}
               {r.solo_odoo > 0 && <div className="rf-kpi-linea"><b className="warn">{r.solo_odoo}</b> solo en Odoo</div>}
             </div>
             <div className="rf-kpi">
@@ -224,8 +229,11 @@ export default function ReporteFacturacion({ embebido = false, periodo = null, o
                       )}
                       {f.declaracion.renta && <div className="rf-detalle">＋ Renta declarada este mes</div>}
                     </td>
-                    <td className="num" title={f.conceptos.map((c) => `${c.concepto}: ${fmt(c.bruto)}`).join('\n')}>
+                    <td className="num" title={f.conceptos.map((c) => `${c.concepto}: ${fmt(c.bruto)}${c.arrastrado ? ' (del mes anterior)' : ''}`).join('\n')}>
                       {f.registrado ? fmt(f.registrado) : '—'}
+                      {f.arrastrado && (
+                        <div className="rf-arrastrado" title="Valor traído del mes anterior: todavía no se guardó uno para este mes">↩ mes anterior</div>
+                      )}
                     </td>
                     <td className="num">{f.facturado ? fmt(f.facturado) : '—'}</td>
                     <td className={`num ${Math.abs(f.diferencia) > 0.02 ? 'warn' : ''}`}>

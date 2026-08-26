@@ -98,3 +98,7 @@
   font-family: inherit; font-size: .72rem; font-weight: 700;
 }
 .rf-fact-ir:hover { background: #eef2f7; }
+
+/* El honorario viene arrastrado del mes anterior: se facturará así salvo que se
+   corrija en «Honorarios». Es lo mismo que ofrece la pestaña de emisión. */
+.rf-arrastrado { font-size: .68rem; font-weight: 700; color: #b9770e; white-space: nowrap; }

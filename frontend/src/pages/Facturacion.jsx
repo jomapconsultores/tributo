@@ -40,7 +40,10 @@ export default function Facturacion() {
   const { tab } = useParams()
   const navigate = useNavigate()
   const [sp, setSp] = useSearchParams()
-  const { isAdmin } = useAccess()   // administrador o socio de la empresa activa
+  // `cargando` importa: mientras el rol no llegó, isAdmin es false y las
+  // pestañas de administrador todavía no figuran. Sin esperar, abrir o recargar
+  // /facturacion/reporte echaba al usuario a la primera pestaña visible.
+  const { isAdmin, loading: cargandoAcceso } = useAccess()
   const puedeFacturar = isAdmin
 
   const visibles = TABS.filter((t) => puedeFacturar || !t.admin)
@@ -79,13 +82,14 @@ export default function Facturacion() {
   // Una pestaña que este rol no puede ver (o una URL vieja mal escrita) lleva a
   // la primera permitida, no a una pantalla vacía. El período se conserva.
   useEffect(() => {
-    if (!visibles.length) return
+    if (cargandoAcceso || !visibles.length) return
     if (!visibles.some((t) => t.ruta === (tab || ''))) {
       navigate(irA(visibles[0].ruta, periodo.clave), { replace: true })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, puedeFacturar])
+  }, [tab, puedeFacturar, cargandoAcceso])
 
+  if (cargandoAcceso) return <div className="fc-cargando">Cargando…</div>
   if (!visibles.length) return <div className="fc-vacio">Sin acceso a facturación.</div>
 
   const hoy = periodoHoy()
