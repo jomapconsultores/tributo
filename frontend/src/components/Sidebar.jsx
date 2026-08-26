@@ -142,7 +142,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
       },
       {
         key: 'pendientes', ico: '⏳', rail: 'Clientes pendientes', title: 'Clientes pendientes',
-        color: 'declaraciones', visible: has('declaraciones') || has('agente_retencion'),
+        color: 'declaraciones',
+        visible: (has('declaraciones') || has('agente_retencion')) && hasSub('decl_pendientes'),
         autoNav: true,
         items: [L('⏳', 'Clientes pendientes', '/clientes-pendientes')],
       },
@@ -166,7 +167,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         // el cobro y facturarlo son el mismo trabajo, y acá quedaban lejos del
         // módulo que los usa. Queda el informe de gestión, que no es del ciclo
         // de cobro (procesos, declaraciones y devoluciones del período).
-        visible: true, autoNav: true,
+        visible: has('gestion') && hasSub('gest_reportes'), autoNav: true,
         match: (p) => p.startsWith('/informe-general'),
         items: [
           L('📊', 'Informe general', '/informe-general'),
@@ -179,7 +180,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         // cosa. Queda el atajo a Honorarios, que es por donde se empieza el mes.
         // autoNav + 'Facturación' primero: el clic en el ícono sigue llevando
         // al módulo, como antes de mudar la carga de honorarios acá.
-        visible: true, autoNav: true,
+        visible: has('gestion') && hasSub('gest_facturacion'), autoNav: true,
         match: (p) => p.startsWith('/facturacion') || p.startsWith('/odoo-facturacion')
           || p.startsWith('/reportes'),
         items: [
@@ -189,16 +190,16 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
       },
       {
         key: 'capacitaciones', ico: '🎓', rail: 'Capacitaciones', title: 'Capacitaciones',
-        visible: true, autoNav: true,
+        visible: has('gestion') && hasSub('gest_capacitaciones'), autoNav: true,
         items: [L('🎓', 'Capacitaciones', '/capacitaciones')],
       },
       {
         key: 'clientes', ico: '👤', rail: 'Clientes', title: 'Clientes',
-        visible: true, custom: 'clientes',
+        visible: has('datos') && hasSub('dat_clientes'), custom: 'clientes',
       },
       {
         key: 'compradores', ico: '👥', rail: 'Compradores', title: 'Compradores',
-        visible: has('ingresos_ice') && hasSub('ice_compradores'), autoNav: true,
+        visible: has('datos') && hasSub('dat_compradores'), autoNav: true,
         items: [L('👥', 'Compradores', '/compradores')],
       },
       {

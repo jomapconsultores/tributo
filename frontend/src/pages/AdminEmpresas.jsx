@@ -20,6 +20,8 @@ const MOD_LABEL = {
   ingresos_ice: 'Ingresos ICE',
   declaraciones: 'Declaraciones',
   agente_retencion: 'Agente de retención',
+  gestion: 'Gestión',
+  datos: 'Datos',
 }
 
 export default function AdminEmpresas() {

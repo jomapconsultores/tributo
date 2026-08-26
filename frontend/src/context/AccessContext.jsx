@@ -110,5 +110,12 @@ export function homeFor(has, hasSub = () => true) {
   if (has('declaraciones') && hasSub('decl_ice')) return '/declaracion-ice'
   if (has('declaraciones') && hasSub('decl_iva')) return '/declaracion-iva'
   if (has('agente_retencion') && hasSub('agret_retenciones')) return '/retenciones-efectuadas'
+  // Gestión y Datos van al final: son el trabajo alrededor de los impuestos,
+  // pero para quien SOLO tenga eso son su pantalla de entrada —sin esto caía
+  // en «sin acceso» teniendo pantallas que puede ver—.
+  if (has('gestion') && hasSub('gest_facturacion')) return '/facturacion'
+  if (has('gestion') && hasSub('gest_reportes')) return '/informe-general'
+  if (has('gestion') && hasSub('gest_capacitaciones')) return '/capacitaciones'
+  if (has('datos') && hasSub('dat_compradores')) return '/compradores'
   return '/sin-acceso'
 }

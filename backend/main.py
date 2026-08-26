@@ -9,7 +9,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from config import get_settings
 from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router, retenciones_efectuadas, devoluciones_iva, diagnostico, organizations, bajadores
-from routers.access import require_module, require_submodule, es_super_admin
+from routers.access import require_module, require_submodule, require_submodule_any, es_super_admin
 import orgs as _orgs
 import os
 import sentry_sdk
@@ -310,6 +310,11 @@ AGRET = [Depends(require_module("agente_retencion"))]
 def SUB(sub):
     return [Depends(require_submodule(sub))]
 
+
+def SUB_ANY(*subs):
+    """Para el router que sirve a más de una pantalla (ver require_submodule_any)."""
+    return [Depends(require_submodule_any(*subs))]
+
 app.include_router(classification.router, dependencies=SUB("gastos_clasificar"))
 app.include_router(invoices.router, dependencies=SUB("gastos_facturas"))
 app.include_router(retentions.router, dependencies=RETEN)
@@ -320,15 +325,17 @@ app.include_router(sales_iva.router, dependencies=SUB("ice_ingresos_iva"))
 app.include_router(products.router, dependencies=SUB("ice_catalogo"))
 app.include_router(rebajas.router, dependencies=SUB("ice_rebajas"))
 app.include_router(anexos.router, dependencies=SUB("ice_anexo"))
-app.include_router(compradores.router, dependencies=SUB("ice_compradores"))
+app.include_router(compradores.router, dependencies=SUB("dat_compradores"))
 app.include_router(resources.router, dependencies=ICEMOD)  # referencia compartida: solo módulo
 app.include_router(declaraciones.router, dependencies=DECL)  # submódulo IVA/ICE/103 se valida por tipo en el router
 app.include_router(devoluciones_iva.router, dependencies=SUB("decl_devoluciones"))  # devolución IVA adultos mayores/discapacidad
 app.include_router(diagnostico.router)  # Fase 0: chequeo de conectividad al portal SRI (temporal)
 app.include_router(xml_originales.router)  # descarga de XML originales (gastos/ingresos/retenciones)
-app.include_router(reportes.router)  # REPORTES: honorarios a cobrar por contribuyente/producto
-app.include_router(odoo_factura.router)  # ODOO: facturación directa (solo admin)
-app.include_router(capacitaciones.router)  # CAPACITACIONES: reservas con autorización de socio/admin
+# Los honorarios se cargan desde Facturación y también son la materia del
+# informe general: con un solo permiso, quien tuviera una pantalla perdería la otra.
+app.include_router(reportes.router, dependencies=SUB_ANY("gest_reportes", "gest_facturacion"))
+app.include_router(odoo_factura.router, dependencies=SUB("gest_facturacion"))  # ODOO: facturación directa
+app.include_router(capacitaciones.router, dependencies=SUB("gest_capacitaciones"))
 app.include_router(webauthn_router.router)  # WEBAUTHN: biometría (huella/rostro)
 # BAJADORES: permiso de uso de los marcadores del SRI. Va SIN dependencia de
 # submódulo a propósito: `/permiso` lo consulta el propio marcador desde el

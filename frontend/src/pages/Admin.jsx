@@ -15,6 +15,8 @@ const MODS = [
   { key: 'ingresos_ice', label: 'ICE' },
   { key: 'declaraciones', label: 'Declar.' },
   { key: 'agente_retencion', label: 'Agente Ret.' },
+  { key: 'gestion', label: 'Gestión' },
+  { key: 'datos', label: 'Datos' },
 ]
 const PLANES = [
   { key: 'ice', label: 'Cálculo previo ICE ($50)' },

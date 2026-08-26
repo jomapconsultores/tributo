@@ -32,10 +32,15 @@ DIAS_MES = 30
 DESCUENTOS = {1: 0.0, 3: 0.05, 6: 0.10, 12: 0.25}
 
 # Paquetes → módulos que activan
+# 'gestion' y 'datos' van en todos los planes: son el trabajo alrededor de los
+# impuestos (cobros, facturación, capacitaciones) y las fichas de contribuyentes
+# y compradores, no un impuesto que se contrate aparte. Quien los deba tener
+# recortados se los recorta el administrador en su empresa.
+_TRANSVERSAL = ["gestion", "datos"]
 PLANES = {
-    "ice": ["ingresos_ice"],
-    "gastos_ret": ["gastos", "retenciones"],
-    "completo": ["gastos", "retenciones", "ingresos_ice", "declaraciones"],
+    "ice": ["ingresos_ice"] + _TRANSVERSAL,
+    "gastos_ret": ["gastos", "retenciones"] + _TRANSVERSAL,
+    "completo": ["gastos", "retenciones", "ingresos_ice", "declaraciones"] + _TRANSVERSAL,
 }
 # Precio neto mensual (sin IVA) por plan
 PLAN_PRECIO = {"ice": 50, "gastos_ret": 50, "completo": 150}

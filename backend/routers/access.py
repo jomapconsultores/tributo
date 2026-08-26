@@ -35,7 +35,12 @@ import orgs
 
 router = APIRouter(prefix="/api/access", tags=["access"])
 
-MODULOS = ["gastos", "retenciones", "ingresos_ice", "declaraciones", "agente_retencion"]
+# 'gestion' y 'datos' son transversales: no son un impuesto que se declara, son
+# el trabajo alrededor (qué se cobra, qué se factura, a quién se capacita) y las
+# fichas de contribuyentes y compradores. Existen como módulo porque hasta ahora
+# esas pantallas no tenían permiso ninguno y las veía cualquiera.
+MODULOS = ["gastos", "retenciones", "ingresos_ice", "declaraciones", "agente_retencion",
+           "gestion", "datos"]
 
 # Catálogo de SUBMÓDULOS (pantallas sueltas dentro de cada módulo). El
 # administrador puede restringir a un usuario a un subconjunto de estas
@@ -53,13 +58,24 @@ SUBMODULOS = {
         {"key": "ice_xml", "label": "Ingresos ICE (XML)"},
         {"key": "ice_catalogo", "label": "Catálogo de productos"},
         {"key": "ice_rebajas", "label": "Rebajas y exenciones"},
-        {"key": "ice_compradores", "label": "Compradores"},
         {"key": "ice_ingresos_iva", "label": "Ingresos IVA"},
     ],
     "declaraciones": [
         {"key": "decl_iva", "label": "Declaración IVA"},
         {"key": "decl_ice", "label": "Declaración ICE"},
         {"key": "decl_devoluciones", "label": "Devoluciones IVA (adultos mayores)"},
+        {"key": "decl_pendientes", "label": "Clientes pendientes"},
+    ],
+    "gestion": [
+        {"key": "gest_reportes", "label": "Informe general"},
+        {"key": "gest_facturacion", "label": "Facturación y honorarios"},
+        {"key": "gest_capacitaciones", "label": "Capacitaciones"},
+    ],
+    "datos": [
+        {"key": "dat_clientes", "label": "Contribuyentes"},
+        # Compradores se declara aquí y ya no en ICE: es una ficha de datos, y
+        # atarla a Ingresos ICE obligaba a contratar ICE para poder verla.
+        {"key": "dat_compradores", "label": "Compradores"},
     ],
     "agente_retencion": [
         {"key": "agret_retenciones", "label": "Retenciones efectuadas"},
@@ -393,6 +409,24 @@ def puede_submodulo(user_id: str, sub: str) -> bool:
     if es_super_admin(user_id):
         return True
     return sub in submodulos_permitidos(user_id).get(modulo, set())
+
+
+def require_submodule_any(*subs: str):
+    """Como require_submodule, pero basta con UNO de los submódulos.
+
+    Hay routers que sirven a dos pantallas distintas —los honorarios del mes se
+    cargan desde Facturación y también alimentan el informe— y exigir un único
+    permiso dejaría fuera a quien tiene la otra."""
+    pares = [(SUBMODULO_MODULO.get(s), s) for s in subs]
+
+    async def dep(user_id: str = Depends(get_current_user)):
+        mods = modulos_de(user_id)
+        for modulo, sub in pares:
+            if (not modulo or modulo in mods) and puede_submodulo(user_id, sub):
+                return user_id
+        raise HTTPException(status_code=403,
+                            detail=f"Pantalla no habilitada: {' o '.join(subs)}")
+    return dep
 
 
 def require_submodule(sub: str):

@@ -68,10 +68,12 @@ function RequireSubmodule({ modulo, sub, children }) {
 // Accesible si el usuario tiene CUALQUIERA de los módulos indicados (p.ej.
 // Clientes pendientes: declaraciones o agente de retención). Redirige a un
 // destino accesible si no tiene ninguno.
-function RequireAnyModule({ modulos, children }) {
+function RequireAnyModule({ modulos, sub, children }) {
   const { has, hasSub, loading } = useAccess()
   if (loading) return <PageLoader />
   if (!modulos.some((m) => has(m))) return <Navigate to={homeFor(has, hasSub)} replace />
+  // La pantalla puede estar restringida aunque el módulo esté contratado.
+  if (sub && !hasSub(sub)) return <Navigate to={homeFor(has, hasSub)} replace />
   return children
 }
 
@@ -261,14 +263,14 @@ function App() {
               <Route path="/declaracion-103" element={<RequireSubmodule modulo="agente_retencion" sub="agret_103"><Declaraciones tipo="103" /></RequireSubmodule>} />
               <Route path="/devoluciones-iva/tercera-edad" element={<RequireSubmodule modulo="declaraciones" sub="decl_devoluciones"><DevolucionesIvaTerceraEdad beneficiario="tercera_edad" /></RequireSubmodule>} />
               <Route path="/devoluciones-iva/discapacidad" element={<RequireSubmodule modulo="declaraciones" sub="decl_devoluciones"><DevolucionesIvaTerceraEdad beneficiario="discapacidad" /></RequireSubmodule>} />
-              <Route path="/clientes-pendientes" element={<RequireAnyModule modulos={['declaraciones', 'agente_retencion']}><ClientesPendientes /></RequireAnyModule>} />
+              <Route path="/clientes-pendientes" element={<RequireAnyModule modulos={['declaraciones', 'agente_retencion']} sub="decl_pendientes"><ClientesPendientes /></RequireAnyModule>} />
               <Route path="/ingresos-iva" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_ingresos_iva"><IngresosIva /></RequireSubmodule>} />
               <Route path="/calculo-ice" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_calculo"><CalculoICE /></RequireSubmodule>} />
               <Route path="/anexo-pvp-ice" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_anexo"><AnexoPVPICE /></RequireSubmodule>} />
               <Route path="/recursos-ice" element={<RequireModule modulo="ingresos_ice"><RecursosICE /></RequireModule>} />
               <Route path="/ice" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_xml"><ICE /></RequireSubmodule>} />
               <Route path="/catalogo-productos" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_catalogo"><CatalogoProductos /></RequireSubmodule>} />
-              <Route path="/compradores" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_compradores"><Compradores /></RequireSubmodule>} />
+              <Route path="/compradores" element={<RequireSubmodule modulo="datos" sub="dat_compradores"><Compradores /></RequireSubmodule>} />
               <Route path="/rebajas-exenciones" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_rebajas"><RebajasExenciones /></RequireSubmodule>} />
               {/* Mi cuenta: datos propios y cambio de clave. Sin restricción de
                   módulo: todo usuario con sesión debe poder administrar su cuenta. */}
@@ -277,16 +279,16 @@ function App() {
               <Route path="/reportes" element={<RedirHonorarios modo="faltantes" />} />
               <Route path="/reportes/faltantes" element={<RedirHonorarios modo="faltantes" />} />
               <Route path="/reportes/realizados" element={<RedirHonorarios modo="realizados" />} />
-              <Route path="/informe-general" element={<InformeGeneral />} />
-              <Route path="/capacitaciones" element={<Capacitaciones />} />
+              <Route path="/informe-general" element={<RequireSubmodule modulo="gestion" sub="gest_reportes"><InformeGeneral /></RequireSubmodule>} />
+              <Route path="/capacitaciones" element={<RequireSubmodule modulo="gestion" sub="gest_capacitaciones"><Capacitaciones /></RequireSubmodule>} />
               <Route path="/admin" element={<RequireSuperAdmin><Admin /></RequireSuperAdmin>} />
               <Route path="/admin/credenciales" element={<RequireCredenciales><AdminCredentials /></RequireCredenciales>} />
               {/* TODA la facturación en una pantalla con pestañas. Sin guard acá: el
                   módulo decide por pestaña —emitir, reporte y cruce son de
                   admin/socio; "Facturas de Odoo" es de solo lectura y el backend
                   ya filtra por RUC autorizado para el rol 'cliente'—. */}
-              <Route path="/facturacion" element={<Facturacion />} />
-              <Route path="/facturacion/:tab" element={<Facturacion />} />
+              <Route path="/facturacion" element={<RequireSubmodule modulo="gestion" sub="gest_facturacion"><Facturacion /></RequireSubmodule>} />
+              <Route path="/facturacion/:tab" element={<RequireSubmodule modulo="gestion" sub="gest_facturacion"><Facturacion /></RequireSubmodule>} />
               {/* Las direcciones viejas siguen funcionando: marcadores, enlaces
                   guardados y lo que quedó escrito en otras pantallas. */}
               <Route path="/odoo-facturacion" element={<Navigate to="/facturacion" replace />} />
