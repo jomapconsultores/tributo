@@ -134,9 +134,15 @@ export default function BajadorSRI({ which = 'gastos', onClose }) {
 
   const fijarHref = (el) => { if (el && href) el.setAttribute('href', href) }
 
+  // El panel tiene dos tamaños: la guía completa cuando hay permiso, y una
+  // tarjeta corta cuando no lo hay o todavía se está comprobando. Sin llave, el
+  // instructivo no sirve para nada —no hay script que copiar— y mostrarlo dejaba
+  // una ventana larguísima con la negativa perdida arriba.
+  const corto = !permiso
+
   return (
     <div className="bsri-bg" onClick={onClose}>
-      <div className="bsri-modal" onClick={(e) => e.stopPropagation()}>
+      <div className={corto ? 'bsri-modal corto' : 'bsri-modal'} onClick={(e) => e.stopPropagation()}>
         <div className="bsri-head">
           <strong>{b.titulo}</strong>
           <button className="bsri-x" onClick={onClose} title="Cerrar">✕</button>
@@ -148,14 +154,20 @@ export default function BajadorSRI({ which = 'gastos', onClose }) {
           )}
           {permiso === false && (
             <div className="bsri-negado">
-              <p><strong>Este bajador no es de uso libre.</strong> {negado}</p>
+              <p className="bsri-negado-tit">🔒 Este bajador no es de uso libre</p>
+              <p className="bsri-negado-txt">{negado}</p>
               <p className="bsri-nota">
                 La autorización se da de a una persona, desde el sistema, y queda atada a
                 una sola máquina. Si te corresponde tenerlo, pedilo al administrador.
               </p>
+              <div className="bsri-acciones">
+                <button className="bsri-btn primary" onClick={onClose}>Entendido</button>
+              </div>
             </div>
           )}
-          {permiso && permiso.equipo_activado && (
+          {permiso && (
+          <>
+          {permiso.equipo_activado && (
             <p className="bsri-nota">
               🔒 Tu permiso ya está activado en un equipo{permiso.equipo ? ` (${permiso.equipo})` : ''}.
               En otra máquina no va a funcionar hasta que lo liberen.
@@ -225,6 +237,8 @@ export default function BajadorSRI({ which = 'gastos', onClose }) {
               No se pudo copiar automáticamente. Abrí la consola del navegador en esta página,
               o instalalo arrastrando el botón.
             </p>
+          )}
+          </>
           )}
         </div>
       </div>

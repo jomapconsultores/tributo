@@ -43,3 +43,10 @@
   margin-top: 26px; padding: 10px 12px; border-left: 3px solid #cfd8dc;
   background: #fafafa; color: #555; font-size: 12px; line-height: 1.6; max-width: 80ch;
 }
+
+/* La llave de devoluciones también cierra acciones dentro de la app, no solo el
+   marcador: conviene que el administrador lo lea antes de darla. */
+.ab-nota-devol {
+  margin-top: 8px; padding: 8px 10px; border-left: 3px solid #1e6b33;
+  background: #f0fdf4; border-radius: 0 8px 8px 0; line-height: 1.5;
+}

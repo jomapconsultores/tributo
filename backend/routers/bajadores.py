@@ -172,9 +172,8 @@ async def permiso(body: PermisoIn, request: Request):
     return JSONResponse({"ok": True, "motivo": "ok"}, headers=CORS_ABIERTO)
 
 
-@router.get("/mi-llave")
-async def mi_llave(cual: str = "todos", user_id: str = Depends(get_current_user)):
-    """La llave de quien está usando el sistema, para incrustarla en su marcador.
+def llave_activa(user_id: str, cual: str = "todos") -> Optional[dict]:
+    """La llave vigente de esta persona para ese uso, o None.
 
     Al administrador de la plataforma se le crea sola —es el dueño de la
     herramienta—; el resto necesita que se la habiliten uno por uno."""
@@ -188,6 +187,29 @@ async def mi_llave(cual: str = "todos", user_id: str = Depends(get_current_user)
             "autorizada_por": user_id, "nota": "Dueño de la herramienta",
         }).execute()
         llave = (res.data or [None])[0]
+    return llave
+
+
+def requiere_llave(cual: str, que: str = "los bajadores del SRI"):
+    """Dependencia de ruta: sin autorización nominal vigente, no se pasa.
+
+    Es la MISMA llave que habilita los marcadores, usada acá para cerrar
+    acciones de la propia app (armar y enviar una devolución de IVA). Tener el
+    módulo contratado no alcanza: la autorización se da de a uno, en
+    Administración → Bajadores SRI, y revocarla corta el acceso en el acto."""
+    def _dep(user_id: str = Depends(get_current_user)) -> str:
+        if not llave_activa(user_id, cual):
+            raise HTTPException(status_code=403, detail=(
+                f"No estás autorizado a usar {que}. La autorización se da de a uno, "
+                "desde el sistema: pedila al administrador."))
+        return user_id
+    return _dep
+
+
+@router.get("/mi-llave")
+async def mi_llave(cual: str = "todos", user_id: str = Depends(get_current_user)):
+    """La llave de quien está usando el sistema, para incrustarla en su marcador."""
+    llave = llave_activa(user_id, cual)
     if not llave:
         raise HTTPException(status_code=403, detail=(
             "No estás autorizado a usar los bajadores del SRI. La autorización se da "
@@ -198,6 +220,7 @@ async def mi_llave(cual: str = "todos", user_id: str = Depends(get_current_user)
         "equipo_activado": bool(llave.get("dispositivo")),
         "equipo": llave.get("dispositivo_nombre"),
     }
+
 
 
 # --- Administración: quién puede, desde qué máquina, y con qué historial -----

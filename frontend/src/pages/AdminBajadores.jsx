@@ -19,7 +19,7 @@ const CUAL_LABEL = {
   todos: 'Los tres',
   gastos: 'Gastos',
   emitidos: 'Ingresos',
-  devolucion: 'Devolución IVA',
+  devolucion: 'Devolución IVA (marcador + armar y presentar)',
 }
 
 const RESULTADO_LABEL = {
@@ -97,6 +97,12 @@ export default function AdminBajadores() {
           Los marcadores no son de uso libre: cada uno lleva la llave de la persona que lo
           bajó y, antes de tocar el portal, pregunta acá si sigue habilitada y si es su
           máquina. Revocar apaga el marcador en el acto.
+        </p>
+        <p className="ab-nota-devol">
+          La llave de <strong>Devolución IVA</strong> hace algo más que habilitar el marcador:
+          sin ella, en el módulo de Devoluciones se puede <em>consultar</em>, pero no armar una
+          solicitud, ni guardarla, ni mandarla al SRI, ni marcarla presentada. Tener la pantalla
+          habilitada no alcanza.
         </p>
       </header>
 

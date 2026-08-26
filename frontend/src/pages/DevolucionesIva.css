@@ -457,3 +457,8 @@
   border-radius: 6px;
   padding: 8px 10px;
 }
+
+/* Aviso de "podés mirar, no presentar": la autorización de devoluciones es
+   nominal, igual que la de los bajadores. */
+.dv-sin-permiso { line-height: 1.5; }
+.dv-sin-permiso strong { display: inline; }

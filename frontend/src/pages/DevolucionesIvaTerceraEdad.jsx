@@ -24,6 +24,9 @@ const DV_STEPS = [
 // abre la app y se lo pasa por `postMessage`. Solo se acepta de ahí.
 const ES_PORTAL_SRI = /^https:\/\/([a-z0-9-]+\.)*sri\.gob\.ec$/i
 
+// Lo que se dice cuando la acción existe pero no está habilitada a esta persona.
+const SIN_PERMISO_MSG = 'Necesitás autorización a tu nombre para armar y presentar devoluciones de IVA.'
+
 const ESTADO_LABEL = {
   borrador: '📝 Borrador',
   presentada: '📤 Presentada',
@@ -807,20 +810,27 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
   // El marcador que se arrastra desde acá va con la llave de quien lo baja: sin
   // ella no trabaja en el portal. Si esta persona no está autorizada, el enlace
   // queda sin href y el panel (que se abre al tocarlo) explica por qué.
+  // La misma llave que habilita el enviador habilita ARMAR la devolución: sin
+  // ella el backend rechaza guardar, ingresar el listado del portal, presentar y
+  // borrar. Se pregunta al entrar para decirlo de frente, y no que alguien
+  // revise cien comprobantes para enterarse recién al guardar.
   const [llaveBajador, setLlaveBajador] = useState('')
+  const [autorizado, setAutorizado] = useState(null)   // null = preguntando
   useEffect(() => {
     let vigente = true
     bajadoresAPI.miLlave('devolucion')
       .then((r) => {
         if (!vigente) return
         setLlaveBajador(r.data?.llave || '')
+        setAutorizado(true)
         // Y se la pasamos a la extensión, que inyecta el enviador en el portal:
         // su copia es igual para todos y sin llave no puede pedir permiso.
         publicarLlave(r.data?.llave)
       })
-      .catch(() => { if (vigente) setLlaveBajador('') })
+      .catch(() => { if (vigente) { setLlaveBajador(''); setAutorizado(false) } })
     return () => { vigente = false }
   }, [])
+  const sinPermiso = autorizado === false
   const hrefEnviador = (el) => {
     if (el && llaveBajador) el.setAttribute('href', conPermiso(ENVIADOR_DEVOLUCION_HREF, llaveBajador))
   }
@@ -1020,6 +1030,15 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
 
       {msg && <div className={`dv-msg ${msg.tipo}`}>{msg.texto}</div>}
 
+      {sinPermiso && (
+        <div className="dv-msg err dv-sin-permiso">
+          🔒 <strong>Podés consultar, pero no presentar.</strong> Armar una devolución,
+          guardarla y mandarla al SRI necesita autorización a tu nombre —la misma llave
+          que habilita los bajadores—. Se da de a uno, en Administración → Bajadores SRI:
+          pedila al administrador.
+        </div>
+      )}
+
       {periodosPorHacer.length > 0 && (
         <section className="dv-periodos">
           <div className="dv-periodos-head">
@@ -1067,7 +1086,9 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
           {lote.size > 0 && (
             <div className="dv-lote-barra">
               <span>{lote.size} mes(es) marcado(s) para preparar automáticamente</span>
-              <button className="dv-btn primary" onClick={procesarLote} disabled={procesandoLote}>
+              <button className="dv-btn primary" onClick={procesarLote}
+                disabled={procesandoLote || sinPermiso}
+                title={sinPermiso ? SIN_PERMISO_MSG : undefined}>
                 {procesandoLote ? 'Preparando…' : '⚙️ Preparar los meses marcados'}
               </button>
               <button className="dv-btn" onClick={() => setLote(new Set())}>Desmarcar</button>
@@ -1099,12 +1120,14 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
         <button
           className="dv-btn primary"
           onClick={pegarPortal}
-          title="Ingresar el listado que el portal del SRI muestra del período (copialo con el enviador, en el SRI)"
+          disabled={sinPermiso}
+          title={sinPermiso ? SIN_PERMISO_MSG
+            : 'Ingresar el listado que el portal del SRI muestra del período (copialo con el enviador, en el SRI)'}
         >📥 Pegar comprobantes del portal</button>
         <button
           className="dv-btn"
           onClick={limpiarPeriodo}
-          disabled={!comps.length && !ocultos.length && !solicitudActual}
+          disabled={sinPermiso || (!comps.length && !ocultos.length && !solicitudActual)}
           title="Vaciar la devolución de este mes (borra la solicitud y el listado traído del portal) para armarla de nuevo. No borra las facturas de Gastos."
         >🧹 Limpiar comprobantes</button>
         {claveSri && (
@@ -1163,7 +1186,9 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
           <span>IVA a solicitar</span><strong>{fmtMoney(totales.solicitar)}</strong>
           {totales.excedente > 0 && <em>supera el tope en {fmtMoney(totales.excedente)}</em>}
         </div>
-        <button className="dv-btn primary" onClick={guardar} disabled={guardando || !seleccion.size}>
+        <button className="dv-btn primary" onClick={guardar}
+          disabled={guardando || !seleccion.size || sinPermiso}
+          title={sinPermiso ? SIN_PERMISO_MSG : undefined}>
           {guardando ? 'Guardando…' : (solicitudActual ? '💾 Actualizar solicitud' : '💾 Guardar solicitud')}
         </button>
       </div>
@@ -1370,13 +1395,17 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
                       : '—'}
                   </td>
                   <td>
-                    <select value={s.estado} onChange={(e) => cambiarEstado(s, e.target.value)}>
+                    <select value={s.estado} disabled={sinPermiso}
+                      title={sinPermiso ? SIN_PERMISO_MSG : undefined}
+                      onChange={(e) => cambiarEstado(s, e.target.value)}>
                       {Object.entries(ESTADO_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                   </td>
                   <td className="dv-acciones">
                     <button className="dv-btn primary" onClick={() => enviar(s)}
-                      title="Preparar el envío al portal del SRI y registrarlo">📤 Enviar al SRI</button>
+                      disabled={sinPermiso}
+                      title={sinPermiso ? SIN_PERMISO_MSG
+                        : 'Preparar el envío al portal del SRI y registrarlo'}>📤 Enviar al SRI</button>
                     {s.estado === 'borrador' && (
                       <button className="dv-btn" onClick={() => registrarConstancia(s)}
                         title="Ya la presentaste en el portal: cargá acá la constancia sin volver a enviar">
@@ -1384,7 +1413,8 @@ function PantallaDevolucion({ beneficiario, cfg, idents_svc, openNewClient, sele
                       </button>
                     )}
                     <button className="dv-btn" onClick={() => exportar(s)} title="Exportar Excel">📥 Excel</button>
-                    <button className="dv-btn" onClick={() => eliminar(s)} title="Eliminar">🗑️</button>
+                    <button className="dv-btn" onClick={() => eliminar(s)} disabled={sinPermiso}
+                      title={sinPermiso ? SIN_PERMISO_MSG : 'Eliminar'}>🗑️</button>
                   </td>
                 </tr>
               ))}

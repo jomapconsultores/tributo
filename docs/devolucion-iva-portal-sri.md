@@ -456,3 +456,28 @@ internet o con el backend caído, los bajadores no correrían).
 Se prueba con `python scripts/smoke_permiso_bajadores.py --api http://127.0.0.1:8017`
 (llave desconocida, activación, otra máquina, revocada y bitácora) y con el modo
 `sin_permiso` de `scripts/test_enviador_devolucion.py`.
+
+### La misma llave cierra el módulo de Devoluciones (2026-08-25)
+
+Cerrar solo el marcador dejaba media puerta abierta: el enviador pedía permiso,
+pero armar la solicitud en la app no pedía nada más que tener la pantalla. Ahora
+la llave `devolucion` (o `todos`) también hace falta **dentro** del módulo.
+
+- **Consultar sigue abierto** a quien tenga el submódulo `decl_devoluciones`:
+  ver períodos, comprobantes, solicitudes guardadas, el reporte y el Excel.
+- **Escribir y presentar, no.** Exigen llave nominal: guardar o actualizar la
+  solicitud, ingresar el listado del portal, preparar meses en lote, limpiar el
+  período, aprender el rubro de un proveedor, cambiar el estado, pedir el
+  paquete de envío, marcarla presentada y eliminarla. Son los endpoints que en
+  `routers/devoluciones_iva.py` llevan `AUTORIZADO`
+  (`requiere_llave("devolucion", ...)`, definido en `routers/bajadores.py`).
+- **Se avisa al entrar**, no al guardar: la pantalla pregunta por la llave al
+  abrirse y, si no la hay, muestra el aviso y deja los botones de acción
+  apagados. Quien revisa cien comprobantes no se entera recién al final.
+- **No hay migración**: nadie queda autorizado por haber usado el módulo antes.
+  Solo el administrador de plataforma arranca con llave; al resto se lo habilita
+  uno por uno en *Administración → Bajadores SRI*.
+
+La pantalla lo sabe por `GET /api/bajadores/mi-llave?cual=devolucion`, que ya
+pedía para el enviador: un 403 ahí es exactamente "esta persona no puede armar
+ni presentar".

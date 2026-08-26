@@ -5,21 +5,41 @@
   background: rgba(15, 23, 42, 0.55);
   display: flex; align-items: center; justify-content: center; padding: 16px;
 }
+/* La ventana no crece con la pantalla: el instructivo tiene un ancho de lectura
+   y estirarlo lo vuelve ilegible. Encabezado fijo y SOLO el cuerpo con scroll,
+   para que el título del bajador y la ✕ estén siempre a la vista. */
 .bsri-modal {
-  width: min(620px, 100%); max-height: 88vh; overflow: auto;
+  width: min(620px, 100%); max-height: min(88vh, 760px);
+  display: flex; flex-direction: column; overflow: hidden;
   background: #fff; border-radius: 12px; box-shadow: 0 18px 45px rgba(0, 0, 0, 0.3);
   font-size: 0.9rem; color: #1f2937;
 }
+/* Sin permiso (o mientras se comprueba) no hay guía que mostrar: la ventana se
+   achica a la medida del aviso en vez de quedar larga y medio vacía. */
+.bsri-modal.corto { width: min(430px, 100%); max-height: min(70vh, 420px); }
+
 .bsri-head {
-  display: flex; align-items: center; justify-content: space-between;
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 12px 16px; border-bottom: 1px solid #e5e7eb;
   background: #1e6b33; color: #fff; border-radius: 12px 12px 0 0;
 }
-.bsri-head strong { font-size: 1rem; }
+.bsri-head strong { font-size: 1rem; line-height: 1.3; }
 .bsri-x {
+  flex: 0 0 auto;
   background: transparent; border: 0; color: #fff; font-size: 1.1rem; cursor: pointer;
+  line-height: 1; padding: 2px 4px;
 }
-.bsri-body { padding: 14px 16px 18px; }
+.bsri-body { flex: 1 1 auto; overflow-y: auto; padding: 14px 16px 18px; }
+
+/* Aviso de "no autorizado": es todo lo que se muestra, así que se lee solo. */
+.bsri-negado {
+  border: 1px solid #fecaca; border-left: 4px solid #dc2626; border-radius: 10px;
+  background: #fef2f2; padding: 12px 14px;
+}
+.bsri-negado-tit { margin: 0 0 6px; font-weight: 700; color: #991b1b; font-size: 0.95rem; }
+.bsri-negado-txt { margin: 0; line-height: 1.5; color: #7f1d1d; }
+.bsri-negado .bsri-acciones { margin-top: 12px; }
 .bsri-intro { margin: 0 0 12px; line-height: 1.5; color: #374151; }
 
 .bsri-via {
@@ -41,7 +61,8 @@
 .bsri-btn.primary:hover { background: #17562a; }
 
 .bsri-drag {
-  display: inline-block; margin-bottom: 10px; padding: 8px 12px;
+  display: inline-block; max-width: 100%; overflow-wrap: anywhere;
+  margin-bottom: 10px; padding: 8px 12px;
   border: 1px dashed #1e6b33; border-radius: 8px; background: #eaf6ec;
   color: #1e6b33; font-weight: 600; font-size: 0.85rem; cursor: grab; text-decoration: none;
 }

@@ -31,6 +31,13 @@ from tenancy import assert_client_owner, filtro_org
 from services.periodo import (periodo_cliente_ext, etiqueta_periodo, rango_semestre,
                               semestre_de_mes, mes_anio_de_fecha)
 from services.activity import registrar
+from routers.bajadores import requiere_llave
+
+# Armar una devolución y mandarla al SRI no es de uso libre: además del
+# submódulo (que da la PANTALLA), hace falta la autorización nominal —la misma
+# llave que habilita los marcadores—. Consultar y ver lo ya hecho queda
+# abierto a quien tenga la pantalla; escribir y presentar, no.
+AUTORIZADO = Depends(requiere_llave("devolucion", "las devoluciones de IVA"))
 
 router = APIRouter(prefix="/api/devoluciones-iva", tags=["devoluciones-iva"])
 
@@ -595,7 +602,7 @@ class RubroProveedorIn(BaseModel):
 
 @router.post("/rubro-proveedor")
 async def aprender_rubro_proveedor(body: RubroProveedorIn,
-                                   user_id: str = Depends(get_current_user)):
+                                   user_id: str = AUTORIZADO):
     """Graba el tipo de gasto que el usuario eligió A MANO para un proveedor.
 
     Antes esto se aprendía solo al guardar la solicitud. Clasificar quince
@@ -1204,7 +1211,7 @@ def _guardar_solicitud(sb, user_id: str, client_id: str, tipo: str, porcentaje,
 
 
 @router.post("/solicitudes")
-async def guardar_solicitud(body: SolicitudIn, user_id: str = Depends(get_current_user)):
+async def guardar_solicitud(body: SolicitudIn, user_id: str = AUTORIZADO):
     """Crea/reemplaza la solicitud del período pedido (queda en borrador)."""
     sb = get_supabase_client()
     assert_client_owner(body.client_id, user_id)
@@ -1238,7 +1245,7 @@ class PortalIn(BaseModel):
 
 
 @router.post("/portal")
-async def ingresar_del_portal(body: PortalIn, user_id: str = Depends(get_current_user)):
+async def ingresar_del_portal(body: PortalIn, user_id: str = AUTORIZADO):
     """Ingresa al sistema el listado que el portal del SRI muestra del período.
 
     El trámite dejó de ser "cargar facturas": el SRI lista él mismo lo que
@@ -1311,7 +1318,7 @@ class ExcluidosIn(BaseModel):
 
 
 @router.post("/excluidos")
-async def guardar_excluidos(body: ExcluidosIn, user_id: str = Depends(get_current_user)):
+async def guardar_excluidos(body: ExcluidosIn, user_id: str = AUTORIZADO):
     """Qué comprobantes NO van en la devolución de este período.
 
     El listado del SRI es el que manda: lo que el contribuyente tenga cargado en
@@ -1333,7 +1340,7 @@ class LimpiarIn(BaseModel):
 
 
 @router.post("/periodo/limpiar")
-async def limpiar_periodo(body: LimpiarIn, user_id: str = Depends(get_current_user)):
+async def limpiar_periodo(body: LimpiarIn, user_id: str = AUTORIZADO):
     """Vacía la devolución del período para armarla de nuevo.
 
     Borra la solicitud y el listado que se trajo del portal, y saca de la
@@ -1387,7 +1394,7 @@ class LoteIn(BaseModel):
 
 
 @router.post("/solicitudes/lote")
-async def guardar_lote(body: LoteIn, user_id: str = Depends(get_current_user)):
+async def guardar_lote(body: LoteIn, user_id: str = AUTORIZADO):
     """Prepara de una sola vez la solicitud de VARIOS meses anteriores.
 
     Toma todos los comprobantes de cada mes y les asigna el tipo de gasto que
@@ -1475,7 +1482,7 @@ def _solicitud_propia(sb, solicitud_id: str, user_id: str) -> dict:
 
 
 @router.put("/solicitudes/{solicitud_id}")
-async def cambiar_estado(solicitud_id: str, body: EstadoIn, user_id: str = Depends(get_current_user)):
+async def cambiar_estado(solicitud_id: str, body: EstadoIn, user_id: str = AUTORIZADO):
     if body.estado not in ESTADOS:
         raise HTTPException(status_code=400, detail=f"Estado inválido: {sorted(ESTADOS)}")
     sb = get_supabase_client()
@@ -1488,7 +1495,7 @@ async def cambiar_estado(solicitud_id: str, body: EstadoIn, user_id: str = Depen
 
 
 @router.get("/solicitudes/{solicitud_id}/envio")
-async def payload_envio(solicitud_id: str, user_id: str = Depends(get_current_user)):
+async def payload_envio(solicitud_id: str, user_id: str = AUTORIZADO):
     """Datos de la solicitud listos para llevarla al portal del SRI.
 
     Es lo que consume el bajador/enviador que corre DENTRO de la sesión del SRI
@@ -1687,7 +1694,7 @@ def _fecha_carga_iso(txt) -> Optional[str]:
 
 @router.post("/solicitudes/{solicitud_id}/enviar")
 async def marcar_enviada(solicitud_id: str, body: Optional[EnvioIn] = None,
-                         user_id: str = Depends(get_current_user)):
+                         user_id: str = AUTORIZADO):
     """Deja constancia de lo PRESENTADO al SRI y devuelve el reporte del envío.
 
     El envío en sí ocurre en el portal (sesión del contribuyente); acá se guarda
@@ -1819,7 +1826,7 @@ async def reporte(
 
 
 @router.delete("/solicitudes/{solicitud_id}")
-async def eliminar_solicitud(solicitud_id: str, user_id: str = Depends(get_current_user)):
+async def eliminar_solicitud(solicitud_id: str, user_id: str = AUTORIZADO):
     sb = get_supabase_client()
     _solicitud_propia(sb, solicitud_id, user_id)
     sb.table("devoluciones_iva_solicitudes").delete().eq("id", solicitud_id).execute()
