@@ -50,6 +50,12 @@ export default function AdminEmpresas() {
   const [huerfanos, setHuerfanos] = useState([])
   const [seleccionHuerfanos, setSeleccionHuerfanos] = useState(new Set())
 
+  // Anexar contribuyentes que hoy están en OTRA empresa
+  const [origenOrg, setOrigenOrg] = useState('')
+  const [contribOrigen, setContribOrigen] = useState([])
+  const [seleccionOrigen, setSeleccionOrigen] = useState(new Set())
+  const [anexando, setAnexando] = useState(false)
+
   // Exportar un contribuyente a empresa propia + autorizaciones entre empresas
   const [expIdent, setExpIdent] = useState('')
   const [expConservar, setExpConservar] = useState(true)
@@ -105,7 +111,17 @@ export default function AdminEmpresas() {
     orgsAPI.contribuyentes(selectedOrg).then((r) => setContribuyentes(r.data?.data || [])).catch(() => setContribuyentes([]))
     cargarAutorizaciones(selectedOrg)
     setExpIdent(''); setAutDestino(''); setAutIdent('')
+    setOrigenOrg(''); setContribOrigen([]); setSeleccionOrigen(new Set())
   }, [selectedOrg, cargarMiembros])
+
+  // Cartera de la empresa ORIGEN, para elegir a quién traerse de ella.
+  useEffect(() => {
+    setSeleccionOrigen(new Set())
+    if (!origenOrg) { setContribOrigen([]); return }
+    orgsAPI.contribuyentes(origenOrg)
+      .then((r) => setContribOrigen(r.data?.data || []))
+      .catch(() => setContribOrigen([]))
+  }, [origenOrg])
 
   const cargarAutorizaciones = useCallback((orgId) => {
     if (!orgId) { setAutor({ otorgadas: [], recibidas: [], empresas: [] }); return }
@@ -296,6 +312,42 @@ export default function AdminEmpresas() {
       mostrarError(e, 'No se pudo quitar el miembro')
     } finally {
       setBusy('')
+    }
+  }
+
+  // ── Anexar contribuyentes de otra empresa ───────────────────────────────
+  const toggleOrigen = (ident) => {
+    setSeleccionOrigen((prev) => {
+      const next = new Set(prev)
+      next.has(ident) ? next.delete(ident) : next.add(ident)
+      return next
+    })
+  }
+
+  const anexar = async () => {
+    if (!selectedOrg || !origenOrg || seleccionOrigen.size === 0 || anexando) return
+    const destino = empresas.find((x) => x.org_id === selectedOrg)?.nombre || 'esta empresa'
+    const origen = empresas.find((x) => x.org_id === origenOrg)?.nombre || 'la otra empresa'
+    if (!window.confirm(
+      `¿Mover ${seleccionOrigen.size} contribuyente(s) de «${origen}» a «${destino}»?\n\n` +
+      'Se llevan todos sus períodos, con sus facturas, declaraciones y anexos.\n' +
+      `«${origen}» dejará de verlos, salvo que después se lo autorices.`
+    )) return
+    setAnexando(true)
+    try {
+      const r = await orgsAPI.asignarContribuyentes(selectedOrg, [...seleccionOrigen])
+      setSeleccionOrigen(new Set())
+      const [aqui, alla] = await Promise.all([
+        orgsAPI.contribuyentes(selectedOrg), orgsAPI.contribuyentes(origenOrg),
+      ])
+      setContribuyentes(aqui.data?.data || [])
+      setContribOrigen(alla.data?.data || [])
+      setAviso(`${r.data?.movidos ?? 0} contribuyente(s) anexado(s) a «${destino}».`)
+      setError('')
+    } catch (e) {
+      mostrarError(e, 'No se pudieron anexar los contribuyentes')
+    } finally {
+      setAnexando(false)
     }
   }
 
@@ -548,6 +600,46 @@ export default function AdminEmpresas() {
                       Sin conservar el acceso, esta empresa dejará de ver ese contribuyente
                       en cuanto se exporte. Se puede volver a autorizar después, desde la empresa nueva.
                     </p>
+                  )}
+                </div>
+              )}
+
+              {/* ── Anexar contribuyentes de otra empresa ───────────────── */}
+              {isPlatformAdmin && empresas.length > 1 && (
+                <div className="bloque">
+                  <h3>Anexar contribuyentes de otra empresa</h3>
+                  <p>
+                    Trae a «{empresaSel?.nombre}» contribuyentes que hoy están en otra empresa.
+                    Se mueven enteros: todos sus períodos con sus facturas, declaraciones y anexos.
+                  </p>
+                  <form className="fila-form" onSubmit={(ev) => { ev.preventDefault(); anexar() }}>
+                    <select value={origenOrg} onChange={(ev) => setOrigenOrg(ev.target.value)}>
+                      <option value="">Desde la empresa…</option>
+                      {empresas.filter((e) => e.org_id !== selectedOrg).map((e) => (
+                        <option key={e.org_id} value={e.org_id}>{e.nombre}</option>
+                      ))}
+                    </select>
+                    <button type="submit" disabled={seleccionOrigen.size === 0 || anexando}>
+                      {anexando ? 'Anexando…' : `Anexar ${seleccionOrigen.size || ''}`}
+                    </button>
+                  </form>
+                  {origenOrg && (
+                    contribOrigen.length === 0 ? (
+                      <p className="vacio">Esa empresa no tiene contribuyentes que traer.</p>
+                    ) : (
+                      <div className="huerfanos-lista">
+                        {contribOrigen.map((c) => (
+                          <label key={c.identificacion}>
+                            <input
+                              type="checkbox"
+                              checked={seleccionOrigen.has(c.identificacion)}
+                              onChange={() => toggleOrigen(c.identificacion)}
+                            />
+                            {c.nombre} <span className="huerfano-ruc">{c.identificacion}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )
                   )}
                 </div>
               )}

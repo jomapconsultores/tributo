@@ -8,7 +8,7 @@ const ROL_LBL = { admin: '👑 Administrador', socio: '🤝 Socio', trabajador: 
 // tiene más de un rol otorgado por el administrador; con un solo rol muestra
 // una etiqueta estática con su rol.
 export default function RoleSwitcher() {
-  const { roles, role, switchRole, loading } = useAccess()
+  const { roles, role, platformRole, switchRole, loading } = useAccess()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const ref = useRef(null)
@@ -21,14 +21,22 @@ export default function RoleSwitcher() {
 
   if (loading) return null
 
+  // El selector cambia el rol de PLATAFORMA, no el de la empresa activa. Se
+  // muestra ése: dentro de un despacho se puede ser 'admin' por membresía sin
+  // serlo del producto, y pintar el efectivo hacía creer que ya se tenía el
+  // rol que el menú ofrece —con el clic sin efecto y el panel de empresas
+  // fuera de alcance—. Sin el campo (backend anterior) se cae al efectivo.
+  const activo = platformRole || role
+  const difiere = platformRole && platformRole !== role
+
   const varios = Array.isArray(roles) && roles.length > 1
   if (!varios) {
-    return <span className="role-badge" title="Tu rol en el sistema">{ROL_LBL[role] || role}</span>
+    return <span className="role-badge" title="Tu rol en el sistema">{ROL_LBL[activo] || activo}</span>
   }
 
   const elegir = async (r) => {
     setOpen(false)
-    if (r === role) return
+    if (r === activo) return
     setBusy(true)
     try {
       // switchRole recarga la app al terminar; si falla, liberamos el botón.
@@ -41,21 +49,31 @@ export default function RoleSwitcher() {
 
   return (
     <div className="role-switcher" ref={ref}>
-      <button className="role-switcher-btn" onClick={() => setOpen((o) => !o)} disabled={busy} title="Cambiar de rol">
-        <span>{ROL_LBL[role] || role}</span>
+      <button
+        className="role-switcher-btn" onClick={() => setOpen((o) => !o)} disabled={busy}
+        title={difiere
+          ? `Tu rol en el sistema: ${ROL_LBL[activo] || activo}. En la empresa activa actúas como ${ROL_LBL[role] || role}.`
+          : 'Cambiar de rol'}
+      >
+        <span>{ROL_LBL[activo] || activo}</span>
         <span className="role-caret">{busy ? '…' : '▾'}</span>
       </button>
       {open && (
         <div className="role-switcher-menu">
           <div className="role-switcher-title">Ver como…</div>
+          {difiere && (
+            <div className="role-switcher-nota">
+              En la empresa activa actúas como {ROL_LBL[role] || role}.
+            </div>
+          )}
           {roles.map((r) => (
             <button
               key={r}
-              className={`role-switcher-item ${r === role ? 'active' : ''}`}
+              className={`role-switcher-item ${r === activo ? 'active' : ''}`}
               onClick={() => elegir(r)}
             >
               <span>{ROL_LBL[r] || r}</span>
-              {r === role && <span className="role-check">✓</span>}
+              {r === activo && <span className="role-check">✓</span>}
             </button>
           ))}
         </div>

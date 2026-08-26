@@ -52,6 +52,16 @@
   font-weight: 700;
   padding: 4px 10px 6px;
 }
+/* Aviso de que el rol dentro de la empresa activa no es el de plataforma. */
+.role-switcher-nota {
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: #64748b;
+  background: #f8fafc;
+  border-radius: 7px;
+  padding: 6px 10px;
+  margin: 0 0 6px;
+}
 .role-switcher-item {
   display: flex;
   align-items: center;

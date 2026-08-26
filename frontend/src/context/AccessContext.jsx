@@ -5,6 +5,8 @@ import useCachedResource from '../hooks/useCachedResource'
 
 const DEFAULTS = {
   modules: [], submodules: null, isAdmin: false, role: 'cliente', roles: ['cliente'],
+  // Rol en el PRODUCTO (app_admins), distinto del rol en la empresa activa.
+  platformRole: null,
   subscription: null,
   // Multiempresa: empresa activa y empresas entre las que puede cambiar.
   org: null, orgs: [], isPlatformAdmin: false, multiempresa: false,
@@ -21,6 +23,8 @@ const transformMe = (r) => ({
   submodules: r.data?.submodules || null,
   isAdmin: !!r.data?.is_admin,
   role: r.data?.role || 'cliente',
+  // null = backend anterior a este campo → el selector cae al rol efectivo.
+  platformRole: r.data?.platform_role || null,
   roles: r.data?.roles?.length ? r.data.roles : [r.data?.role || 'cliente'],
   subscription: r.data?.subscription || null,
   // Los permisos de arriba son los de ESTA empresa, no los del usuario suelto.
@@ -62,12 +66,18 @@ export function AccessProvider({ children }) {
   // Cambiar el rol activo. Como el rol determina la VISIBILIDAD de datos en toda
   // la app (clientes, módulos, permisos), tras el cambio se limpia TODO el caché
   // y se recarga la app desde cero para no arrastrar datos del rol anterior.
+  // OJO con la comparación: el selector cambia el rol de PLATAFORMA, así que
+  // el «ya lo tienes» hay que medirlo contra ése. Compararlo contra el rol de
+  // la empresa activa dejaba fuera de juego a quien es admin de su despacho
+  // pero no de la plataforma: la app le decía «ya eres Administrador» y el
+  // clic no hacía nada, sin manera de recuperar su rol de plataforma.
+  const rolDelSelector = state.platformRole || state.role
   const switchRole = useCallback(async (role) => {
-    if (role === state.role) return
+    if (role === rolDelSelector) return
     await accessAPI.switchRole(role)
     clearApiCache()
     window.location.assign('/')
-  }, [state.role])
+  }, [rolDelSelector])
 
   // Cambiar de empresa. Igual que el cambio de rol, se recarga la app entera:
   // los contribuyentes, los módulos y hasta el rol son distintos en cada

@@ -317,10 +317,15 @@ async def switch_role(body: SwitchRoleIn, user_id: str = Depends(get_current_use
     nuevo = cambiar_rol_activo(user_id, body.role)
     sub, mods = _cargar_acceso(user_id)
     return {
-        "role": nuevo,
+        # `role` es el EFECTIVO en la empresa activa (puede seguir siendo
+        # 'admin' por membresía aunque el de plataforma haya bajado);
+        # `platform_role` es el que se acaba de cambiar.
+        "role": rol_de(user_id),
+        "platform_role": nuevo,
         "roles": roles_asumibles(user_id),
         "modules": mods,
         "is_admin": es_admin(user_id),
+        "is_platform_admin": es_super_admin(user_id),
     }
 
 
@@ -421,6 +426,12 @@ async def me(user_id: str = Depends(get_current_user)):
         "submodules": submodulos_de(user_id),   # pantallas permitidas (default = todas)
         "is_admin": es_admin(user_id),
         "role": rol_de(user_id),
+        # Rol en el PRODUCTO (app_admins). Es el que cambia el selector de rol,
+        # y puede ser MENOR que `role`: quien administra un despacho es 'admin'
+        # en él sin serlo de la plataforma. Devolverlo aparte es lo que evita
+        # que el selector se marque a sí mismo como ya activo y deje al usuario
+        # sin forma de volver a su rol de plataforma.
+        "platform_role": rol_plataforma(user_id),
         "roles": roles_asumibles(user_id),   # roles entre los que puede cambiar
         "is_platform_admin": es_super_admin(user_id),
         "org": activa,                       # empresa activa (None = modo heredado)
