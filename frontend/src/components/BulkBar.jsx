@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useClients } from '../context/ClientContext'
+import { useAccess } from '../context/AccessContext'
 import { periodoCorto } from '../utils/periodo'
 import NewClientModal from './NewClientModal'
 import './BulkBar.css'
@@ -10,6 +11,7 @@ import './BulkBar.css'
  */
 export default function BulkBar({ count, onMove, onDelete, onClear, eligibleIdents = null }) {
   const { clients, selectedClientId } = useClients()
+  const { puedeCrearContribuyente } = useAccess()
   const [moveTo, setMoveTo] = useState('')
   const [showNew, setShowNew] = useState(false)
 
@@ -58,7 +60,7 @@ export default function BulkBar({ count, onMove, onDelete, onClear, eligibleIden
           {targets.map((c) => (
             <option key={c.id} value={c.id}>{c.nombre} · {periodoCorto(c)}</option>
           ))}
-          <option value="__new__">➕ Crear nuevo cliente…</option>
+          {puedeCrearContribuyente && <option value="__new__">➕ Crear nuevo cliente…</option>}
         </select>
         <button className="bulk-btn move" disabled={!moveTo} onClick={handleMove}>
           ↪ Mover
@@ -67,13 +69,14 @@ export default function BulkBar({ count, onMove, onDelete, onClear, eligibleIden
         <button className="bulk-btn ghost" onClick={onClear}>Deseleccionar</button>
       </div>
 
-      {/* Crear cliente sin cambiar el que se está viendo; queda elegido como destino */}
-      <NewClientModal
+      {/* Crear cliente sin cambiar el que se está viendo; queda elegido como destino.
+          Esta barra monta su propio modal, así que también pregunta por el permiso. */}
+      {puedeCrearContribuyente && <NewClientModal
         open={showNew}
         selectAfter={false}
         onClose={() => setShowNew(false)}
         onCreated={(c) => { if (c?.id) setMoveTo(c.id) }}
-      />
+      />}
     </div>
   )
 }

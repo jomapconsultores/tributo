@@ -140,7 +140,11 @@ export default function Database() {
             <h1>🗄️ Base de Datos</h1>
             <p className="db-subhead">Elige un contribuyente y abre su año, mes y tipo de datos.</p>
           </div>
-          <button className="db-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
+          {/* openNewClient es null cuando no se puede dar de alta: sin esto el
+              botón se quedaba puesto y no hacía nada al pulsarlo. */}
+          {openNewClient && (
+            <button className="db-btn primary" onClick={openNewClient}>＋ Nuevo cliente</button>
+          )}
         </div>
         <ClientNavigator idents_svc={idents_all} />
       </div>
