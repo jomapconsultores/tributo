@@ -40,9 +40,20 @@ _ROLES = set(orgs.ROLES_ORG)
 # Modelos de entrada
 # ---------------------------------------------------------------------------
 
+# Prueba gratis y precio de arranque de una empresa nueva. Se pactan al crearla
+# y se cambian después desde su bloque de suscripción.
+DIAS_PRUEBA = 5
+PRECIO_BASE = 50.0
+DIAS_MES = 30
+IVA = 0.15
+
+
 class OrgIn(BaseModel):
     nombre: str
     identificacion: Optional[str] = None
+    precio_mensual: Optional[float] = None   # None = PRECIO_BASE
+    dias_prueba: Optional[int] = None        # None = DIAS_PRUEBA
+    iva_incluido: bool = False               # False = el precio es NETO, se le suma IVA
 
 
 class OrgUpdate(BaseModel):
@@ -74,6 +85,24 @@ class MemberUpdate(BaseModel):
     role: Optional[str] = None
     modules: Optional[List[str]] = None
     submodules: Optional[List[str]] = None
+
+
+class SuscripcionIn(BaseModel):
+    """Lo que se pacta con la empresa. Lo que no venga no se toca."""
+    precio_mensual: Optional[float] = None
+    estado: Optional[str] = None          # prueba | activo | suspendido
+    proximo_pago: Optional[str] = None    # AAAA-MM-DD
+    plan: Optional[str] = None
+    iva_incluido: Optional[bool] = None
+
+
+class PagoOrgIn(BaseModel):
+    monto: float
+    meses: int = 1
+    metodo: Optional[str] = None
+    nota: Optional[str] = None
+    iva_incluido: Optional[bool] = None    # None = como esté pactado
+    avanzar: bool = True
 
 
 class AsignarContribuyentesIn(BaseModel):
@@ -205,9 +234,11 @@ async def crear_empresa(body: OrgIn, admin_id: str = Depends(require_plataforma)
     sb.table("organization_members").insert({
         "org_id": org["id"], "user_id": admin_id, "role": "admin", "granted_by": admin_id,
     }).execute()
+    suscripcion = _crear_suscripcion(org["id"], body.precio_mensual,
+                                     body.dias_prueba, body.iva_incluido)
     orgs.invalidar()
     invalidar_cache_rol(admin_id)
-    return org
+    return {**org, "suscripcion": suscripcion}
 
 
 @router.put("/{org_id}")
@@ -263,6 +294,146 @@ async def eliminar_empresa(org_id: str, _: str = Depends(require_plataforma)):
     orgs.invalidar()
     invalidar_cache_rol()
     return {"ok": True}
+
+
+def _hoy():
+    from datetime import date
+    return date.today()
+
+
+def _crear_suscripcion(org_id: str, precio: Optional[float],
+                       dias: Optional[int], iva_incluido: bool = False) -> dict:
+    """Arranca la suscripción de una empresa recién creada: prueba gratis de
+    unos días y, al vencer, el sistema deja de dejarla entrar hasta que pague.
+
+    La fila cuelga de la EMPRESA y de nadie más (user_id nulo): su equipo entra
+    y sale sin que lo contratado se mueva."""
+    from datetime import timedelta
+    d = DIAS_PRUEBA if dias is None else max(0, int(dias))
+    fin = (_hoy() + timedelta(days=d)).isoformat()
+    fila = {
+        "org_id": org_id,
+        "estado": "prueba",
+        "inicio": _hoy().isoformat(),
+        "proximo_pago": fin,
+        "precio_mensual": PRECIO_BASE if precio is None else float(precio),
+        "iva_incluido": bool(iva_incluido),
+    }
+    try:
+        _sb().table("subscriptions").insert(fila).execute()
+    except Exception as e:
+        # Sin la migración 056 la fila exige un usuario: no se puede cobrar a la
+        # empresa todavía, pero la empresa ya está creada y se dice por qué.
+        raise HTTPException(
+            status_code=503,
+            detail=f"La empresa se creó, pero no se pudo registrar su suscripción "
+                   f"(¿falta aplicar 056_suscripcion_por_empresa.sql?): {e}")
+    return fila
+
+
+def _suscripcion_de(org_id: str) -> dict:
+    """Estado de cobro de la empresa, con lo que hace falta para avisar a tiempo."""
+    r = _sb().table("subscriptions").select("*").eq("org_id", org_id).limit(1).execute().data
+    if not r:
+        return {"contratada": False}
+    s = dict(r[0])
+    hoy = _hoy().isoformat()
+    vencida = bool(s.get("proximo_pago")) and str(s["proximo_pago"]) < hoy
+    dias = None
+    if s.get("proximo_pago"):
+        from datetime import date as _d
+        y, m, dd = map(int, str(s["proximo_pago"]).split("-"))
+        dias = (_d(y, m, dd) - _hoy()).days
+    precio = float(s.get("precio_mensual") or 0)
+    s.update({
+        "contratada": True,
+        "vencida": vencida,
+        "vigente": s.get("estado") != "suspendido" and not vencida,
+        "dias_restantes": dias,
+        "en_prueba": s.get("estado") == "prueba",
+        # Lo que se cobra de verdad, para no hacer la cuenta en tres pantallas.
+        "total_con_iva": round(precio if s.get("iva_incluido") else precio * (1 + IVA), 2),
+    })
+    return s
+
+
+@router.get("/{org_id}/suscripcion")
+async def ver_suscripcion(org_id: str, user_id: str = Depends(get_current_user)):
+    """Lo que paga la empresa y hasta cuándo está cubierta."""
+    _exigir_admin_de_org(org_id, user_id)
+    return _suscripcion_de(org_id)
+
+
+@router.put("/{org_id}/suscripcion")
+async def fijar_suscripcion(org_id: str, body: SuscripcionIn,
+                            _: str = Depends(require_plataforma)):
+    """Pacta el precio, el estado o la fecha del próximo pago. Es de plataforma:
+    quien vende el producto pone el precio, no el despacho que lo usa."""
+    _asegurar_tablas()
+    _org_o_404(org_id)
+    datos = {k: v for k, v in body.dict().items() if v is not None}
+    if not datos:
+        return {"ok": True, "sin_cambios": True}
+    if "estado" in datos and datos["estado"] not in ("prueba", "activo", "suspendido"):
+        raise HTTPException(status_code=400, detail="Estado inválido (prueba | activo | suspendido)")
+    datos["updated_at"] = "now()"
+    sb = _sb()
+    if sb.table("subscriptions").select("id").eq("org_id", org_id).limit(1).execute().data:
+        sb.table("subscriptions").update(datos).eq("org_id", org_id).execute()
+    else:
+        datos["org_id"] = org_id
+        datos.setdefault("inicio", _hoy().isoformat())
+        sb.table("subscriptions").insert(datos).execute()
+    invalidar_cache_rol()
+    return {"ok": True, "suscripcion": _suscripcion_de(org_id)}
+
+
+@router.post("/{org_id}/suscripcion/pago")
+async def registrar_pago_org(org_id: str, body: PagoOrgIn,
+                             admin_id: str = Depends(require_plataforma)):
+    """Registra el pago de la empresa y corre la fecha del próximo.
+
+    Si la fecha vigente ya pasó se cuenta desde hoy, no desde la vencida: el mes
+    pagado empieza cuando se paga, no cuando debió pagarse."""
+    from datetime import date as _d, timedelta
+    _asegurar_tablas()
+    _org_o_404(org_id)
+    sb = _sb()
+    actual = sb.table("subscriptions").select("*").eq("org_id", org_id).limit(1).execute().data
+    if not actual:
+        raise HTTPException(status_code=404, detail="Esta empresa todavía no tiene suscripción")
+    meses = max(1, int(body.meses or 1))
+    iva_incluido = actual[0].get("iva_incluido") if body.iva_incluido is None else body.iva_incluido
+    monto = round(float(body.monto), 2)
+    monto_final = monto if iva_incluido else round(monto * (1 + IVA), 2)
+    sb.table("pagos").insert({
+        "org_id": org_id, "monto": monto_final, "fecha": _hoy().isoformat(),
+        "periodo": f"{meses} mes(es)", "metodo": body.metodo, "nota": body.nota,
+    }).execute()
+
+    datos = {"estado": "activo", "updated_at": "now()"}
+    if body.avanzar:
+        base = None
+        if actual[0].get("proximo_pago"):
+            try:
+                y, m, dd = map(int, str(actual[0]["proximo_pago"]).split("-"))
+                base = _d(y, m, dd)
+            except ValueError:
+                base = None
+        if not base or base < _hoy():
+            base = _hoy()
+        datos["proximo_pago"] = (base + timedelta(days=DIAS_MES * meses)).isoformat()
+    sb.table("subscriptions").update(datos).eq("org_id", org_id).execute()
+    invalidar_cache_rol()
+    return {"ok": True, "cobrado": monto_final, "suscripcion": _suscripcion_de(org_id)}
+
+
+@router.get("/{org_id}/pagos")
+async def pagos_de_empresa(org_id: str, user_id: str = Depends(get_current_user)):
+    """Historial de lo cobrado a la empresa."""
+    _exigir_admin_de_org(org_id, user_id)
+    return {"data": _sb().table("pagos").select("*").eq("org_id", org_id)
+            .order("fecha", desc=True).execute().data or []}
 
 
 # ---------------------------------------------------------------------------
@@ -600,6 +771,9 @@ async def exportar_contribuyente(body: ExportarIn, admin_id: str = Depends(requi
                 raise HTTPException(status_code=409, detail=f"Ya existe una empresa llamada «{nombre}»")
             raise HTTPException(status_code=400, detail=str(e))
         nueva = creada[0]
+        # Nace igual que cualquier empresa: unos días de prueba y, al vencer,
+        # a pagar. Si se reutilizó una que ya existía, conserva la suya.
+        _crear_suscripcion(nueva["id"], None, None)
 
     if origen == nueva["id"]:
         raise HTTPException(status_code=409,

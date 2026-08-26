@@ -46,7 +46,13 @@ export default function AdminEmpresas() {
 
   const [nombreNuevo, setNombreNuevo] = useState('')
   const [rucNuevo, setRucNuevo] = useState('')
+  const [precioNuevo, setPrecioNuevo] = useState('50')
+  const [pruebaNueva, setPruebaNueva] = useState('5')
   const [creando, setCreando] = useState(false)
+
+  // Suscripción de la empresa elegida
+  const [susc, setSusc] = useState(null)
+  const [suscBusy, setSuscBusy] = useState(false)
 
   const [contribuyentes, setContribuyentes] = useState([])
   const [huerfanos, setHuerfanos] = useState([])
@@ -115,6 +121,7 @@ export default function AdminEmpresas() {
     cargarAutorizaciones(selectedOrg)
     setExpIdent(''); setAutDestino(''); setAutIdent('')
     setOrigenOrg(''); setContribOrigen([]); setSeleccionOrigen(new Set())
+    orgsAPI.suscripcion(selectedOrg).then((r) => setSusc(r.data || null)).catch(() => setSusc(null))
   }, [selectedOrg, cargarMiembros])
 
   // Cartera de la empresa ORIGEN, para elegir a quién traerse de ella.
@@ -209,11 +216,17 @@ export default function AdminEmpresas() {
     if (!nombreNuevo.trim() || creando) return
     setCreando(true)
     try {
-      const r = await orgsAPI.create({ nombre: nombreNuevo.trim(), identificacion: rucNuevo.trim() || null })
+      const r = await orgsAPI.create({
+        nombre: nombreNuevo.trim(),
+        identificacion: rucNuevo.trim() || null,
+        precio_mensual: precioNuevo === '' ? null : parseFloat(precioNuevo),
+        dias_prueba: pruebaNueva === '' ? null : parseInt(pruebaNueva, 10),
+      })
       setNombreNuevo(''); setRucNuevo('')
       await cargarEmpresas()
       if (r.data?.id) setSelectedOrg(r.data.id)
-      setAviso(`Empresa «${r.data?.nombre}» creada. Ya puedes agregarle miembros.`)
+      setAviso(`Empresa «${r.data?.nombre}» creada con ${pruebaNueva || 5} día(s) de prueba. ` +
+        `Al vencer deberá pagar para seguir entrando.`)
       setError('')
     } catch (e2) {
       mostrarError(e2, 'No se pudo crear la empresa')
@@ -335,6 +348,43 @@ export default function AdminEmpresas() {
     } finally {
       setBusy('')
     }
+  }
+
+  // ── Suscripción de la empresa ───────────────────────────────────────────
+  const guardarSusc = async (cambios, mensaje) => {
+    setSuscBusy(true)
+    try {
+      const r = await orgsAPI.fijarSuscripcion(selectedOrg, cambios)
+      setSusc(r.data?.suscripcion || null)
+      setAviso(mensaje); setError('')
+    } catch (e) {
+      mostrarError(e, 'No se pudo guardar la suscripción')
+    } finally { setSuscBusy(false) }
+  }
+
+  const cobrar = async () => {
+    const neto = Number(susc?.precio_mensual || 0)
+    const meses = parseInt(window.prompt('¿Cuántos meses paga?', '1') || '', 10)
+    if (!meses || meses < 1) return
+    const total = (susc?.iva_incluido ? neto : neto * 1.15) * meses
+    if (!window.confirm(
+      `¿Registrar el pago de ${meses} mes(es)?
+
+` +
+      `Total con IVA: $${total.toFixed(2)}
+` +
+      'La empresa queda activa y se corre la fecha del próximo pago.'
+    )) return
+    setSuscBusy(true)
+    try {
+      const r = await orgsAPI.registrarPagoOrg(selectedOrg, { monto: neto * meses, meses })
+      setSusc(r.data?.suscripcion || null)
+      setAviso(`Pago registrado por $${Number(r.data?.cobrado || 0).toFixed(2)}. ` +
+        `Próximo pago: ${r.data?.suscripcion?.proximo_pago || '—'}.`)
+      setError('')
+    } catch (e) {
+      mostrarError(e, 'No se pudo registrar el pago')
+    } finally { setSuscBusy(false) }
   }
 
   // ── Anexar contribuyentes de otra empresa ───────────────────────────────
@@ -459,6 +509,26 @@ export default function AdminEmpresas() {
                 type="text" placeholder="RUC (opcional)" value={rucNuevo}
                 onChange={(ev) => setRucNuevo(ev.target.value)} maxLength={13}
               />
+              <div className="empresa-nueva-cobro">
+                <label>
+                  <span>Mensual (sin IVA)</span>
+                  <input
+                    type="number" min="0" step="1" value={precioNuevo}
+                    onChange={(ev) => setPrecioNuevo(ev.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>Días de prueba</span>
+                  <input
+                    type="number" min="0" step="1" value={pruebaNueva}
+                    onChange={(ev) => setPruebaNueva(ev.target.value)}
+                  />
+                </label>
+              </div>
+              <p className="empresa-nueva-nota">
+                Entra gratis esos días. Al vencer, sus miembros dejan de tener acceso
+                hasta que se registre el pago.
+              </p>
               <button type="submit" disabled={creando || !nombreNuevo.trim()}>
                 {creando ? 'Creando…' : 'Crear empresa'}
               </button>
@@ -504,6 +574,73 @@ export default function AdminEmpresas() {
               <p className="empresa-sub">
                 {contribuyentes.length} contribuyente(s) asignado(s) · {miembros.length} miembro(s)
               </p>
+
+              {/* ── Suscripción de la empresa ───────────────────────────── */}
+              {susc && (
+                <div className={`bloque suscripcion ${susc.vencida ? 'vencida' : (susc.en_prueba ? 'prueba' : '')}`}>
+                  <h3>Suscripción</h3>
+                  {!susc.contratada ? (
+                    <>
+                      <p>Esta empresa no tiene nada pactado: hoy entra sin pagar.</p>
+                      {isPlatformAdmin && (
+                        <button
+                          className="susc-btn" disabled={suscBusy}
+                          onClick={() => guardarSusc(
+                            { precio_mensual: 50, estado: 'prueba' },
+                            'Suscripción creada en $50 mensuales.')}
+                        >
+                          Cobrarle $50 mensuales
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="susc-estado">
+                        {susc.vencida ? (
+                          <><strong>Venció</strong> el {susc.proximo_pago}. Sus miembros no entran hasta que pague.</>
+                        ) : susc.estado === 'suspendido' ? (
+                          <><strong>Suspendida.</strong> Nadie de esta empresa entra.</>
+                        ) : susc.en_prueba ? (
+                          <>En <strong>prueba gratuita</strong>: le quedan <strong>{susc.dias_restantes} día(s)</strong>,
+                          hasta el {susc.proximo_pago}. Después deberá pagar.</>
+                        ) : (
+                          <>Al día. Próximo pago: <strong>{susc.proximo_pago}</strong>
+                          {susc.dias_restantes !== null && <> (en {susc.dias_restantes} día(s))</>}.</>
+                        )}
+                      </p>
+                      <p className="susc-precio">
+                        ${Number(susc.precio_mensual || 0).toFixed(2)} al mes
+                        {susc.iva_incluido ? ' (IVA incluido)' : ` + IVA = $${Number(susc.total_con_iva || 0).toFixed(2)}`}
+                      </p>
+                      {isPlatformAdmin && (
+                        <div className="susc-acciones">
+                          <button className="susc-btn" disabled={suscBusy} onClick={cobrar}>
+                            Registrar pago
+                          </button>
+                          <button
+                            disabled={suscBusy}
+                            onClick={() => {
+                              const v = window.prompt('Valor mensual sin IVA:', susc.precio_mensual ?? 50)
+                              if (v === null || v === '') return
+                              guardarSusc({ precio_mensual: parseFloat(v) }, 'Precio actualizado.')
+                            }}
+                          >
+                            Cambiar precio
+                          </button>
+                          <button
+                            disabled={suscBusy}
+                            onClick={() => guardarSusc(
+                              { estado: susc.estado === 'suspendido' ? 'activo' : 'suspendido' },
+                              susc.estado === 'suspendido' ? 'Suscripción reactivada.' : 'Suscripción suspendida.')}
+                          >
+                            {susc.estado === 'suspendido' ? 'Reactivar' : 'Suspender'}
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
 
               {/* ── Autorizaciones entre empresas ───────────────────────── */}
               <div className="bloque">

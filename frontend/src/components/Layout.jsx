@@ -22,18 +22,32 @@ function diasHasta(fecha) {
   return Math.round((d - hoy) / 86400000)
 }
 
+// Aviso de cobro. Lo ve todo el mundo MENOS el administrador de la plataforma:
+// antes se le escondía a cualquier admin o socio, y con multiempresa eso deja
+// sin aviso justo a quien tiene que pagar —el contribuyente que se independizó
+// es administrador de SU empresa—. Quien vende el producto no se cobra a sí mismo.
 function SubBanner() {
-  const { isAdmin, subscription } = useAccess()
-  if (isAdmin || !subscription || !subscription.estado) return null
+  const { isPlatformAdmin, subscription, org } = useAccess()
+  if (isPlatformAdmin || !subscription || !subscription.estado) return null
   const dias = diasHasta(subscription.proximo_pago)
+  const de = org?.nombre ? <> de <strong>{org.nombre}</strong></> : ''
   if (subscription.estado === 'suspendido') {
-    return <div className="sub-banner danger">Tu suscripción está <strong>suspendida</strong>. Contacta al administrador para reactivarla.</div>
+    return <div className="sub-banner danger">La suscripción{de} está <strong>suspendida</strong>. Contacta al administrador para reactivarla.</div>
   }
   if (subscription.vencida) {
-    return <div className="sub-banner danger">Tu suscripción <strong>venció</strong> el {subscription.proximo_pago}. Regulariza el pago para recuperar el acceso.</div>
+    return <div className="sub-banner danger">La suscripción{de} <strong>venció</strong> el {subscription.proximo_pago}. Hay que pagar para recuperar el acceso.</div>
+  }
+  if (subscription.estado === 'prueba' && dias !== null) {
+    return (
+      <div className="sub-banner warn">
+        Prueba gratuita{de}: quedan <strong>{dias} día(s)</strong> (hasta el {subscription.proximo_pago}).
+        Después habrá que pagar
+        {subscription.precio_mensual ? <> <strong>${Number(subscription.precio_mensual).toFixed(2)} + IVA</strong> al mes</> : ''} para seguir entrando.
+      </div>
+    )
   }
   if (dias !== null && dias <= 5) {
-    return <div className="sub-banner warn">Tu próximo pago vence en <strong>{dias} día(s)</strong> ({subscription.proximo_pago}).</div>
+    return <div className="sub-banner warn">El próximo pago{de} vence en <strong>{dias} día(s)</strong> ({subscription.proximo_pago}).</div>
   }
   return null
 }

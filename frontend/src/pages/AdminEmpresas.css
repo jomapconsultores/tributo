@@ -224,3 +224,28 @@ button.peligro { background: #fee2e2; color: #b91c1c; }
 .hereda-acciones button:hover { background: #f5f5f4; }
 .hereda-acciones button.peligro { color: #b91c1c; border-color: #fecaca; }
 .hereda-acciones button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Alta de empresa: lo que se le va a cobrar */
+.empresa-nueva-cobro { display: flex; gap: 8px; }
+.empresa-nueva-cobro label { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.empresa-nueva-cobro span { font-size: 0.68rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.3px; }
+.empresa-nueva-cobro input { width: 100%; border: 1px solid #cbd5e1; border-radius: 7px; padding: 7px 9px; font-size: 0.85rem; }
+.empresa-nueva-nota { font-size: 0.7rem; color: #94a3b8; margin: 0; line-height: 1.4; }
+
+/* Suscripción de la empresa: en prueba avisa, vencida grita */
+.bloque.suscripcion { border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-top: 16px; }
+.bloque.suscripcion.prueba { border-color: #fde68a; background: #fffbeb; }
+.bloque.suscripcion.prueba h3 { color: #92400e; }
+.bloque.suscripcion.vencida { border-color: #fecaca; background: #fef2f2; }
+.bloque.suscripcion.vencida h3 { color: #b91c1c; }
+.susc-estado { font-size: 0.82rem; color: #334155; margin: 0 0 4px; }
+.susc-precio { font-size: 0.8rem; color: #64748b; margin: 0 0 10px; font-weight: 600; }
+.susc-acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+.susc-acciones button, .susc-btn {
+  border: 1px solid #cbd5e1; background: #fff; border-radius: 7px;
+  padding: 6px 12px; font-size: 0.78rem; font-weight: 600; cursor: pointer; color: #334155;
+}
+.susc-acciones button:hover, .susc-btn:hover { background: #f8fafc; }
+.susc-btn { background: #1a3d6b; color: #fff; border-color: #1a3d6b; }
+.susc-btn:hover { background: #16345c; }
+.susc-acciones button:disabled, .susc-btn:disabled { opacity: 0.5; cursor: not-allowed; }

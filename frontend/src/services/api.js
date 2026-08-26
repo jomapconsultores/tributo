@@ -81,6 +81,11 @@ export const orgsAPI = {
   // Empresas entre las que el usuario puede cambiar (alimenta el selector)
   list: () => api.get('/api/organizations/'),
   create: (data) => api.post('/api/organizations/', data),
+  // Suscripción de la EMPRESA: lo pactado, el cobro y su historial
+  suscripcion: (id) => api.get(`/api/organizations/${id}/suscripcion`),
+  fijarSuscripcion: (id, data) => api.put(`/api/organizations/${id}/suscripcion`, data),
+  registrarPagoOrg: (id, data) => api.post(`/api/organizations/${id}/suscripcion/pago`, data),
+  pagosOrg: (id) => api.get(`/api/organizations/${id}/pagos`),
   update: (id, data) => api.put(`/api/organizations/${id}`, data),
   remove: (id) => api.delete(`/api/organizations/${id}`),
   // Miembros: quién pertenece a la empresa, con qué rol y qué permisos
