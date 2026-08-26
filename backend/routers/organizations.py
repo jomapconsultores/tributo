@@ -538,20 +538,34 @@ async def exportar_contribuyente(body: ExportarIn, admin_id: str = Depends(requi
     nombre = (body.nombre or "").strip() or max(
         (f.get("nombre") or "" for f in filas), key=len, default=ident) or ident
 
-    try:
-        creada = sb.table("organizations").insert({
-            "nombre": nombre, "identificacion": ident, "created_by": admin_id,
-        }).execute().data
-    except Exception as e:
-        from database import es_error_duplicado
-        if es_error_duplicado(e):
-            raise HTTPException(status_code=409, detail=f"Ya existe una empresa llamada «{nombre}»")
-        raise HTTPException(status_code=400, detail=str(e))
-    nueva = creada[0]
+    # Si ya hay una empresa para ese RUC —lo normal es haberla creado a mano
+    # antes de caer en la cuenta de que esto lo hace todo junto— se usa ESA. Dos
+    # empresas para el mismo contribuyente no significan nada y parten sus datos.
+    existente = sb.table("organizations").select("*").eq("identificacion", ident).limit(1).execute().data
+    reutilizada = bool(existente)
+    if reutilizada:
+        nueva = existente[0]
+    else:
+        try:
+            creada = sb.table("organizations").insert({
+                "nombre": nombre, "identificacion": ident, "created_by": admin_id,
+            }).execute().data
+        except Exception as e:
+            from database import es_error_duplicado
+            if es_error_duplicado(e):
+                raise HTTPException(status_code=409, detail=f"Ya existe una empresa llamada «{nombre}»")
+            raise HTTPException(status_code=400, detail=str(e))
+        nueva = creada[0]
 
-    sb.table("organization_members").insert({
-        "org_id": nueva["id"], "user_id": admin_id, "role": "admin", "granted_by": admin_id,
-    }).execute()
+    if origen == nueva["id"]:
+        raise HTTPException(status_code=409,
+                            detail=f"{ident} ya pertenece a la empresa «{nueva['nombre']}»")
+
+    ya_miembro = sb.table("organization_members").select("id")        .eq("org_id", nueva["id"]).eq("user_id", admin_id).limit(1).execute().data
+    if not ya_miembro:
+        sb.table("organization_members").insert({
+            "org_id": nueva["id"], "user_id": admin_id, "role": "admin", "granted_by": admin_id,
+        }).execute()
 
     # Los períodos se mueven por identificación: un contribuyente es el RUC, y
     # sus períodos son filas del mismo. Mover solo uno lo partiría en dos empresas.
@@ -572,6 +586,7 @@ async def exportar_contribuyente(body: ExportarIn, admin_id: str = Depends(requi
     invalidar_cache_rol()
     return {"ok": True, "org_id": nueva["id"], "nombre": nueva["nombre"],
             "periodos_movidos": len(filas), "origen": origen,
+            "reutilizada": reutilizada,
             "autorizacion_de_vuelta": autorizacion}
 
 

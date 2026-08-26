@@ -140,6 +140,7 @@ export default function AdminEmpresas() {
     const c = contribuyentes.find((x) => x.identificacion === expIdent)
     const msg = `¿Convertir «${c?.nombre || expIdent}» en una empresa propia?\n\n` +
       `Se le mueven sus ${c?.periodos || '?'} período(s) con todos sus datos.\n` +
+      'Si ya existe una empresa con ese RUC, se usa esa en vez de crear otra.\n' +
       (expConservar
         ? 'Esta empresa conservará el acceso mediante una autorización revocable.'
         : 'ATENCIÓN: esta empresa DEJARÁ de ver ese contribuyente.')
@@ -154,8 +155,11 @@ export default function AdminEmpresas() {
       ])
       setContribuyentes(ctb.data?.data || [])
       setAutor({ otorgadas: aut.data?.otorgadas || [], recibidas: aut.data?.recibidas || [], empresas: aut.data?.empresas || [] })
-      setAviso(`«${r.data?.nombre}» es ahora una empresa con ${r.data?.periodos_movidos} período(s).` +
-        (r.data?.autorizacion_de_vuelta ? ' Se creó la autorización de vuelta.' : ''))
+      setAviso(
+        (r.data?.reutilizada
+          ? `Sus ${r.data?.periodos_movidos} período(s) se anexaron a la empresa «${r.data?.nombre}», que ya existía.`
+          : `«${r.data?.nombre}» es ahora una empresa con ${r.data?.periodos_movidos} período(s).`) +
+        (r.data?.autorizacion_de_vuelta ? ' Esta empresa conserva el acceso.' : ''))
       setError('')
     } catch (e2) {
       mostrarError(e2, 'No se pudo exportar')
@@ -722,10 +726,16 @@ export default function AdminEmpresas() {
               {/* ── Exportar un contribuyente a empresa propia ──────────── */}
               {isPlatformAdmin && contribuyentes.length > 0 && (
                 <div className="bloque">
-                  <h3>Exportar un contribuyente a empresa</h3>
+                  <h3>Convertir un contribuyente en empresa</h3>
                   <p>
-                    Convierte un contribuyente de esta cartera en una empresa con vida propia,
-                    para poder darle acceso a su propia gente. Se lleva todos sus períodos y sus datos.
+                    El contribuyente pasa a ser una empresa con vida propia y su gente declara por
+                    su cuenta. Se lleva TODO lo suyo: declaraciones y borradores, facturas y XML,
+                    retenciones, anexos, ICE y ventas, devoluciones de IVA y la clave del SRI. El
+                    catálogo de productos, los compradores y las rebajas van por RUC, así que
+                    también los verá. Tus honorarios y tu reporte de trabajo NO se van: son tuyos.
+                  </p>
+                  <p>
+                    Si ya creaste la empresa a mano con ese mismo RUC, se usa esa en vez de crear otra.
                   </p>
                   <form className="fila-form" onSubmit={exportar}>
                     <select value={expIdent} onChange={(ev) => setExpIdent(ev.target.value)}>
@@ -744,13 +754,13 @@ export default function AdminEmpresas() {
                       Conservar el acceso de {empresaSel?.nombre}
                     </label>
                     <button type="submit" disabled={!expIdent || exportando}>
-                      {exportando ? 'Exportando…' : 'Exportar'}
+                      {exportando ? 'Convirtiendo…' : 'Convertir en empresa'}
                     </button>
                   </form>
                   {!expConservar && (
                     <p className="aviso-rojo">
                       Sin conservar el acceso, esta empresa dejará de ver ese contribuyente
-                      en cuanto se exporte. Se puede volver a autorizar después, desde la empresa nueva.
+                      en cuanto se convierta. Se puede volver a compartir después, desde la empresa nueva.
                     </p>
                   )}
                 </div>
