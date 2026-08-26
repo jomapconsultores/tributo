@@ -99,8 +99,10 @@ export const orgsAPI = {
   // Reparto de la cartera entre empresas
   contribuyentes: (id) => api.get(`/api/organizations/${id}/contribuyentes`),
   huerfanos: () => api.get('/api/organizations/sin-empresa/contribuyentes'),
-  asignarContribuyentes: (id, identificaciones) =>
-    api.put(`/api/organizations/${id}/contribuyentes`, { identificaciones }),
+  // conservar_acceso: la empresa de origen mantiene la vista sobre ellos
+  // mediante una autorización revocable (lo normal al independizar a un cliente)
+  asignarContribuyentes: (id, identificaciones, conservar_acceso = true) =>
+    api.put(`/api/organizations/${id}/contribuyentes`, { identificaciones, conservar_acceso }),
 }
 
 // Formulario de contacto (público)

@@ -73,7 +73,15 @@ class MemberUpdate(BaseModel):
 
 
 class AsignarContribuyentesIn(BaseModel):
+    """Mover contribuyentes a una empresa.
+
+    `conservar_acceso` es lo mismo que ofrece la exportación: la empresa que
+    los venía trabajando conserva la vista sobre ellos mediante una
+    autorización revocable. Sin esto, sacar un contribuyente del despacho para
+    que declare por su cuenta lo hacía desaparecer de la cartera de quien lo
+    lleva, que es justo lo contrario de lo que se busca."""
     identificaciones: List[str]
+    conservar_acceso: bool = True
 
 
 class ExportarIn(BaseModel):
@@ -657,7 +665,7 @@ async def revocar_autorizacion(org_id: str, grant_id: str,
 
 @router.put("/{org_id}/contribuyentes")
 async def asignar_contribuyentes(org_id: str, body: AsignarContribuyentesIn,
-                                 _: str = Depends(require_plataforma)):
+                                 admin_id: str = Depends(require_plataforma)):
     """Mueve contribuyentes (todos sus períodos, por identificación) a esta
     empresa. Es la herramienta para repartir la cartera cuando se separa la
     empresa por defecto en varias, y para rescatar huérfanos."""
@@ -667,9 +675,27 @@ async def asignar_contribuyentes(org_id: str, body: AsignarContribuyentesIn,
     if not idents:
         return {"ok": True, "movidos": 0}
     sb = _sb()
+    autorizaciones = []
     for ident in idents:
+        # De dónde viene, ANTES de moverlo: después el dato ya no existe y no
+        # habría a quién devolverle el acceso.
+        filas = sb.table("clients").select("org_id").eq("identificacion", ident).execute().data or []
+        origen = next((f["org_id"] for f in filas if f.get("org_id") and f["org_id"] != org_id), None)
         sb.table("clients").update({"org_id": org_id}).eq("identificacion", ident).execute()
+        if body.conservar_acceso and origen:
+            try:
+                sb.table("organization_grants").insert({
+                    "owner_org_id": org_id, "grantee_org_id": origen,
+                    "identificacion": ident, "granted_by": admin_id,
+                    "nota": "Creada al anexar el contribuyente a esta empresa",
+                }).execute()
+                autorizaciones.append({"hacia": origen, "identificacion": ident})
+            except Exception as e:
+                # Ya existía: el acceso está donde tiene que estar, nada que hacer.
+                from database import es_error_duplicado
+                if not es_error_duplicado(e):
+                    raise
     from tenancy import invalidate_clients_cache
     invalidate_clients_cache()
     orgs.invalidar()
-    return {"ok": True, "movidos": len(idents)}
+    return {"ok": True, "movidos": len(idents), "autorizaciones": autorizaciones}

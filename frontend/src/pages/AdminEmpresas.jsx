@@ -54,6 +54,7 @@ export default function AdminEmpresas() {
   const [origenOrg, setOrigenOrg] = useState('')
   const [contribOrigen, setContribOrigen] = useState([])
   const [seleccionOrigen, setSeleccionOrigen] = useState(new Set())
+  const [anexConservar, setAnexConservar] = useState(true)
   const [anexando, setAnexando] = useState(false)
 
   // Exportar un contribuyente a empresa propia + autorizaciones entre empresas
@@ -331,18 +332,23 @@ export default function AdminEmpresas() {
     if (!window.confirm(
       `¿Mover ${seleccionOrigen.size} contribuyente(s) de «${origen}» a «${destino}»?\n\n` +
       'Se llevan todos sus períodos, con sus facturas, declaraciones y anexos.\n' +
-      `«${origen}» dejará de verlos, salvo que después se lo autorices.`
+      (anexConservar
+        ? `«${origen}» los seguirá viendo mediante una autorización revocable.`
+        : `ATENCIÓN: «${origen}» DEJARÁ de verlos.`)
     )) return
     setAnexando(true)
     try {
-      const r = await orgsAPI.asignarContribuyentes(selectedOrg, [...seleccionOrigen])
+      const r = await orgsAPI.asignarContribuyentes(selectedOrg, [...seleccionOrigen], anexConservar)
       setSeleccionOrigen(new Set())
       const [aqui, alla] = await Promise.all([
         orgsAPI.contribuyentes(selectedOrg), orgsAPI.contribuyentes(origenOrg),
       ])
       setContribuyentes(aqui.data?.data || [])
       setContribOrigen(alla.data?.data || [])
-      setAviso(`${r.data?.movidos ?? 0} contribuyente(s) anexado(s) a «${destino}».`)
+      cargarAutorizaciones(selectedOrg)   // las de vuelta se acaban de crear
+      const devueltas = r.data?.autorizaciones?.length || 0
+      setAviso(`${r.data?.movidos ?? 0} contribuyente(s) anexado(s) a «${destino}».` +
+        (devueltas ? ` «${origen}» conserva el acceso a ${devueltas} de ellos.` : ''))
       setError('')
     } catch (e) {
       mostrarError(e, 'No se pudieron anexar los contribuyentes')
@@ -363,7 +369,7 @@ export default function AdminEmpresas() {
   const asignarHuerfanos = async () => {
     if (!selectedOrg || seleccionHuerfanos.size === 0) return
     try {
-      await orgsAPI.asignarContribuyentes(selectedOrg, [...seleccionHuerfanos])
+      await orgsAPI.asignarContribuyentes(selectedOrg, [...seleccionHuerfanos], false)
       setSeleccionHuerfanos(new Set())
       const [h, c] = await Promise.all([orgsAPI.huerfanos(), orgsAPI.contribuyentes(selectedOrg)])
       setHuerfanos(h.data?.data || [])
@@ -498,10 +504,24 @@ export default function AdminEmpresas() {
                         <option key={e.org_id} value={e.org_id}>{e.nombre}</option>
                       ))}
                     </select>
+                    <label className="check">
+                      <input
+                        type="checkbox" checked={anexConservar}
+                        onChange={(ev) => setAnexConservar(ev.target.checked)}
+                      />
+                      Conservar el acceso de quien los tiene hoy
+                    </label>
                     <button type="submit" disabled={seleccionOrigen.size === 0 || anexando}>
                       {anexando ? 'Anexando…' : `Anexar ${seleccionOrigen.size || ''}`}
                     </button>
                   </form>
+                  {!anexConservar && origenOrg && (
+                    <p className="aviso-rojo">
+                      Sin conservar el acceso, «{empresas.find((e) => e.org_id === origenOrg)?.nombre}»
+                      dejará de ver a esos contribuyentes en cuanto se muevan. Es lo que hay que marcar
+                      cuando el contribuyente pasa a declarar por su cuenta pero el despacho lo sigue llevando.
+                    </p>
+                  )}
                   {origenOrg && (
                     contribOrigen.length === 0 ? (
                       <p className="vacio">Esa empresa no tiene contribuyentes que traer.</p>
