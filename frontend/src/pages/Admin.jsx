@@ -30,6 +30,7 @@ export default function Admin() {
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState({})
   const [nuevo, setNuevo] = useState({ email: '', password: '', plan: 'completo' })
+  const [verClave, setVerClave] = useState(false)
   const [busy, setBusy] = useState(false)
   const [contactos, setContactos] = useState([])
   const [pagoModal, setPagoModal] = useState(null) // { uid, email, precio }
@@ -187,6 +188,7 @@ export default function Admin() {
     try {
       await adminAPI.createUser({ email: nuevo.email.trim(), password: nuevo.password, plan: nuevo.plan })
       setNuevo({ email: '', password: '', plan: 'completo' })
+      setVerClave(false)   // que la del siguiente usuario no nazca a la vista
       await load()
       alert('✔ Usuario creado con su clave y plan asignado.')
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy(false) }
@@ -224,7 +226,24 @@ export default function Admin() {
         <h2>Crear usuario</h2>
         <div className="adm-new-row">
           <input placeholder="correo@cliente.com" value={nuevo.email} onChange={(e) => setNuevo({ ...nuevo, email: e.target.value })} />
-          <input type="password" placeholder="contraseña (mín. 6)" value={nuevo.password} onChange={(e) => setNuevo({ ...nuevo, password: e.target.value })} />
+          {/* La clave se puede ver mientras se escribe: quien crea la cuenta es
+              quien luego se la dicta al usuario, y a ciegas se equivocaba. */}
+          <div className="adm-new-pwd">
+            <input
+              type={verClave ? 'text' : 'password'}
+              placeholder="contraseña (mín. 6)"
+              value={nuevo.password}
+              onChange={(e) => setNuevo({ ...nuevo, password: e.target.value })}
+              autoComplete="new-password"
+            />
+            <button
+              type="button" className="adm-new-pwd-toggle"
+              onClick={() => setVerClave((v) => !v)}
+              title={verClave ? 'Ocultar la clave' : 'Ver la clave'}
+            >
+              {verClave ? '🙈' : '👁'}
+            </button>
+          </div>
           <select value={nuevo.plan} onChange={(e) => setNuevo({ ...nuevo, plan: e.target.value })}>
             {PLANES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
           </select>

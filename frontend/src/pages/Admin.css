@@ -8,6 +8,10 @@
 .adm-new-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .adm-new-row input, .adm-new-row select { border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 11px; font-size: 0.86rem; outline: none; }
 .adm-new-row input:focus { border-color: #2563eb; }
+/* Clave del usuario nuevo: el ojo va pegado al campo, no como columna suelta. */
+.adm-new-pwd { display: flex; gap: 6px; align-items: center; }
+.adm-new-pwd-toggle { border: 1px solid #cbd5e1; background: #fff; border-radius: 8px; padding: 8px 11px; cursor: pointer; line-height: 1; }
+.adm-new-pwd-toggle:hover { background: #f1f5f9; }
 
 .adm-btn { border: 1px solid #cbd5e1; background: #fff; border-radius: 8px; padding: 8px 12px; font-weight: 600; cursor: pointer; font-size: 0.82rem; }
 .adm-btn.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
