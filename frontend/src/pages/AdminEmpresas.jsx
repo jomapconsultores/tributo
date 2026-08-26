@@ -484,6 +484,69 @@ export default function AdminEmpresas() {
                 {contribuyentes.length} contribuyente(s) asignado(s) · {miembros.length} miembro(s)
               </p>
 
+              {/* ── Autorizaciones entre empresas ───────────────────────── */}
+              <div className="bloque">
+                <h3>Compartir contribuyentes con otra empresa</h3>
+                <p>
+                  Comparte un contribuyente de «{empresaSel?.nombre}» con otra empresa SIN moverlo:
+                  sigue siendo de esta cartera y las dos lo ven. Es lo que hay que usar cuando el
+                  contribuyente pasa a declarar por su cuenta y el despacho lo sigue llevando.
+                  Por defecto ninguna empresa ve los datos de otra, y revocarlo vuelve a cerrar la puerta.
+                </p>
+
+                <form className="fila-form" onSubmit={autorizar}>
+                  <select value={autDestino} onChange={(ev) => setAutDestino(ev.target.value)}>
+                    <option value="">Compartir con la empresa…</option>
+                    {autor.empresas.map((e) => (
+                      <option key={e.id} value={e.id}>{e.nombre}</option>
+                    ))}
+                  </select>
+                  <select value={autIdent} onChange={(ev) => setAutIdent(ev.target.value)}>
+                    <option value="">Toda la cartera</option>
+                    {contribuyentes.map((c) => (
+                      <option key={c.identificacion} value={c.identificacion}>
+                        Solo {c.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="submit" disabled={!autDestino}>Compartir</button>
+                </form>
+                {autDestino && !autIdent && (
+                  <p className="aviso-rojo">
+                    «Toda la cartera» es un cheque en blanco: incluye también los contribuyentes
+                    que esta empresa registre en el futuro. Lo habitual es autorizar RUC por RUC.
+                  </p>
+                )}
+
+                <h4>Lo que esta empresa comparte</h4>
+                {autor.otorgadas.length === 0 ? (
+                  <p className="vacio">Ninguno. Sus datos no los ve ninguna otra empresa.</p>
+                ) : (
+                  <ul className="lista-grants">
+                    {autor.otorgadas.map((g) => (
+                      <li key={g.id}>
+                        <span><strong>{g.empresa}</strong> puede ver: {g.alcance}</span>
+                        <button className="peligro" onClick={() => revocar(g)}>Revocar</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <h4>Lo que otras empresas comparten con esta</h4>
+                {autor.recibidas.length === 0 ? (
+                  <p className="vacio">Ninguno.</p>
+                ) : (
+                  <ul className="lista-grants">
+                    {autor.recibidas.map((g) => (
+                      <li key={g.id}>
+                        <span>De <strong>{g.empresa}</strong>: {g.alcance}</span>
+                        <em className="solo-dueno">solo {g.empresa} puede revocarlo</em>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
               {/* ── Anexar contribuyentes de otra empresa ───────────────── */}
               {isPlatformAdmin && empresas.length > 1 && (
                 /* Va arriba, y se destaca mientras la empresa esté vacía: recién
@@ -496,6 +559,7 @@ export default function AdminEmpresas() {
                       ? `«${empresaSel?.nombre}» todavía no tiene contribuyentes. Tráelos desde otra empresa: `
                       : `Trae a «${empresaSel?.nombre}» contribuyentes que hoy están en otra empresa. `}
                     Se mueven enteros: todos sus períodos con sus facturas, declaraciones y anexos.
+                    Si solo quieres que otra empresa los VEA, no muevas nada: usa «Compartir», aquí arriba.
                   </p>
                   <form className="fila-form" onSubmit={(ev) => { ev.preventDefault(); anexar() }}>
                     <select value={origenOrg} onChange={(ev) => setOrigenOrg(ev.target.value)}>
@@ -691,67 +755,6 @@ export default function AdminEmpresas() {
                   )}
                 </div>
               )}
-
-              {/* ── Autorizaciones entre empresas ───────────────────────── */}
-              <div className="bloque">
-                <h3>Autorizaciones</h3>
-                <p>
-                  Por defecto ninguna empresa ve los datos de otra. Aquí se abre esa puerta,
-                  y solo para lo que se indique. Revocarla la vuelve a cerrar.
-                </p>
-
-                <form className="fila-form" onSubmit={autorizar}>
-                  <select value={autDestino} onChange={(ev) => setAutDestino(ev.target.value)}>
-                    <option value="">Autorizar a la empresa…</option>
-                    {autor.empresas.map((e) => (
-                      <option key={e.id} value={e.id}>{e.nombre}</option>
-                    ))}
-                  </select>
-                  <select value={autIdent} onChange={(ev) => setAutIdent(ev.target.value)}>
-                    <option value="">Toda la cartera</option>
-                    {contribuyentes.map((c) => (
-                      <option key={c.identificacion} value={c.identificacion}>
-                        Solo {c.nombre}
-                      </option>
-                    ))}
-                  </select>
-                  <button type="submit" disabled={!autDestino}>Autorizar</button>
-                </form>
-                {autDestino && !autIdent && (
-                  <p className="aviso-rojo">
-                    «Toda la cartera» es un cheque en blanco: incluye también los contribuyentes
-                    que esta empresa registre en el futuro. Lo habitual es autorizar RUC por RUC.
-                  </p>
-                )}
-
-                <h4>Acceso que esta empresa da sobre sus datos</h4>
-                {autor.otorgadas.length === 0 ? (
-                  <p className="vacio">Ninguno. Sus datos no los ve ninguna otra empresa.</p>
-                ) : (
-                  <ul className="lista-grants">
-                    {autor.otorgadas.map((g) => (
-                      <li key={g.id}>
-                        <span><strong>{g.empresa}</strong> puede ver: {g.alcance}</span>
-                        <button className="peligro" onClick={() => revocar(g)}>Revocar</button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                <h4>Acceso que esta empresa recibe de otras</h4>
-                {autor.recibidas.length === 0 ? (
-                  <p className="vacio">Ninguno.</p>
-                ) : (
-                  <ul className="lista-grants">
-                    {autor.recibidas.map((g) => (
-                      <li key={g.id}>
-                        <span>De <strong>{g.empresa}</strong>: {g.alcance}</span>
-                        <em className="solo-dueno">solo {g.empresa} puede revocarlo</em>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
 
               {isPlatformAdmin && huerfanos.length > 0 && (
                 <div className="huerfanos">
