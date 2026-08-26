@@ -179,3 +179,26 @@ button.peligro { background: #fee2e2; color: #b91c1c; }
 .huerfanos-lista { display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow-y: auto; margin-bottom: 12px; }
 .huerfanos-lista label { display: flex; align-items: center; gap: 7px; font-size: 0.8rem; color: #334155; }
 .huerfano-ruc { color: #94a3b8; font-size: 0.74rem; }
+
+/* Aviso en el hueco del formulario de «Nueva empresa» cuando falta el permiso
+   de plataforma: sin él, la ausencia del formulario no se distinguía de un
+   fallo de la aplicación. */
+.empresas-nota-permiso {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+}
+.empresas-nota-permiso h3 {
+  margin: 0 0 6px;
+  font-size: 0.9rem;
+  color: #64748b;
+}
+.empresas-nota-permiso p {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #64748b;
+}
+.empresas-nota-permiso p:last-child { margin-bottom: 0; }

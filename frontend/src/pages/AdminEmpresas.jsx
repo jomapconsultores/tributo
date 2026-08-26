@@ -23,7 +23,7 @@ const MOD_LABEL = {
 }
 
 export default function AdminEmpresas() {
-  const { isPlatformAdmin, org: orgActiva } = useAccess()
+  const { isPlatformAdmin, platformRole, role, org: orgActiva } = useAccess()
 
   const [empresas, setEmpresas] = useState([])
   const [selectedOrg, setSelectedOrg] = useState('')
@@ -436,6 +436,28 @@ export default function AdminEmpresas() {
                 {creando ? 'Creando…' : 'Crear empresa'}
               </button>
             </form>
+          )}
+
+          {/* Sin el formulario, la pantalla callaba y no había forma de saber si
+              faltaba el permiso, el despliegue o la migración. Que lo diga. */}
+          {!isPlatformAdmin && (
+            <div className="empresas-nota-permiso">
+              <h3>Nueva empresa</h3>
+              <p>
+                Crear empresas y repartir la cartera entre ellas es del administrador
+                de la plataforma. Tu rol en el sistema es
+                {' '}<strong>{ROL_LABEL[platformRole || role] || platformRole || role}</strong>
+                {platformRole && platformRole !== role && (
+                  <> (dentro de esta empresa actúas como {ROL_LABEL[role] || role})</>
+                )}.
+              </p>
+              <p>
+                Si debería ser <strong>Administrador</strong>, cámbialo en el selector de rol
+                de la barra superior. Si ahí ya dice Administrador y esto sigue apareciendo,
+                el servidor está respondiendo con una versión anterior: vuelve a entrar a la
+                sesión y recarga la página.
+              </p>
+            </div>
           )}
         </section>
 
