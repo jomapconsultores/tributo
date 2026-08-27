@@ -30,6 +30,13 @@ from services.email_sender import enviar_correo, email_configurado
 
 router = APIRouter(prefix="/api/odoo", tags=["odoo"])
 
+# Lo que dispara el cron va aparte. Este router entero se registra exigiendo
+# sesión y el submódulo de facturación (main.py), y esa comprobación corre ANTES
+# del endpoint: un cron, que llama sin sesión, se llevaba un 401 sin que nadie
+# mirara nunca su token. El recordatorio semanal a Johanna nunca llegó a salir
+# por eso. Aquí va solo lo que se protege con CRON_SECRET y nada más.
+router_cron = APIRouter(prefix="/api/odoo", tags=["odoo"])
+
 IVA_RATE = 0.15
 
 # El período de HONORARIOS que cubre una factura viaja en su referencia
@@ -940,7 +947,7 @@ async def cobros_pendientes(user_id: str = Depends(get_current_user)):
     return {"data": data}
 
 
-@router.api_route("/recordatorio-cobros", methods=["GET", "POST"])
+@router_cron.api_route("/recordatorio-cobros", methods=["GET", "POST"])
 async def recordatorio_cobros(token: Optional[str] = None):
     """Recordatorio SEMANAL de cobros pendientes a Johanna (lo dispara el cron).
     Incluye las facturas de venta posteadas sin pagar de TODAS las empresas

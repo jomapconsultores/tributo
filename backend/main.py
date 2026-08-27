@@ -335,6 +335,9 @@ app.include_router(xml_originales.router)  # descarga de XML originales (gastos/
 # informe general: con un solo permiso, quien tuviera una pantalla perdería la otra.
 app.include_router(reportes.router, dependencies=SUB_ANY("gest_reportes", "gest_facturacion"))
 app.include_router(odoo_factura.router, dependencies=SUB("gest_facturacion"))  # ODOO: facturación directa
+# El recordatorio semanal de cobros lo llama el cron, sin sesión: va sin la
+# dependencia de submódulo, protegido por CRON_SECRET dentro del endpoint.
+app.include_router(odoo_factura.router_cron)
 app.include_router(capacitaciones.router, dependencies=SUB("gest_capacitaciones"))
 app.include_router(webauthn_router.router)  # WEBAUTHN: biometría (huella/rostro)
 # BAJADORES: permiso de uso de los marcadores del SRI. Va SIN dependencia de
