@@ -19,6 +19,7 @@ Quién puede qué
 El resto de roles solo puede consultar la lista de empresas a las que pertenece
 (la necesita el selector de empresa del frontend).
 """
+import os
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -29,6 +30,7 @@ from auth import get_current_user
 from database import get_supabase_client, fetch_all
 from routers.access import (MODULOS, SUBMODULOS, es_super_admin,
                             invalidar_cache_rol)
+from services.activity import _email_de
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
 
@@ -46,6 +48,16 @@ DIAS_PRUEBA = 5
 PRECIO_BASE = 50.0
 DIAS_MES = 30
 IVA = 0.15
+
+# Aviso previo: al cliente se le escribe tres días antes de que se le renueve el
+# plan (o de que se le acabe la prueba), no el día del corte. El mismo número lo
+# usa el letrero de la app, para que lo que se ve en pantalla y lo que llega por
+# correo digan lo mismo.
+DIAS_AVISO_RENOVACION = 3
+
+# Quien vende el producto: recibe copia de cada aviso que sale hacia un cliente,
+# y es la dirección a la que se le pide al cliente que conteste.
+ADMIN_EMAIL = (os.environ.get("ADMIN_EMAIL") or "jomapconsultores@gmail.com").strip()
 
 
 class OrgIn(BaseModel):
@@ -355,6 +367,106 @@ def _suscripcion_de(org_id: str) -> dict:
         "total_con_iva": round(precio if s.get("iva_incluido") else precio * (1 + IVA), 2),
     })
     return s
+
+
+def _correos_a_avisar(s: dict) -> tuple:
+    """A quién se le escribe por esta suscripción, y de qué se llama lo cobrado.
+
+    Si la suscripción es de una EMPRESA, el aviso va a quien la administra —el
+    que paga—; si es de una persona (las de antes de multiempresa), a ella."""
+    if s.get("org_id"):
+        org = _sb().table("organizations").select("nombre").eq("id", s["org_id"]).limit(1).execute().data
+        nombre = (org[0]["nombre"] if org else None)
+        correos = [e for e in (_email_de(u) for u in orgs.admins_de_org(s["org_id"])) if e]
+        return sorted(set(correos)), nombre
+    correo = _email_de(s.get("user_id")) if s.get("user_id") else ""
+    return ([correo] if correo else []), None
+
+
+def _texto_aviso(s: dict, nombre_org: Optional[str]) -> tuple:
+    """Asunto y cuerpo del aviso previo. Dice la fecha, el plan y lo que se va a
+    cobrar CON IVA: el cliente tiene que poder decidir sin hacer cuentas."""
+    de = f" de {nombre_org}" if nombre_org else ""
+    fecha = str(s.get("proximo_pago"))
+    precio = float(s.get("precio_mensual") or 0)
+    total = round(precio if s.get("iva_incluido") else precio * (1 + IVA), 2)
+    # Sin precio pactado no se inventa uno ni se escribe un guión donde el
+    # cliente espera una cifra: se dice que está por acordar y se le da con
+    # quién. La fecha sigue siendo real, y el acceso se corta igual.
+    valor = (f"${precio:,.2f}" + (" (IVA incluido)" if s.get("iva_incluido")
+                                  else f" + IVA = ${total:,.2f}") + " al mes") if precio else None
+    prueba = s.get("estado") == "prueba"
+    asunto = (f"Tu prueba gratuita{de} termina el {fecha}" if prueba
+              else f"Tu plan{de} se renueva el {fecha}")
+    cuerpo = (
+        ("La prueba gratuita" if prueba else "El plan") + f"{de} "
+        + ("termina" if prueba else "se renueva") + f" el {fecha}, "
+        f"dentro de {DIAS_AVISO_RENOVACION} días.\n\n"
+        f"  Plan:  {s.get('plan') or 'completo'}\n"
+        + (f"  Valor: {valor}\n\n" if valor else
+           f"  Valor: por acordar con {ADMIN_EMAIL}\n\n")
+        + ("Para seguir entrando al sistema hay que registrar el pago antes de esa fecha.\n"
+           if prueba else
+           "Si todo sigue igual, basta con hacer el pago antes de esa fecha.\n")
+        + f"Si prefieres cambiar el plan o darlo de baja, este es el momento de decirlo: "
+          f"escribe a {ADMIN_EMAIL} y lo conversamos.\n\n"
+        "Gestor Tributario"
+    )
+    return asunto, cuerpo
+
+
+@router.api_route("/recordatorio-renovacion", methods=["GET", "POST"])
+async def recordatorio_renovacion(token: Optional[str] = None):
+    """Avisa al cliente TRES DÍAS ANTES de que se le renueve el plan.
+
+    Lo dispara el cron diario, sin sesión, con el mismo CRON_SECRET que el
+    recordatorio de cobros. Se avisa de la prueba que termina igual que del mes
+    que se renueva: en los dos casos lo que viene después es un pago.
+
+    No repite: cada suscripción avisada queda marcada con el vencimiento para el
+    que ya se escribió, así que un segundo pase del mismo día no molesta a
+    nadie. Si no hay a quién escribirle, o el correo falla, NO se marca —para
+    que el intento del día siguiente lo vuelva a coger."""
+    import hmac
+    import os
+    from datetime import timedelta
+    from services.email_sender import email_configurado, enviar_correo
+
+    secreto = (os.environ.get("CRON_SECRET") or "").strip()
+    if not secreto:
+        raise HTTPException(status_code=503, detail="CRON_SECRET no configurado en el servidor")
+    if not token or not hmac.compare_digest(token, secreto):
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+    objetivo = (_hoy() + timedelta(days=DIAS_AVISO_RENOVACION)).isoformat()
+    filas = _sb().table("subscriptions").select("*").eq("proximo_pago", objetivo).execute().data or []
+    filas = [s for s in filas if (s.get("estado") or "activo") in ("prueba", "activo")]
+    if not filas:
+        return {"ok": True, "fecha": objetivo, "avisados": 0, "motivo": "Ninguna renovación ese día"}
+    if not email_configurado():
+        return {"ok": False, "fecha": objetivo, "pendientes": len(filas),
+                "error": "SMTP no configurado en el servidor"}
+
+    avisados, repetidos, sin_destino, errores = [], 0, [], []
+    for s in filas:
+        if str(s.get("aviso_renovacion") or "") == objetivo:
+            repetidos += 1
+            continue
+        correos, nombre = _correos_a_avisar(s)
+        if not correos:
+            sin_destino.append(s.get("org_id") or s.get("user_id"))
+            continue
+        asunto, cuerpo = _texto_aviso(s, nombre)
+        ok, err = enviar_correo(", ".join(correos), asunto, cuerpo, copia=ADMIN_EMAIL)
+        if not ok:
+            errores.append({"suscripcion": s.get("id"), "error": err})
+            continue
+        _sb().table("subscriptions").update({"aviso_renovacion": objetivo}).eq("id", s["id"]).execute()
+        avisados.append({"empresa": nombre, "correos": correos})
+
+    return {"ok": not errores, "fecha": objetivo, "avisados": len(avisados),
+            "detalle": avisados, "ya_avisados": repetidos,
+            "sin_destinatario": sin_destino, "errores": errores}
 
 
 @router.get("/{org_id}/suscripcion")

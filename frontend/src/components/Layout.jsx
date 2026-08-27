@@ -46,8 +46,18 @@ function SubBanner() {
       </div>
     )
   }
-  if (dias !== null && dias <= 5) {
-    return <div className="sub-banner warn">El próximo pago{de} vence en <strong>{dias} día(s)</strong> ({subscription.proximo_pago}).</div>
+  // Tres días, los mismos que espera el correo de aviso (DIAS_AVISO_RENOVACION
+  // en el backend): al cliente se le avisa por las dos vías a la vez, y que una
+  // dijera cinco días y la otra tres solo servía para confundir.
+  if (dias !== null && dias <= 3) {
+    return (
+      <div className="sub-banner warn">
+        El próximo pago{de} vence en <strong>{dias} día(s)</strong> ({subscription.proximo_pago})
+        {subscription.precio_mensual
+          ? <>: <strong>${Number(subscription.precio_mensual).toFixed(2)}{subscription.iva_incluido ? ' (IVA incluido)' : ' + IVA'}</strong></>
+          : ''}.
+      </div>
+    )
   }
   return null
 }

@@ -1,0 +1,35 @@
+name: Aviso de renovación a los clientes (3 días antes)
+
+# Todos los días a las 13:00 UTC (08:00 en Ecuador). El backend busca las
+# suscripciones que vencen dentro de tres días y le escribe a quien administra
+# cada empresa —con copia al administrador de la plataforma— diciendo la fecha,
+# el plan y lo que se va a cobrar con IVA.
+#
+# Corre a diario a propósito: el vencimiento de cada cliente cae en el día que
+# le toca, no todos el mismo. Repetir el pase no duplica avisos (la columna
+# subscriptions.aviso_renovacion guarda para qué vencimiento ya se escribió).
+#
+# Requiere SMTP_* y CRON_SECRET configurados en el servidor.
+
+on:
+  schedule:
+    - cron: '0 13 * * *'     # todos los días, 13:00 UTC
+  workflow_dispatch: {}       # y a mano desde la pestaña Actions
+
+jobs:
+  aviso:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Avisar a los clientes que renuevan en 3 días
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://app-tributos.pensamiento-libre.org' }}
+        run: |
+          for i in 1 2 3; do
+            if curl -fsS --max-time 120 -X POST \
+              "${BACKEND_URL}/api/organizations/recordatorio-renovacion?token=${CRON_SECRET}" ; then
+              echo ""; echo "Aviso de renovacion disparado"; exit 0
+            fi
+            echo "Reintentando..."; sleep 20
+          done
+          echo "No respondio; manana reintenta"; exit 0

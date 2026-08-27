@@ -476,6 +476,10 @@ async def me(user_id: str = Depends(get_current_user)):
             "plan": sub.get("plan"),
             "proximo_pago": sub.get("proximo_pago"),
             "precio_mensual": sub.get("precio_mensual"),
+            # Sin esto el letrero de la app tenía que suponer, y suponía siempre
+            # que el precio era neto: a quien lo tuviera pactado con IVA dentro
+            # le habría anunciado un cobro mayor del que se le hace.
+            "iva_incluido": bool(sub.get("iva_incluido")),
             "vigente": sub.get("vigente", True),
             "vencida": sub.get("vencida", False),
         },

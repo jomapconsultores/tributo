@@ -28,14 +28,24 @@ def email_configurado():
     return bool(c["host"] and c["user"] and c["password"])
 
 
-def enviar_correo(destinatario, asunto, cuerpo):
-    """Devuelve (ok: bool, error: str|None)."""
+def enviar_correo(destinatario, asunto, cuerpo, copia=None):
+    """Devuelve (ok: bool, error: str|None).
+
+    `copia` pone a alguien en Cc —quien vende el producto se entera de lo que
+    se le dice al cliente— y admite una dirección o una lista. Si coincide con
+    el destinatario se omite, para no mandar el mismo correo dos veces."""
     c = _cfg()
     if not (c["host"] and c["user"] and c["password"]):
         return False, "El envío automático no está configurado en el servidor (faltan variables SMTP)."
     msg = EmailMessage()
     msg["From"] = c["from"]
     msg["To"] = destinatario
+    if copia:
+        dest = {d.strip().lower() for d in str(destinatario).split(",") if d.strip()}
+        cc = [copia] if isinstance(copia, str) else list(copia)
+        cc = [d.strip() for d in cc if d and d.strip().lower() not in dest]
+        if cc:
+            msg["Cc"] = ", ".join(cc)
     msg["Subject"] = asunto
     msg.set_content(cuerpo)
     try:
