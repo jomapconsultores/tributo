@@ -625,6 +625,10 @@ async def listar_miembros(org_id: str, user_id: str = Depends(get_current_user))
             "hereda_modulos": hereda,
             "submodules": sorted(_submodulos_permitidos_de(subs_guardados.get(uid, set()))),
             "created_at": str(f.get("created_at") or "")[:10],
+            # Sus propios permisos no los toca: los pone quien vende el producto.
+            # Va marcado desde aquí para que la pantalla apague los controles en
+            # vez de ofrecerlos y devolver un 403 al pulsarlos.
+            "editable": not (uid == user_id and not es_super_admin(user_id)),
         })
     out.sort(key=lambda x: (orgs.ORDEN_ROL.get(x["role"], 9), (x["email"] or "").upper()))
     return {"data": out, "catalogo_modulos": MODULOS, "catalogo_submodulos": SUBMODULOS}
@@ -738,6 +742,17 @@ async def actualizar_miembro(org_id: str, uid: str, body: MemberUpdate,
                              admin_id: str = Depends(get_current_user)):
     """Cambia el rol y/o los permisos de un miembro DENTRO de esta empresa."""
     _exigir_admin_de_org(org_id, admin_id)
+    # Un administrador de empresa reparte lo de SU EQUIPO, no lo suyo: lo que él
+    # mismo tiene contratado lo decide quien vende el producto. Sin esta guarda,
+    # nombrar administrador al dueño de un despacho —que es lo natural, es quien
+    # paga— le dejaba darse cualquier módulo del catálogo con dos clics, porque
+    # los permisos de miembro no están topados por nada que la empresa tenga.
+    # El administrador de plataforma sí puede editarse: es el dueño del catálogo.
+    if uid == admin_id and not es_super_admin(admin_id):
+        raise HTTPException(
+            status_code=403,
+            detail="No puedes cambiar tu propio rol ni tus propios permisos. "
+                   "Eso lo hace el administrador del sistema.")
     sb = _sb()
     actual = sb.table("organization_members").select("id,role")\
         .eq("org_id", org_id).eq("user_id", uid).execute().data

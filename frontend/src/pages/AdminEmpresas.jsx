@@ -797,6 +797,10 @@ export default function AdminEmpresas() {
                     {miembros.map((m) => {
                       const activos = modulosActivos(m)
                       const abierto = expandido === m.user_id
+                      // Uno mismo no se reparte permisos: el backend lo rechaza,
+                      // y aquí se apagan los controles para no ofrecer algo que
+                      // al pulsarlo solo devuelve un error.
+                      const bloqueado = m.editable === false
                       return (
                         <tr key={m.user_id} className={abierto ? 'abierto' : ''}>
                           <td>
@@ -818,7 +822,7 @@ export default function AdminEmpresas() {
                                           <input
                                             type="checkbox"
                                             checked={(m.submodules || []).includes(s.key)}
-                                            disabled={busy === m.user_id}
+                                            disabled={busy === m.user_id || bloqueado}
                                             onChange={() => toggleSubmodulo(m, s.key)}
                                           />
                                           {s.label}
@@ -842,11 +846,17 @@ export default function AdminEmpresas() {
                           <td>
                             <select
                               value={m.role}
-                              disabled={busy === m.user_id}
+                              disabled={busy === m.user_id || bloqueado}
                               onChange={(ev) => cambiarRol(m, ev.target.value)}
                             >
                               {ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
                             </select>
+                            {bloqueado && (
+                              <div className="hereda-aviso">
+                                Eres tú. Tu rol y tus módulos los pone el administrador
+                                del sistema, no tú. Sí puedes repartir los de tu equipo.
+                              </div>
+                            )}
                           </td>
                           <td>
                             {m.hereda_modulos && (
@@ -855,13 +865,13 @@ export default function AdminEmpresas() {
                                 Lo marcado es lo que ve hoy; cualquier cambio los fija aquí.
                                 <div className="hereda-acciones">
                                   <button
-                                    disabled={busy === m.user_id}
+                                    disabled={busy === m.user_id || bloqueado}
                                     onClick={() => fijarPermisos(m, false)}
                                   >
                                     Fijar tal cual
                                   </button>
                                   <button
-                                    className="peligro" disabled={busy === m.user_id}
+                                    className="peligro" disabled={busy === m.user_id || bloqueado}
                                     onClick={() => fijarPermisos(m, true)}
                                   >
                                     Dejarlo sin módulos
@@ -875,7 +885,7 @@ export default function AdminEmpresas() {
                                   <input
                                     type="checkbox"
                                     checked={activos.has(mod)}
-                                    disabled={busy === m.user_id}
+                                    disabled={busy === m.user_id || bloqueado}
                                     onChange={() => toggleModulo(m, mod)}
                                   />
                                   {MOD_LABEL[mod] || mod}
