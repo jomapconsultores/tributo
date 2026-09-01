@@ -15,14 +15,21 @@ La autorización es de a UNO: se le crea la llave a la persona (no al módulo).
 Quien no tenga llave activa no puede usarlos aunque tenga acceso a Gastos o a
 Devoluciones.
 
+Y es POR UN PLAZO, de tres meses como máximo. Vencido, el marcador se apaga
+solo: nadie tiene que acordarse de revocarlo. Renovar es un acto del
+administrador y vuelve a contar desde el día de la renovación, así que nunca
+queda más de un trimestre por delante. La única llave sin vencimiento es la del
+dueño de la herramienta, que el sistema se crea sola.
+
 El endpoint que consulta el marcador (`/permiso`) es el único sin sesión: corre
 en el portal del SRI, otro origen, sin cookies ni token del usuario. Por eso va
 con la llave en el cuerpo y responde con CORS abierto —no expone datos: contesta
 sí o no y deja registro—.
 """
+import calendar
 import secrets
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -37,6 +44,11 @@ router = APIRouter(prefix="/api/bajadores", tags=["bajadores"])
 
 # Los tres marcadores. 'todos' es la llave que sirve para los tres.
 CUALES = {"gastos", "emitidos", "devolucion", "todos"}
+
+# Techo del plazo. La autorización se da por meses y no puede pasar de acá: la
+# idea es que renovar sea una decisión que se toma seguido, no un trámite que se
+# hace una vez y se olvida.
+MESES_MAX = 3
 
 # El marcador corre en el portal del SRI y en la propia app; la respuesta no
 # lleva datos de nadie, así que el origen puede ser cualquiera.
@@ -58,13 +70,87 @@ def _llave_nueva() -> str:
     return secrets.token_urlsafe(32)
 
 
+def _meses_validos(meses) -> int:
+    """El plazo pedido, acotado al techo. Fuera de rango es error del que llama."""
+    try:
+        m = int(meses)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="El plazo va en meses enteros.")
+    if not 1 <= m <= MESES_MAX:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El plazo va de 1 a {MESES_MAX} meses. Para más tiempo, se renueva al vencer.")
+    return m
+
+
+def _vence_en(meses: int) -> str:
+    """Fecha de caducidad contando desde ahora, en meses de calendario.
+
+    Se suman meses, no días: autorizar el 15 vence el 15. Si el mes destino no
+    tiene ese día (el 31 de enero a un mes), cae en el último del mes."""
+    base = datetime.now(timezone.utc)
+    total = base.month - 1 + meses
+    anio = base.year + total // 12
+    mes = total % 12 + 1
+    dia = min(base.day, calendar.monthrange(anio, mes)[1])
+    return base.replace(year=anio, month=mes, day=dia).isoformat()
+
+
+def _fecha(valor) -> Optional[datetime]:
+    """Lee una fecha de la base sin romperse por el formato ni por la zona."""
+    if not valor:
+        return None
+    try:
+        d = datetime.fromisoformat(str(valor).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def _vencida(llave: dict) -> bool:
+    """¿Se le pasó el plazo?
+
+    Sin fecha no vence: es la llave del dueño. Pero una fecha que existe y no se
+    puede leer cuenta como vencida —esto decide quién entra al portal del SRI, y
+    ante un dato roto conviene cortar y que alguien lo mire, no dejar pasar."""
+    crudo = llave.get("vence_at")
+    if not crudo:
+        return False
+    fin = _fecha(crudo)
+    if not fin:
+        return True
+    return fin <= datetime.now(timezone.utc)
+
+
+def _dias_restantes(llave: dict) -> Optional[int]:
+    fin = _fecha(llave.get("vence_at"))
+    if not fin:
+        return None
+    return (fin - datetime.now(timezone.utc)).days
+
+
 def _apto(sb, user_id: str, cual: str) -> Optional[dict]:
-    """La llave activa de esta persona para ese bajador, si la tiene."""
+    """La llave vigente de esta persona para ese bajador, si la tiene."""
+    return _apto_con_motivo(sb, user_id, cual)[0]
+
+
+def _apto_con_motivo(sb, user_id: str, cual: str) -> Tuple[Optional[dict], Optional[str]]:
+    """Como `_apto`, pero además dice por qué no sirve: para poder explicarlo.
+
+    Distinguir «vencida» de «nunca la tuvo» importa: son dos conversaciones
+    distintas con el administrador."""
     filas = sb.table("bajadores_llaves").select("*").eq("user_id", user_id).execute().data or []
+    caducada = None
     for f in filas:
-        if f.get("cual") in (cual, "todos") and f.get("activa"):
-            return f
-    return None
+        if f.get("cual") not in (cual, "todos"):
+            continue
+        if not f.get("activa"):
+            continue
+        if _vencida(f):
+            caducada = f
+            continue
+        return f, None
+    return (None, "vencida") if caducada else (None, None)
 
 
 def _anotar_uso(sb, *, llave, resultado, cuerpo, ip):
@@ -129,6 +215,17 @@ async def permiso(body: PermisoIn, request: Request):
                        "en el sistema y volvé a bajarlo.",
         }, headers=CORS_ABIERTO)
 
+    if _vencida(llave):
+        _anotar_uso(sb, llave=llave, resultado="vencida", cuerpo=body, ip=ip)
+        fin = _fecha(llave.get("vence_at"))
+        return JSONResponse({
+            "ok": False, "motivo": "vencida",
+            "detalle": "Tu autorización venció"
+                       + (f" el {fin.strftime('%d/%m/%Y')}" if fin else "")
+                       + ". Pedile al administrador que te la renueve: no hace falta "
+                         "volver a bajar el marcador, con renovarla vuelve a andar.",
+        }, headers=CORS_ABIERTO)
+
     if llave.get("cual") not in (body.cual, "todos"):
         _anotar_uso(sb, llave=llave, resultado="otro_bajador", cuerpo=body, ip=ip)
         return JSONResponse({
@@ -172,22 +269,28 @@ async def permiso(body: PermisoIn, request: Request):
     return JSONResponse({"ok": True, "motivo": "ok"}, headers=CORS_ABIERTO)
 
 
-def llave_activa(user_id: str, cual: str = "todos") -> Optional[dict]:
-    """La llave vigente de esta persona para ese uso, o None.
+def _llave_con_motivo(user_id: str, cual: str) -> Tuple[Optional[dict], Optional[str]]:
+    """La llave vigente de esta persona para ese uso, y si no, por qué no.
 
     Al administrador de la plataforma se le crea sola —es el dueño de la
-    herramienta—; el resto necesita que se la habiliten uno por uno."""
+    herramienta, y la suya no caduca—; el resto necesita que se la habiliten uno
+    por uno y por un plazo."""
     if cual not in CUALES:
         raise HTTPException(status_code=400, detail=f"Bajador inválido: {sorted(CUALES)}")
     sb = get_supabase_client()
-    llave = _apto(sb, user_id, cual)
-    if not llave and es_super_admin(user_id):
+    llave, motivo = _apto_con_motivo(sb, user_id, cual)
+    if not llave and not motivo and es_super_admin(user_id):
         res = sb.table("bajadores_llaves").insert({
             "user_id": user_id, "cual": "todos", "llave": _llave_nueva(),
             "autorizada_por": user_id, "nota": "Dueño de la herramienta",
         }).execute()
         llave = (res.data or [None])[0]
-    return llave
+    return llave, motivo
+
+
+def llave_activa(user_id: str, cual: str = "todos") -> Optional[dict]:
+    """La llave vigente de esta persona para ese uso, o None."""
+    return _llave_con_motivo(user_id, cual)[0]
 
 
 def requiere_llave(cual: str, que: str = "los bajadores del SRI"):
@@ -195,22 +298,32 @@ def requiere_llave(cual: str, que: str = "los bajadores del SRI"):
 
     Es la MISMA llave que habilita los marcadores, usada acá para cerrar
     acciones de la propia app (armar y enviar una devolución de IVA). Tener el
-    módulo contratado no alcanza: la autorización se da de a uno, en
-    Administración → Bajadores SRI, y revocarla corta el acceso en el acto."""
+    módulo contratado no alcanza: la autorización se da de a uno y por un plazo,
+    en Administración → Bajadores SRI. Revocarla corta el acceso en el acto, y
+    cuando se cumple el plazo se corta solo."""
     def _dep(user_id: str = Depends(get_current_user)) -> str:
-        if not llave_activa(user_id, cual):
+        llave, motivo = _llave_con_motivo(user_id, cual)
+        if llave:
+            return user_id
+        if motivo == "vencida":
             raise HTTPException(status_code=403, detail=(
-                f"No estás autorizado a usar {que}. La autorización se da de a uno, "
-                "desde el sistema: pedila al administrador."))
-        return user_id
+                f"Tu autorización para usar {que} venció. Pedile al administrador "
+                "que te la renueve."))
+        raise HTTPException(status_code=403, detail=(
+            f"No estás autorizado a usar {que}. La autorización se da de a uno, "
+            "desde el sistema: pedila al administrador."))
     return _dep
 
 
 @router.get("/mi-llave")
 async def mi_llave(cual: str = "todos", user_id: str = Depends(get_current_user)):
     """La llave de quien está usando el sistema, para incrustarla en su marcador."""
-    llave = llave_activa(user_id, cual)
+    llave, motivo = _llave_con_motivo(user_id, cual)
     if not llave:
+        if motivo == "vencida":
+            raise HTTPException(status_code=403, detail=(
+                "Tu autorización para usar los bajadores del SRI venció. Pedile al "
+                "administrador que te la renueve."))
         raise HTTPException(status_code=403, detail=(
             "No estás autorizado a usar los bajadores del SRI. La autorización se da "
             "de a uno, desde el sistema."))
@@ -219,6 +332,9 @@ async def mi_llave(cual: str = "todos", user_id: str = Depends(get_current_user)
         "cual": llave["cual"],
         "equipo_activado": bool(llave.get("dispositivo")),
         "equipo": llave.get("dispositivo_nombre"),
+        # Para que el panel pueda avisar antes de que se corte el trabajo.
+        "vence_at": llave.get("vence_at"),
+        "dias_restantes": _dias_restantes(llave),
     }
 
 
@@ -234,6 +350,9 @@ class AutorizarIn(BaseModel):
     user_id: str
     cual: str = "todos"
     nota: Optional[str] = None
+    # Por cuántos meses. El techo son MESES_MAX; pasarse es error, no se recorta
+    # en silencio.
+    meses: int = MESES_MAX
 
 
 @router.get("/llaves")
@@ -241,35 +360,78 @@ async def listar_llaves(user_id: str = Depends(get_current_user)):
     _solo_admin(user_id)
     sb = get_supabase_client()
     llaves = sb.table("bajadores_llaves").select("*").order("created_at", desc=True).execute().data or []
-    # El secreto no se devuelve entero: alcanza con reconocerlo.
     for l in llaves:
+        # El secreto no se devuelve entero: alcanza con reconocerlo.
         l["llave"] = (l.get("llave") or "")[:6] + "…"
-    return {"llaves": llaves}
+        # La pantalla no vuelve a calcular el plazo: lo dice el servidor, que es
+        # el que manda a la hora de dejar pasar o no.
+        l["vencida"] = _vencida(l)
+        l["dias_restantes"] = _dias_restantes(l)
+    return {"llaves": llaves, "meses_max": MESES_MAX}
 
 
 @router.post("/llaves")
 async def autorizar(body: AutorizarIn, user_id: str = Depends(get_current_user)):
-    """Habilita a una persona. Es la autorización de a uno."""
+    """Habilita a una persona por un plazo. Es la autorización de a uno."""
     _solo_admin(user_id)
     if body.cual not in CUALES:
         raise HTTPException(status_code=400, detail=f"Bajador inválido: {sorted(CUALES)}")
+    meses = _meses_validos(body.meses)
+    vence = _vence_en(meses)
     sb = get_supabase_client()
     previa = sb.table("bajadores_llaves").select("*").eq(
         "user_id", body.user_id).eq("cual", body.cual).execute().data or []
     if previa:
+        # Volver a autorizar a alguien que ya tuvo llave reusa la suya: el
+        # marcador que ya tiene bajado sigue sirviendo, solo vuelve a correr el
+        # plazo desde hoy.
         sb.table("bajadores_llaves").update({
-            "activa": True, "nota": body.nota, "autorizada_por": user_id, "updated_at": _ahora(),
+            "activa": True, "nota": body.nota, "autorizada_por": user_id,
+            "vence_at": vence, "updated_at": _ahora(),
         }).eq("id", previa[0]["id"]).execute()
         registrar(actor_user_id=user_id, action="update", module="admin",
-                  entity="Permiso de bajadores (reactivado)")
-        return {"ok": True, "reactivada": True}
+                  entity=f"Permiso de bajadores (reactivado por {meses} mes(es))")
+        return {"ok": True, "reactivada": True, "vence_at": vence}
     sb.table("bajadores_llaves").insert({
         "user_id": body.user_id, "cual": body.cual, "llave": _llave_nueva(),
-        "autorizada_por": user_id, "nota": body.nota,
+        "autorizada_por": user_id, "nota": body.nota, "vence_at": vence,
     }).execute()
     registrar(actor_user_id=user_id, action="create", module="admin",
-              entity="Permiso de bajadores")
-    return {"ok": True, "reactivada": False}
+              entity=f"Permiso de bajadores ({meses} mes(es))")
+    return {"ok": True, "reactivada": False, "vence_at": vence}
+
+
+class RenovarIn(BaseModel):
+    meses: int = MESES_MAX
+
+
+@router.post("/llaves/{llave_id}/renovar")
+async def renovar(llave_id: str, body: RenovarIn,
+                  user_id: str = Depends(get_current_user)):
+    """Le da más plazo a una llave que ya existe.
+
+    Cuenta desde HOY, no desde el vencimiento anterior: renovar antes de tiempo
+    no acumula, así que nunca hay más de MESES_MAX por delante. La llave es la
+    misma, o sea que quien la tenía no vuelve a bajar el marcador."""
+    _solo_admin(user_id)
+    meses = _meses_validos(body.meses)
+    sb = get_supabase_client()
+    filas = sb.table("bajadores_llaves").select("*").eq("id", llave_id).execute().data or []
+    if not filas:
+        raise HTTPException(status_code=404, detail="Esa autorización no existe.")
+    vence = _vence_en(meses)
+    sb.table("bajadores_llaves").update({
+        "vence_at": vence,
+        "renovada_at": _ahora(),
+        "renovaciones": int(filas[0].get("renovaciones") or 0) + 1,
+        # Renovar una vencida la deja andando de nuevo; revocarla es otra cosa y
+        # se hace aparte.
+        "activa": True,
+        "updated_at": _ahora(),
+    }).eq("id", llave_id).execute()
+    registrar(actor_user_id=user_id, action="update", module="admin",
+              entity=f"Permiso de bajadores (renovado por {meses} mes(es))")
+    return {"ok": True, "vence_at": vence}
 
 
 class EstadoLlaveIn(BaseModel):

@@ -167,6 +167,21 @@ export default function BajadorSRI({ which = 'gastos', onClose }) {
           )}
           {permiso && (
           <>
+          {/* El permiso dura un plazo. Avisar antes evita que se corte el
+              trabajo en mitad de una declaración: con quince días de margen da
+              tiempo a pedir la renovación sin apuro. */}
+          {permiso.dias_restantes != null && permiso.dias_restantes <= 15 && (
+            <p className={permiso.dias_restantes <= 3 ? 'bsri-vence urgente' : 'bsri-vence'}>
+              ⌛ Tu autorización vence {permiso.dias_restantes <= 0 ? 'hoy'
+                : permiso.dias_restantes === 1 ? 'mañana'
+                : `en ${permiso.dias_restantes} días`}
+              {permiso.vence_at
+                ? ` (${new Date(permiso.vence_at).toLocaleDateString('es-EC', { dateStyle: 'medium' })})`
+                : ''}.
+              {' '}Pedile al administrador que te la renueve: el marcador que ya tenés
+              sigue sirviendo, no hay que volver a bajarlo.
+            </p>
+          )}
           {permiso.equipo_activado && (
             <p className="bsri-nota">
               🔒 Tu permiso ya está activado en un equipo{permiso.equipo ? ` (${permiso.equipo})` : ''}.

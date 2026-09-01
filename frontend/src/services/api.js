@@ -493,7 +493,10 @@ export const bajadoresAPI = {
   miLlave: (cual = 'todos') => api.get('/api/bajadores/mi-llave', { params: { cual } }),
   // Administración (solo el administrador de la plataforma).
   llaves: () => api.get('/api/bajadores/llaves'),
+  // La autorización se da por un plazo (meses, tope del backend).
   autorizar: (body) => api.post('/api/bajadores/llaves', body),
+  // Renovar cuenta desde hoy, no desde el vencimiento anterior: no acumula.
+  renovar: (id, meses) => api.post(`/api/bajadores/llaves/${id}/renovar`, { meses }),
   estado: (id, activa) => api.post(`/api/bajadores/llaves/${id}/estado`, { activa }),
   liberarEquipo: (id) => api.post(`/api/bajadores/llaves/${id}/liberar-equipo`),
   usos: (limite = 100) => api.get('/api/bajadores/usos', { params: { limite } }),

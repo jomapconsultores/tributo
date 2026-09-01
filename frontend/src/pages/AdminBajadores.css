@@ -50,3 +50,27 @@
   margin-top: 8px; padding: 8px 10px; border-left: 3px solid #1e6b33;
   background: #f0fdf4; border-radius: 0 8px 8px 0; line-height: 1.5;
 }
+
+/* --- Vigencia: el plazo de cada autorización ------------------------------ */
+/* El plazo es lo que hay que poder leer de un vistazo, sin contar días a mano:
+   verde mientras sobra tiempo, ámbar cuando falta poco, rojo cuando ya pasó. */
+.ab-vig { white-space: nowrap; font-weight: 600; }
+.ab-vig-ok { color: #1e6b33; }
+.ab-vig-pronto { color: #8a6100; }
+.ab-vig-vencida { color: #8b1e1e; }
+.ab-vig-sin { color: #777; font-weight: 400; }
+.ab-vig .ab-nota { font-weight: 400; }
+
+/* Vencida no es lo mismo que revocada: la revocada la apagó alguien, la
+   vencida se apagó sola y probablemente haya que renovarla. */
+.ab-tabla tr.ab-vencida td { background: #fffaf5; }
+
+.ab-form .ab-plazo { min-width: 130px; }
+
+/* El aviso de arriba: lo que el administrador tiene que resolver hoy. */
+.ab-porvencer {
+  display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline;
+  padding: 10px 13px; margin-bottom: 14px; border-radius: 8px;
+  background: #fbf2dc; border: 1px solid #e3c98d; color: #6b4b06; font-size: 13px;
+}
+.ab-porvencer span { color: #85683a; font-size: 12px; }

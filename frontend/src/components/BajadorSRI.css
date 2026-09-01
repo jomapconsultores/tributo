@@ -87,3 +87,11 @@
   .bsri-modal { font-size: 0.85rem; }
   .bsri-acciones .bsri-btn { flex: 1 1 auto; }
 }
+
+/* El permiso vence: avisarlo antes de que corte el trabajo. Ámbar mientras hay
+   margen para pedir la renovación; rojo cuando ya quedan días contados. */
+.bsri-vence {
+  margin: 0 0 10px; padding: 9px 12px; border-radius: 8px; font-size: 13px; line-height: 1.5;
+  background: #fbf2dc; border: 1px solid #e3c98d; color: #6b4b06;
+}
+.bsri-vence.urgente { background: #fbeae8; border-color: #e0b4b4; color: #8b1e1e; }

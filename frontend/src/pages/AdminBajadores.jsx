@@ -12,7 +12,10 @@ import './AdminBajadores.css'
  * en el acto; activada en una PC, no corre en otra; y todo intento queda abajo,
  * en la bitácora, salga bien o mal.
  *
- * La autorización es de a UNO: se habilita a la persona, no al módulo.
+ * La autorización es de a UNO y POR UN PLAZO: se habilita a la persona, no al
+ * módulo, y por tres meses como máximo. Vencido el plazo el marcador se apaga
+ * solo —nadie tiene que acordarse de revocarlo— y renovarlo es una decisión
+ * expresa del administrador, que vuelve a contar desde el día que la toma.
  */
 
 const CUAL_LABEL = {
@@ -26,15 +29,42 @@ const RESULTADO_LABEL = {
   ok: '✔ usado',
   activada: '🔑 activado en su equipo',
   revocada: '⛔ llave revocada',
+  vencida: '⌛ autorización vencida',
   otra_maquina: '⛔ otra máquina',
   desconocida: '⛔ marcador no reconocido',
   otro_bajador: '⛔ fuera de su permiso',
 }
 
+// A partir de acá se avisa de que está por vencer, para que no se corte el
+// trabajo de alguien en mitad de una declaración.
+const AVISO_DIAS = 15
+
 const cuando = (t) => {
   if (!t) return '—'
   const d = new Date(t)
   return isNaN(d) ? String(t).slice(0, 16) : d.toLocaleString('es-EC', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+const soloFecha = (t) => {
+  if (!t) return '—'
+  const d = new Date(t)
+  return isNaN(d) ? String(t).slice(0, 10) : d.toLocaleDateString('es-EC', { dateStyle: 'medium' })
+}
+
+// Cómo se lee el plazo de un vistazo. El backend ya dijo si está vencida y
+// cuántos días quedan; acá solo se traduce a algo legible.
+const vigencia = (l) => {
+  if (!l.vence_at) return { clase: 'ab-vig-sin', texto: 'No caduca', detalle: 'Dueño de la herramienta' }
+  if (l.vencida) return { clase: 'ab-vig-vencida', texto: 'Vencida', detalle: `el ${soloFecha(l.vence_at)}` }
+  const d = l.dias_restantes
+  if (d != null && d <= AVISO_DIAS) {
+    return {
+      clase: 'ab-vig-pronto',
+      texto: d <= 0 ? 'Vence hoy' : `Vence en ${d} día${d === 1 ? '' : 's'}`,
+      detalle: soloFecha(l.vence_at),
+    }
+  }
+  return { clase: 'ab-vig-ok', texto: `Hasta el ${soloFecha(l.vence_at)}`, detalle: d != null ? `${d} días` : '' }
 }
 
 export default function AdminBajadores() {
@@ -43,7 +73,8 @@ export default function AdminBajadores() {
   const [usos, setUsos] = useState([])
   const [cargando, setCargando] = useState(true)
   const [msg, setMsg] = useState(null)
-  const [nuevo, setNuevo] = useState({ user_id: '', cual: 'todos', nota: '' })
+  const [mesesMax, setMesesMax] = useState(3)
+  const [nuevo, setNuevo] = useState({ user_id: '', cual: 'todos', nota: '', meses: 3 })
 
   const cargar = useCallback(async () => {
     setCargando(true)
@@ -54,6 +85,8 @@ export default function AdminBajadores() {
         bajadoresAPI.usos(80).catch(() => ({ data: { usos: [] } })),
       ])
       setLlaves(l.data?.llaves || [])
+      // El techo lo fija el backend: si mañana cambia, la pantalla lo sigue.
+      if (l.data?.meses_max) setMesesMax(l.data.meses_max)
       setUsuarios(u.data || [])
       setUsos(us.data?.usos || [])
     } catch (e) {
@@ -85,9 +118,33 @@ export default function AdminBajadores() {
   const autorizar = (e) => {
     e.preventDefault()
     if (!nuevo.user_id) return
-    hacer(() => bajadoresAPI.autorizar(nuevo), 'Autorizado. Ya puede bajar su marcador desde el sistema.')
-    setNuevo({ user_id: '', cual: 'todos', nota: '' })
+    const m = Number(nuevo.meses)
+    hacer(
+      () => bajadoresAPI.autorizar({ ...nuevo, meses: m }),
+      `Autorizado por ${m} mes${m === 1 ? '' : 'es'}. Ya puede bajar su marcador desde el sistema.`,
+    )
+    setNuevo({ user_id: '', cual: 'todos', nota: '', meses: mesesMax })
   }
+
+  const renovar = (l) => {
+    const quien = emailDe[l.user_id] || l.user_id
+    hacer(
+      () => bajadoresAPI.renovar(l.id, mesesMax),
+      `Renovado a ${quien} por ${mesesMax} mes${mesesMax === 1 ? '' : 'es'} más, contados desde hoy.`,
+    )
+  }
+
+  // Los plazos que ofrece el selector, hasta el techo que fija el backend.
+  const plazos = useMemo(
+    () => Array.from({ length: mesesMax }, (_, i) => i + 1),
+    [mesesMax],
+  )
+
+  // Lo que el administrador tiene que mirar primero.
+  const porVencer = useMemo(
+    () => llaves.filter((l) => l.activa && l.vence_at && (l.vencida || (l.dias_restantes ?? 99) <= AVISO_DIAS)),
+    [llaves],
+  )
 
   return (
     <div className="ab-page">
@@ -95,8 +152,9 @@ export default function AdminBajadores() {
         <h1>🔐 Bajadores del SRI</h1>
         <p>
           Los marcadores no son de uso libre: cada uno lleva la llave de la persona que lo
-          bajó y, antes de tocar el portal, pregunta acá si sigue habilitada y si es su
-          máquina. Revocar apaga el marcador en el acto.
+          bajó y, antes de tocar el portal, pregunta acá si sigue habilitada, si no se le
+          pasó el plazo y si es su máquina. Revocar apaga el marcador en el acto, y el
+          plazo lo apaga solo al cumplirse.
         </p>
         <p className="ab-nota-devol">
           La llave de <strong>Devolución IVA</strong> hace algo más que habilitar el marcador:
@@ -108,8 +166,26 @@ export default function AdminBajadores() {
 
       {msg && <div className={`ab-msg ${msg.tipo}`}>{msg.texto}</div>}
 
+      {porVencer.length > 0 && (
+        <div className="ab-porvencer">
+          <strong>
+            {porVencer.length === 1
+              ? 'Hay 1 autorización vencida o a punto de vencer'
+              : `Hay ${porVencer.length} autorizaciones vencidas o a punto de vencer`}
+          </strong>
+          <span>
+            {porVencer.map((l) => emailDe[l.user_id] || l.user_id).join(' · ')}
+          </span>
+        </div>
+      )}
+
       <section className="ab-bloque">
         <h2>Autorizar a alguien</h2>
+        <p className="ab-sub">
+          El permiso se da por un plazo: al cumplirse, el marcador de esa persona deja de
+          funcionar sin que haya que hacer nada. Máximo {mesesMax} meses; después se renueva
+          si corresponde.
+        </p>
         <form className="ab-form" onSubmit={autorizar}>
           <select
             value={nuevo.user_id}
@@ -125,6 +201,18 @@ export default function AdminBajadores() {
             onChange={(e) => setNuevo((n) => ({ ...n, cual: e.target.value }))}
           >
             {Object.entries(CUAL_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+          <select
+            className="ab-plazo"
+            /* Si el techo del backend bajara, el valor guardado podría quedar
+               fuera de la lista y el select saldría en blanco. */
+            value={Math.min(nuevo.meses, mesesMax)}
+            title="Cuánto dura la autorización"
+            onChange={(e) => setNuevo((n) => ({ ...n, meses: Number(e.target.value) }))}
+          >
+            {plazos.map((m) => (
+              <option key={m} value={m}>{m === 1 ? 'Por 1 mes' : `Por ${m} meses`}</option>
+            ))}
           </select>
           <input
             placeholder="Nota (para acordarte por qué)"
@@ -146,26 +234,47 @@ export default function AdminBajadores() {
           <table className="ab-tabla">
             <thead>
               <tr>
-                <th>Persona</th><th>Bajador</th><th>Equipo</th>
+                <th>Persona</th><th>Bajador</th><th>Vigencia</th><th>Equipo</th>
                 <th>Último uso</th><th className="num">Usos</th><th>Estado</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {llaves.map((l) => (
-                <tr key={l.id} className={l.activa ? '' : 'ab-revocada'}>
+              {llaves.map((l) => {
+                const v = vigencia(l)
+                return (
+                <tr key={l.id} className={!l.activa ? 'ab-revocada' : (l.vencida ? 'ab-vencida' : '')}>
                   <td>
                     {emailDe[l.user_id] || l.user_id}
                     {l.nota && <em className="ab-nota"> · {l.nota}</em>}
                   </td>
                   <td>{CUAL_LABEL[l.cual] || l.cual}</td>
+                  <td className={`ab-vig ${v.clase}`}>
+                    {v.texto}
+                    {v.detalle && <em className="ab-nota"> · {v.detalle}</em>}
+                    {l.renovaciones > 0 && (
+                      <em className="ab-nota" title={`Última renovación: ${cuando(l.renovada_at)}`}>
+                        {' '}· renovada {l.renovaciones}×
+                      </em>
+                    )}
+                  </td>
                   <td>
                     {l.dispositivo_nombre || (l.dispositivo ? 'activado' : '— sin estrenar —')}
                     {l.activada_at && <em className="ab-nota"> · {cuando(l.activada_at)}</em>}
                   </td>
                   <td>{cuando(l.ultimo_uso_at)}</td>
                   <td className="num">{l.usos}</td>
-                  <td>{l.activa ? '✅ habilitado' : '⛔ revocado'}</td>
+                  <td>
+                    {!l.activa ? '⛔ revocado' : l.vencida ? '⌛ vencido' : '✅ habilitado'}
+                  </td>
                   <td className="ab-acciones">
+                    <button
+                      className={`ab-btn${l.activa && (l.vencida || (l.dias_restantes ?? 99) <= AVISO_DIAS) ? ' primary' : ''}`}
+                      disabled={!l.vence_at}
+                      title={l.vence_at
+                        ? `Le da ${mesesMax} mes(es) más, contados desde hoy`
+                        : 'Esta llave no caduca'}
+                      onClick={() => renovar(l)}
+                    >Renovar</button>
                     <button
                       className="ab-btn"
                       onClick={() => hacer(() => bajadoresAPI.estado(l.id, !l.activa),
@@ -180,7 +289,8 @@ export default function AdminBajadores() {
                     >Liberar equipo</button>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         )}
