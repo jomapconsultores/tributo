@@ -28,6 +28,7 @@ sí o no y deja registro—.
 """
 import calendar
 import secrets
+import uuid
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 
@@ -92,6 +93,21 @@ def _revisar_migracion(e: Exception):
             "la migración 066_bajadores_vigencia.sql en el servidor; hasta entonces "
             "no se puede autorizar ni renovar."))
     raise e
+
+
+def _user_id_valido(valor: str) -> str:
+    """El identificador de la persona, comprobado antes de tocar la base.
+
+    La columna es uuid: mandarle un correo revienta con un 22P02 que llega al
+    administrador como «APIError» y no dice nada. Vale la pena verificarlo acá y
+    contestar qué se mandó de más."""
+    v = (valor or "").strip()
+    try:
+        return str(uuid.UUID(v))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(status_code=400, detail=(
+            f"«{v[:60]}» no es un identificador de usuario válido. Hay que mandar el "
+            "user_id, no el correo."))
 
 
 def _meses_validos(meses) -> int:
@@ -400,11 +416,12 @@ async def autorizar(body: AutorizarIn, user_id: str = Depends(get_current_user))
     _solo_admin(user_id)
     if body.cual not in CUALES:
         raise HTTPException(status_code=400, detail=f"Bajador inválido: {sorted(CUALES)}")
+    destinatario = _user_id_valido(body.user_id)
     meses = _meses_validos(body.meses)
     vence = _vence_en(meses)
     sb = get_supabase_client()
     previa = sb.table("bajadores_llaves").select("*").eq(
-        "user_id", body.user_id).eq("cual", body.cual).execute().data or []
+        "user_id", destinatario).eq("cual", body.cual).execute().data or []
     if previa:
         # Volver a autorizar a alguien que ya tuvo llave reusa la suya: el
         # marcador que ya tiene bajado sigue sirviendo, solo vuelve a correr el
@@ -421,7 +438,7 @@ async def autorizar(body: AutorizarIn, user_id: str = Depends(get_current_user))
         return {"ok": True, "reactivada": True, "vence_at": vence}
     try:
         sb.table("bajadores_llaves").insert({
-            "user_id": body.user_id, "cual": body.cual, "llave": _llave_nueva(),
+            "user_id": destinatario, "cual": body.cual, "llave": _llave_nueva(),
             "autorizada_por": user_id, "nota": body.nota, "vence_at": vence,
         }).execute()
     except Exception as e:

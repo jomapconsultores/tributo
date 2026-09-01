@@ -98,9 +98,12 @@ export default function AdminBajadores() {
 
   useEffect(() => { cargar() }, [cargar])
 
+  // /api/admin/users devuelve `user_id`, no `id`. Leer `u.id` daba undefined:
+  // la tabla mostraba el UUID crudo en vez del correo, y el desplegable de
+  // abajo mandaba el correo como identificador.
   const emailDe = useMemo(() => {
     const m = {}
-    usuarios.forEach((u) => { m[u.id] = u.email || u.id })
+    usuarios.forEach((u) => { m[u.user_id] = u.email || u.user_id })
     return m
   }, [usuarios])
 
@@ -193,7 +196,7 @@ export default function AdminBajadores() {
           >
             <option value="">— Elegí la persona —</option>
             {usuarios.map((u) => (
-              <option key={u.id} value={u.id}>{u.email || u.id}</option>
+              <option key={u.user_id} value={u.user_id}>{u.email || u.user_id}</option>
             ))}
           </select>
           <select
