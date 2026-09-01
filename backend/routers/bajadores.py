@@ -70,6 +70,30 @@ def _llave_nueva() -> str:
     return secrets.token_urlsafe(32)
 
 
+def _falta_la_columna(e: Exception) -> bool:
+    """True si la base todavía no tiene las columnas del plazo.
+
+    Pasa cuando el código sube antes que la migración 066. Sin esto el error
+    llega como un «APIError» pelado y hay que ir a buscar al log del servidor
+    qué fue lo que pasó."""
+    # 42703 = undefined_column (PostgreSQL); PGRST204 = PostgREST no la ve en su
+    # caché de esquema, que es lo que devuelve cuando la columna no existe.
+    if getattr(e, "code", None) in ("42703", "PGRST204"):
+        return True
+    msg = str(e).lower()
+    return "vence_at" in msg or "renovaciones" in msg or "renovada_at" in msg
+
+
+def _revisar_migracion(e: Exception):
+    """Convierte el fallo por migración pendiente en algo que se pueda leer."""
+    if _falta_la_columna(e):
+        raise HTTPException(status_code=503, detail=(
+            "La base todavía no tiene el plazo de las autorizaciones. Falta correr "
+            "la migración 066_bajadores_vigencia.sql en el servidor; hasta entonces "
+            "no se puede autorizar ni renovar."))
+    raise e
+
+
 def _meses_validos(meses) -> int:
     """El plazo pedido, acotado al techo. Fuera de rango es error del que llama."""
     try:
@@ -385,17 +409,23 @@ async def autorizar(body: AutorizarIn, user_id: str = Depends(get_current_user))
         # Volver a autorizar a alguien que ya tuvo llave reusa la suya: el
         # marcador que ya tiene bajado sigue sirviendo, solo vuelve a correr el
         # plazo desde hoy.
-        sb.table("bajadores_llaves").update({
-            "activa": True, "nota": body.nota, "autorizada_por": user_id,
-            "vence_at": vence, "updated_at": _ahora(),
-        }).eq("id", previa[0]["id"]).execute()
+        try:
+            sb.table("bajadores_llaves").update({
+                "activa": True, "nota": body.nota, "autorizada_por": user_id,
+                "vence_at": vence, "updated_at": _ahora(),
+            }).eq("id", previa[0]["id"]).execute()
+        except Exception as e:
+            _revisar_migracion(e)
         registrar(actor_user_id=user_id, action="update", module="admin",
                   entity=f"Permiso de bajadores (reactivado por {meses} mes(es))")
         return {"ok": True, "reactivada": True, "vence_at": vence}
-    sb.table("bajadores_llaves").insert({
-        "user_id": body.user_id, "cual": body.cual, "llave": _llave_nueva(),
-        "autorizada_por": user_id, "nota": body.nota, "vence_at": vence,
-    }).execute()
+    try:
+        sb.table("bajadores_llaves").insert({
+            "user_id": body.user_id, "cual": body.cual, "llave": _llave_nueva(),
+            "autorizada_por": user_id, "nota": body.nota, "vence_at": vence,
+        }).execute()
+    except Exception as e:
+        _revisar_migracion(e)
     registrar(actor_user_id=user_id, action="create", module="admin",
               entity=f"Permiso de bajadores ({meses} mes(es))")
     return {"ok": True, "reactivada": False, "vence_at": vence}
@@ -420,15 +450,18 @@ async def renovar(llave_id: str, body: RenovarIn,
     if not filas:
         raise HTTPException(status_code=404, detail="Esa autorización no existe.")
     vence = _vence_en(meses)
-    sb.table("bajadores_llaves").update({
-        "vence_at": vence,
-        "renovada_at": _ahora(),
-        "renovaciones": int(filas[0].get("renovaciones") or 0) + 1,
-        # Renovar una vencida la deja andando de nuevo; revocarla es otra cosa y
-        # se hace aparte.
-        "activa": True,
-        "updated_at": _ahora(),
-    }).eq("id", llave_id).execute()
+    try:
+        sb.table("bajadores_llaves").update({
+            "vence_at": vence,
+            "renovada_at": _ahora(),
+            "renovaciones": int(filas[0].get("renovaciones") or 0) + 1,
+            # Renovar una vencida la deja andando de nuevo; revocarla es otra
+            # cosa y se hace aparte.
+            "activa": True,
+            "updated_at": _ahora(),
+        }).eq("id", llave_id).execute()
+    except Exception as e:
+        _revisar_migracion(e)
     registrar(actor_user_id=user_id, action="update", module="admin",
               entity=f"Permiso de bajadores (renovado por {meses} mes(es))")
     return {"ok": True, "vence_at": vence}
