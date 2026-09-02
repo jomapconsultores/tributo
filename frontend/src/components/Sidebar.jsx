@@ -6,8 +6,6 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useClients } from '../context/ClientContext'
 import { useAccess, homeFor } from '../context/AccessContext'
 import { actividadAPI } from '../services/api'
-import { setBajadorEmitidosHref } from '../utils/bajadorEmitidos'
-import { setBajadorGastosHref } from '../utils/bajadorGastos'
 import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import BajadorSRI from './BajadorSRI'
 import './Sidebar.css'
@@ -279,16 +277,18 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
       )
     }
     if (it.kind === 'bajador') {
-      // Se puede ARRASTRAR a los marcadores (el href es el script) o TOCAR para
-      // abrir el panel, que además lo deja copiar y pegar en la consola del SRI.
-      const refs = { gastos: setBajadorGastosHref, emitidos: setBajadorEmitidosHref }
+      // Acá NO se arrastra. El script que se pueda llevar tiene que llevar la
+      // llave de quien lo baja, y la llave se pide con la sesión abierta al
+      // abrir el panel: la franja se pinta para todos, antes de saber si esta
+      // persona está autorizada. Arrastrando desde acá se instalaba el script
+      // con los huecos sin rellenar (JOMAP_API/JOMAP_LLAVE) y el marcador
+      // contestaba «se generó sin permiso de uso» sin llegar a preguntar nada.
+      // Se toca, se abre el panel, y ahí se copia o se arrastra ya con llave.
       return (
         <a
           key={`b${i}`}
-          ref={refs[it.which]}
           className="nav-item submodule bajador-item"
-          draggable="true"
-          title="Tocalo para copiarlo o instalarlo (también podés arrastrarlo a tus marcadores)"
+          title="Abrí el panel para copiarlo o instalarlo con tu permiso"
           onClick={(e) => { e.preventDefault(); setBajador(it.which) }}
         >
           <span className="nav-ico">{it.ico}</span><span>{it.label}</span>

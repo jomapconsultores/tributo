@@ -11,7 +11,6 @@ import ClaveHeader from '../components/ClaveHeader'
 import WorkflowGuide from '../components/WorkflowGuide'
 import './IngresosIva.css'
 
-import { setBajadorEmitidosHref } from '../utils/bajadorEmitidos'
 import BajadorSRI from '../components/BajadorSRI'
 
 import { fmtMoney as money, msgFueraPeriodo, msgIdentAjena } from '../utils/format'
@@ -226,12 +225,14 @@ export default function IngresosIva() {
           value={search} onChange={(e) => setSearch(e.target.value)}
         />
         <span className="ing-iva-count">{filtered.length} de {rows.length}</span>
+        {/* Sin href ni arrastre: el script solo sirve con la llave de quien lo
+            baja, y esa llave se pide al abrir el panel. Arrastrando desde acá se
+            instalaba con los huecos vacíos y el marcador no llegaba ni a
+            preguntar por el permiso. */}
         <a
-          ref={setBajadorEmitidosHref}
           className="ing-iva-clear ing-iva-bajador"
-          draggable="true"
           onClick={handleBajador}
-          title="Baja del SRI las facturas EMITIDAS del período que elijas (mes o semestre): el archivo de cada factura (XML, o PDF si no hay XML) y un TXT con las claves. Arrastralo a tus marcadores para instalarlo."
+          title="Baja del SRI las facturas EMITIDAS del período que elijas (mes o semestre): el archivo de cada factura (XML, o PDF si no hay XML) y un TXT con las claves. Tocalo para copiarlo o instalarlo con tu permiso."
         >📥 Bajador-INGRESOS (SRI)</a>
         <input ref={txtInputRef} type="file" accept=".txt" style={{ display: 'none' }} id="ing-iva-txt"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadTxt(f) }} />

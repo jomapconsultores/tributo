@@ -38,11 +38,6 @@ export const AVISO_BAJADOR_GASTOS =
   'Podés seguir trabajando en otras pestañas mientras corre — pero NO cierres la\n' +
   'del SRI.'
 
-// El href "javascript:" se fija con un callback ref que se reaplica en CADA
-// render (React sanitiza/restaura un href puesto en el JSX).
-export const setBajadorGastosHref = (el) => {
-  if (el) el.setAttribute('href', BAJADOR_GASTOS_HREF)
-}
 
 export const SRI_RECIBIDOS_URL =
   'https://srienlinea.sri.gob.ec/comprobantes-electronicos-internet/pages/consultas/recibidos/comprobantesRecibidos.jsf'

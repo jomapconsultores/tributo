@@ -39,11 +39,6 @@ export const AVISO_BAJADOR_EMITIDOS =
   'del SRI. Respeta el Tipo de comprobante y el Estado que hayas dejado elegidos.\n' +
   'Solo trae fechas ANTERIORES a hoy (el SRI no admite el día en curso).'
 
-// El href "javascript:" se fija con un callback ref que se reaplica en CADA
-// render (React sanitiza/restaura un href puesto en el JSX).
-export const setBajadorEmitidosHref = (el) => {
-  if (el) el.setAttribute('href', BAJADOR_EMITIDOS_HREF)
-}
 
 export const SRI_EMITIDOS_URL =
   'https://srienlinea.sri.gob.ec/tu-portal-internet/accederAplicacion.jspa?redireccion=SI&idGrupo=55&idServicio=328'

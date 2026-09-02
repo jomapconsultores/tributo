@@ -256,20 +256,14 @@
 .info-item:hover { color: #e2e8f0; background: rgba(255,255,255,0.05); }
 .info-item.active { background: rgba(255,255,255,0.08); color: #e2e8f0; }
 
-/* ── Bajador (arrastrable) ── */
+/* ── Bajador ── */
+/* Ya no se arrastra desde la franja: el script tiene que llevar la llave de
+   quien lo baja, y eso solo puede hacerlo el panel. El agarradero y el cursor
+   de arrastre invitaban justo a lo que no funciona. */
 .bajador-item {
   text-decoration: none;
-  cursor: grab;
+  cursor: pointer;
 }
-.bajador-item:active { cursor: grabbing; }
-.bajador-item::after {
-  content: '⠿';
-  margin-left: auto;
-  color: #475569;
-  font-size: 0.85rem;
-  flex-shrink: 0;
-}
-.bajador-item:hover::after { color: #94a3b8; }
 
 /* ── Nivel 1: Base de datos ── */
 .level-1 {
@@ -815,8 +809,6 @@
 .info-item:hover { color: #0f172a; background: #eef2f7; }
 .info-item.active { background: #dce8f8; color: #002a80; }
 
-.bajador-item::after { color: #64748b; }
-.bajador-item:hover::after { color: #334155; }
 
 .level-1 { color: #334155; }
 .level-1:hover { color: #0f172a; }

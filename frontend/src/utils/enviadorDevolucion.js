@@ -40,11 +40,6 @@ export const AVISO_ENVIADOR_DEVOLUCION =
   '5. Al terminar, "Copiar constancia para la app" y pegala acá con "Pegar\n' +
   '   constancia del enviador": ahí queda PRESENTADA con lo que aceptó el SRI.'
 
-// El href "javascript:" se fija con un callback ref que se reaplica en CADA
-// render (React sanitiza/restaura un href puesto en el JSX).
-export const setEnviadorDevolucionHref = (el) => {
-  if (el) el.setAttribute('href', ENVIADOR_DEVOLUCION_HREF)
-}
 
 export const SRI_DEVOLUCION_URL =
   'https://srienlinea.sri.gob.ec/sri-en-linea/inicio/NAT'
