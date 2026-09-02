@@ -55,6 +55,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# El marcador del SRI corre en srienlinea.sri.gob.ec y pregunta acá si su llave
+# sigue habilitada. Manda JSON, así que el navegador hace primero un preflight
+# —y ese preflight lo contesta CORSMiddleware, no la ruta—: como ese origen no
+# está en CORS_ORIGINS, respondía 400 «Disallowed CORS origin» SIN cabecera
+# Access-Control-Allow-Origin, y el marcador se quedaba en "no hay conexión con
+# el sistema". La ruta @router.options de bajadores.py no llegaba a ejecutarse.
+#
+# Se atiende ese preflight —y solo ese— antes de que CORSMiddleware lo vea. Va
+# registrado después, o sea por fuera, pero dentro de TrustedHost. No abre nada:
+# la respuesta del endpoint no lleva datos de nadie (contesta sí o no y deja
+# registro), por eso puede ser de origen abierto sin credenciales.
+@app.middleware("http")
+async def preflight_del_marcador(request: Request, call_next):
+    if request.method == "OPTIONS" and request.url.path == bajadores.RUTA_PERMISO:
+        return JSONResponse({}, headers=bajadores.CORS_ABIERTO)
+    return await call_next(request)
+
+
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts.split(","))
 
 
@@ -81,6 +99,12 @@ async def error_no_previsto(request: Request, exc: Exception):
         content={"detail": f"Error del servidor ({exc.__class__.__name__}). "
                            "Quedó registrado en el log del servidor."},
     )
+    # El marcador del SRI llama desde otro origen: si el 500 se va sin cabeceras
+    # CORS, el navegador lo tapa y el marcador solo puede decir "no hay conexión
+    # con el sistema", que es justo lo que no ayuda a nadie a arreglarlo.
+    if request.url.path == bajadores.RUTA_PERMISO:
+        resp.headers.update(bajadores.CORS_ABIERTO)
+        return resp
     origen = request.headers.get("origin")
     if origen and (origen in allowed_origins or "*" in allowed_origins):
         resp.headers["Access-Control-Allow-Origin"] = origen

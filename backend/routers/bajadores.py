@@ -43,6 +43,11 @@ from services.activity import registrar
 
 router = APIRouter(prefix="/api/bajadores", tags=["bajadores"])
 
+# La ruta que consulta el marcador desde el portal del SRI. Vive acá porque
+# main.py necesita nombrarla para dejar pasar su preflight: el CORS general
+# rechaza ese origen, y sin esto el marcador no puede ni preguntar.
+RUTA_PERMISO = "/api/bajadores/permiso"
+
 # Los tres marcadores. 'todos' es la llave que sirve para los tres.
 CUALES = {"gastos", "emitidos", "devolucion", "todos"}
 
