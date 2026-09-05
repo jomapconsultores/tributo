@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from config import get_settings
-from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router, retenciones_efectuadas, devoluciones_iva, diagnostico, organizations, bajadores
+from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router, retenciones_efectuadas, devoluciones_iva, organizations, bajadores
 from routers.access import require_module, require_submodule, require_submodule_any, es_super_admin
 import orgs as _orgs
 import os
@@ -34,14 +34,21 @@ async def lifespan(app: FastAPI):
     yield
     print("Shutting down Tributos API")
 
+settings = get_settings()
+
+# En produccion no se publica la documentacion interactiva: el esquema completo
+# listaba las 240 rutas, incluidas las de credenciales y bajadores.
+_es_produccion = settings.environment == "production"
+
 app = FastAPI(
     title="Gestor Tributario Web API",
     description="API para procesar y clasificar facturas SRI",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url=None if _es_produccion else "/docs",
+    redoc_url=None if _es_produccion else "/redoc",
+    openapi_url=None if _es_produccion else "/openapi.json",
 )
-
-settings = get_settings()
 
 # CORS
 # Se limpian los espacios: "a.com, b.com" en la env var dejaba " b.com" con el
@@ -353,7 +360,6 @@ app.include_router(compradores.router, dependencies=SUB("dat_compradores"))
 app.include_router(resources.router, dependencies=ICEMOD)  # referencia compartida: solo módulo
 app.include_router(declaraciones.router, dependencies=DECL)  # submódulo IVA/ICE/103 se valida por tipo en el router
 app.include_router(devoluciones_iva.router, dependencies=SUB("decl_devoluciones"))  # devolución IVA adultos mayores/discapacidad
-app.include_router(diagnostico.router)  # Fase 0: chequeo de conectividad al portal SRI (temporal)
 app.include_router(xml_originales.router)  # descarga de XML originales (gastos/ingresos/retenciones)
 # Los honorarios se cargan desde Facturación y también son la materia del
 # informe general: con un solo permiso, quien tuviera una pantalla perdería la otra.
