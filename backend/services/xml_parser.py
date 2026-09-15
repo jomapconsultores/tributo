@@ -41,6 +41,35 @@ def balance_components_to_total(components: dict, total: float, tolerance: float
     comp[elegido] = round(comp[elegido] + diff, 2)
     return comp
 
+# codigoPorcentaje del IVA (codigo=2) → casilla donde se registra.
+#   0 → 0% · 2=12%, 3=14%, 4=15%, 10=13% → tarifa general (F104 510/520, "tarifa
+#   diferente de cero") · 8 → tarifa variable 8% (F104 533/534) · 5 → 5% (550/560)
+#   6 → no objeto · 7 → exento
+_CASILLA_POR_CODIGO = {
+    '0': '0', '2': '15', '3': '15', '4': '15', '10': '15',
+    '8': '8', '5': '5', '6': 'no_objeto', '7': 'exento',
+}
+
+
+def casilla_tarifa_iva(cod_porc: str, base: float, valor: float) -> str:
+    """Casilla ('0', '15', '8', '5', 'no_objeto', 'exento') de un impuesto IVA.
+
+    Un código que el sistema no conoce NO se descarta (antes su base e IVA
+    desaparecían y la factura no cuadraba con su total): se ubica por el
+    porcentaje real valor/base y se deja aviso en el log."""
+    casilla = _CASILLA_POR_CODIGO.get(cod_porc)
+    if casilla:
+        return casilla
+    if not base or not valor:
+        casilla = '0'
+    else:
+        tasa = valor / base
+        casilla = '5' if tasa < 0.065 else '8' if tasa < 0.105 else '15'
+    print(f"[xml_parser] Aviso: codigoPorcentaje de IVA desconocido '{cod_porc}' "
+          f"(base {base:.2f}, IVA {valor:.2f}); se registró en la tarifa {casilla}.")
+    return casilla
+
+
 def find_text_ignore_ns(parent, tag_name: str) -> str:
     """Busca texto en elemento ignorando namespace"""
     if parent is None:
@@ -166,14 +195,15 @@ def parse_xml_invoice(
                     except:
                         valor_impuesto = 0.0
 
-                    if cod_porc == '0':
+                    casilla = casilla_tarifa_iva(cod_porc, base_imponible, valor_impuesto)
+                    if casilla == '0':
                         base_0 += base_imponible
-                    elif cod_porc in ['2', '3', '4', '10']:
+                    elif casilla == '15':
                         # 2=12% 3=14% 4=15% 10=13%: variantes históricas de la
                         # tarifa general, se agrupan como "tarifa 15%".
                         base_15 += base_imponible
                         iva_15 += valor_impuesto
-                    elif cod_porc == '8':
+                    elif casilla == '8':
                         # 8% (tarifa especial, ej. feriados/turismo): tarifa
                         # realmente distinta al 15%. Va a su PROPIA casilla
                         # (base_8/iva_8), NO al bucket 15%: mezclarla rompía la
@@ -183,12 +213,12 @@ def parse_xml_invoice(
                         # crédito/total (ver services/declaracion.py).
                         base_8 += base_imponible
                         iva_8 += valor_impuesto
-                    elif cod_porc == '5':
+                    elif casilla == '5':
                         base_5 += base_imponible
                         iva_5 += valor_impuesto
-                    elif cod_porc == '6':
+                    elif casilla == 'no_objeto':
                         base_no_objeto += base_imponible
-                    elif cod_porc == '7':
+                    elif casilla == 'exento':
                         base_exento += base_imponible
 
         try:
@@ -213,8 +243,8 @@ def parse_xml_invoice(
 
         if base_8 > 0:
             print(f"[xml_parser] Aviso: factura {factura_numero or unique_id} de {nombre} tiene "
-                  f"${base_8:.2f} gravados al 8%% (IVA ${iva_8:.2f}) — se registró en la casilla "
-                  f"propia 8%% (base_8/iva_8); verificar el casillero oficial antes de declarar.")
+                  f"${base_8:.2f} gravados al 8% (IVA ${iva_8:.2f}) — se registró en la casilla "
+                  f"propia 8% (base_8/iva_8), que va a los casilleros 533/534 (tarifa variable) del F104.")
 
         # Memoria de tarjeta
         mem_key = f"{nombre}|{total_original:.2f}"

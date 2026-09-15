@@ -249,7 +249,10 @@ export default function SavedData() {
                     <span className="sd-anio-label">{anio.anio}</span>
                     <span className="sd-anio-total">{money(anio.total)}</span>
                   </div>
-                  {anio.meses.map((mes) => (
+                  {anio.meses.map((mes) => {
+                    // Columnas 8% solo si ese mes tiene alguna factura con esa tarifa.
+                    const hay8 = mes.filas.some((f) => f.base_8 > 0 || f.iva_8 > 0)
+                    return (
                     <div key={mes.mes} className="sd-mes">
                       <div className="sd-mes-head">
                         <span>{nombreMes(mes.mes)}</span>
@@ -262,6 +265,10 @@ export default function SavedData() {
                             <th className="r">Facturas</th>
                             <th className="r">Base 15%</th>
                             <th className="r">IVA 15%</th>
+                            {hay8 && <th className="r">Base 8%</th>}
+                            {hay8 && <th className="r">IVA 8%</th>}
+                            <th className="r">Base 5%</th>
+                            <th className="r">IVA 5%</th>
                             <th className="r">Total</th>
                           </tr>
                         </thead>
@@ -272,13 +279,18 @@ export default function SavedData() {
                               <td className="r">{f.num_facturas}</td>
                               <td className="r">{money(f.base_15)}</td>
                               <td className="r">{money(f.iva_15)}</td>
+                              {hay8 && <td className="r">{money(f.base_8)}</td>}
+                              {hay8 && <td className="r">{money(f.iva_8)}</td>}
+                              <td className="r">{money(f.base_5)}</td>
+                              <td className="r">{money(f.iva_5)}</td>
                               <td className="r">{money(f.total)}</td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               ))}
             </>

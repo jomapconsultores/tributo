@@ -210,7 +210,7 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
     diferir_meses = max(0, min(3, int(diferir_meses or 0)))
     if diferir_meses > 0:
         iva_diferido_actual = iva_ventas
-        ventas_diferidas_monto = t_base_15 + t_base_5
+        ventas_diferidas_monto = t_base_15 + t_base_5 + t_base_8
     else:
         iva_diferido_actual = 0.0
         ventas_diferidas_monto = 0.0
@@ -264,27 +264,29 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
         # ── VENTAS ──
         fila("VENTAS", "411", "Ventas locales gravadas 15% (valor neto, ICE+IVA incluido)", t_base_15, n411),
         fila("VENTAS", "412", "Ventas locales gravadas 5% (valor neto)", t_base_5, n412),
-        *([fila("VENTAS", "411-8", "Ventas locales gravadas 8% — tarifa especial (verificar casillero oficial)", t_base_8, v_n_base_8)] if (t_base_8 or t_iva_8) else []),
+        # 8% (feriados/turismo): casilleros oficiales de TARIFA VARIABLE del F104
+        # (ventas 410/420/430, adquisiciones 530/533/534). No van en 411/510.
+        *([fila("VENTAS", "420", "Ventas locales gravadas tarifa variable 8% (valor neto)", t_base_8, v_n_base_8)] if (t_base_8 or t_iva_8) else []),
         fila("VENTAS", "413", "Ventas locales con tarifa 0%", t_base_0, n413),
         fila("VENTAS", "414", "Ventas exentas de IVA", t_exento, v_n_exento),
         fila("VENTAS", "415", "Ventas no objeto del IVA", t_no_obj, v_n_no_obj),
         fila("VENTAS", "421", "IVA generado en ventas 15%", t_iva_15),
         fila("VENTAS", "422", "IVA generado en ventas 5%", t_iva_5),
-        *([fila("VENTAS", "421-8", "IVA generado en ventas 8% (tarifa especial)", t_iva_8)] if (t_base_8 or t_iva_8) else []),
+        *([fila("VENTAS", "430", "IVA generado en ventas tarifa variable 8%", t_iva_8)] if (t_base_8 or t_iva_8) else []),
 
         # ── ADQUISICIONES ──
         fila("ADQUISICIONES", "510", "Adquisiciones gravadas 15% con derecho a crédito (valor neto)", c_base_15, c_n_base_15),
         fila("ADQUISICIONES", "520", "IVA en adquisiciones 15%", c_iva_15),
         fila("ADQUISICIONES", "550", "Adquisiciones gravadas 5% con derecho a crédito (valor neto)", c_base_5, c_n_base_5),
         fila("ADQUISICIONES", "560", "IVA en adquisiciones 5%", c_iva_5),
-        *([fila("ADQUISICIONES", "510-8", "Adquisiciones gravadas 8% — tarifa especial (verificar casillero oficial)", c_base_8, c_n_base_8)] if (c_base_8 or c_iva_8) else []),
-        *([fila("ADQUISICIONES", "520-8", "IVA en adquisiciones 8%", c_iva_8)] if (c_base_8 or c_iva_8) else []),
+        *([fila("ADQUISICIONES", "533", "Adquisiciones gravadas tarifa variable 8% con derecho a crédito (valor neto)", c_base_8, c_n_base_8)] if (c_base_8 or c_iva_8) else []),
+        *([fila("ADQUISICIONES", "534", "IVA en adquisiciones tarifa variable 8%", c_iva_8)] if (c_base_8 or c_iva_8) else []),
         fila("ADQUISICIONES", "517", "Adquisiciones y pagos gravados tarifa 0%", c_base_0, c_n_base_0),
         fila("ADQUISICIONES", "518", "Adquisiciones no objeto del IVA", c_no_obj, c_n_no_obj),
         fila("ADQUISICIONES", "519", "Adquisiciones exentas de IVA", c_exento, c_n_exento),
 
         # ── RESULTADO ──
-        fila("RESULTADO", "429", "IVA generado en ventas (421+422)", iva_ventas),
+        fila("RESULTADO", "429", "IVA generado en ventas (421+422+430)", iva_ventas),
     ]
     # Aplazamientos que afectan el IVA generado del período
     if iva_recibido_aplazado > 0:
@@ -292,14 +294,14 @@ def declaracion_iva(invoices, ventas_ice, ventas_iva=None, retentions=None,
                           iva_recibido_aplazado, len(pagos_aplazados_vencen_este_periodo)))
     if diferir_meses > 0:
         filas.append(fila("RESULTADO", "481", f"Ventas con cobro diferido (plazo > {diferir_meses} mes{'es' if diferir_meses > 1 else ''})",
-                          ventas_diferidas_monto, v_n_base_15 + v_n_base_5 + n_ventas_ice))
+                          ventas_diferidas_monto, v_n_base_15 + v_n_base_5 + v_n_base_8 + n_ventas_ice))
         filas.append(fila("RESULTADO", "484", "(−) IVA correspondiente al 481 (no se causa este período)",
                           iva_diferido_actual))
 
     # Factor de proporcionalidad y crédito por adquisiciones
-    filas.append(fila("RESULTADO", "563", f"Factor de proporcionalidad — (ventas 15% + 5%) / (15% + 5% + 0%) ({factor:.2%})", round(factor, 4)))
-    filas.append(fila("RESULTADO", "564", "Crédito tributario aplicable en este período (IVA compras × factor)",
-                      credito_adq_aplicable, c_n_base_15 + c_n_base_5))
+    filas.append(fila("RESULTADO", "563", f"Factor de proporcionalidad — (ventas 15% + 8% + 5%) / (15% + 8% + 5% + 0%) ({factor:.2%})", round(factor, 4)))
+    filas.append(fila("RESULTADO", "564", "Crédito tributario aplicable en este período ((520+534+560) × factor)",
+                      credito_adq_aplicable, c_n_base_15 + c_n_base_8 + c_n_base_5))
     if iva_no_acreditable > 0:
         filas.append(fila("RESULTADO", "565", "IVA NO considerado crédito tributario por el factor de proporcionalidad (al gasto)", iva_no_acreditable))
 

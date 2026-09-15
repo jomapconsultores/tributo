@@ -16,17 +16,10 @@ factura — el usuario debería usar el módulo ICE-XML en su lugar.
 import xml.etree.ElementTree as ET
 from typing import Dict, Optional
 
-from .xml_parser import find_text_ignore_ns, find_node_ignore_ns, balance_components_to_total
+from .xml_parser import find_text_ignore_ns, find_node_ignore_ns, balance_components_to_total, casilla_tarifa_iva
 
-
-# Códigos de codigoPorcentaje del SRI para IVA (codigo=2):
-#   0    → 0%
-#   2,3,4,10 → 15% (varios SKUs históricos: 14%, 15%, etc.)
-#   5    → 5%
-#   6    → no objeto de IVA
-#   7    → exento de IVA
-#   8    → 8% (tarifa especial): va a su PROPIA casilla (base_8/iva_8), NO al 15%
-TARIFA_15 = {'2', '3', '4', '10'}
+# La correspondencia codigoPorcentaje → casilla (0 / 15 / 8 / 5 / no objeto /
+# exento) es la misma que en gastos: ver xml_parser.casilla_tarifa_iva.
 
 
 def parse_venta_xml(xml_content: str) -> Optional[Dict]:
@@ -124,22 +117,23 @@ def parse_venta_xml(xml_content: str) -> Optional[Dict]:
                 except ValueError:
                     valor = 0.0
 
-                if cod_porc == '0':
+                casilla = casilla_tarifa_iva(cod_porc, base, valor)
+                if casilla == '0':
                     base_0 += base
-                elif cod_porc == '8':
+                elif casilla == '8':
                     # 8% (tarifa especial): a su PROPIA casilla base_8/iva_8, NO
                     # al bucket 15% (mezclarla rompía base_15 × 15% = iva_15).
                     base_8 += base
                     iva_8 += valor
-                elif cod_porc in TARIFA_15:
+                elif casilla == '15':
                     base_15 += base
                     iva_15 += valor
-                elif cod_porc == '5':
+                elif casilla == '5':
                     base_5 += base
                     iva_5 += valor
-                elif cod_porc == '6':
+                elif casilla == 'no_objeto':
                     no_objeto += base
-                elif cod_porc == '7':
+                elif casilla == 'exento':
                     exento += base
 
         try:

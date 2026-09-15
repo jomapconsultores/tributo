@@ -19,13 +19,15 @@ MAP_IVA = {
     # Ventas
     "411": "411",   # 15% neto
     "421": "421",   # 15% IVA
-    "412": "420",   # 5% neto   (oficial 420)
-    "422": "430",   # 5% IVA    (oficial 430)
+    "412": "435",   # 5% neto   (oficial 435; 420/430 son de tarifa variable 8%)
+    "422": "445",   # 5% IVA    (oficial 445)
+    "420": "420", "430": "430",   # 8% tarifa variable neto / IVA
     "413": "413",   # 0% neto
     "414": None,    # exentas (no hay casillero de ventas estándar)
     "415": "441",   # no objeto neto
     # Adquisiciones
     "510": "510", "520": "520",   # 15% neto / IVA
+    "533": "533", "534": "534",   # 8% tarifa variable neto / IVA
     "550": "550", "560": "560",   # 5% neto / IVA
     "517": "517",                 # 0% neto
     "518": "541",                 # no objeto neto

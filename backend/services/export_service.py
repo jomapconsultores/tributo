@@ -117,8 +117,16 @@ def generate_excel(invoices: List[Dict]) -> bytes:
                 fmt_total_int = wb.add_format({'num_format': '0', 'border': 1, 'bold': True})
                 fmt_total_num = wb.add_format({'num_format': '$#,##0.00', 'border': 1, 'bold': True})
 
-                heads = ["Concepto", "# Facturas", "No Objeto IVA", "Exento IVA", "Base 0%", "Base 5%", "IVA 5%", "Base 15%", "IVA 15%", "Total"]
-                ws_res.merge_range(start_row, 0, start_row, 9, title, wb.add_format({'bold': True, 'font_size': 12}))
+                # (encabezado, letra de la columna en DATOS). Las letras salen de
+                # DATOS_COLS para que no se desfasen si se agregan columnas.
+                letra = {key: chr(65 + i) for i, (_, key) in enumerate(DATOS_COLS)}
+                cols = [("No Objeto IVA", "no_objeto_iva"), ("Exento IVA", "exento_iva"),
+                        ("Base 0%", "base_0"), ("Base 5%", "base_5"), ("IVA 5%", "iva_5"),
+                        ("Base 8%", "base_8"), ("IVA 8%", "iva_8"),
+                        ("Base 15%", "base_15"), ("IVA 15%", "iva_15"), ("Total", "total")]
+                heads = ["Concepto", "# Facturas"] + [h for h, _ in cols]
+                ultima = len(heads) - 1
+                ws_res.merge_range(start_row, 0, start_row, ultima, title, wb.add_format({'bold': True, 'font_size': 12}))
                 for i, h in enumerate(heads):
                     ws_res.write(start_row + 1, i, h, fmt_head)
 
@@ -127,19 +135,14 @@ def generate_excel(invoices: List[Dict]) -> bytes:
                     crit = f'"{c}"'
                     ws_res.write(curr, 0, c, fmt_cell)
                     ws_res.write_formula(curr, 1, f'=COUNTIF(DATOS!F:F, {crit})', fmt_cell)
-                    ws_res.write_formula(curr, 2, f'=SUMIF(DATOS!F:F, {crit}, DATOS!J:J)', fmt_num)
-                    ws_res.write_formula(curr, 3, f'=SUMIF(DATOS!F:F, {crit}, DATOS!K:K)', fmt_num)
-                    ws_res.write_formula(curr, 4, f'=SUMIF(DATOS!F:F, {crit}, DATOS!L:L)', fmt_num)
-                    ws_res.write_formula(curr, 5, f'=SUMIF(DATOS!F:F, {crit}, DATOS!O:O)', fmt_num)
-                    ws_res.write_formula(curr, 6, f'=SUMIF(DATOS!F:F, {crit}, DATOS!P:P)', fmt_num)
-                    ws_res.write_formula(curr, 7, f'=SUMIF(DATOS!F:F, {crit}, DATOS!M:M)', fmt_num)
-                    ws_res.write_formula(curr, 8, f'=SUMIF(DATOS!F:F, {crit}, DATOS!N:N)', fmt_num)
-                    ws_res.write_formula(curr, 9, f'=SUMIF(DATOS!F:F, {crit}, DATOS!S:S)', fmt_num)
+                    for j, (_, key) in enumerate(cols, start=2):
+                        L = letra[key]
+                        ws_res.write_formula(curr, j, f'=SUMIF(DATOS!F:F, {crit}, DATOS!{L}:{L})', fmt_num)
                     curr += 1
 
                 ws_res.write(curr, 0, "TOTAL GENERAL", fmt_total_lbl)
                 ws_res.write_formula(curr, 1, f'=SUM(B{start_row + 3}:B{curr})', fmt_total_int)
-                for col_idx in range(2, 10):
+                for col_idx in range(2, ultima + 1):
                     col_char = chr(65 + col_idx)
                     ws_res.write_formula(curr, col_idx, f'=SUM({col_char}{start_row + 3}:{col_char}{curr})', fmt_total_num)
                 return curr + 3
@@ -175,7 +178,7 @@ def generate_excel(invoices: List[Dict]) -> bytes:
                 row_cursor = rr + 2
 
             ws_res.set_column(0, 0, 30)
-            ws_res.set_column(1, 9, 15)
+            ws_res.set_column(1, 11, 15)
 
             # ---------- HOJA PENDIENTES ----------
             if sin_clasif:
@@ -198,27 +201,42 @@ def generate_pdf(invoices: List[Dict], titulo: str = "Resumen de Gastos") -> byt
 
     try:
         output = io.BytesIO()
-        doc = SimpleDocTemplate(output, pagesize=landscape(letter))
+        doc = SimpleDocTemplate(output, pagesize=landscape(letter),
+                                leftMargin=0.5 * inch, rightMargin=0.5 * inch)
         styles = getSampleStyleSheet()
         story = [Paragraph(titulo, styles['Title']), Spacer(1, 0.2 * inch)]
+
+        def num(inv, key):
+            try:
+                return float(inv.get(key) or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        # Tarifas con valor: la 8% solo aparece si alguna factura la tiene.
+        tarifas = [("Base 15%", "base_15"), ("IVA 15%", "iva_15")]
+        if any(num(i, "base_8") or num(i, "iva_8") for i in rows_ok):
+            tarifas += [("Base 8%", "base_8"), ("IVA 8%", "iva_8")]
+        tarifas += [("Base 5%", "base_5"), ("IVA 5%", "iva_5")]
+        claves = [k for _, k in tarifas] + ["total"]
 
         # Resumen por clasificación
         resumen = {}
         for inv in rows_ok:
             cat = (inv.get('clasificacion') or 'SIN CLASIFICAR')
-            s = resumen.setdefault(cat, {"n": 0, "base": 0.0, "total": 0.0})
+            s = resumen.setdefault(cat, {"n": 0, **{k: 0.0 for k in claves}})
             s["n"] += 1
-            s["base"] += float(inv.get('base_15') or 0)
-            s["total"] += float(inv.get('total') or 0)
+            for k in claves:
+                s[k] += num(inv, k)
 
-        res_data = [["Clasificación", "# Facturas", "Base 15%", "Total"]]
+        res_data = [["Clasificación", "# Facturas"] + [h for h, _ in tarifas] + ["Total"]]
         for cat in sorted(resumen):
             s = resumen[cat]
-            res_data.append([cat, str(s["n"]), f"${s['base']:,.2f}", f"${s['total']:,.2f}"])
-        gran_total = sum(s["total"] for s in resumen.values())
-        res_data.append(["TOTAL", str(len(rows_ok)), "", f"${gran_total:,.2f}"])
+            res_data.append([cat, str(s["n"])] + [f"${s[k]:,.2f}" for k in claves])
+        res_data.append(["TOTAL", str(len(rows_ok))]
+                        + [f"${sum(s[k] for s in resumen.values()):,.2f}" for k in claves])
 
-        res_table = Table(res_data, colWidths=[3 * inch, 1.2 * inch, 1.5 * inch, 1.5 * inch])
+        ancho_num = 6.6 * inch / len(claves)
+        res_table = Table(res_data, colWidths=[2.4 * inch, 0.9 * inch] + [ancho_num] * len(claves))
         res_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f2937')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -257,7 +275,7 @@ def generate_pdf(invoices: List[Dict], titulo: str = "Resumen de Gastos") -> byt
             story.append(Spacer(1, 0.3 * inch))
 
         # Detalle (marca ⚡ en la clasificación de los gastos con excepción)
-        data = [["Fecha", "RUC", "Proveedor", "Clasificación", "Base 15%", "IVA 15%", "Total"]]
+        data = [["Fecha", "RUC", "Proveedor", "Clasificación"] + [h for h, _ in tarifas] + ["Total"]]
         for inv in rows_ok[:200]:
             clasif = inv.get('clasificacion', '') or ''
             if inv.get('es_excepcion'):
@@ -265,14 +283,12 @@ def generate_pdf(invoices: List[Dict], titulo: str = "Resumen de Gastos") -> byt
             data.append([
                 inv.get('fecha', ''),
                 inv.get('ruc_proveedor', ''),
-                str(inv.get('nombre_proveedor', ''))[:30],
-                clasif,
-                f"${float(inv.get('base_15', 0)):,.2f}",
-                f"${float(inv.get('iva_15', 0)):,.2f}",
-                f"${float(inv.get('total', 0)):,.2f}",
-            ])
+                str(inv.get('nombre_proveedor', ''))[:24],
+                clasif[:18],
+            ] + [f"${num(inv, k):,.2f}" for k in claves])
 
-        table = Table(data, colWidths=[0.9 * inch, 1.2 * inch, 2.6 * inch, 1.6 * inch, 1.0 * inch, 1.0 * inch, 1.0 * inch])
+        ancho_det = 5.2 * inch / len(claves)
+        table = Table(data, colWidths=[0.75 * inch, 1.0 * inch, 1.9 * inch, 1.15 * inch] + [ancho_det] * len(claves))
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f2937')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),

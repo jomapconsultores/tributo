@@ -45,6 +45,8 @@ const RESUMEN_COLS = [
   { label: 'Base 0%', key: 'base_0' },
   { label: 'Base 5%', key: 'base_5' },
   { label: 'IVA 5%', key: 'iva_5' },
+  { label: 'Base 8%', key: 'base_8', solo8: true },
+  { label: 'IVA 8%', key: 'iva_8', solo8: true },
   { label: 'Base 15%', key: 'base_15' },
   { label: 'IVA 15%', key: 'iva_15' },
   { label: 'Total', key: 'total' },
@@ -54,13 +56,15 @@ function emptyAgg() {
   return RESUMEN_COLS.reduce((o, c) => ({ ...o, [c.key]: 0 }), { num: 0 })
 }
 
-function SummaryTable({ titulo, filas, color }) {
+function SummaryTable({ titulo, filas, color, hay8 }) {
   if (!filas.length) return null
   const total = filas.reduce((t, f) => {
     const o = { num: t.num + f.num }
     RESUMEN_COLS.forEach((c) => { o[c.key] = (t[c.key] || 0) + f[c.key] })
     return o
   }, emptyAgg())
+  // Las columnas 8% solo aparecen si alguna factura del período tiene esa tarifa.
+  const cols = RESUMEN_COLS.filter((c) => hay8 || !c.solo8)
 
   return (
     <div className="rs-block">
@@ -71,7 +75,7 @@ function SummaryTable({ titulo, filas, color }) {
             <tr style={{ background: color }}>
               <th>Concepto</th>
               <th className="r"># Fact.</th>
-              {RESUMEN_COLS.map((c) => <th key={c.key} className="r">{c.label}</th>)}
+              {cols.map((c) => <th key={c.key} className="r">{c.label}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -79,7 +83,7 @@ function SummaryTable({ titulo, filas, color }) {
               <tr key={f.clasificacion}>
                 <td>{f.clasificacion}</td>
                 <td className="r">{f.num}</td>
-                {RESUMEN_COLS.map((c) => <td key={c.key} className="r">{money(f[c.key])}</td>)}
+                {cols.map((c) => <td key={c.key} className="r">{money(f[c.key])}</td>)}
               </tr>
             ))}
           </tbody>
@@ -87,7 +91,7 @@ function SummaryTable({ titulo, filas, color }) {
             <tr className="rs-total">
               <td>TOTAL GENERAL</td>
               <td className="r">{total.num}</td>
-              {RESUMEN_COLS.map((c) => <td key={c.key} className="r">{money(total[c.key])}</td>)}
+              {cols.map((c) => <td key={c.key} className="r">{money(total[c.key])}</td>)}
             </tr>
           </tfoot>
         </table>
@@ -179,6 +183,11 @@ export default function InvoiceTabs({ invoices, client, onInvoicesChange }) {
       ejercicio: filas.filter((f) => !esPersonal(f.clasificacion)),
     }
   }, [rowsOk])
+
+  const hay8 = useMemo(
+    () => [...personales, ...ejercicio].some((f) => f.base_8 > 0 || f.iva_8 > 0),
+    [personales, ejercicio]
+  )
 
   // PENDIENTES: RUC/Nombre únicos sin clasificar
   const pendientes = useMemo(() => {
@@ -356,8 +365,8 @@ export default function InvoiceTabs({ invoices, client, onInvoicesChange }) {
             <div className="itabs-empty">Aún no hay facturas clasificadas para resumir.</div>
           ) : (
             <>
-              <SummaryTable titulo="GASTOS PERSONALES" filas={personales} color="#16a34a" />
-              <SummaryTable titulo="GASTOS DEL EJERCICIO" filas={ejercicio} color="#2563eb" />
+              <SummaryTable titulo="GASTOS PERSONALES" filas={personales} color="#16a34a" hay8={hay8} />
+              <SummaryTable titulo="GASTOS DEL EJERCICIO" filas={ejercicio} color="#2563eb" hay8={hay8} />
             </>
           )}
         </div>

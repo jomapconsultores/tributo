@@ -278,9 +278,10 @@ async def client_summary(identificacion: str, user_id: str = Depends(get_current
         invoices = []
         if client_ids:
             invoices = fetch_all(lambda: supabase.table("invoices").select(
-                "client_id, clasificacion, base_15, iva_15, total, estado"
+                "client_id, clasificacion, base_15, iva_15, base_8, iva_8, base_5, iva_5, total, estado"
             ).in_("client_id", client_ids))
 
+        montos = ("base_15", "iva_15", "base_8", "iva_8", "base_5", "iva_5", "total")
         agg = {}
         for inv in invoices:
             anio, mes = id_to_period.get(inv["client_id"], (None, None))
@@ -288,21 +289,19 @@ async def client_summary(identificacion: str, user_id: str = Depends(get_current
             key = (anio, mes, clasif)
             a = agg.setdefault(key, {
                 "anio": anio, "mes": mes, "clasificacion": clasif,
-                "num_facturas": 0, "base_15": 0.0, "iva_15": 0.0, "total": 0.0
+                "num_facturas": 0, **{k: 0.0 for k in montos}
             })
             a["num_facturas"] += 1
-            a["base_15"] += float(inv.get("base_15") or 0)
-            a["iva_15"] += float(inv.get("iva_15") or 0)
-            a["total"] += float(inv.get("total") or 0)
+            for k in montos:
+                a[k] += float(inv.get(k) or 0)
 
         filas = sorted(
             agg.values(),
             key=lambda x: (-(x["anio"] or 0), -(x["mes"] or 0), x["clasificacion"])
         )
         for f in filas:
-            f["base_15"] = round(f["base_15"], 2)
-            f["iva_15"] = round(f["iva_15"], 2)
-            f["total"] = round(f["total"], 2)
+            for k in montos:
+                f[k] = round(f[k], 2)
 
         periodos = sorted(
             [{"client_id": r["id"], "anio": r.get("periodo_anio"), "mes": r.get("periodo_mes")} for r in recs],
