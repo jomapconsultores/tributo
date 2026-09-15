@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useDeferredValue, useRef } from 'react'
 import { invoicesAPI, memoryAPI, classificationAPI } from '../services/api'
 import ClasifEditor from './ClasifEditor'
 import BulkBar from './BulkBar'
@@ -35,8 +35,35 @@ function readPersistedFiltros() {
   }
 }
 
+// Input de una celda en edición con su propio estado: cada tecla re-renderiza
+// solo este input y no la tabla entera (con cientos de facturas se notaba el
+// retraso al escribir). Enter o blur guardan; Escape cancela. El guard escRef
+// evita el blur "fantasma" que el navegador dispara al desmontar tras Escape.
+function CellInput({ type, initial, onSave, onCancel }) {
+  const [value, setValue] = useState(initial ?? '')
+  const escRef = useRef(false)
+  return (
+    <input
+      autoFocus
+      type={type}
+      className="cell-edit"
+      step={type === 'number' ? '0.01' : undefined}
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => {
+        if (escRef.current) { escRef.current = false; onCancel(); return }
+        onSave(value)
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onSave(value)
+        if (e.key === 'Escape') { escRef.current = true; onCancel() }
+      }}
+    />
+  )
+}
+
 export default function InvoiceTable({ invoices, onInvoicesChange, catalog = [], clientId = null }) {
-  const { edit, value, setValue, isEditing, startEdit, cancel, bind } = useEditableCell()
+  const { isEditing, startEdit, cancel } = useEditableCell()
   const { copiedKey: copiedId, copy: copyCell } = useCopyFeedback()
 
   // --- Excepción de clasificación (solo este contribuyente + período) ----------
@@ -135,8 +162,11 @@ export default function InvoiceTable({ invoices, onInvoicesChange, catalog = [],
     setSearch(''); setFClasif(''); setFForma(''); setFValor('')
   }
 
+  // El buscador escribe con prioridad; el filtrado y el redibujo de todas las
+  // filas van con el valor diferido, para que teclear no espere a la tabla.
+  const deferredSearch = useDeferredValue(search)
   const filtered = useMemo(() => {
-    const bySearch = filterBySearch(invoices, search, (i) =>
+    const bySearch = filterBySearch(invoices, deferredSearch, (i) =>
       [i.fecha, i.ruc_proveedor, i.nombre_proveedor, i.clasificacion, i.concepto, i.factura_numero])
     return bySearch.filter((i) => {
       if (fClasif && (i.clasificacion || 'SIN CLASIFICAR') !== fClasif) return false
@@ -144,7 +174,7 @@ export default function InvoiceTable({ invoices, onInvoicesChange, catalog = [],
       if (fValor && !((parseFloat(i[fValor]) || 0) > 0)) return false
       return true
     })
-  }, [invoices, search, fClasif, fForma, fValor])
+  }, [invoices, deferredSearch, fClasif, fForma, fValor])
 
   // ---- Selección múltiple ----
   const toggleSel = (id) => setSelected((prev) => {
@@ -189,8 +219,7 @@ export default function InvoiceTable({ invoices, onInvoicesChange, catalog = [],
     }
   }
 
-  const save = async (inv) => {
-    const { field } = edit
+  const save = async (inv, field, value) => {
     try {
       if (field === 'desc_manual') {
         await invoicesAPI.update(inv.id, { desc_manual: parseFloat(value) || 0 })
@@ -247,12 +276,11 @@ export default function InvoiceTable({ invoices, onInvoicesChange, catalog = [],
     }
     if (isEditing(inv.id, field)) {
       return (
-        <input
-          autoFocus
+        <CellInput
           type={type}
-          className="cell-edit"
-          step={type === 'number' ? '0.01' : undefined}
-          {...bind(() => save(inv))}
+          initial={inv[field]}
+          onSave={(v) => save(inv, field, v)}
+          onCancel={cancel}
         />
       )
     }

@@ -20,6 +20,37 @@ function fechaISO(f) {
   return ''
 }
 
+// Campo de fecha de vigencia que guarda al salir del campo (o con Enter), no en
+// cada cambio: el <input type="date"> dispara onChange con cada dígito del año
+// ('0002-05-14', '0020-05-14'…), y guardar ahí mandaba una petición por tecla,
+// deshabilitaba el campo a mitad de escritura y se perdían dígitos.
+// Si otro guardado está en curso, onGuardar devuelve false y se reintenta.
+function FechaVigencia({ valor, guardando, onGuardar }) {
+  const [txt, setTxt] = useState(valor || '')
+  const enfocado = useRef(false)
+  const reintento = useRef(null)
+
+  useEffect(() => { if (!enfocado.current) setTxt(valor || '') }, [valor])
+  useEffect(() => () => clearTimeout(reintento.current), [])
+
+  const confirmar = async (v, intentos = 0) => {
+    if (v === (valor || '')) return
+    if (v && !/^(19|20)\d{2}-\d{2}-\d{2}$/.test(v)) { setTxt(valor || ''); return }
+    const ok = await onGuardar(v || null)
+    if (ok === false && intentos < 10) {
+      reintento.current = setTimeout(() => confirmar(v, intentos + 1), 400)
+    }
+  }
+
+  return (
+    <input type="date" value={txt} className={guardando ? 'cal-guardando' : undefined}
+      onFocus={() => { enfocado.current = true }}
+      onChange={(e) => setTxt(e.target.value)}
+      onBlur={() => { enfocado.current = false; confirmar(txt) }}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }} />
+  )
+}
+
 // True si la calificación del proveedor estaba VIGENTE en la fecha de la factura.
 // Sin rango definido -> no se puede afirmar vigencia (gris).
 function vigenteEn(iso, prov) {
@@ -262,7 +293,8 @@ export default function InvoiceTabs({ invoices, client, onInvoicesChange }) {
   // Es a nivel de proveedor: afecta a todos sus gastos del listado.
   const guardarProveedor = async (ruc, nombre, patch) => {
     ruc = (ruc || '').trim()
-    if (!ident || !ruc || calBusy) return
+    if (!ident || !ruc) return
+    if (calBusy) return false
     const cur = provByRuc[ruc] || {}
     const body = {
       identificacion: ident,
@@ -502,11 +534,11 @@ export default function InvoiceTabs({ invoices, client, onInvoicesChange }) {
                                 <td className="cal-vigedit">
                                   {esCalif ? (
                                     <>
-                                      <input type="date" value={prov?.vigencia_inicio || ''} disabled={guardando}
-                                        onChange={(e) => guardarProveedor(ruc, inv.nombre_proveedor, { vigencia_inicio: e.target.value || null })} />
+                                      <FechaVigencia valor={prov?.vigencia_inicio} guardando={guardando}
+                                        onGuardar={(v) => guardarProveedor(ruc, inv.nombre_proveedor, { vigencia_inicio: v })} />
                                       <span className="cal-sep">→</span>
-                                      <input type="date" value={prov?.vigente_hasta || ''} disabled={guardando}
-                                        onChange={(e) => guardarProveedor(ruc, inv.nombre_proveedor, { vigente_hasta: e.target.value || null })} />
+                                      <FechaVigencia valor={prov?.vigente_hasta} guardando={guardando}
+                                        onGuardar={(v) => guardarProveedor(ruc, inv.nombre_proveedor, { vigente_hasta: v })} />
                                     </>
                                   ) : (
                                     <span className="cal-nocalif">—</span>
