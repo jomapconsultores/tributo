@@ -1,6 +1,7 @@
 # ------------------------------------------------------------
 # Desarrollado por Marco Antonio Posligua San Martín
 # ------------------------------------------------------------
+import io
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from typing import Optional, List
@@ -251,6 +252,37 @@ async def export_excel(payload: AnexoExport, _: str = Depends(get_current_user))
             headers={"Content-Disposition": f"attachment; filename={nombre}"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class AnexoZip(BaseModel):
+    tipo: str
+    nombre: str        # nombre del XML dentro del ZIP (Anexo{ICE|PVP}_RUC_..._MM_AAAA.xml)
+    xml: str
+
+
+@router.post("/export/zip-sri")
+async def export_zip_sri(payload: AnexoZip, _: str = Depends(get_current_user)):
+    """El XML del anexo empaquetado como lo pide el portal del SRI.
+
+    La recepción de anexos (`/rig`) solo admite un .zip. Vuelve en base64 y no
+    como descarga porque su destino es la extensión de Chrome, que lo guarda en
+    su almacenamiento (solo JSON) hasta que se abre el portal."""
+    import base64
+    import zipfile
+    tipo = (payload.tipo or "").upper()
+    if tipo not in ("ICE", "PVP"):
+        raise HTTPException(status_code=400, detail="Solo se cargan al SRI los anexos ICE y PVP.")
+    if not payload.xml.strip():
+        raise HTTPException(status_code=400, detail="El anexo está vacío.")
+    nombre_xml = payload.nombre if payload.nombre.lower().endswith(".xml") else payload.nombre + ".xml"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(nombre_xml, payload.xml.encode("utf-8"))
+    return {
+        "nombre": nombre_xml[:-4] + ".zip",
+        "base64": base64.b64encode(buf.getvalue()).decode("ascii"),
+        "bytes": buf.tell(),
+    }
 
 
 @router.post("/export/pdf")

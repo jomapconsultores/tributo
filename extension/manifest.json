@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Enviador-DEVOLUCIÓN (SRI) — Gestor Tributario",
-  "description": "Presenta en el portal del SRI la solicitud de devolución de IVA armada en el Gestor Tributario, sin cargarla a mano.",
-  "version": "1.0.0",
+  "name": "Enviador SRI — Gestor Tributario",
+  "description": "Lleva al portal del SRI lo armado en el Gestor Tributario: presenta la devolución de IVA y deja cargadas las declaraciones (IVA, ICE, 103) y los anexos ICE/PVP para revisarlos.",
+  "version": "1.1.0",
   "permissions": ["storage"],
   "content_scripts": [
     {
@@ -20,6 +20,14 @@
       "js": ["contenido-sri.js"],
       "run_at": "document_idle",
       "all_frames": true
+    },
+    {
+      "matches": [
+        "https://srienlinea.sri.gob.ec/sri-declaraciones-web-internet/*",
+        "https://srienlinea.sri.gob.ec/rig/*"
+      ],
+      "js": ["cargador-sri.js"],
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [

@@ -3,6 +3,7 @@ import { iceAPI, productsAPI, anexosAPI, compradoresAPI, downloadBlob } from '..
 import { useClients } from '../context/ClientContext'
 import { periodoCorto, MESES_CORTO } from '../utils/periodo'
 import useDraft from '../hooks/useDraft'
+import { cargarEnSri, urlAnexoSri } from '../utils/cargaSRI'
 import './AnexoPVPICE.css'
 
 // Auto-guardado offline: lo que cargues/edites en el anexo (tipo, cabecera y
@@ -590,6 +591,45 @@ export default function AnexoPVPICE() {
     URL.revokeObjectURL(url)
   }
 
+  // Lleva el anexo AL PORTAL del SRI: la extensión abre la recepción de anexos
+  // y le entrega el ZIP. El SRI lo valida en el acto, pero el envío es su botón
+  // «Aceptar», que queda para la persona que revisa.
+  const [cargandoSri, setCargandoSri] = useState(false)
+  const cargarSri = async () => {
+    if (!tipo) { alert('No hay datos para cargar.'); return }
+    const errs = validar()
+    if (errs.length) {
+      const detalle = errs.slice(0, 15).join('\n') + (errs.length > 15 ? `\n…y ${errs.length - 15} más` : '')
+      alert(`⚠ El SRI rechazaría este anexo. Corrígelo antes de cargarlo:\n\n${detalle}`)
+      return
+    }
+    const ruc = String(header.IdInformante || '').replace(/\D/g, '')
+    if (!window.confirm(
+      `📤 Cargar en el portal del SRI el anexo ${tipo} de ${header.Mes}/${header.Anio}\n` +
+      `${header.razonSocial || ''} (${ruc}) · ${rows.length} fila(s)\n\n` +
+      'Se abre la recepción de anexos del SRI (si pide clave, entra con la de ese RUC) y se le entrega ' +
+      'el archivo, que el SRI valida en el acto. NO se envía: revisa lo que muestra y toca «Aceptar» tú.'
+    )) return
+    setCargandoSri(true)
+    try {
+      const { data: zip } = await anexosAPI.zipSri(tipo, nombreArchivo('xml'), xml)
+      const r = await cargarEnSri({
+        clase: 'anexo',
+        tipo,
+        contribuyente: { identificacion: ruc, nombre: header.razonSocial || '' },
+        periodo: { anio: parseInt(header.Anio, 10), mes: parseInt(header.Mes, 10) },
+        archivo: { nombre: zip.nombre, base64: zip.base64 },
+        url: urlAnexoSri(tipo),
+      })
+      if (r.modo === 'descarga') {
+        alert(`⬇ Se descargó ${zip.nombre} (${r.motivo}).\n\n` +
+          'En el portal: abre «Carga de archivo xml» y elige ese .zip.')
+      }
+    } catch (e) {
+      alert('Error: ' + (e.response?.data?.detail || e.message))
+    } finally { setCargandoSri(false) }
+  }
+
   // Nombre estándar: Anexo{ICE|PVP}_RUC_nombre_mes_año
   const nombreArchivo = (ext) => {
     const ruc = String(header.IdInformante || '').replace(/\D/g, '')
@@ -631,6 +671,10 @@ export default function AnexoPVPICE() {
         <button className="ax-btn green" onClick={addRow} disabled={!tipo}>➕ Añadir producto</button>
         <button className="ax-btn red" onClick={limpiar}>🧹 Limpiar todo</button>
         <button className="ax-btn yellow" onClick={descargar} disabled={!tipo}>💾 Generar XML SRI</button>
+        <button className="ax-btn blue" onClick={cargarSri} disabled={!tipo || cargandoSri}
+          title="Abre la recepción de anexos del SRI y le entrega este anexo, sin enviarlo">
+          {cargandoSri ? '⏳ Preparando…' : '📤 Cargar en el SRI'}
+        </button>
         <button className="ax-btn teal" onClick={guardarAnexo} disabled={!tipo || !clientSel}
           title={clientSel ? `Se graba en la base de datos de ${nombrePeriodo(clientSel)}` : 'Elige RUC y período'}>
           {savedId && savedClientId === clientSel ? '🗄 Actualizar anexo' : '🗄 Guardar anexo'}

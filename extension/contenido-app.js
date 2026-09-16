@@ -57,6 +57,33 @@ window.addEventListener('message', (ev) => {
   });
 });
 
+// Las declaraciones y los anexos que la app manda a CARGAR en el portal (sin
+// presentarlos). Viajan igual que la solicitud de devolución: la app los
+// publica en su propia ventana, acá se guardan con su hora y `cargador-sri.js`
+// los toma al abrirse el formulario que les toca.
+//
+// La app pregunta si la extensión está antes de ofrecer el camino automático:
+// sin ella el archivo se descarga para subirlo a mano. Un atributo del DOM es lo
+// único que la página ve de un content script sin que haya que mandar mensajes.
+document.documentElement.dataset.jomapCargaSri = chrome.runtime.getManifest().version;
+
+window.addEventListener('message', (ev) => {
+  if (ev.source !== window) return;
+  const d = ev.data;
+  if (!d || d.tipo !== 'jomap-sri-carga' || !d.carga) return;
+  const c = d.carga;
+  const valida = c.archivo && c.contribuyente && c.contribuyente.identificacion && c.periodo &&
+    ((c.clase === 'declaracion' && c.grupo && c.obligacion && Array.isArray(c.casilleros) && c.casilleros.length) ||
+     (c.clase === 'anexo' && (c.tipo === 'ICE' || c.tipo === 'PVP') && c.archivo.base64));
+  if (!valida) return;
+  chrome.storage.local.set({ carga_sri: { carga: c, cuando: Date.now() } }, () => {
+    // Acuse para la app: el ZIP de un anexo grande puede no entrar en el
+    // almacenamiento, y abrir el portal para que no pase nada confunde.
+    const error = chrome.runtime.lastError;
+    window.postMessage({ tipo: 'jomap-sri-carga-recibida', ok: !error, error: error ? error.message : '' }, '*');
+  });
+});
+
 // Y el viaje de vuelta: la constancia que el enviador dejó guardada desde el
 // portal se le entrega a la app. Se hace al cargar y cada vez que esta pestaña
 // vuelve al frente, que es justo el momento en que el usuario regresa del SRI.

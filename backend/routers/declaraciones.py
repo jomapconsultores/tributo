@@ -11,6 +11,7 @@ from auth import get_current_user
 from database import get_supabase_client, fetch_all, fetch_in
 from services.declaracion import declaracion_iva, declaracion_ice, declaracion_103
 from services.declaracion_oficial import llenar_oficial
+from services.carga_sri import armar_carga
 from services.periodo import (etiqueta_periodo, mes_anio_de_fecha, rango_semestre,
                               semestre_de_mes)
 from tenancy import assert_client_owner, visible_client_ids, visible_clients, filtro_org
@@ -1099,6 +1100,50 @@ async def export_oficial(client_id: str = Query(...), tipo: str = Query("IVA"),
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/export/carga-sri")
+async def export_carga_sri(client_id: str = Query(...), tipo: str = Query("IVA"),
+                           credito_adq: Optional[float] = Query(None), credito_ret: Optional[float] = Query(None),
+                           diferir_meses: int = Query(0),
+                           rebaja_ice: Optional[float] = Query(None), exencion_ice: Optional[float] = Query(None),
+                           rebaja_manual: int = Query(0), exencion_manual: int = Query(0),
+                           ventas_15: Optional[float] = Query(None), ventas_5: Optional[float] = Query(None),
+                           ventas_0: Optional[float] = Query(None), factor_prop: Optional[float] = Query(None),
+                           user_id: str = Depends(get_current_user)):
+    """Paquete para llenar la declaración DENTRO del portal del SRI.
+
+    El servidor no puede entrar al portal (la sesión es del contribuyente, en su
+    navegador): arma el archivo que el formulario en línea sabe leer y la
+    extensión de Chrome lo carga allá. Lo deja lleno, sin presentar."""
+    try:
+        supabase = get_supabase_client()
+        assert_client_owner(client_id, user_id)
+        _verificar_submodulo(user_id, tipo)
+        decl = _calcular(supabase, client_id, tipo, user_id, credito_adq, credito_ret, diferir_meses,
+                         override_rebaja=rebaja_ice, override_exencion=exencion_ice,
+                         marcar_rebaja=bool(rebaja_manual), marcar_exencion=bool(exencion_manual),
+                         override_ventas_15=ventas_15, override_ventas_5=ventas_5, override_ventas_0=ventas_0,
+                         factor_prop=factor_prop)
+        conceptos_renta = None
+        if str(tipo).upper() == "103":
+            from routers.retenciones_efectuadas import CONCEPTOS_RENTA
+            conceptos_renta = CONCEPTOS_RENTA
+        carga = armar_carga(tipo, decl, conceptos_renta)
+        if not carga["casilleros"]:
+            raise HTTPException(status_code=400,
+                                detail="La declaración no tiene valores que cargar en el portal del SRI.")
+        registrar(actor_user_id=user_id, action="export", module="declaraciones",
+                  entity=f"Carga al portal del SRI · Declaración {carga['tipo']}", client_id=client_id,
+                  metadata={"periodo": carga["periodo"]["etiqueta"],
+                            "casilleros": len(carga["casilleros"])})
+        return carga
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

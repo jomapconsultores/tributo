@@ -1,4 +1,37 @@
-# Enviador-DEVOLUCIÓN — extensión de Chrome
+# Enviador SRI — extensión de Chrome
+
+Hace dos trabajos en el portal del SRI:
+
+1. **Carga de declaraciones y anexos** (`cargador-sri.js`, desde la 1.1.0): el
+   botón **📤 Cargar en el SRI** de *Declaraciones* (IVA, ICE, 103) y de
+   *Anexos PVP/ICE* abre el formulario del SRI y lo deja **lleno, sin
+   presentar**. Ver más abajo.
+2. **Presentación de la devolución de IVA** (el resto de este documento).
+
+## Carga de declaraciones y anexos
+
+- **Declaraciones.** El formulario en línea del SRI trae su propia carga por
+  archivo (JSON). La extensión elige la obligación y el período, toca
+  *Siguiente*, entrega el archivo que armó el sistema y, ya en *Formulario*,
+  comprueba casillero por casillero que cada valor quedó junto a su número.
+- **Anexos.** Abre *Carga de archivo xml* y entrega el ZIP. El SRI lo valida en
+  el acto; el envío es su botón **Aceptar**, que la extensión no toca.
+
+Antes de hacer nada compara el RUC con el que se entró al portal con el de la
+carga: si no es el mismo, se detiene. La carga caduca a los 30 minutos y se usa
+una sola vez. Si la sesión del SRI se venció, después del login el portal vuelve
+al formulario y la carga sigue.
+
+Sin la extensión, el botón descarga el mismo archivo (.json o .zip) para
+subirlo a mano. Los detalles del portal están en
+`docs/carga-declaraciones-portal-sri.md`.
+
+**Al actualizar desde la 1.0.0:** en `chrome://extensions` hay que tocar
+*Actualizar* (↻) en la extensión: Chrome no toma solo los archivos nuevos.
+
+---
+
+# Enviador-DEVOLUCIÓN
 
 Hace el último tramo que el sistema no puede hacer solo: **presentar la solicitud
 de devolución de IVA dentro del portal del SRI**, sin que nadie toque nada en esa

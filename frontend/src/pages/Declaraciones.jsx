@@ -5,6 +5,7 @@ import { useOutletContext, useNavigate } from 'react-router-dom'
 import { declaracionesAPI, credentialsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, nombreMes } from '../utils/periodo'
+import { cargarEnSri } from '../utils/cargaSRI'
 
 // Fuentes de datos de una declaración, en el orden en que se muestran en el
 // desglose por mes. Las claves son las que arma el backend en decl.cobertura.
@@ -298,6 +299,36 @@ export default function Declaraciones({ tipo }) {
       msg += '\n\n⚠ Verifica los valores y casilleros antes de presentar al SRI.'
       alert(msg)
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
+  }
+  // Lleva la declaración AL PORTAL del SRI: la extensión abre el formulario en
+  // línea, elige obligación y período, carga los valores y se detiene. Lo que
+  // el sistema no puede ubicar en un casillero se muestra ANTES, para que nadie
+  // lo descubra recién en el portal.
+  const [cargandoSri, setCargandoSri] = useState(false)
+  const cargarSri = async () => {
+    setCargandoSri(true)
+    try {
+      const { data: c } = await declaracionesAPI.cargaSri(selectedClientId, tipo, overridesActuales())
+      const aMano = c.no_trasladados || []
+      let txt = `📤 Cargar en el portal del SRI la declaración ${tipo} de ${c.periodo.etiqueta}\n` +
+        `${c.contribuyente.nombre} (${c.contribuyente.identificacion})\n\n` +
+        `Se llenan solos ${c.casilleros.length} casillero(s): ${c.casilleros.map((x) => x.casillero).join(', ')}.\n`
+      if (aMano.length) {
+        txt += '\n⚠ Quedan para completar a mano en el portal:\n' +
+          aMano.map((p) => `· ${p.codigo ? p.codigo + ' ' : ''}${money(p.valor)} — ${p.motivo}`).join('\n') + '\n'
+      }
+      txt += '\nSe abre el formulario del SRI (si pide clave, entra con la de ese RUC) y queda LLENO, ' +
+        'SIN PRESENTAR: revísalo y preséntalo tú.'
+      if (!window.confirm(txt)) return
+      const r = await cargarEnSri(c)
+      if (r.modo === 'descarga') {
+        alert(`⬇ Se descargó ${c.archivo.nombre} (${r.motivo}).\n\n` +
+          'En el portal: elige la obligación y el período, toca «Siguiente» y, en «Preguntas», ' +
+          'usa la carga de archivo con ese .json. El formulario se llena solo.')
+      }
+    } catch (e) {
+      alert('Error: ' + (e.response?.data?.detail || e.message))
+    } finally { setCargandoSri(false) }
   }
   const borrar = async (id) => {
     if (!window.confirm('¿Eliminar esta declaración guardada?')) return
@@ -800,6 +831,10 @@ export default function Declaraciones({ tipo }) {
         <button className="dc-btn oficial" onClick={exportarOficial} disabled={!decl || tipo === '103'}
           title={tipo === '103' ? 'Aún no hay plantilla oficial del SRI para el Formulario 103' : undefined}>
           📄 Formulario oficial SRI
+        </button>
+        <button className="dc-btn oficial" onClick={cargarSri} disabled={!decl || cargandoSri}
+          title="Abre el formulario en línea del SRI y lo deja lleno con estos valores, sin presentarlo">
+          {cargandoSri ? '⏳ Preparando…' : '📤 Cargar en el SRI'}
         </button>
       </div>
 

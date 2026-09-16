@@ -351,6 +351,8 @@ export const anexosAPI = {
     api.post('/api/anexos/export/excel', { tipo, header, rows }, { responseType: 'blob' }),
   exportPdf: (tipo, header, rows) =>
     api.post('/api/anexos/export/pdf', { tipo, header, rows }, { responseType: 'blob' }),
+  // El XML empaquetado en ZIP (en base64), como lo recibe el portal del SRI.
+  zipSri: (tipo, nombre, xml) => api.post('/api/anexos/export/zip-sri', { tipo, nombre, xml }),
 }
 
 // Clientes importados (compradores de las facturas), aparte de los contribuyentes
@@ -478,6 +480,8 @@ export const declaracionesAPI = {
   estadoTodos: () => api.get('/api/declaraciones/estado-todos'),
   exportExcel: (clientId, tipo, ov = {}) => api.get('/api/declaraciones/export/excel', { params: { client_id: clientId, tipo, ...ov }, responseType: 'blob' }),
   exportOficial: (clientId, tipo, ov = {}) => api.get('/api/declaraciones/export/oficial', { params: { client_id: clientId, tipo, ...ov }, responseType: 'blob' }),
+  // Paquete para llenar la declaración dentro del portal del SRI (extensión de Chrome).
+  cargaSri: (clientId, tipo, ov = {}) => api.get('/api/declaraciones/export/carga-sri', { params: { client_id: clientId, tipo, ...ov } }),
   // Pagos aplazados
   listAplazados: (clientId, estado) => api.get('/api/declaraciones/aplazados', {
     params: { client_id: clientId, estado },
