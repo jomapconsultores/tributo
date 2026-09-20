@@ -53,3 +53,12 @@ jobs:
 
       - name: Compile check
         run: python -m compileall -q . -x '(^|/)venv/'
+
+      # La fecha máxima de declaración se calcula en dos sitios: en la pantalla
+      # (JavaScript) y en el servidor (Python, para el recordatorio por correo).
+      # Este test ejecuta el JavaScript real con node y comprueba que los dos
+      # dan el MISMO día. Si se separan, el correo diría una fecha y la pantalla
+      # otra, y el contribuyente no sabría a cuál creerle.
+      - name: Calendario del SRI — el servidor dice lo mismo que la pantalla
+        working-directory: .
+        run: python scripts/test_calendario_sri.py

@@ -1,0 +1,42 @@
+name: Recordatorio de declaración (2 días antes)
+
+# Todos los días a las 12:00 UTC (07:00 en Ecuador, al empezar la jornada). El
+# backend busca los contribuyentes cuya FECHA MÁXIMA DE DECLARACIÓN cae dentro
+# de dos días y todavía no han presentado al SRI, y le escribe a quien lleva
+# cada uno —con copia al administrador de la plataforma— diciendo qué falta
+# declarar, de quién y hasta cuándo.
+#
+# Corre a diario a propósito: la fecha máxima la da el NOVENO DÍGITO del RUC
+# (día 10, 12, 14 … 28, corrido al siguiente día hábil si cae en fin de semana
+# o feriado), así que cada contribuyente vence el día que le toca y no todos el
+# mismo. Repetir el pase no duplica avisos: la columna clients.aviso_declaracion
+# guarda para qué vencimiento ya se escribió.
+#
+# Requiere SMTP_* y CRON_SECRET configurados en el servidor, y la migración
+# supabase/migrations/067_aviso_declaracion.sql aplicada.
+#
+# Para probar sin mandar nada, desde la pestaña Actions o a mano:
+#   curl "$BACKEND_URL/api/declaraciones/recordatorio-vencimiento?token=$CRON_SECRET&solo_listar=1"
+
+on:
+  schedule:
+    - cron: '0 12 * * *'      # todos los días, 12:00 UTC = 07:00 Ecuador
+  workflow_dispatch: {}        # y a mano desde la pestaña Actions
+
+jobs:
+  recordatorio:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Avisar de las declaraciones que vencen en 2 días
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://app-tributos.pensamiento-libre.org' }}
+        run: |
+          for i in 1 2 3; do
+            if curl -fsS --max-time 120 -X POST \
+              "${BACKEND_URL}/api/declaraciones/recordatorio-vencimiento?token=${CRON_SECRET}" ; then
+              echo ""; echo "Recordatorio de declaracion disparado"; exit 0
+            fi
+            echo "Reintentando..."; sleep 20
+          done
+          echo "No respondio; manana reintenta"; exit 0

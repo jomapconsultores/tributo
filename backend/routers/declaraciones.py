@@ -1242,3 +1242,216 @@ async def export_excel(client_id: str = Query(...), tipo: str = Query("IVA"),
             headers={"Content-Disposition": f"attachment; filename={label}.xlsx"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Recordatorio del vencimiento de la declaración (lo dispara el cron diario)
+# ---------------------------------------------------------------------------
+
+# Se avisa DOS DÍAS ANTES de la fecha máxima: un día no alcanza para conseguir
+# lo que falte (una factura, una clave, el dinero del pago) y una semana antes
+# el aviso se olvida. Dos días es el plazo que deja reaccionar.
+DIAS_AVISO_DECLARACION = 2
+
+
+def _pendientes_para_recordatorio():
+    """Contribuyentes con alguna declaración PENDIENTE en su período más reciente.
+
+    Mismo criterio que `_estado_declaraciones_visibles` —un tipo está CONTRATADO
+    si el servicio está activo en cualquier período (o es agente de retención
+    para el 103), y sigue PENDIENTE mientras no esté marcado `presentada_sri`—
+    pero SIN el filtro de permisos: el cron no tiene sesión ni usuario, así que
+    mira todo y después le escribe a cada dueño solamente lo suyo.
+
+    Devuelve una lista de dicts, uno por contribuyente/período."""
+    supabase = get_supabase_client()
+
+    clientes = fetch_all(lambda: supabase.table("clients").select(
+        "id,user_id,identificacion,nombre,periodo_mes,periodo_anio,"
+        "periodicidad,periodo_semestre,es_agente_retencion,aviso_declaracion"))
+    if not clientes:
+        return []
+
+    # Período MÁS RECIENTE por contribuyente Y DUEÑO: el mismo RUC puede estar
+    # llevado por dos despachos distintos, y a cada uno hay que avisarle el suyo.
+    latest, agente = {}, {}
+    for c in clientes:
+        ident = (c.get("identificacion") or "").strip()
+        if not ident or c.get("periodo_mes") is None or c.get("periodo_anio") is None:
+            continue
+        clave = (c.get("user_id"), ident)
+        if c.get("es_agente_retencion"):
+            agente[clave] = True
+        orden = (c["periodo_anio"], c["periodo_mes"])
+        cur = latest.get(clave)
+        if cur is None or orden > (cur["periodo_anio"], cur["periodo_mes"]):
+            latest[clave] = c
+
+    # Servicios contratados, agregados sobre TODOS los períodos del
+    # contribuyente: al abrir un período nuevo no se copian y pueden haber
+    # quedado marcados en uno viejo.
+    id_to_clave = {c["id"]: (c.get("user_id"), (c.get("identificacion") or "").strip())
+                   for c in clientes}
+    svc_rows = fetch_in(
+        lambda: supabase.table("client_services").select("client_id,service").eq("active", True),
+        list(id_to_clave.keys()), "client_id")
+    svc_by_clave = {}
+    for r in svc_rows:
+        clave = id_to_clave.get(r.get("client_id"))
+        if clave:
+            svc_by_clave.setdefault(clave, set()).add(r.get("service"))
+
+    # Guardar la declaración NO basta: sigue pendiente hasta confirmar que se
+    # subió al portal del SRI (presentada_sri).
+    latest_ids = [c["id"] for c in latest.values()]
+    saved_rows = fetch_in(
+        lambda: supabase.table("declaraciones").select("client_id,tipo,presentada_sri"),
+        latest_ids, "client_id")
+    presentadas = {(r.get("client_id"), (r.get("tipo") or "").upper())
+                   for r in saved_rows if r.get("presentada_sri")}
+
+    out = []
+    for clave, c in latest.items():
+        svcs = svc_by_clave.get(clave, set())
+        esperados = []
+        if "declaracion_iva" in svcs:
+            esperados.append("IVA")
+        if agente.get(clave):
+            esperados.append("103")
+        if "declaracion_ice" in svcs:
+            esperados.append("ICE")
+        faltan = [t for t in esperados if (c["id"], t) not in presentadas]
+        if faltan:
+            fila = dict(c)
+            fila["pendientes"] = faltan
+            out.append(fila)
+    return out
+
+
+def _texto_recordatorio(filas, limite_texto):
+    """Asunto y cuerpo del recordatorio. Dice QUÉ vence, DE QUIÉN y CUÁNDO, que
+    es lo que hace falta para ponerse a trabajar sin abrir el sistema.
+
+    La nota del plazo corrido va POR CONTRIBUYENTE, no al pie: dos que vencen el
+    mismo día pueden haber llegado ahí por caminos distintos (a uno le tocaba un
+    sábado y se corrió, al otro le tocaba ese mismo día hábil), y una sola nota
+    general sería falsa para uno de los dos."""
+    n = len(filas)
+    asunto = (f"Vence en {DIAS_AVISO_DECLARACION} días la declaración de "
+              f"{n} contribuyente{'s' if n != 1 else ''} — {limite_texto}")
+
+    lineas = []
+    for f in sorted(filas, key=lambda x: (x.get("nombre") or "").upper()):
+        tipos = ", ".join(f["pendientes"])
+        linea = (f"  · {f.get('nombre') or 'Sin nombre'} ({f.get('identificacion')})\n"
+                 f"      Falta declarar: {tipos}\n"
+                 f"      Período: {f.get('periodo_texto')}")
+        if f.get("traslado_motivo"):
+            linea += (f"\n      (Le tocaba el día {f.get('dia_base')}, que cayó en "
+                      f"{f['traslado_motivo']}: el plazo corrió a esta fecha.)")
+        lineas.append(linea)
+
+    cuerpo = (
+        f"La fecha máxima de declaración es el {limite_texto}, "
+        f"dentro de {DIAS_AVISO_DECLARACION} días.\n\n"
+        f"Queda{'n' if n != 1 else ''} {n} contribuyente{'s' if n != 1 else ''} "
+        f"sin presentar al SRI:\n\n"
+        + "\n\n".join(lineas)
+        + "\n\nUna declaración cuenta como presentada cuando se marca subida al "
+          "portal del SRI, no cuando se guarda en el sistema.\n\n"
+          "Gestor Tributario\n"
+    )
+    return asunto, cuerpo
+
+
+@router.api_route("/recordatorio-vencimiento", methods=["GET", "POST"])
+async def recordatorio_vencimiento(token: Optional[str] = None,
+                                   solo_listar: bool = False):
+    """Avisa DOS DÍAS ANTES de la fecha máxima de declaración.
+
+    Lo dispara el cron diario, sin sesión, con el mismo CRON_SECRET que los
+    demás avisos. Corre todos los días porque la fecha máxima la da el noveno
+    dígito del RUC: cada contribuyente vence el día que le toca.
+
+    A cada dueño se le manda UN solo correo con todos sus contribuyentes que
+    vencen ese día —no uno por contribuyente—, con copia a quien lleva la
+    plataforma. Si un dueño no tiene correo resoluble, su lista igual sale hacia
+    esa copia, para que el aviso no se pierda en silencio.
+
+    No repite: cada contribuyente avisado queda marcado con el vencimiento para
+    el que ya se escribió. Si el correo falla NO se marca, para que el intento
+    del día siguiente lo vuelva a tomar.
+
+    Con `solo_listar=1` no manda nada y devuelve a quién le escribiría: sirve
+    para probar en producción sin molestar a nadie."""
+    import hmac
+    import os
+    from datetime import timedelta
+    from routers.organizations import ADMIN_EMAIL
+    from services.activity import _email_de
+    from services.calendario_sri import fecha_limite_cliente, fecha_texto_largo
+    from services.email_sender import email_configurado, enviar_correo
+
+    secreto = (os.environ.get("CRON_SECRET") or "").strip()
+    if not secreto:
+        raise HTTPException(status_code=503, detail="CRON_SECRET no configurado en el servidor")
+    if not token or not hmac.compare_digest(token, secreto):
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+    hoy = date.today()
+    objetivo = hoy + timedelta(days=DIAS_AVISO_DECLARACION)
+
+    # Contribuyentes pendientes cuya fecha máxima cae EXACTAMENTE en el objetivo.
+    por_dueno = {}
+    for c in _pendientes_para_recordatorio():
+        limite = fecha_limite_cliente(c, hoy)
+        if not limite or limite["fecha"] != objetivo:
+            continue
+        if str(c.get("aviso_declaracion") or "") == objetivo.isoformat():
+            continue                       # ya se avisó de este vencimiento
+        c["periodo_texto"] = limite.get("periodo") or ""
+        c["traslado_motivo"] = limite.get("motivo")
+        c["dia_base"] = limite["original"].day
+        por_dueno.setdefault(c.get("user_id"), []).append(c)
+
+    if not por_dueno:
+        return {"ok": True, "fecha": objetivo.isoformat(), "avisados": 0,
+                "motivo": "Ningún contribuyente vence ese día"}
+
+    limite_texto = fecha_texto_largo(objetivo)
+    if solo_listar:
+        return {"ok": True, "fecha": objetivo.isoformat(), "solo_listar": True,
+                "destinatarios": [
+                    {"dueno": uid, "correo": _email_de(uid) or ADMIN_EMAIL,
+                     "contribuyentes": [
+                         {"nombre": f.get("nombre"), "identificacion": f.get("identificacion"),
+                          "pendientes": f["pendientes"], "periodo": f.get("periodo_texto")}
+                         for f in filas]}
+                    for uid, filas in por_dueno.items()]}
+
+    if not email_configurado():
+        return {"ok": False, "fecha": objetivo.isoformat(),
+                "pendientes": sum(len(v) for v in por_dueno.values()),
+                "error": "SMTP no configurado en el servidor"}
+
+    supabase = get_supabase_client()
+    avisados, errores = [], []
+    for uid, filas in por_dueno.items():
+        destino = _email_de(uid) or ADMIN_EMAIL
+        asunto, cuerpo = _texto_recordatorio(filas, limite_texto)
+        ok, err = enviar_correo(destino, asunto, cuerpo, copia=ADMIN_EMAIL)
+        if not ok:
+            errores.append({"dueno": uid, "error": err})
+            continue
+        # Marcar SOLO lo que se avisó de verdad.
+        try:
+            supabase.table("clients").update(
+                {"aviso_declaracion": objetivo.isoformat()}).in_(
+                "id", [f["id"] for f in filas]).execute()
+        except Exception as e:
+            errores.append({"dueno": uid,
+                            "error": f"Aviso enviado pero no se pudo marcar: {e}"})
+        avisados.append({"correo": destino, "contribuyentes": len(filas)})
+
+    return {"ok": not errores, "fecha": objetivo.isoformat(),
+            "avisados": len(avisados), "detalle": avisados, "errores": errores}
