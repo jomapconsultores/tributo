@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import useDraft, { clearDraftsByPrefix } from '../hooks/useDraft'
 import { refrescarPresentadas } from '../hooks/useDeclPresentadas'
-import { useOutletContext, useNavigate } from 'react-router-dom'
+import { useOutletContext } from 'react-router-dom'
 import { declaracionesAPI, credentialsAPI, downloadBlob } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { periodoLargo, nombreMes } from '../utils/periodo'
@@ -19,6 +19,7 @@ const ETIQUETA_FUENTE = {
 import ClientSwitcher from '../components/ClientSwitcher'
 import ClientPickerScreen from '../components/ClientPickerScreen'
 import WorkflowGuide from '../components/WorkflowGuide'
+import CierreDeclaracion from '../components/CierreDeclaracion'
 import './Declaraciones.css'
 
 import { fmtMoney as money } from '../utils/format'
@@ -267,20 +268,29 @@ export default function Declaraciones({ tipo }) {
     return () => { cancelado = true }
   }, [creds])
 
-  const guardar = async () => {
+  // Guarda y devuelve el registro (con su id). `silencioso`: cuando lo pide otro
+  // paso —cargar en el SRI, marcarla presentada— que ya avisa por su cuenta.
+  const guardar = async ({ silencioso = false } = {}) => {
     try {
-      await declaracionesAPI.save(selectedClientId, tipo, decl, diferirMeses)
+      const { data: registro } = await declaracionesAPI.save(selectedClientId, tipo, decl, diferirMeses)
+      const diferidos = diferirMeses
       setDiferirMeses(0)
       if (draftKey) clearDraftsByPrefix(draftKey) // ya se guardó en el servidor: no dejar el borrador local reapareciendo
       await load()
-      let msg = '✔ Declaración guardada. Queda LISTA para facturar (aparece marcada en Reportes).'
-      if (diferirMeses > 0) {
-        const venceMes = (selectedClient.periodo_mes + diferirMeses - 1) % 12 + 1
-        const venceAnio = selectedClient.periodo_anio + Math.floor((selectedClient.periodo_mes + diferirMeses - 1) / 12)
-        msg += `\n\n📅 Pago de ${tipo} pendiente ${diferirMeses} mes(es): vuelve, sumado, en la declaración de ${nombreMes(venceMes)} ${venceAnio}.`
+      if (!silencioso) {
+        let msg = '✔ Declaración guardada. Queda terminada cuando la presentes en el SRI y lo marques abajo.'
+        if (diferidos > 0) {
+          const venceMes = (selectedClient.periodo_mes + diferidos - 1) % 12 + 1
+          const venceAnio = selectedClient.periodo_anio + Math.floor((selectedClient.periodo_mes + diferidos - 1) / 12)
+          msg += `\n\n📅 Pago de ${tipo} pendiente ${diferidos} mes(es): vuelve, sumado, en la declaración de ${nombreMes(venceMes)} ${venceAnio}.`
+        }
+        alert(msg)
       }
-      alert(msg)
-    } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
+      return registro
+    } catch (e) {
+      alert('Error: ' + (e.response?.data?.detail || e.message))
+      return null
+    }
   }
   const exportar = async () => {
     try {
@@ -320,7 +330,12 @@ export default function Declaraciones({ tipo }) {
       txt += '\nSe abre el formulario del SRI (si pide clave, entra con la de ese RUC) y queda LLENO, ' +
         'SIN PRESENTAR: revísalo y preséntalo tú.'
       if (!window.confirm(txt)) return
+      // Lo que se lleva al portal queda guardado: presentarla allá sin tenerla
+      // acá dejaba el trabajo hecho sin registro.
+      if (!declActual && !(await guardar({ silencioso: true }))) return
       const r = await cargarEnSri(c)
+      // Al volver del portal, la franja de cierre pregunta si ya se presentó.
+      setPreguntarPresentada(true)
       if (r.modo === 'descarga') {
         alert(`⬇ Se descargó ${c.archivo.nombre} (${r.motivo}).\n\n` +
           'En el portal: elige la obligación y el período, toca «Siguiente» y, en «Preguntas», ' +
@@ -336,31 +351,37 @@ export default function Declaraciones({ tipo }) {
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
   }
   const [marcandoSri, setMarcandoSri] = useState(false)
-  // Con la declaración presentada, lo siguiente del trabajo real es cobrarla.
-  // Se ofrece acá, en el momento en que se cierra el trámite, en vez de
-  // confiar en que alguien se acuerde después de pasar por Facturación.
-  const [ofrecerFactura, setOfrecerFactura] = useState(null)
-  const navigate = useNavigate()
+  // Tras «Cargar en el SRI»: al volver, la franja de cierre pregunta si ya se
+  // presentó, en vez de esperar a que alguien se acuerde de marcarlo.
+  const [preguntarPresentada, setPreguntarPresentada] = useState(false)
+  useEffect(() => { setPreguntarPresentada(false) }, [selectedClientId, tipo])
 
   // Confirma/revierte que la declaración ya se subió al portal del SRI. Al
-  // marcarla, el contribuyente deja de figurar en «Clientes pendientes».
+  // marcarla queda TERMINADA: sale de «Clientes pendientes» y cuenta como
+  // hecha en Honorarios, que es lo que habilita facturarla.
   const togglePresentada = async (id, presentada) => {
     setMarcandoSri(true)
     try {
       await declaracionesAPI.marcarPresentada(id, presentada)
       refrescarPresentadas()   // que los badges de vencimiento dejen de marcar plazo
       await cargarHistorial()
-      // Solo al MARCARLA: deshacer la marca no es motivo para ofrecer nada.
-      if (presentada) {
-        setOfrecerFactura({
-          nombre: selectedClient?.nombre || '',
-          periodo: selectedClient ? periodoLargo(selectedClient) : '',
-        })
-      } else {
-        setOfrecerFactura(null)
-      }
+      setPreguntarPresentada(false)
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
     finally { setMarcandoSri(false) }
+  }
+
+  // Un solo paso para cerrar el trámite: si todavía no está guardada, se
+  // guarda, y se marca presentada.
+  const presentar = async () => {
+    let id = declActual?.id
+    if (!id) {
+      setMarcandoSri(true)
+      const registro = await guardar({ silencioso: true })
+      setMarcandoSri(false)
+      if (!registro?.id) return
+      id = registro.id
+    }
+    await togglePresentada(id, true)
   }
 
   const marcarPagado = async (apId) => {
@@ -838,60 +859,21 @@ export default function Declaraciones({ tipo }) {
         </button>
       </div>
 
-      {/* Confirmación de subida al SRI: aparece en cuanto la declaración está
-          GUARDADA. Al marcarla, el contribuyente deja de figurar en Clientes
-          pendientes. */}
-      {declActual && (
-        <div className={`dc-sri-estado ${declActual.presentada_sri ? 'presentada' : ''}`}>
-          {declActual.presentada_sri ? (
-            <>
-              <span className="dc-sri-msg">
-                ☁️ Declaración <strong>subida al SRI</strong>
-                {declActual.presentada_sri_at && (
-                  <> · {new Date(declActual.presentada_sri_at).toLocaleDateString('es-EC')}</>
-                )}
-                . Ya no figura como pendiente.
-              </span>
-              <button className="dc-btn small" disabled={marcandoSri}
-                onClick={() => togglePresentada(declActual.id, false)}>
-                Deshacer
-              </button>
-            </>
-          ) : (
-            <>
-              <span className="dc-sri-msg">
-                💾 Declaración guardada. Cuando la hayas <strong>subido al portal del SRI</strong>,
-                confírmalo aquí para quitarla de <strong>Clientes pendientes</strong>.
-              </span>
-              <button className="dc-btn primary" disabled={marcandoSri}
-                onClick={() => togglePresentada(declActual.id, true)}>
-                ☁️ Marcar subida al SRI
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Presentada la declaración, lo que sigue es cobrarla: se ofrece acá, en
-          el momento, y no se deja librado a que alguien se acuerde de pasar por
-          Facturación. Es una invitación, no un paso obligatorio: se puede
-          cerrar y seguir trabajando. */}
-      {ofrecerFactura && (
-        <div className="dc-facturar">
-          <span className="dc-facturar-msg">
-            ✅ Declaración marcada como subida al SRI
-            {ofrecerFactura.nombre && <> · <strong>{ofrecerFactura.nombre}</strong></>}
-            {ofrecerFactura.periodo && <> · {ofrecerFactura.periodo}</>}
-            . ¿Emitimos la factura de honorarios?
-          </span>
-          <button
-            className="dc-btn primary"
-            onClick={() => { setOfrecerFactura(null); navigate('/facturacion') }}
-          >🧾 Sí, facturar</button>
-          <button className="dc-btn small" onClick={() => setOfrecerFactura(null)}>
-            Ahora no
-          </button>
-        </div>
+      {/* Cierre del trámite: guardada → presentada en el SRI → facturada. Lo
+          que cuenta como terminado es la presentación; desde acá mismo sale la
+          factura, en Odoo o en Contabilidad MAP según el contribuyente. */}
+      {selectedClient && (
+        <CierreDeclaracion
+          tipo={tipo}
+          hayDecl={!!decl}
+          declActual={declActual}
+          identificacion={selectedClient.identificacion}
+          preguntar={preguntarPresentada}
+          ocupado={marcandoSri}
+          onPresentar={presentar}
+          onDeshacer={() => togglePresentada(declActual.id, false)}
+          onNoTodavia={() => setPreguntarPresentada(false)}
+        />
       )}
 
       {/* Lo que queda pendiente en ICE: un solo mes, sobre el ICE neto del período */}

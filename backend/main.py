@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from config import get_settings
-from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router, retenciones_efectuadas, devoluciones_iva, organizations, bajadores
+from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router, retenciones_efectuadas, devoluciones_iva, organizations, bajadores, facturar
 from routers.access import require_module, require_submodule, require_submodule_any, es_super_admin
 import orgs as _orgs
 import os
@@ -225,6 +225,7 @@ _AUDIT_CATEGORIES = {
     "clients":        ("Cliente", "clientes"),
     "reportes":       ("Honorarios / reportes", "facturacion"),
     "odoo":           ("Facturación Odoo", "facturacion"),
+    "facturar":       ("Facturación", "facturacion"),
 }
 _AUDIT_ACTION = {"POST": "create", "PUT": "update", "PATCH": "update", "DELETE": "delete"}
 
@@ -235,6 +236,7 @@ def _audit_ya_registrado(method: str, path: str) -> bool:
         return True
     if method == "POST" and path.rstrip("/") in (
         "/api/declaraciones", "/api/anexos", "/api/clients", "/api/odoo/facturar",
+        "/api/facturar/emitir",
         "/api/devoluciones-iva/solicitudes"):
         return True
     return False
@@ -365,6 +367,7 @@ app.include_router(xml_originales.router)  # descarga de XML originales (gastos/
 # informe general: con un solo permiso, quien tuviera una pantalla perdería la otra.
 app.include_router(reportes.router, dependencies=SUB_ANY("gest_reportes", "gest_facturacion"))
 app.include_router(odoo_factura.router, dependencies=SUB("gest_facturacion"))  # ODOO: facturación directa
+app.include_router(facturar.router, dependencies=SUB("gest_facturacion"))  # facturar un contribuyente en Odoo o Contabilidad MAP
 # El recordatorio semanal de cobros lo llama el cron, sin sesión: va sin la
 # dependencia de submódulo, protegido por CRON_SECRET dentro del endpoint.
 app.include_router(odoo_factura.router_cron)

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { reportesAPI, odooAPI } from '../services/api'
+import { reportesAPI, odooAPI, facturarAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import WorkflowGuide from '../components/WorkflowGuide'
 import useDraft from '../hooks/useDraft'
@@ -124,11 +124,53 @@ export default function OdooFacturacion({ embebido = false, periodo: periodoSel 
       .catch(() => setMesesPend([]))
   }
 
+  // Quién factura a cada contribuyente (lo guarda el servidor): 'cmaj' = Odoo,
+  // 'map' = Contabilidad MAP. Los de MAP no salen en el paquete de Odoo.
+  const emisorDe = useMemo(() => {
+    const m = {}
+    for (const f of filas) m[f.identificacion] = f.emisor || 'cmaj'
+    return m
+  }, [filas])
+  const cambiarSistema = async (ruc, emisor) => {
+    try {
+      await facturarAPI.emisor(ruc, emisor)
+      setFilas((fs) => fs.map((f) => (f.identificacion === ruc ? { ...f, emisor, emisor_origen: 'guardado' } : f)))
+    } catch (e) { alert('No se pudo cambiar: ' + (e.response?.data?.detail || e.message)) }
+  }
+  // La empresa «Marco Antonio» de Odoo ya no emite: lo suyo va por Contabilidad MAP.
+  const companiasOdoo = companias.filter((c) => !/marco\s+antonio/i.test(c.name || ''))
+
+  // Contribuyentes que se facturan en Contabilidad MAP, uno por uno.
+  const gruposMap = useMemo(() => {
+    const m = {}
+    for (const f of filas) {
+      if (idents_svc && !idents_svc.has(f.identificacion)) continue
+      if (emisorDe[f.identificacion] !== 'map' || !f.cobrar || !(f.valor > 0) || f.procesado) continue
+      const g = (m[f.identificacion] ||= { ruc: f.identificacion, nombre: f.contribuyente, conceptos: [], total: 0 })
+      g.conceptos.push(f.concepto)
+      g.total = +(g.total + (f.bruto || 0)).toFixed(2)
+    }
+    return Object.values(m).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
+  }, [filas, idents_svc, emisorDe])
+  const [emitiendoMap, setEmitiendoMap] = useState('')
+  const [resMap, setResMap] = useState({})   // { ruc: resultado | {error} }
+  const emitirEnMap = async (g) => {
+    setEmitiendoMap(g.ruc)
+    try {
+      const { data } = await facturarAPI.emitir(g.ruc, periodo?.mes, periodo?.anio)
+      setResMap((p) => ({ ...p, [g.ruc]: data }))
+      setFilas((fs) => fs.map((f) => (f.identificacion === g.ruc ? { ...f, procesado: true } : f)))
+    } catch (e) {
+      setResMap((p) => ({ ...p, [g.ruc]: { error: e.response?.data?.detail || e.message } }))
+    } finally { setEmitiendoMap('') }
+  }
+
   // Agrupar filas por contribuyente — solo cobrar=true, valor>0 y sin factura ya emitida
   const grupos = useMemo(() => {
     const m = {}
     for (const f of filas) {
       if (idents_svc && !idents_svc.has(f.identificacion)) continue
+      if (emisorDe[f.identificacion] === 'map') continue   // va por Contabilidad MAP
       if (!f.cobrar || !(f.valor > 0) || f.procesado) continue
       if (!m[f.identificacion]) {
         m[f.identificacion] = { ruc: f.identificacion, nombre: f.contribuyente, lineas: [], total: 0 }
@@ -144,10 +186,15 @@ export default function OdooFacturacion({ embebido = false, periodo: periodoSel 
       m[f.identificacion].total = +(m[f.identificacion].total + bruto).toFixed(2)
     }
     return Object.values(m).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
-  }, [filas, idents_svc])
+  }, [filas, idents_svc, emisorDe])
 
   // Empresa emisora de cada grupo (la elegida individualmente, o la global)
-  const grupoEmisor = (g) => Number(emisorPorGrupo[g.ruc] || companyId) || null
+  // Una elección vieja guardada en el navegador puede apuntar a la empresa
+  // «Marco Antonio» de Odoo, que ya no emite: se cae a CMAJ.
+  const idsOdoo = new Set(companiasOdoo.map((c) => String(c.id)))
+  const vigente = (id) => (id && (!companias.length || idsOdoo.has(String(id))) ? id : null)
+  const porDefecto = vigente(companyId) || (companiasOdoo.find((c) => /asociad/i.test(c.name)) || companiasOdoo[0])?.id
+  const grupoEmisor = (g) => Number(vigente(emisorPorGrupo[g.ruc]) || porDefecto) || null
 
   // Cuenta por cobrar de cada cliente, en el plan de SU empresa emisora
   const recargarCuentas = () => {
@@ -273,14 +320,14 @@ export default function OdooFacturacion({ embebido = false, periodo: periodoSel 
       }
       // 2) Emitir las facturas (se postean y el SRI autoriza).
       const r = await odooAPI.facturar({
-        company_id: companyId ? Number(companyId) : null,   // emisor por defecto
+        company_id: porDefecto ? Number(porDefecto) : null,   // emisor por defecto
         facturas: facturasSeleccionadas.map((g) => ({
           ruc: g.ruc,            // receptor = el contribuyente del honorario
           nombre: g.nombre,
           // Mes de honorarios que cubre (va en la referencia y en el concepto)
           mes: periodo?.mes || null,
           anio: periodo?.anio || null,
-          company_id: Number(emisorPorGrupo[g.ruc] || companyId) || null,  // emisor INDIVIDUAL de esta factura
+          company_id: grupoEmisor(g),  // emisor INDIVIDUAL de esta factura
           cuenta_cobrar_id: cuentas[g.ruc]?.cuenta_id || null,             // cuenta por cobrar del cliente
           banco_journal_id: (destino[g.ruc] && destino[g.ruc] !== 'cobrar') ? Number(destino[g.ruc]) : null,  // si va directo a banco
           lineas: g.lineas.map((l) => ({
@@ -319,7 +366,9 @@ export default function OdooFacturacion({ embebido = false, periodo: periodoSel 
     })
   }
 
-  const elegidosDelMes = (m) => m.contribuyentes.filter((c) => selPend.has(`${m.clave}|${c.ruc}`))
+  // Los que factura Contabilidad MAP no se emiten en Odoo, tampoco los atrasados.
+  const elegidosDelMes = (m) => m.contribuyentes.filter(
+    (c) => selPend.has(`${m.clave}|${c.ruc}`) && emisorDe[c.ruc] !== 'map')
 
   const enviarMes = async (m) => {
     const elegidos = elegidosDelMes(m)
@@ -332,13 +381,13 @@ export default function OdooFacturacion({ embebido = false, periodo: periodoSel 
     setEnviandoMes(m.clave)
     try {
       const r = await odooAPI.facturar({
-        company_id: companyId ? Number(companyId) : null,
+        company_id: porDefecto ? Number(porDefecto) : null,
         facturas: elegidos.map((c) => ({
           ruc: c.ruc,
           nombre: c.nombre,
           mes: m.mes,
           anio: m.anio,
-          company_id: Number(emisorPorGrupo[c.ruc] || companyId) || null,
+          company_id: grupoEmisor(c),
           lineas: c.lineas.map((l) => ({
             concepto: l.concepto,
             // Base neta: si el valor guardado ya trae IVA, se le quita (Odoo lo agrega).
@@ -438,9 +487,9 @@ export default function OdooFacturacion({ embebido = false, periodo: periodoSel 
       <div className="of-emisor-bar">
         <label className="of-emisor">
           <span>🏢 Emisor por defecto (aplica a todos):</span>
-          <select value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+          <select value={porDefecto ? String(porDefecto) : ""} onChange={(e) => setCompanyId(e.target.value)}>
             {companias.length === 0 && <option value="">(cargando…)</option>}
-            {companias.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+            {companiasOdoo.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
           </select>
         </label>
         <button type="button" className="of-ver-prod" onClick={() => setVerProductos((v) => !v)}>
@@ -498,7 +547,9 @@ export default function OdooFacturacion({ embebido = false, periodo: periodoSel 
                       />
                     </td>
                     <td>
-                      <div className="of-mes-nombre">{c.nombre}</div>
+                      <div className="of-mes-nombre">{c.nombre}
+                        {emisorDe[c.ruc] === "map" && <span className="of-map-tag" title="Se factura en Contabilidad MAP, no en Odoo">Contabilidad MAP</span>}
+                      </div>
                       <div className="of-mes-ruc">RUC {c.ruc}</div>
                     </td>
                     <td className="of-mes-conceptos">
@@ -530,6 +581,41 @@ export default function OdooFacturacion({ embebido = false, periodo: periodoSel 
           </section>
         )
       })}
+
+      {/* Lo de Marco Antonio no va a Odoo: se emite en Contabilidad MAP, uno por uno. */}
+      {gruposMap.length > 0 && (
+        <section className="of-map">
+          <header className="of-map-head">
+            <h2>📒 Se facturan en Contabilidad MAP (Marco Antonio)</h2>
+            <p>No entran en el paquete de Odoo de abajo. Cada factura se firma y se envía al SRI desde MAP.</p>
+          </header>
+          <ul className="of-map-lista">
+            {gruposMap.map((g) => {
+              const res = resMap[g.ruc]
+              return (
+                <li key={g.ruc}>
+                  <div>
+                    <strong>{g.nombre}</strong> <span className="of-dim">RUC {g.ruc}</span>
+                    <div className="of-dim">{g.conceptos.join(' · ')}</div>
+                    {res?.error && <div className="of-map-err">⚠ {res.error}</div>}
+                    {res && !res.error && (
+                      <div className="of-map-ok">✓ {res.numero} · {res.estado || (res.ya_existia ? 'ya emitida' : '')}</div>
+                    )}
+                  </div>
+                  <div className="of-map-acc">
+                    <strong>{fmtMoney(g.total)}</strong>
+                    <button className="of-btn-emitir" disabled={!!emitiendoMap} onClick={() => emitirEnMap(g)}>
+                      {emitiendoMap === g.ruc ? '⏳ Emitiendo…' : '🧾 Emitir en MAP'}
+                    </button>
+                    <button type="button" className="of-map-cambiar" onClick={() => cambiarSistema(g.ruc, 'cmaj')}
+                      title="Este contribuyente lo factura CMAJ">pasar a Odoo</button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
 
       {grupos.length === 0 ? (
         <div className="of-empty">
@@ -684,10 +770,13 @@ export default function OdooFacturacion({ embebido = false, periodo: periodoSel 
                     <label htmlFor={`emi-${g.ruc}`}>🏢 Factura desde:</label>
                     <select
                       id={`emi-${g.ruc}`}
-                      value={emisorPorGrupo[g.ruc] ?? companyId}
-                      onChange={(e) => setEmisorPorGrupo((p) => ({ ...p, [g.ruc]: e.target.value }))}
+                      value={String(grupoEmisor(g) || "")}
+                      onChange={(e) => (e.target.value === 'map'
+                        ? cambiarSistema(g.ruc, 'map')
+                        : setEmisorPorGrupo((p) => ({ ...p, [g.ruc]: e.target.value })))}
                     >
-                      {companias.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+                      {companiasOdoo.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+                      <option value="map">Marco Antonio · Contabilidad MAP</option>
                     </select>
                   </div>
 

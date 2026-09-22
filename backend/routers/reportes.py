@@ -81,6 +81,32 @@ CONCEPTOS = [
     ("Anexo PVP+ICE", "anexo"),
     ("Devolución IVA", "devolucion_iva"),
 ]
+_CONCEPTO_KEY = dict(CONCEPTOS)
+
+# Empresa de Odoo que, en realidad, factura en Contabilidad MAP.
+_EMPRESA_MAP = re.compile(r"marco\s+antonio", re.I)
+
+
+def emisores_de(user_id, odoo_por_ruc=None) -> dict:
+    """{ruc (dígitos): {emisor, origen}} — quién le factura a cada contribuyente.
+
+    Manda lo que se eligió y quedó guardado (facturacion_emisor). Si nadie lo
+    eligió, se deduce de la empresa de la última factura en Odoo: lo que salió
+    a nombre de Marco Antonio se factura ahora en Contabilidad MAP. Sin nada de
+    eso, CMAJ (Odoo)."""
+    out = {}
+    for ruc, lineas in (odoo_por_ruc or {}).items():
+        empresa = (lineas[0].get("empresa") if lineas else "") or ""
+        if empresa:
+            out[ruc] = {"emisor": "map" if _EMPRESA_MAP.search(empresa) else "cmaj", "origen": "odoo"}
+    try:
+        sb = get_supabase_client()
+        for r in fetch_all(lambda: sb.table("facturacion_emisor").select(
+                "identificacion,emisor").eq("user_id", user_id)):
+            out[re.sub(r"\D", "", r["identificacion"])] = {"emisor": r["emisor"], "origen": "guardado"}
+    except Exception as e:   # migración 067 sin correr: se sigue con lo deducido
+        print(f"[reportes] facturacion_emisor: {e}")
+    return out
 
 # Emparejamiento concepto ↔ línea de Odoo: (keyset = puntúa la relación;
 # required = palabra(s) distintivas, al menos una debe estar para considerar match).
@@ -211,7 +237,9 @@ def _filas_y_total(user_id, mes: Optional[int] = None, anio: Optional[int] = Non
     def _q_decls():
         if not all_ids:
             return []
-        return _fetch_in_chunks(sb, "declaraciones", "client_id,tipo,created_at", "client_id", all_ids)
+        return _fetch_in_chunks(sb, "declaraciones",
+                                "client_id,tipo,created_at,presentada_sri,presentada_sri_at",
+                                "client_id", all_ids)
 
     def _q_guardados():
         return fetch_all(lambda: sb.table("reportes_honorarios").select(
@@ -247,16 +275,24 @@ def _filas_y_total(user_id, mes: Optional[int] = None, anio: Optional[int] = Non
 
     # Declaraciones: "ever" (alguna vez) para decidir quién aparece y qué es
     # relevante; "mes" (este mes calendario) para pintar en verde "se debe facturar".
+    # Hecha = PRESENTADA en el SRI en el mes. Guardarla no alcanza: antes el
+    # verde salía al guardar y Clientes pendientes pedía otra cosa (la marca del
+    # SRI), así que nadie sabía en qué momento el trabajo quedaba terminado. La
+    # guardada que todavía no se presentó se avisa aparte.
     _TIPO_KEY = {"IVA": "declaracion_iva", "ICE": "declaracion_ice", "RENTA": "declaracion_renta"}
-    decl_ever, decl_mes = set(), set()
+    decl_ever, decl_mes, decl_sin_presentar = set(), set(), set()
     for d in decls_r:
         ruc = id_to_ruc.get(d["client_id"])
         key = _TIPO_KEY.get((d.get("tipo") or "").upper())
         if not ruc or not key:
             continue
         decl_ever.add((ruc, key))
-        if _es_mes_actual(d.get("created_at"), cur_mes, cur_anio):
-            decl_mes.add((ruc, key))
+        if d.get("presentada_sri"):
+            if _es_mes_actual(d.get("presentada_sri_at") or d.get("created_at"), cur_mes, cur_anio):
+                decl_mes.add((ruc, key))
+        elif _es_mes_actual(d.get("created_at"), cur_mes, cur_anio):
+            decl_sin_presentar.add((ruc, key))
+    decl_sin_presentar -= decl_mes
     anexo_ever, anexo_mes = set(), set()
     for a in anexos_r:
         ruc = id_to_ruc.get(a["client_id"])
@@ -333,6 +369,11 @@ def _filas_y_total(user_id, mes: Optional[int] = None, anio: Optional[int] = Non
         fact_periodo = facturas_periodo_por_ruc(idents, cur_mes, cur_anio, cache_key=user_id)
     except Exception as e:
         print(f"[reportes] Odoo no disponible para honorarios: {e}")
+    # Lo que se facturó en Contabilidad MAP (Marco Antonio) también es procesado.
+    from services.contabilidad_map import facturas_de_referencia
+    for d, f in facturas_de_referencia(f"HON-{cur_anio:04d}-{cur_mes:02d}").items():
+        fact_periodo.setdefault(d, f)
+    emisor_por_ruc = emisores_de(user_id, odoo_por_ruc)
 
     filas = []
     total = 0.0
@@ -413,6 +454,11 @@ def _filas_y_total(user_id, mes: Optional[int] = None, anio: Optional[int] = Non
                 "hecho": hecho,
                 "hecho_origen": hecho_origen,
                 "hecho_nota": (marca or {}).get("nota") or "",
+                # Guardada este mes pero todavía sin presentar en el SRI.
+                "sin_presentar": (ruc, _CONCEPTO_KEY.get(concepto)) in decl_sin_presentar,
+                # Quién factura: 'cmaj' (Odoo) o 'map' (Contabilidad MAP).
+                "emisor": emisor_por_ruc.get(re.sub(r"\D", "", ruc), {}).get("emisor", "cmaj"),
+                "emisor_origen": emisor_por_ruc.get(re.sub(r"\D", "", ruc), {}).get("origen", ""),
                 # Periodicidad del contribuyente: el semestral se agrupa bajo su
                 # semestre en vez de figurar faltante los meses que no declara.
                 "periodicidad": freq_por_ruc.get(ruc, "mensual"),
@@ -429,6 +475,7 @@ def _filas_y_total(user_id, mes: Optional[int] = None, anio: Optional[int] = Non
                 # Procesado = ya facturado en Odoo este período. Certificada = con
                 # autorización del SRI. Señal a nivel cliente (toda la fila la comparte).
                 "procesado": bool(fact),
+                "factura_sistema": (fact or {}).get("sistema", "odoo") if fact else None,
                 "certificada": bool(fact and fact.get("autorizada")),
                 "factura_numero": fact.get("numero") if fact else None,
                 "factura_fecha": fact.get("fecha") if fact else None,

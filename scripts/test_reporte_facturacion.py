@@ -12,7 +12,7 @@ facturas de Odoo se reemplaza por una función simulada.
 Escenario de agosto 2026:
   · ANA      IVA + ICE contratados, declaró las dos y su anexo → TOTAL, facturada.
   · BETO     IVA + ICE, solo declaró IVA                       → PARCIAL, sin facturar.
-  · CARLA    IVA, no declaró nada, tiene honorario registrado   → NINGUNA, sin facturar.
+  · CARLA    IVA, la guardó sin presentarla al SRI, con honorario → NINGUNA, sin facturar.
   · DIEGO    sin servicios mensuales, con factura en Odoo       → solo en Odoo.
   · ELSA     IVA, declaró lo suyo, honorario 20 y factura de 23 → TOTAL, monto distinto.
 """
@@ -50,11 +50,15 @@ SERVICIOS = [
     {"client_id": "c-diego", "service": "devolucion_iva", "active": True},   # no es mensual
 ]
 DECLARACIONES = [
-    {"client_id": "c-ana", "tipo": "IVA", "created_at": EN_AGOSTO},
-    {"client_id": "c-ana", "tipo": "ICE", "created_at": EN_AGOSTO},
-    {"client_id": "c-beto", "tipo": "IVA", "created_at": EN_AGOSTO},
-    {"client_id": "c-beto", "tipo": "ICE", "created_at": EN_JULIO},   # del mes pasado: no cuenta
-    {"client_id": "c-elsa", "tipo": "IVA", "created_at": EN_AGOSTO},
+    {"client_id": "c-ana", "tipo": "IVA", "created_at": EN_AGOSTO, "presentada_sri": True},
+    {"client_id": "c-ana", "tipo": "ICE", "created_at": EN_AGOSTO, "presentada_sri": True},
+    {"client_id": "c-beto", "tipo": "IVA", "created_at": EN_AGOSTO, "presentada_sri": True},
+    {"client_id": "c-beto", "tipo": "ICE", "created_at": EN_JULIO, "presentada_sri": True,
+     "presentada_sri_at": EN_JULIO},   # del mes pasado: no cuenta
+    {"client_id": "c-elsa", "tipo": "IVA", "created_at": EN_AGOSTO, "presentada_sri": True,
+     "presentada_sri_at": EN_AGOSTO},
+    # Guardada en agosto pero nunca presentada en el SRI: el trabajo no está terminado.
+    {"client_id": "c-carla", "tipo": "IVA", "created_at": EN_AGOSTO, "presentada_sri": False},
 ]
 ANEXOS = [
     {"client_id": "c-ana", "created_at": EN_AGOSTO},
@@ -176,7 +180,8 @@ check(set(beto["declaracion"]["faltan"]) == {"declaracion_ice", "anexo"},
 check("declaracion_ice" not in beto["declaracion"]["hechas"],
       "el ICE declarado el mes pasado no cuenta para este mes")
 carla = por_ruc["CARLA"]
-check(carla["declaracion"]["estado"] == "ninguna", "CARLA no declaró nada", str(carla["declaracion"]))
+check(carla["declaracion"]["estado"] == "ninguna",
+      "CARLA la guardó pero no la presentó: cuenta como no declarada", str(carla["declaracion"]))
 diego = por_ruc["DIEGO"]
 check(diego["declaracion"]["estado"] == "sin_obligaciones",
       "DIEGO no tiene obligaciones mensuales: no cuenta como faltante", str(diego["declaracion"]))

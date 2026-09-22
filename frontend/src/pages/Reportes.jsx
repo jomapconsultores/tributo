@@ -588,7 +588,7 @@ function Grupo({ g, cerrado, onToggle, setFila, setPrecio, guardando, marcando, 
                 title={r.hecho
                   ? (r.hecho_origen === 'manual'
                     ? `Marcado a mano como hecho${r.hecho_nota ? ' · ' + r.hecho_nota : ''}. Tocá para volver a ponerlo pendiente.`
-                    : 'El sistema lo ve hecho (hay declaración o anexo de este período). Tocá para marcarlo pendiente.')
+                    : 'El sistema lo ve hecho (declaración presentada en el SRI o anexo de este período). Tocá para marcarlo pendiente.')
                   : (r.hecho_origen === 'manual'
                     ? 'Marcado a mano como pendiente. Tocá para darlo por hecho.'
                     : 'Sin registro de este trabajo en el período. Si ya lo hiciste, tocá para darlo por hecho.')}
@@ -599,6 +599,9 @@ function Grupo({ g, cerrado, onToggle, setFila, setPrecio, guardando, marcando, 
                 <span className="rp-mano-tag" title="Este estado lo puso una persona, no el sistema">a mano</span>
               )}
               {r.relevante && !r.hecho && <span className="rp-tag" title="Contratado o realizado">●</span>}
+              {!r.hecho && r.sin_presentar && (
+                <span className="rp-mano-tag" title="La declaración está guardada pero no se marcó presentada en el SRI">falta presentar</span>
+              )}
               {r.personalizado && <span className="rp-badge-custom">rubro propio</span>}
               {r.arrastrado && <span className="rp-arrastrado" title="Valor traído del mes anterior; ajústalo si cambió">↩ mes anterior</span>}
               {r.origen === 'odoo' && <span className="rp-odoo-tag" title="Valor traído de la última factura emitida a este cliente en Odoo (base sin IVA). Ajústalo si cambió.">Odoo</span>}

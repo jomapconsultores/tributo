@@ -299,7 +299,8 @@ def valores_honorarios_por_ruc(idents: set, cache_key=None) -> dict:
         ids = _x(models, db, uid, key, "account.move", "search", [dom],
                  {"order": "invoice_date desc, id desc", "limit": 3000})
         rows = _x(models, db, uid, key, "account.move", "read", [ids],
-                  {"fields": ["partner_id", "amount_untaxed", "invoice_date", "name", "invoice_line_ids"]}) if ids else []
+                  {"fields": ["partner_id", "amount_untaxed", "invoice_date", "name", "invoice_line_ids",
+                              "company_id"]}) if ids else []
         pids = list({r["partner_id"][0] for r in rows if r.get("partner_id")})
         vat = {}
         if pids:
@@ -341,7 +342,10 @@ def valores_honorarios_por_ruc(idents: set, cache_key=None) -> dict:
                     vistos.add(clave)
                     lineas.append({"concepto": pn, "oficial": round(oficial, 2),
                                    "descuento": round(desc, 2), "neto": neto,
-                                   "numero": r.get("name"), "fecha": r.get("invoice_date")})
+                                   "numero": r.get("name"), "fecha": r.get("invoice_date"),
+                                   # Empresa que la emitió: de acá se deduce quién le
+                                   # factura al contribuyente si nadie lo eligió.
+                                   "empresa": (r.get("company_id") or [0, ""])[1] or ""})
             if lineas:
                 out[v] = lineas
     except Exception as e:
@@ -1195,6 +1199,28 @@ async def facturar_en_odoo(body: FacturarBody, user_id: str = Depends(get_curren
     return {"resultados": resultados}
 
 
+def _con_facturas_map(fact: dict, desde_anio: int, desde_mes: int, hasta_anio=None, hasta_mes=None) -> dict:
+    """Suma a `fact` (formato de facturas_por_mes_por_ruc) lo emitido en
+    Contabilidad MAP mes a mes: lo de Marco Antonio ya no está en Odoo y, sin
+    esto, cada mes suyo figuraba como sin facturar."""
+    from services import contabilidad_map
+    if not contabilidad_map.configurado():
+        return fact
+    hoy = datetime.now(_EC_TZ_ODOO)
+    a, m = desde_anio, desde_mes
+    fin = (hasta_anio or hoy.year) * 100 + (hasta_mes or hoy.month)
+    while a * 100 + m <= fin:
+        clave = f"{a:04d}-{m:02d}"
+        for d, f in contabilidad_map.facturas_de_referencia(f"HON-{clave}").items():
+            lista = fact.setdefault(d, {}).setdefault(clave, [])
+            if not any(x.get("numero") == f.get("numero") for x in lista):
+                lista.append({**f, "periodo": clave, "por_referencia": True, "estado_pago": "not_paid",
+                              "pagada": False, "por_cobrar": f.get("total") or 0,
+                              "empresa": "Marco Antonio (Contabilidad MAP)"})
+        a, m = (a + 1, 1) if m == 12 else (a, m + 1)
+    return fact
+
+
 # ---------------------------------------------------------------------------
 # Cruce mensual: honorarios registrados en el sistema ↔ facturas emitidas en Odoo
 # ---------------------------------------------------------------------------
@@ -1321,7 +1347,8 @@ def _cruce_mensual(meses: int, user_id: str, hasta_mes=None, hasta_anio=None) ->
         d["conceptos"].append({"concepto": g.get("producto") or "", "bruto": bruto})
 
     # Facturas emitidas en Odoo dentro de la misma ventana
-    fact = facturas_por_mes_por_ruc(set(nombre_por_ruc.keys()), desde_anio, desde_mes)
+    fact = _con_facturas_map(facturas_por_mes_por_ruc(set(nombre_por_ruc.keys()), desde_anio, desde_mes),
+                             desde_anio, desde_mes)
     odoo_ok = bool(fact)
 
     # Etiquetas de los meses de la ventana, del más reciente al más antiguo
@@ -1446,12 +1473,16 @@ async def reporte_facturacion(mes: Optional[int] = None, anio: Optional[int] = N
         if ruc:
             serv_por_ruc.setdefault(ruc, set()).add(s["service"])
 
-    decls = _fetch_in_chunks(sb, "declaraciones", "client_id,tipo,created_at", "client_id", ids)
+    # Declarada = PRESENTADA en el SRI en el mes, el mismo criterio que
+    # Honorarios y Clientes pendientes. Guardarla sola no la termina.
+    decls = _fetch_in_chunks(sb, "declaraciones",
+                             "client_id,tipo,created_at,presentada_sri,presentada_sri_at", "client_id", ids)
     hechas = {}       # ruc -> {key de declaración hecha en el mes}
     for d in decls:
         ruc = id_to_ruc.get(str(d["client_id"]))
         key = _TIPO_DECL.get((d.get("tipo") or "").upper())
-        if ruc and key and _es_mes_actual(d.get("created_at"), mes, anio):
+        if (ruc and key and d.get("presentada_sri")
+                and _es_mes_actual(d.get("presentada_sri_at") or d.get("created_at"), mes, anio)):
             hechas.setdefault(ruc, set()).add(key)
 
     anexos = _fetch_in_chunks(sb, "anexos", "client_id,created_at", "client_id", ids)
@@ -1487,7 +1518,7 @@ async def reporte_facturacion(mes: Optional[int] = None, anio: Optional[int] = N
             d["arrastrado"] = True      # viene del mes anterior: aún sin guardar
 
     # --- Lo que Odoo tiene realmente emitido de ese mes ----------------------
-    fact = facturas_por_mes_por_ruc(set(nombre_por_ruc), anio, mes)
+    fact = _con_facturas_map(facturas_por_mes_por_ruc(set(nombre_por_ruc), anio, mes), anio, mes, anio, mes)
     odoo_ok = bool(fact)
 
     resumen = {
@@ -1656,7 +1687,8 @@ async def por_facturar(meses: int = 12, mes: Optional[int] = None, anio: Optiona
     # Lo ya facturado no vuelve a ofrecerse. Se mira por el mes de HONORARIOS
     # (la referencia), no por la fecha de emisión: julio facturado en agosto
     # tiene que contar como julio hecho.
-    fact = facturas_por_mes_por_ruc(set(nombre_por_ruc), desde_anio, desde_mes)
+    fact = _con_facturas_map(facturas_por_mes_por_ruc(set(nombre_por_ruc), desde_anio, desde_mes),
+                             desde_anio, desde_mes)
     odoo_ok = bool(fact)
 
     salida = []

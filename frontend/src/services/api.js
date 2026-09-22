@@ -621,6 +621,16 @@ export const memoryAPI = {
   save: (mem_key, tarjeta_credito) => api.post('/api/memory/', { mem_key, tarjeta_credito }),
 }
 
+// Facturar UN contribuyente en su sistema: CMAJ → Odoo, Marco Antonio → Contabilidad MAP.
+export const facturarAPI = {
+  resumen: (identificacion, mes, anio) =>
+    api.get('/api/facturar/contribuyente', { params: { identificacion, mes, anio } }),
+  emisor: (identificacion, emisor) => api.put('/api/facturar/emisor', { identificacion, emisor }),
+  // Firma y autorización del SRI pueden tardar: el tiempo por defecto no alcanza.
+  emitir: (identificacion, mes, anio) =>
+    api.post('/api/facturar/emitir', { identificacion, mes, anio }, { timeout: 180000 }),
+}
+
 // ODOO: facturación directa desde honorarios (solo admin)
 export const odooAPI = {
   estado: () => api.get('/api/odoo/estado'),
