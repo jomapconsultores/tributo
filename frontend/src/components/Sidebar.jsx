@@ -10,6 +10,21 @@ import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import BajadorSRI from './BajadorSRI'
 import './Sidebar.css'
 
+const ROL_LBL = {
+  admin: 'Administrador', socio: 'Socio',
+  trabajador: 'Funcionario', cliente: 'Cliente',
+}
+
+/** Iniciales para el avatar del pie: «marco.posligua@…» → «MP». */
+const iniciales = (email = '') => {
+  const base = (email.split('@')[0] || '').trim()
+  const partes = base.split(/[._-]+/).filter(Boolean)
+  const txt = partes.length > 1
+    ? partes.slice(0, 2).map((p) => p[0]).join('')
+    : base.slice(0, 2)
+  return (txt || '?').toUpperCase()
+}
+
 export default function Sidebar({ onNewClient, onLogout, userEmail, open = false }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -413,12 +428,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
           <div className="brand-sub">Gastos · Retenciones · Tributos</div>
         </div>
       </div>
-      {userEmail && (
-        <div className="sidebar-user-chip">
-          <span className="sidebar-user-ico">👤</span>
-          <span className="sidebar-user-email" title={userEmail}>{userEmail}</span>
-        </div>
-      )}
+      {/* El correo vivía aquí Y en el pie, dos veces en la misma columna. Queda
+          en el pie, que es donde están las acciones de la cuenta. */}
 
       {/* Dos columnas: franja de módulos + panel del módulo seleccionado */}
       <div className="sb-cols">
@@ -454,13 +465,35 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         </div>
       </div>
 
+      {/* Pie de sesión: quién está dentro y las tres acciones que le competen.
+          Eran tres enlaces sueltos, pegados entre sí y con el correo repetido
+          (ya estaba en la cabecera). Ahora es una ficha: avatar, correo, rol, y
+          las acciones de cuenta separadas de la de salir. */}
       <div className="sidebar-footer">
-        <div className="user-email" title={userEmail}>{userEmail}</div>
-        {/* Mi cuenta: datos propios y cambio de clave (disponible para todo rol) */}
-        <button className="logout-link" onClick={() => navigate('/mi-cuenta')}>Mi cuenta</button>
-        {/* Manual del cliente: enseña solo lo que esta persona puede hacer. */}
-        <button className="logout-link" onClick={() => navigate('/manual')}>📘 Manual de uso</button>
-        <button className="logout-link" onClick={onLogout}>Cerrar sesión</button>
+        <div className="sf-user" title={userEmail}>
+          <span className="sf-avatar" aria-hidden="true">{iniciales(userEmail)}</span>
+          <span className="sf-user-txt">
+            <span className="sf-user-email">{userEmail}</span>
+            <span className="sf-user-rol">{ROL_LBL[role] || 'Cliente'}</span>
+          </span>
+        </div>
+
+        <div className="sf-acciones">
+          {/* Mi cuenta: datos propios y cambio de clave (disponible para todo rol) */}
+          <button className={`sf-btn ${path === '/mi-cuenta' ? 'sel' : ''}`}
+                  onClick={() => navigate('/mi-cuenta')} title="Mis datos, mi clave y mi plan">
+            <span className="sf-btn-ico">⚙️</span><span>Mi cuenta</span>
+          </button>
+          {/* Manual del cliente: enseña solo lo que esta persona puede hacer. */}
+          <button className={`sf-btn ${path === '/manual' ? 'sel' : ''}`}
+                  onClick={() => navigate('/manual')} title="Cómo usar el sistema, paso a paso">
+            <span className="sf-btn-ico">📘</span><span>Manual</span>
+          </button>
+        </div>
+
+        <button className="sf-btn sf-salir" onClick={onLogout}>
+          <span className="sf-btn-ico">⏻</span><span>Cerrar sesión</span>
+        </button>
       </div>
 
       {bajador && <BajadorSRI which={bajador} onClose={() => setBajador(null)} />}

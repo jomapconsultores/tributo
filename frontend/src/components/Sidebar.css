@@ -1068,3 +1068,100 @@
   background: #fce7f3; color: #9d174d; box-shadow: inset 2px 0 0 #9d174d;
 }
 .sb-panel.devoluciones .sb-panel-body .submodule:hover { background: #fdf2f8; color: #9d174d; }
+
+/* ── Pie de sesión ──────────────────────────────────────────────────────────
+   Eran tres enlaces al 100 % de ancho, pegados uno debajo de otro y sin
+   jerarquía: «Mi cuenta», «Manual» y «Cerrar sesión» pesaban lo mismo, cuando
+   la última es la única que interrumpe el trabajo. Ahora: ficha de quién está
+   dentro, las dos acciones de cuenta en pareja, y la salida separada abajo.
+   ────────────────────────────────────────────────────────────────────────── */
+.sidebar-footer {
+  padding: 10px 12px 12px;
+  border-top: 1px solid #dbe3ec;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.sf-user {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  background: #f4f7fb;
+  border: 1px solid #e4ebf3;
+  border-radius: 10px;
+  min-width: 0;
+}
+
+/* Iniciales en vez de un ícono genérico: identifica la sesión de un vistazo,
+   que es lo que hace falta cuando se comparte el computador. */
+.sf-avatar {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #1e3a6e 0%, #2c5ba8 100%);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+
+.sf-user-txt { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.sf-user-email {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #24344d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sf-user-rol {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #7d8ca3;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.sf-acciones { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+
+.sf-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 9px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  background: #fff;
+  color: #475569;
+  font-size: 0.73rem;
+  font-weight: 600;
+  font-family: inherit;
+  letter-spacing: 0.1px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .16s, color .16s, border-color .16s;
+}
+.sf-btn:hover { background: #eef2f7; border-color: #c7d4e4; color: #14213d; }
+/* Estando en esa pantalla, el botón lo dice: mismo criterio que el resto del menú. */
+.sf-btn.sel {
+  background: #e6edfa;
+  border-color: #c3d5f4;
+  color: #002a80;
+}
+.sf-btn-ico { font-size: 0.82rem; line-height: 1; }
+
+/* Salir no compite con las otras dos: fondo plano, y el rojo solo al apuntar. */
+.sf-salir { width: 100%; color: #64748b; border-color: #e8eef4; }
+.sf-salir:hover { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+
+@media (max-width: 768px) {
+  .sf-acciones { grid-template-columns: 1fr; }
+}
