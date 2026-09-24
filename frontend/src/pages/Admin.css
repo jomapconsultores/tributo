@@ -86,3 +86,26 @@
   margin-bottom: 16px;
   font-size: 0.88rem;
 }
+
+/* Detalle de permisos: módulos y, dentro de cada uno, sus pantallas. */
+.adm-detalle { max-width: 520px; max-height: 88vh; overflow-y: auto; }
+.adm-origen {
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #334155;
+  margin-bottom: 12px;
+}
+/* Cuando mandan los permisos de una empresa conviene que salte a la vista:
+   es el caso en el que marcar en el sitio equivocado no hace nada. */
+.adm-origen.org { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+
+.submod-group.apagado { opacity: .55; }
+.submod-mod-chk { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+.submod-mod-chk input { cursor: pointer; }
+.submod-unica { font-size: 0.76rem; color: #94a3b8; margin: 4px 0 0; font-style: italic; }
+/* Tiene pantallas recortadas: el número se marca para no tener que abrir el
+   detalle de cada usuario buscando a quién le falta algo. */
+.adm-recorte { color: #b45309; }

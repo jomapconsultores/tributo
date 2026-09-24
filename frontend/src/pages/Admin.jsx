@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { adminAPI, activacionAPI } from '../services/api'
+import { adminAPI, activacionAPI, orgsAPI } from '../services/api'
 import { useAccess } from '../context/AccessContext'
 import { clearAll as clearApiCache } from '../services/cache'
 import './Admin.css'
@@ -15,6 +15,17 @@ const MODS = [
   { key: 'ingresos_ice', label: 'ICE' },
   { key: 'declaraciones', label: 'Declar.' },
   { key: 'agente_retencion', label: 'Agente Ret.' },
+  { key: 'gestion', label: 'Gestión' },
+  { key: 'datos', label: 'Datos' },
+]
+// Los mismos módulos, con el nombre completo para el detalle de permisos: en la
+// tabla van abreviados por espacio, pero en el modal se lee el nombre entero.
+const MODS_DETALLE = [
+  { key: 'gastos', label: 'Gastos' },
+  { key: 'retenciones', label: 'Retenciones' },
+  { key: 'ingresos_ice', label: 'Ingresos / ICE' },
+  { key: 'declaraciones', label: 'Declaraciones' },
+  { key: 'agente_retencion', label: 'Agente de retención' },
   { key: 'gestion', label: 'Gestión' },
   { key: 'datos', label: 'Datos' },
 ]
@@ -51,10 +62,19 @@ export default function Admin() {
   useEffect(() => { adminAPI.descuentos().then((r) => setDescuentos(r.data?.descuentos || {})).catch(() => {}) }, [])
   useEffect(() => { adminAPI.submodulosCatalogo().then((r) => setCatalogoSub(r.data?.catalogo || {})).catch(() => {}) }, [])
 
-  const guardarSubmodulos = async (uid, keys) => {
+  // Guarda módulos y pantallas DONDE MANDAN. Si el usuario pertenece a una
+  // empresa que define sus permisos, escribir en el panel global no tendría
+  // ningún efecto: access.py lee los de la membresía y los globales ni los
+  // mira. Por eso el destino lo decide el origen, no la pantalla.
+  const guardarDetalle = async (uid, { modules, submodules, org }) => {
     setBusy(true)
     try {
-      await adminAPI.setSubmodules(uid, keys)
+      if (org) {
+        await orgsAPI.updateMember(org.org_id, uid, { modules, submodules })
+      } else {
+        await adminAPI.setModules(uid, modules, null)
+        await adminAPI.setSubmodules(uid, submodules)
+      }
       setSubModal(null)
       if (uid === MI_UID) { clearApiCache(); window.location.reload(); return }
       await load()
@@ -109,6 +129,23 @@ export default function Admin() {
     }
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) }
     finally { setBusy(false) }
+  }
+
+  // Cuántas pantallas tiene habilitadas de las que podría tener, contando solo
+  // los módulos que sí están activos. Es el resumen que dice de un vistazo si a
+  // alguien le recortaron algo, sin abrir el detalle.
+  const pantallas = (u, orgManda) => {
+    const activos = orgManda
+      ? (orgManda.modules || [])
+      : Object.entries(u.modules || {}).filter(([, v]) => v.activo).map(([k]) => k)
+    const permitidas = new Set((orgManda ? orgManda.submodules : u.submodules) || [])
+    let total = 0, ok = 0
+    for (const m of activos) {
+      const keys = (catalogoSub[m] || []).map((x) => x.key)
+      total += keys.length
+      ok += keys.filter((k) => permitidas.has(k)).length
+    }
+    return { permitidas: ok, total }
   }
 
   const upd = (uid, patch) => setEdit((e) => ({ ...e, [uid]: { ...e[uid], ...patch } }))
@@ -253,7 +290,8 @@ export default function Admin() {
           user={subModal}
           catalogo={catalogoSub}
           modLabels={Object.fromEntries(MODS.map((m) => [m.key, m.label]))}
-          onSave={(keys) => guardarSubmodulos(subModal.uid, keys)}
+          todosLosModulos={MODS_DETALLE}
+          onSave={(datos) => guardarDetalle(subModal.uid, datos)}
           onCancel={() => setSubModal(null)}
           busy={busy}
         />
@@ -321,11 +359,32 @@ export default function Admin() {
                 const activo = u.subscription
                   ? (u.subscription.estado !== 'suspendido' && !venc)
                   : true
+                // Empresa que define sus permisos, si la hay. Cuando existe, las
+                // casillas de esta tabla NO son lo que el sistema lee.
+                const orgManda = (u.orgs || []).find((o) => o.manda) || null
                 return (
                   <tr key={u.user_id} className={venc ? 'vencida' : ''}>
                     <td>
                       <div className="adm-email">{u.email}</div>
                       <div className="adm-meta">Rol activo: {ROL_LBL[u.role] || '👤 Cliente'} · alta {u.created_at}{venc ? ' · ⚠ vencida' : ''} · IPs {u.ips ?? 0}/3</div>
+                      {/* De dónde salen sus permisos. Sin esto, el administrador
+                          marcaba casillas aquí para un miembro de empresa y no
+                          pasaba nada: el sistema lee las de su membresía. */}
+                      {(() => {
+                        const p = pantallas(u, orgManda)
+                        return (
+                          <div className="adm-meta">
+                            {orgManda
+                              ? <>Permisos de la empresa <strong>{orgManda.nombre || 'sin nombre'}</strong></>
+                              : 'Permisos propios'}
+                            {p.total > 0 && (
+                              <> · pantallas <strong className={p.permitidas < p.total ? 'adm-recorte' : ''}>
+                                {p.permitidas}/{p.total}
+                              </strong></>
+                            )}
+                          </div>
+                        )
+                      })()}
                       {isSuperAdmin && (
                         <div className="adm-roles" title="Roles otorgados: si tiene más de uno, el usuario puede cambiar entre ellos con el selector de arriba a la derecha.">
                           <span className="adm-roles-lbl">Roles:</span>
@@ -344,8 +403,14 @@ export default function Admin() {
                       )}
                     </td>
                     {MODS.map((m) => (
-                      <td key={m.key} className="c">
-                        <input type="checkbox" disabled={u.role === 'admin'} checked={u.role === 'admin' || e.mods.has(m.key)} onChange={() => toggle(u.user_id, m.key)} />
+                      <td key={m.key} className="c"
+                          title={orgManda
+                            ? `Los permisos de este usuario los define la empresa ${orgManda.nombre || ''}. Edítalos con el botón «Pantallas».`
+                            : undefined}>
+                        <input type="checkbox"
+                               disabled={u.role === 'admin' || !!orgManda}
+                               checked={u.role === 'admin' || (orgManda ? (orgManda.modules || []).includes(m.key) : e.mods.has(m.key))}
+                               onChange={() => toggle(u.user_id, m.key)} />
                       </td>
                     ))}
                     <td>
@@ -377,7 +442,19 @@ export default function Admin() {
                                 onClick={() => cambiarAcceso(u, true)}>✅ Activar</button>
                       )}
                       <button className="adm-btn" disabled={busy || u.role === 'admin'} onClick={() => guardar(u.user_id)}>💾</button>
-                      <button className="adm-btn" disabled={u.role === 'admin'} title="Módulos, pantallas y contribuyentes que puede ver/trabajar" onClick={() => navigate(`/admin/acceso-clientes?uid=${u.user_id}`)}>🔐 Permisos</button>
+                      {/* Detalle fino: módulos y, dentro de cada uno, las
+                          pantallas. Escribe donde de verdad mandan (empresa o
+                          usuario), que es lo que antes no se podía hacer. */}
+                      <button className="adm-btn" disabled={busy}
+                              title="Marcar al detalle qué módulos y qué pantallas puede abrir"
+                              onClick={() => setSubModal({
+                                uid: u.user_id, email: u.email,
+                                modules: u.modules, submodules: u.submodules,
+                                org: (u.orgs || []).find((o) => o.manda) || null,
+                              })}>
+                        🖥 Pantallas
+                      </button>
+                      <button className="adm-btn" disabled={u.role === 'admin'} title="Contribuyentes que puede ver/trabajar" onClick={() => navigate(`/admin/acceso-clientes?uid=${u.user_id}`)}>🔐 Permisos</button>
                       <button className="adm-btn pay" disabled={busy || u.role === 'admin'} onClick={() => registrarPago(u.user_id)}>💵 Pago</button>
                       <button className="adm-btn" disabled={busy || u.role === 'admin'} title="Restablecer IPs" onClick={() => resetIps(u.user_id)}>🔓 IPs</button>
                       <button className="adm-btn" disabled={busy} title="Olvidó su clave: genera una clave temporal de un solo uso" onClick={() => resetClave(u)}>🔑 Clave</button>
@@ -418,61 +495,116 @@ export default function Admin() {
   )
 }
 
-function SubmodulosModal({ user, catalogo, modLabels, onSave, onCancel, busy }) {
-  // Solo los módulos que el usuario tiene activos Y que tienen submódulos.
-  const activos = new Set(Object.entries(user.modules || {}).filter(([, v]) => v.activo).map(([k]) => k))
-  const mods = Object.keys(catalogo).filter((m) => activos.has(m))
-  const [checked, setChecked] = useState(() => new Set(user.submodules || []))
+/**
+ * Permisos al detalle de un usuario: qué módulos tiene y, dentro de cada uno,
+ * qué pantallas ve.
+ *
+ * `org` indica de dónde salen sus permisos efectivos. Si el usuario pertenece a
+ * una empresa que los define, se editan ahí (organization_member_*): lo que se
+ * guarde en el panel global no lo lee nadie. El modal lo dice en pantalla para
+ * que no haya que adivinarlo, y guarda en el sitio correcto.
+ */
+function SubmodulosModal({ user, catalogo, modLabels, todosLosModulos, onSave, onCancel, busy }) {
+  const org = user.org || null
+  // Estado inicial: los módulos y pantallas que MANDAN hoy para esta persona.
+  const [mods, setMods] = useState(() => new Set(
+    org
+      ? (org.modules || [])
+      : Object.entries(user.modules || {}).filter(([, v]) => v.activo).map(([k]) => k),
+  ))
+  const [checked, setChecked] = useState(() => new Set(
+    (org ? org.submodules : user.submodules) || [],
+  ))
+
+  const toggleModulo = (m) => setMods((prev) => {
+    const s = new Set(prev)
+    if (s.has(m)) { s.delete(m) } else {
+      s.add(m)
+      // Un módulo que se acaba de dar nace con TODAS sus pantallas: es lo que
+      // significa «le di el módulo». Recortar viene después, si hace falta.
+      setChecked((c) => {
+        const n = new Set(c); (catalogo[m] || []).forEach((x) => n.add(x.key)); return n
+      })
+    }
+    return s
+  })
 
   const toggle = (k) => setChecked((prev) => { const s = new Set(prev); s.has(k) ? s.delete(k) : s.add(k); return s })
-  const toggleMod = (m, on) => setChecked((prev) => {
+  const toggleTodas = (m, on) => setChecked((prev) => {
     const s = new Set(prev); (catalogo[m] || []).forEach((x) => { on ? s.add(x.key) : s.delete(x.key) }); return s
   })
 
   const save = () => {
     const keys = []
     for (const m of mods) {
-      const marcadas = (catalogo[m] || []).filter((x) => checked.has(x.key))
+      const delMod = catalogo[m] || []
+      if (delMod.length === 0) continue          // módulo de una sola pantalla
+      const marcadas = delMod.filter((x) => checked.has(x.key))
       if (marcadas.length === 0) {
-        alert(`El módulo "${modLabels[m] || m}" quedó sin ninguna pantalla. Si no quieres que vea nada de ese módulo, quítale el módulo en la fila. Marca al menos una pantalla aquí.`)
+        alert(`El módulo "${modLabels[m] || m}" quedó sin ninguna pantalla.\n\n`
+          + 'Marca al menos una, o desmarca el módulo entero arriba si no debe verlo.')
         return
       }
       marcadas.forEach((x) => keys.push(x.key))
     }
-    onSave(keys)
+    onSave({ modules: [...mods], submodules: keys, org })
   }
 
   return (
     <div className="pago-overlay">
-      <div className="pago-modal" style={{ maxWidth: 480 }}>
-        <h3 className="pago-title">🖥 Pantallas permitidas</h3>
+      <div className="pago-modal adm-detalle">
+        <h3 className="pago-title">🖥 Permisos al detalle</h3>
         <p className="pago-email">{user.email}</p>
+
+        <div className={`adm-origen ${org ? 'org' : ''}`}>
+          {org ? (
+            <>Sus permisos los define la empresa <strong>{org.nombre || 'sin nombre'}</strong>
+              {org.role ? ` (donde es ${org.role})` : ''}. Se guardan ahí, que es lo que el
+              sistema lee para esta persona.</>
+          ) : (
+            <>Permisos propios del usuario. Se guardan en su cuenta.</>
+          )}
+        </div>
+
         <p className="adm-note" style={{ marginTop: 0 }}>
-          Desmarca las pantallas que este usuario NO debe ver dentro de cada módulo.
-          Con todas marcadas ve el módulo completo (comportamiento normal).
+          Marca los módulos y, dentro de cada uno, las pantallas que puede abrir.
+          Con todas marcadas ve el módulo completo.
         </p>
-        {mods.length === 0 ? (
-          <p className="adm-note">Este usuario no tiene módulos con pantallas configurables.</p>
-        ) : mods.map((m) => (
-          <div key={m} className="submod-group">
-            <div className="submod-group-head">
-              <strong>{modLabels[m] || m}</strong>
-              <span className="submod-actions">
-                <button type="button" className="submod-mini" onClick={() => toggleMod(m, true)}>Todas</button>
-                <button type="button" className="submod-mini" onClick={() => toggleMod(m, false)}>Ninguna</button>
-              </span>
+
+        {todosLosModulos.map((m) => {
+          const activo = mods.has(m.key)
+          const pantallas = catalogo[m.key] || []
+          return (
+            <div key={m.key} className={`submod-group ${activo ? '' : 'apagado'}`}>
+              <div className="submod-group-head">
+                <label className="submod-mod-chk">
+                  <input type="checkbox" checked={activo} onChange={() => toggleModulo(m.key)} />
+                  <strong>{m.label}</strong>
+                </label>
+                {activo && pantallas.length > 0 && (
+                  <span className="submod-actions">
+                    <button type="button" className="submod-mini" onClick={() => toggleTodas(m.key, true)}>Todas</button>
+                    <button type="button" className="submod-mini" onClick={() => toggleTodas(m.key, false)}>Ninguna</button>
+                  </span>
+                )}
+              </div>
+              {activo && (pantallas.length === 0
+                ? <p className="submod-unica">Módulo de una sola pantalla: se ve completo.</p>
+                : pantallas.map((x) => (
+                  <label key={x.key} className="submod-item">
+                    <input type="checkbox" checked={checked.has(x.key)} onChange={() => toggle(x.key)} />
+                    {x.label}
+                  </label>
+                )))}
             </div>
-            {(catalogo[m] || []).map((x) => (
-              <label key={x.key} className="submod-item">
-                <input type="checkbox" checked={checked.has(x.key)} onChange={() => toggle(x.key)} />
-                {x.label}
-              </label>
-            ))}
-          </div>
-        ))}
+          )
+        })}
+
         <div className="pago-actions">
           <button type="button" className="adm-btn" onClick={onCancel} disabled={busy}>Cancelar</button>
-          <button type="button" className="adm-btn primary" onClick={save} disabled={busy || mods.length === 0}>✔ Guardar pantallas</button>
+          <button type="button" className="adm-btn primary" onClick={save} disabled={busy}>
+            {busy ? 'Guardando…' : '✔ Guardar permisos'}
+          </button>
         </div>
       </div>
     </div>

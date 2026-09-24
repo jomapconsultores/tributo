@@ -136,6 +136,56 @@ def _aplicar_modulos(uid: str, modules: List[str], valid_until: Optional[str]):
     invalidar_cache_rol(uid)
 
 
+def _permisos_por_empresa(sb) -> dict:
+    """Permisos que cada usuario tiene DENTRO de cada empresa: {user_id: [...]}.
+
+    Es el dato que faltaba para no editar en el lugar equivocado. Desde
+    multiempresa, si una membresía define módulos propios, ESOS son los que
+    manda access.py: lo que se marque en el panel global (user_modules /
+    user_submodules) no lo ve nadie. El panel necesita saberlo para escribir
+    donde corresponde y para decírselo al administrador.
+
+    Devuelve por usuario una entrada por empresa con sus módulos activos y sus
+    pantallas permitidas ya reconciliadas (sin filas = todas permitidas, igual
+    que en el modelo global)."""
+    try:
+        miembros = sb.table("organization_members").select("org_id,user_id,role").execute().data or []
+        if not miembros:
+            return {}
+        mods = sb.table("organization_member_modules").select("org_id,user_id,modulo,activo").execute().data or []
+        subs = sb.table("organization_member_submodules").select("org_id,user_id,submodulo").execute().data or []
+        empresas = {o["id"]: (o.get("nombre") or "")
+                    for o in (sb.table("organizations").select("id,nombre").execute().data or [])}
+    except Exception as e:
+        # Sin multiempresa instalada no hay nada que resolver: todo es global.
+        print(f"[admin] permisos por empresa no disponibles: {e}")
+        return {}
+
+    mods_por = {}
+    for m in mods:
+        if m.get("activo"):
+            mods_por.setdefault((m["org_id"], m["user_id"]), set()).add(m["modulo"])
+    subs_por = {}
+    for s in subs:
+        subs_por.setdefault((s["org_id"], s["user_id"]), set()).add(s["submodulo"])
+
+    out = {}
+    for m in miembros:
+        clave = (m["org_id"], m["user_id"])
+        propios = mods_por.get(clave)
+        out.setdefault(m["user_id"], []).append({
+            "org_id": m["org_id"],
+            "nombre": empresas.get(m["org_id"], ""),
+            "role": m.get("role"),
+            # None = esta membresía no define módulos propios y hereda los
+            # globales del usuario (ahí sí manda el panel de esta pantalla).
+            "modules": sorted(propios) if propios is not None else None,
+            "submodules": sorted(_submodulos_permitidos_de(subs_por.get(clave, set()))),
+            "manda": propios is not None,
+        })
+    return out
+
+
 @router.get("/users")
 async def list_users(_: str = Depends(require_admin)):
     sb = get_supabase_client()
@@ -170,6 +220,8 @@ async def list_users(_: str = Depends(require_admin)):
     for m in mods:
         by_user.setdefault(m["user_id"], {})[m["modulo"]] = {"activo": m["activo"], "valid_until": m.get("valid_until")}
 
+    permisos_org = _permisos_por_empresa(sb)
+
     hoy = date.today().isoformat()
     out = []
     for u in users:
@@ -193,6 +245,9 @@ async def list_users(_: str = Depends(require_admin)):
             "modules": by_user.get(uid, {}),
             "subscription": sub,
             "ips": ip_count.get(uid, 0),
+            # Dónde viven de verdad los permisos de este usuario. Si alguna
+            # empresa los define, es ahí donde hay que marcarlos.
+            "orgs": permisos_org.get(uid, []),
         })
     out.sort(key=lambda x: x["email"] or "")
     return out
