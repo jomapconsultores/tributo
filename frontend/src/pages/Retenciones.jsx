@@ -137,26 +137,43 @@ export default function Retenciones() {
   }
 
   return (
-    <div className="ret-page">
+    <div className="ret-page ui-page">
       <WorkflowGuide steps={RET_STEPS} />
-      <header className="ret-header">
-        <div>
-          <h1>🧾 Retenciones <span className="ret-periodo-tag">{periodoLargo(selectedClient)}</span></h1>
-          <p className="ret-subhead"><strong className="sub-ruc">{selectedClient.identificacion}</strong> — {selectedClient.nombre}</p>
+      <header className="ui-head">
+        <div className="ui-head-txt">
+          <div className="ui-eyebrow">
+            <span className="ui-tag">🧾 Retenciones</span>
+            <span>{selectedClient.identificacion}</span>
+            <span className="ui-tag neutro">{periodoLargo(selectedClient)}</span>
+          </div>
+          <h1 className="ui-title">{selectedClient.nombre}</h1>
+          <p className="ui-subtitle">Las retenciones que te aplicaron: se descuentan de lo que tienes que pagar.</p>
         </div>
-        <button className="continuar-btn" onClick={() => navigate('/declaracion-iva')}>Continuar con {selectedClient.nombre} → Declaraciones</button>
+        <div className="ui-head-acts">
+          <button className="ui-btn primary" onClick={() => navigate('/declaracion-iva')}>Continuar a Declaraciones →</button>
+        </div>
       </header>
 
       <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_svc} />
 
-      {error && <div className="ret-error">⚠ {error}</div>}
+      {error && <div className="ui-alert error">⚠ {error}</div>}
 
-      <div className="ret-stats">
-        <div className="stat-card"><span className="num">{rows.length}</span><span className="lbl">Comprobantes</span></div>
-        <div className="stat-card"><span className="num">{money(tot.renta)}</span><span className="lbl">Ret. Renta</span></div>
-        <div className="stat-card"><span className="num">{money(tot.iva)}</span><span className="lbl">Ret. IVA</span></div>
-        <div className="stat-card"><span className="num">{money(tot.isd)}</span><span className="lbl">Ret. ISD</span></div>
-        <div className="stat-card total"><span className="num">{money(tot.total)}</span><span className="lbl">Total retenido</span></div>
+      <div className="ui-stats">
+        <div className="ui-stat">
+          <span className="ui-stat-num">{rows.length}</span><span className="ui-stat-lbl">Comprobantes</span>
+        </div>
+        <div className="ui-stat">
+          <span className="ui-stat-num">{money(tot.renta)}</span><span className="ui-stat-lbl">Ret. Renta</span>
+        </div>
+        <div className="ui-stat">
+          <span className="ui-stat-num">{money(tot.iva)}</span><span className="ui-stat-lbl">Ret. IVA</span>
+        </div>
+        <div className="ui-stat">
+          <span className="ui-stat-num">{money(tot.isd)}</span><span className="ui-stat-lbl">Ret. ISD</span>
+        </div>
+        <div className="ui-stat ok">
+          <span className="ui-stat-num">{money(tot.total)}</span><span className="ui-stat-lbl">Total retenido</span>
+        </div>
       </div>
 
       <div
@@ -181,14 +198,15 @@ export default function Retenciones() {
           style={{ display: 'none' }}
           onChange={(e) => { if (e.target.files?.length) handleUploadXml(Array.from(e.target.files)) }}
         />
-        <button className="ret-btn primary" onClick={() => xmlInputRef.current?.click()}>📂 Cargar XMLs</button>
-        <button className="ret-btn small" onClick={() => setVerBajador(true)}
+        <button className="ui-btn primary" onClick={() => xmlInputRef.current?.click()}>📂 Cargar XMLs</button>
+        <button className="ui-btn" onClick={() => setVerBajador(true)}
           title="Bajar del SRI las retenciones recibidas del mes o semestre que elijas (mismo bajador que Gastos: pregunta qué bajar)">
           📥 Bajador-GASTOS (SRI)
         </button>
-        <button className="ret-btn small" onClick={handleExport}>⬇ Exportar Excel</button>
-        <button className="ret-btn small" onClick={() => descargarXmlsOriginales(selectedClient, selectedClientId, 'Retenciones', 'retencion')} title="Descargar los XML originales subidos">⬇ XML originales</button>
-        <button className="ret-btn small danger" onClick={handleClear}>🗑 Limpiar todo</button>
+        <span className="ui-toolbar-lbl">Descargar</span>
+        <button className="ui-btn sm" onClick={handleExport}>Excel</button>
+        <button className="ui-btn sm" onClick={() => descargarXmlsOriginales(selectedClient, selectedClientId, 'Retenciones', 'retencion')} title="Descargar los XML originales subidos">XML originales</button>
+        <button className="ui-btn peligro sm" onClick={handleClear}>🗑 Limpiar todo</button>
         <input
           className="ret-search"
           placeholder="🔍 Agente, RUC, comprobante, período…"

@@ -159,17 +159,23 @@ export default function Classifier() {
   }
 
   return (
-    <div className="classifier">
+    <div className="classifier ui-page">
       <WorkflowGuide steps={CL_STEPS} />
-      <header className="classifier-header">
-        <div>
-          <h1>🏷️ Clasificador de Gastos {refreshing && <span className="classifier-refresh-indic">↻ actualizando…</span>}</h1>
-          <p className="classifier-sub">
-            {classifications.length} RUCs · clic en cualquier celda (incluido el RUC) para editar · arrastra el borde de cada columna para ampliarla
-            {' · '}
+      <header className="ui-head">
+        <div className="ui-head-txt">
+          <div className="ui-eyebrow">
+            <span className="ui-tag">🏷️ Clasificación</span>
+            <span>{classifications.length} RUC registrados</span>
+            {refreshing && <span className="ui-tag neutro">↻ actualizando…</span>}
+          </div>
+          <h1 className="ui-title">Clasificador de gastos</h1>
+          <p className="ui-subtitle">
+            Cada proveedor se clasifica una vez y el sistema recuerda esa decisión para sus
+            compras siguientes. Haz clic en cualquier celda para editarla.
+            {' '}
             {isSuperAdmin
-              ? <>editas el <strong>catálogo general</strong> (lo ve todo el equipo); <span className="cl-badge override">👤 N</span> = personalizado por usuarios</>
-              : <>hay un <strong>catálogo general</strong> del equipo; si cambias una categoría queda solo para ti (<span className="cl-badge propio">✎ Tuyo</span>)</>}
+              ? <>Editas el <strong>catálogo general</strong> que ve todo el equipo; <span className="cl-badge override">👤 N</span> marca los personalizados por usuarios.</>
+              : <>Hay un <strong>catálogo general</strong> del equipo; si cambias una categoría queda solo para ti (<span className="cl-badge propio">✎ Tuyo</span>).</>}
           </p>
         </div>
       </header>
@@ -219,9 +225,10 @@ export default function Classifier() {
             {enriq ? '⏳ ' + enriq : '🏛️ Traer actividad económica (SRI)'}
           </button>
         </div>
-        <div className="toolbar-right">
-          <button onClick={handleExportExcel} className="export-btn">📥 Exportar Excel</button>
-          <button onClick={handleExportPdf} className="export-btn">📄 Exportar PDF</button>
+        <div className="toolbar-right ui-toolbar-grupo">
+          <span className="ui-toolbar-lbl">Descargar</span>
+          <button onClick={handleExportExcel} className="ui-btn sm">Excel</button>
+          <button onClick={handleExportPdf} className="ui-btn sm">PDF</button>
         </div>
       </div>
 

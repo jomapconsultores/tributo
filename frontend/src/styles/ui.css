@@ -1,0 +1,326 @@
+/* ------------------------------------------------------------
+ * Desarrollado por Marco Antonio Posligua San Martín
+ * ------------------------------------------------------------ */
+
+/**
+ * Lenguaje visual común de las pantallas de trabajo.
+ *
+ * Cada pantalla se fue haciendo por su cuenta y cada una inventó lo suyo: seis
+ * tonos de azul, cuatro radios de borde, cabeceras que a veces subrayan y a
+ * veces no, y filas de botones todos del mismo peso donde «Exportar» pesaba lo
+ * mismo que «Limpiar facturas». El resultado se leía como seis productos.
+ *
+ * Acá viven las piezas que se repiten en todas —cabecera, indicadores, barra de
+ * acciones, tarjetas, tablas, estados vacíos— con un solo juego de tokens. Las
+ * clases llevan prefijo `ui-` para poder convivir con el CSS antiguo de cada
+ * pantalla mientras se van migrando, sin pisarse.
+ *
+ * La paleta conserva el azul institucional (#003399 / #1a3d6b): esto es una
+ * puesta a punto, no un cambio de marca.
+ */
+
+:root {
+  /* Marca */
+  --ui-azul: #003399;
+  --ui-azul-900: #16264a;
+  --ui-azul-700: #1a3d6b;
+  --ui-azul-50: #eef4ff;
+
+  /* Tinta y superficies */
+  --ui-tinta: #16233a;
+  --ui-tinta-2: #475569;
+  --ui-tinta-3: #7b8ba3;
+  --ui-linea: #e5eaf2;
+  --ui-linea-2: #eef2f7;
+  --ui-fondo: #f7f9fc;
+  --ui-blanco: #fff;
+
+  /* Semáforo */
+  --ui-ok: #0f7a52;
+  --ui-ok-bg: #eafaf2;
+  --ui-alerta: #a8620a;
+  --ui-alerta-bg: #fff7ec;
+  --ui-error: #b3261e;
+  --ui-error-bg: #fdf2f2;
+
+  /* Forma */
+  --ui-r-sm: 8px;
+  --ui-r: 12px;
+  --ui-r-lg: 16px;
+  --ui-sombra: 0 1px 2px rgba(16, 32, 64, .05), 0 1px 3px rgba(16, 32, 64, .04);
+  --ui-sombra-alta: 0 6px 24px rgba(16, 32, 64, .10);
+}
+
+/* ── Página ────────────────────────────────────────────────────────────── */
+.ui-page {
+  padding: 22px 24px 44px;
+  max-width: 1320px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--ui-tinta);
+}
+
+/* Cabecera: de quién y de cuándo es lo que estoy viendo, qué pantalla es, y
+   qué puedo hacer aquí. En ese orden, que es el que se pregunta la gente. */
+.ui-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ui-linea);
+}
+.ui-head-txt { min-width: 0; }
+.ui-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ui-tinta-3);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: 5px;
+}
+.ui-title {
+  margin: 0;
+  font-size: 1.32rem;
+  font-weight: 800;
+  letter-spacing: -.01em;
+  color: var(--ui-azul-900);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.ui-subtitle {
+  margin: 5px 0 0;
+  font-size: 0.85rem;
+  color: var(--ui-tinta-2);
+  line-height: 1.55;
+  max-width: 68ch;
+}
+.ui-head-acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* Distintivo del período / RUC en la cabecera */
+.ui-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--ui-azul-50);
+  color: var(--ui-azul);
+  border: 1px solid #d8e3fb;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.ui-tag.neutro { background: #f1f5f9; color: var(--ui-tinta-2); border-color: var(--ui-linea); }
+.ui-tag.ok { background: var(--ui-ok-bg); color: var(--ui-ok); border-color: #c7ecd9; }
+.ui-tag.alerta { background: var(--ui-alerta-bg); color: var(--ui-alerta); border-color: #f5ddb8; }
+.ui-tag.error { background: var(--ui-error-bg); color: var(--ui-error); border-color: #f5cdcb; }
+
+/* ── Botones ───────────────────────────────────────────────────────────── */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--ui-linea);
+  background: var(--ui-blanco);
+  color: var(--ui-tinta-2);
+  border-radius: var(--ui-r-sm);
+  padding: 8px 13px;
+  font-size: 0.81rem;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s, box-shadow .15s;
+}
+.ui-btn:hover:not(:disabled) { border-color: #c3cfe0; background: #f8fafd; color: var(--ui-tinta); }
+.ui-btn:disabled { opacity: .5; cursor: not-allowed; }
+.ui-btn.primary {
+  background: var(--ui-azul);
+  border-color: var(--ui-azul);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(0, 51, 153, .25);
+}
+.ui-btn.primary:hover:not(:disabled) { background: #012f8a; border-color: #012f8a; color: #fff; }
+.ui-btn.ghost { background: var(--ui-azul-50); border-color: transparent; color: var(--ui-azul-700); }
+.ui-btn.ghost:hover:not(:disabled) { background: #e2ebfd; }
+.ui-btn.peligro { color: var(--ui-error); border-color: #f3d4d2; background: var(--ui-blanco); }
+.ui-btn.peligro:hover:not(:disabled) { background: var(--ui-error-bg); border-color: #eebab6; color: var(--ui-error); }
+.ui-btn.sm { padding: 6px 10px; font-size: 0.76rem; }
+
+/* ── Indicadores ───────────────────────────────────────────────────────── */
+.ui-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: 11px;
+}
+.ui-stat {
+  position: relative;
+  background: var(--ui-blanco);
+  border: 1px solid var(--ui-linea);
+  border-radius: var(--ui-r);
+  padding: 13px 15px;
+  box-shadow: var(--ui-sombra);
+  overflow: hidden;
+}
+/* Franja de color: distingue los indicadores sin recurrir a cuatro fondos. */
+.ui-stat::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--ui-azul);
+  opacity: .85;
+}
+.ui-stat.alerta::before { background: var(--ui-alerta); }
+.ui-stat.ok::before { background: var(--ui-ok); }
+.ui-stat.morado::before { background: #6d40c4; }
+.ui-stat-num {
+  display: block;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--ui-azul-900);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+  line-height: 1.15;
+}
+.ui-stat.alerta .ui-stat-num { color: var(--ui-alerta); }
+.ui-stat.ok .ui-stat-num { color: var(--ui-ok); }
+.ui-stat.morado .ui-stat-num { color: #6d40c4; }
+.ui-stat-lbl {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.69rem;
+  font-weight: 700;
+  color: var(--ui-tinta-3);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.ui-stat-pie { display: block; margin-top: 4px; font-size: 0.72rem; color: var(--ui-tinta-3); }
+
+/* ── Barra de acciones ─────────────────────────────────────────────────── */
+/* Agrupada: las acciones de salida (exportar, descargar) separadas de las que
+   destruyen. Antes iban todas seguidas y del mismo color. */
+.ui-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  background: var(--ui-blanco);
+  border: 1px solid var(--ui-linea);
+  border-radius: var(--ui-r);
+  box-shadow: var(--ui-sombra);
+}
+.ui-toolbar-sep { flex: 1 1 auto; }
+.ui-toolbar-grupo { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.ui-toolbar-lbl {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--ui-tinta-3);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-right: 2px;
+}
+
+/* ── Tarjetas ──────────────────────────────────────────────────────────── */
+.ui-card {
+  background: var(--ui-blanco);
+  border: 1px solid var(--ui-linea);
+  border-radius: var(--ui-r);
+  box-shadow: var(--ui-sombra);
+  overflow: hidden;
+}
+.ui-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 11px 15px;
+  border-bottom: 1px solid var(--ui-linea-2);
+  background: #fbfcfe;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ui-tinta);
+}
+.ui-card-body { padding: 15px; }
+
+/* ── Tablas ────────────────────────────────────────────────────────────── */
+.ui-tabla-wrap { overflow: auto; }
+.ui-tabla { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.ui-tabla thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: 10px 12px;
+  background: #fbfcfe;
+  border-bottom: 1px solid var(--ui-linea);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--ui-tinta-3);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  white-space: nowrap;
+}
+.ui-tabla tbody td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--ui-linea-2);
+  vertical-align: middle;
+}
+.ui-tabla tbody tr:hover td { background: #f8fafd; }
+.ui-tabla tbody tr:last-child td { border-bottom: none; }
+.ui-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── Avisos y estados ──────────────────────────────────────────────────── */
+.ui-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 14px;
+  border-radius: var(--ui-r-sm);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  border: 1px solid transparent;
+}
+.ui-alert.info { background: var(--ui-azul-50); border-color: #d8e3fb; color: var(--ui-azul-700); }
+.ui-alert.ok { background: var(--ui-ok-bg); border-color: #c7ecd9; color: var(--ui-ok); }
+.ui-alert.alerta { background: var(--ui-alerta-bg); border-color: #f5ddb8; color: var(--ui-alerta); }
+.ui-alert.error { background: var(--ui-error-bg); border-color: #f5cdcb; color: var(--ui-error); }
+
+.ui-vacio {
+  background: var(--ui-blanco);
+  border: 1px dashed #d7dfec;
+  border-radius: var(--ui-r);
+  padding: 44px 24px;
+  text-align: center;
+  color: var(--ui-tinta-3);
+}
+.ui-vacio-ico { font-size: 2rem; opacity: .45; display: block; margin-bottom: 10px; }
+.ui-vacio-tit { font-size: 0.95rem; font-weight: 700; color: var(--ui-tinta-2); margin-bottom: 5px; }
+.ui-vacio-txt { font-size: 0.84rem; line-height: 1.6; max-width: 48ch; margin: 0 auto; }
+
+.ui-cargando {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--ui-tinta-3);
+  font-size: 0.86rem;
+}
+
+@media (max-width: 720px) {
+  .ui-page { padding: 16px 14px 36px; gap: 13px; }
+  .ui-head { gap: 12px; }
+  .ui-head-acts { width: 100%; }
+  .ui-head-acts .ui-btn { flex: 1 1 auto; justify-content: center; }
+  .ui-title { font-size: 1.15rem; }
+}

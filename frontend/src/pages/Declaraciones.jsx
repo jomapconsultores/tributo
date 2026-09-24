@@ -535,13 +535,14 @@ export default function Declaraciones({ tipo }) {
       ]
 
   return (
-    <div className="dc-page">
+    <div className="dc-page ui-page">
       <WorkflowGuide steps={dcSteps} />
-      <header className="dc-header">
-        <div>
-          <h1>{icon} Declaración {tipo}</h1>
-          <p className="dc-sub">
-            <strong>{selectedClient.identificacion}</strong> — {selectedClient.nombre} · {periodoLargo(selectedClient)}
+      <header className="ui-head">
+        <div className="ui-head-txt">
+          <div className="ui-eyebrow">
+            <span className="ui-tag">{icon} Declaración {tipo}</span>
+            <span>{selectedClient.identificacion}</span>
+            <span className="ui-tag neutro">{periodoLargo(selectedClient)}</span>
             {(creds?.puede_ver_clave ?? creds?.es_admin) && creds?.credencial && (
               <span className="clave-header-tag">
                 🔐 <strong>{creds.credencial.username || '—'}</strong>
@@ -550,7 +551,8 @@ export default function Declaraciones({ tipo }) {
                   : <span className="clave-header-reveal">(no se pudo descifrar)</span>}
               </span>
             )}
-          </p>
+          </div>
+          <h1 className="ui-title">{selectedClient.nombre}</h1>
         </div>
       </header>
 

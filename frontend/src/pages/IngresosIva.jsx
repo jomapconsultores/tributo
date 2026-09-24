@@ -177,20 +177,29 @@ export default function IngresosIva() {
   }
 
   return (
-    <div className="ing-iva">
+    <div className="ing-iva ui-page">
       <WorkflowGuide steps={ING_STEPS} />
       <ClientSwitcher onNewClient={openNewClient} idents_svc={idents_svc} />
-      <header className="ing-iva-head">
-        <div>
-          <h2>📈 Ingresos IVA — <span className="ing-iva-ruc">{selectedClient?.identificacion}</span> {selectedClient?.nombre}<ClaveHeader clientId={selectedClientId} /></h2>
-          <p className="ing-iva-sub">
-            Período <strong>{periodoLargo(selectedClient)}</strong>
-            {selectedClient?.periodicidad === 'semestral' && ' — se cargan las ventas de los SEIS meses'}.
-            {' '}Facturas de venta SIN ICE. Sus totales se suman a los códigos 411–415 / 421–422 del
-            formulario 104 (declaración IVA). Si una factura tiene ICE, subila en "ICE - XML".
+      <header className="ui-head">
+        <div className="ui-head-txt">
+          <div className="ui-eyebrow">
+            <span className="ui-tag">📈 Ingresos IVA</span>
+            <span>{selectedClient?.identificacion}</span>
+            <span className="ui-tag neutro">{periodoLargo(selectedClient)}</span>
+            {selectedClient?.periodicidad === 'semestral' && (
+              <span className="ui-tag alerta">Semestral · seis meses</span>
+            )}
+            <ClaveHeader clientId={selectedClientId} />
+          </div>
+          <h1 className="ui-title">{selectedClient?.nombre}</h1>
+          <p className="ui-subtitle">
+            Facturas de venta <strong>sin ICE</strong>. Sus totales alimentan los códigos
+            411–415 / 421–422 del formulario 104. Si una factura tiene ICE, va en «ICE - XML».
           </p>
         </div>
-        <button className="continuar-btn" onClick={() => navigate('/declaracion-iva')}>Continuar con {selectedClient?.nombre} → Declaración IVA</button>
+        <div className="ui-head-acts">
+          <button className="ui-btn primary" onClick={() => navigate('/declaracion-iva')}>Continuar a Declaración IVA →</button>
+        </div>
       </header>
 
       <div

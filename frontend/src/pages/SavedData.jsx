@@ -121,11 +121,16 @@ export default function SavedData() {
   }, [summary])
 
   return (
-    <div className="sd-page">
+    <div className="sd-page ui-page">
       <WorkflowGuide steps={SD_STEPS} />
-      <header className="sd-header">
-        <h1>📊 Datos guardados</h1>
-        <p className="sd-sub">Consulta consolidada de todo lo trabajado por contribuyente, desglosado por año, mes y producto.</p>
+      <header className="ui-head">
+        <div className="ui-head-txt">
+          <div className="ui-eyebrow"><span className="ui-tag">📊 Consulta</span></div>
+          <h1 className="ui-title">Datos guardados</h1>
+          <p className="ui-subtitle">
+            Todo lo trabajado por contribuyente, desglosado por año, mes y producto.
+          </p>
+        </div>
       </header>
 
       <div className="sd-layout">
