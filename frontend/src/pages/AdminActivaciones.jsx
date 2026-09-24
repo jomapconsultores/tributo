@@ -43,13 +43,21 @@ export default function AdminActivaciones() {
   const [lista, setLista] = useState([])
   const [cargando, setCargando] = useState(true)
   const [busy, setBusy] = useState(false)
+  // El error va a la pantalla, no a un alert: si lo que falta es aplicar la
+  // migración, el mensaje dice exactamente qué hacer y conviene poder leerlo
+  // (y copiarlo) sin que se lo lleve un botón «Aceptar».
+  const [error, setError] = useState('')
   const [aprobando, setAprobando] = useState(null)   // comprobante abierto en el modal
 
   const cargar = useCallback(() => {
     setCargando(true)
+    setError('')
     activacionAPI.listar(filtro || undefined)
       .then(({ data }) => setLista(data?.data || []))
-      .catch((e) => alert('Error: ' + (e.response?.data?.detail || e.message)))
+      .catch((e) => {
+        setLista([])
+        setError(e.response?.data?.detail || e.message || 'No se pudieron cargar los comprobantes')
+      })
       .finally(() => {
         setCargando(false)
         // Que la insignia del menú vuelva a contar: tras aprobar o rechazar,
@@ -135,7 +143,16 @@ export default function AdminActivaciones() {
         <span className="aa-count">{lista.length} comprobante{lista.length === 1 ? '' : 's'}</span>
       </div>
 
+      {error && (
+        <div className="aa-error">
+          <strong>No se pudo cargar la lista.</strong>
+          <span>{error}</span>
+          <button className="aa-btn" onClick={cargar}>Reintentar</button>
+        </div>
+      )}
+
       {cargando ? <div className="aa-loading">Cargando…</div>
+        : error ? null
         : lista.length === 0 ? (
           <div className="aa-empty">
             {filtro === 'pendiente'

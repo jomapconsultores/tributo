@@ -26,7 +26,7 @@ de Storage y la tabla solo guarda su ruta.
 import os
 import re
 from datetime import date, datetime, timezone
-from typing import List, Optional
+from typing import List, NoReturn, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
@@ -129,13 +129,45 @@ def _fecha_valida(valor: Optional[str]) -> str:
         return hoy.isoformat()
 
 
+# La tabla puede no estar todavía por dos motivos distintos, y los dos dan un
+# error críptico: que la migración 068 no se haya aplicado (Postgres: 42P01
+# «relation does not exist») o que sí esté aplicada pero PostgREST siga con el
+# esquema viejo en caché (PGRST205 «could not find the table ... in the schema
+# cache»). Sin esto el panel solo mostraba «Error del servidor (APIError)», que
+# no dice qué hacer.
+_PISTAS_SIN_TABLA = ("42p01", "does not exist", "pgrst205", "schema cache")
+_COMO_ARREGLARLO = (
+    "El módulo de activaciones necesita la tabla `pagos_reportados`, que todavía no está "
+    "disponible. Aplica la migración `supabase/migrations/068_activacion_pagos.sql` en la "
+    "base y, si ya la aplicaste, recarga el esquema de la API con "
+    "NOTIFY pgrst, 'reload schema'; (o reinicia el servicio)."
+)
+
+
+def _sin_tabla(e: Exception) -> bool:
+    m = (str(e) or "").lower()
+    return "pagos_reportados" in m and any(p in m for p in _PISTAS_SIN_TABLA)
+
+
+def _relanzar(e: Exception, contexto: str) -> NoReturn:
+    """Convierte el error crudo de la base en algo accionable. Siempre lanza."""
+    if _sin_tabla(e):
+        raise HTTPException(status_code=503, detail=_COMO_ARREGLARLO)
+    raise HTTPException(status_code=400, detail=f"{contexto}: {e}")
+
+
 def _buscar(cid: str, campos: str = "*") -> dict:
     """Un comprobante por id, o 404. Un id que no es un UUID hace fallar la
     consulta en Postgres: se responde 404 igual que si no existiera, en vez de
     dejar escapar un error del servidor por un dato de la URL."""
     try:
         fila = _sb().table("pagos_reportados").select(campos).eq("id", cid).limit(1).execute().data
-    except Exception:
+    except Exception as e:
+        # Que falte la tabla no es lo mismo que que falte el comprobante: con un
+        # 404 aquí, el administrador buscaría el comprobante en vez de aplicar
+        # la migración.
+        if _sin_tabla(e):
+            _relanzar(e, "")
         fila = None
     if not fila:
         raise HTTPException(status_code=404, detail="Comprobante no encontrado")
@@ -265,7 +297,7 @@ async def enviar_comprobante(
     try:
         creado = sb.table("pagos_reportados").insert(fila).execute().data
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"No se pudo registrar el pago informado: {e}")
+        _relanzar(e, "No se pudo registrar el pago informado")
     nuevo = creado[0] if creado else fila
 
     # Aviso al administrador. Defensivo: si el correo falla, el comprobante ya
@@ -329,7 +361,10 @@ async def listar(estado_filtro: Optional[str] = Query(None, alias="estado"),
     q = _sb().table("pagos_reportados").select("*")
     if estado_filtro in ESTADOS:
         q = q.eq("estado", estado_filtro)
-    data = q.order("created_at", desc=True).limit(limit).execute().data or []
+    try:
+        data = q.order("created_at", desc=True).limit(limit).execute().data or []
+    except Exception as e:
+        _relanzar(e, "No se pudieron leer los comprobantes")
     return {"data": data}
 
 

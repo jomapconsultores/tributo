@@ -198,3 +198,19 @@
   .aa-modal-row { flex-direction: column; gap: 0; }
   .aa-acts .aa-btn { flex: 1 1 auto; }
 }
+
+/* Fallo al cargar (p. ej. falta aplicar la migración): el mensaje se queda en
+   pantalla, se puede leer entero y se puede reintentar sin recargar. */
+.aa-error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
