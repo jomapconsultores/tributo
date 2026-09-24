@@ -12,8 +12,19 @@
  *
  * Está escrito para quien usa el sistema, no para quien lo administra: nada de
  * módulos, submódulos ni permisos, sino «sube el archivo del SRI» y «revisa el
- * valor a pagar». Lo de administrar (cobros, usuarios, claves del SRI) no entra
- * acá a propósito.
+ * valor a pagar».
+ *
+ * REGLA DE LO QUE ENTRA: una pantalla se documenta si el CLIENTE hace algo en
+ * ella con sus propios datos. No basta con que la tenga habilitada. Quedan
+ * fuera, aunque el módulo «gestion» venga en todos los planes:
+ *   · Informe general → resumen de gestión del despacho, de todos sus clientes.
+ *   · Honorarios del mes, emitir y cruce con Odoo → el cobro que hace el
+ *     despacho. Del lado del cliente solo se documenta CONSULTAR las facturas
+ *     que se le emitieron, que sí es suyo.
+ *   · Clientes pendientes, claves del SRI, activaciones, usuarios y permisos →
+ *     trabajo interno.
+ * Al administrador se le muestra el manual entero (es el que leen sus clientes,
+ * y tiene que poder revisarlo) con una nota que lo dice.
  *
  * Se puede guardar en PDF con el botón de imprimir: hay clientes que lo quieren
  * a mano, impreso al lado del computador.
@@ -26,6 +37,10 @@ import './Manual.css'
 export default function Manual() {
   const navigate = useNavigate()
   const { has, hasSub, isSuperAdmin, role } = useAccess()
+  // Quien es del despacho (lo administra o trabaja en él) ve el mismo manual
+  // del cliente, con una nota que se lo aclara: así no busca aquí cómo activar
+  // un cobro ni cómo repartir permisos, que no están ni van a estar.
+  const esDelDespacho = isSuperAdmin || ['admin', 'socio', 'trabajador'].includes(role)
 
   // Cada sección declara qué hace falta para verla. `ver: true` = siempre.
   const secciones = useMemo(() => [
@@ -37,8 +52,8 @@ export default function Manual() {
       intro: 'Lo básico para moverte por el sistema.',
       pasos: [
         'Entra con tu correo y tu clave. Si la olvidaste, usa «¿Olvidaste tu clave?» en la pantalla de ingreso, o pídesela a quien te administra el servicio.',
-        'A la izquierda está el menú: cada ícono es un módulo y, al tocarlo, se abre su lista de pantallas.',
-        'En «Clientes» eliges sobre qué contribuyente vas a trabajar. Todo lo que hagas después (subir archivos, declarar, ver reportes) se guarda para ese contribuyente y ese mes.',
+        'A la izquierda está el menú: cada ícono es un módulo y, al tocarlo, se abre su lista de pantallas. Solo verás los módulos incluidos en tu plan.',
+        'En «Clientes» está tu RUC. Si manejas más de uno, ahí eliges sobre cuál vas a trabajar: todo lo que hagas después se guarda para ese RUC y ese mes.',
         'Arriba de cada pantalla eliges el mes y el año del período que estás trabajando. Revísalo siempre antes de empezar: es el error más común.',
         'En «Mi cuenta» (abajo a la izquierda) cambias tu clave, tus datos y revisas tu plan.',
       ],
@@ -68,7 +83,7 @@ export default function Manual() {
       ver: has('gastos') && hasSub('gastos_facturas'),
       intro: 'Cargar las facturas de compra que te emitieron, para que entren a tu declaración.',
       pasos: [
-        'Elige el contribuyente y el mes que vas a trabajar.',
+        'Elige tu RUC y el mes que vas a trabajar.',
         'Descarga del portal del SRI el archivo de comprobantes recibidos. El menú «Bajador-GASTOS (SRI)» te da el atajo que hace esa descarga por ti.',
         'Sube el archivo TXT o los XML en la pantalla «Gastos». El sistema lee cada factura: proveedor, fecha, subtotales, IVA y retenciones.',
         'Revisa el resumen: total de facturas, base imponible e IVA. Si algo falta, vuelve a bajar el archivo del SRI y súbelo otra vez.',
@@ -97,7 +112,7 @@ export default function Manual() {
       ver: has('retenciones'),
       intro: 'Las retenciones que tus clientes te aplicaron y que descuentas en tu declaración.',
       pasos: [
-        'Elige el contribuyente y el mes.',
+        'Elige tu RUC y el mes.',
         'Sube el archivo de retenciones del SRI (el mismo atajo «Bajador-GASTOS» te permite bajarlas).',
         'Revisa el total retenido de IVA y de Renta: son los valores que se descuentan de lo que tienes que pagar.',
       ],
@@ -110,7 +125,7 @@ export default function Manual() {
       ver: has('ingresos_ice') && hasSub('ice_ingresos_iva'),
       intro: 'Cargar tus ventas del mes para que se declaren correctamente.',
       pasos: [
-        'Elige el contribuyente y el mes.',
+        'Elige tu RUC y el mes.',
         'Sube los XML de las facturas que emitiste, o usa el atajo «Bajador-INGRESOS (SRI)» para bajarlas del portal.',
         'Revisa el resumen de ventas por tarifa (15 %, 5 %, 0 %) antes de declarar.',
       ],
@@ -138,7 +153,7 @@ export default function Manual() {
       ver: has('declaraciones') && (hasSub('decl_iva') || hasSub('decl_ice')),
       intro: 'Armar la declaración del mes con lo que ya cargaste, y presentarla en el SRI.',
       pasos: [
-        'Elige el contribuyente y el período. El sistema arma la declaración con tus gastos, ventas y retenciones ya cargados.',
+        'Elige tu RUC y el período. El sistema arma la declaración con tus gastos, ventas y retenciones ya cargados.',
         'Revisa casillero por casillero. Los valores se calculan solos, pero puedes ajustar el crédito tributario del mes anterior y las ventas si hiciera falta.',
         'Mira el valor a pagar y, si corresponde, elige diferir el pago en los meses permitidos.',
         'Guarda la declaración. Desde ahí puedes cargarla en el portal del SRI con un clic y marcarla como presentada.',
@@ -154,7 +169,7 @@ export default function Manual() {
       ver: has('declaraciones') && hasSub('decl_devoluciones'),
       intro: 'Para adultos mayores y personas con discapacidad: armar la solicitud de devolución.',
       pasos: [
-        'Elige el beneficiario y el período (mensual o semestral, según corresponda).',
+        'Elige al beneficiario —tú o la persona a tu cargo— y el período (mensual o semestral, según corresponda).',
         'El sistema toma tus facturas de gasto del período y arma el detalle de comprobantes.',
         'Revisa el rubro de cada comprobante y el valor de IVA a solicitar.',
         'Guarda la solicitud y preséntala en el portal del SRI; el sistema te ayuda a subirla y registra lo que el SRI procesó.',
@@ -168,7 +183,7 @@ export default function Manual() {
       ver: has('agente_retencion') && hasSub('agret_retenciones'),
       intro: 'Si eres agente de retención: las retenciones que tú le haces a tus proveedores.',
       pasos: [
-        'Elige el contribuyente y el mes.',
+        'Elige tu RUC y el mes.',
         'Sube o registra las retenciones emitidas del período.',
         'Con eso se arma tu declaración 103 de Renta.',
       ],
@@ -187,28 +202,18 @@ export default function Manual() {
       ir: '/compradores',
     },
     {
-      id: 'facturacion',
-      titulo: 'Facturación y honorarios',
+      id: 'honorarios',
+      titulo: 'Tus facturas de honorarios',
       ico: '🧾',
       ver: has('gestion') && hasSub('gest_facturacion'),
-      intro: 'El cobro de los servicios: qué se facturó y qué está pendiente.',
+      intro: 'Consultar las facturas que te hemos emitido por el servicio.',
       pasos: [
-        'En «Honorarios del mes» ves los valores del período y su estado.',
-        'En las pestañas de facturación revisas los documentos emitidos y su detalle.',
+        'Abre «Facturación» y entra a la pestaña de facturas.',
+        'Ahí ves las facturas emitidas a tu nombre, con su fecha, su valor y su estado.',
+        'Es solo para consulta: verás únicamente los documentos de tu propio RUC.',
       ],
+      nota: 'Esto es lo que se te factura por el servicio, y no tiene que ver con tus propias ventas: esas van en «Ingresos».',
       ir: '/facturacion',
-    },
-    {
-      id: 'informes',
-      titulo: 'Informe general',
-      ico: '📊',
-      ver: has('gestion') && hasSub('gest_reportes'),
-      intro: 'El resumen del período: qué se procesó, qué se declaró y qué quedó pendiente.',
-      pasos: [
-        'Elige el período y revisa el estado de cada proceso.',
-        'Sirve para confirmar que no quedó nada sin declarar antes de que venza el plazo.',
-      ],
-      ir: '/informe-general',
     },
     {
       id: 'capacitaciones',
@@ -245,7 +250,7 @@ export default function Manual() {
         'No puedo entrar: revisa que el correo esté bien escrito. Si la clave no funciona, usa «¿Olvidaste tu clave?» en la pantalla de ingreso.',
         'Dice que mi acceso está en pausa: es falta de pago. En esa misma pantalla puedes enviar tu comprobante y se reactiva al revisarlo.',
         'No veo una pantalla que antes usaba: puede que ese módulo no esté incluido en tu plan. Consúltalo con quien te administra el servicio.',
-        'Subí un archivo y no aparece: confirma que estás en el mes correcto y en el contribuyente correcto.',
+        'Subí un archivo y no aparece: confirma que estás en el mes correcto y en el RUC correcto.',
         'La página se ve rara o no carga: recarga con Ctrl+F5. Si aparece el aviso «Nueva versión disponible», pulsa «Actualizar».',
       ],
     },
@@ -266,12 +271,16 @@ export default function Manual() {
         </button>
       </header>
 
-      {isSuperAdmin && (
+      {esDelDespacho && (
         <div className="man-admin-nota">
-          <strong>Vista de administrador.</strong> Estás viendo el manual completo porque
-          tienes todos los módulos. Cada cliente ve solo las secciones de lo que tiene
-          contratado{role ? '' : ''}. Las funciones de administración (cobros, usuarios,
-          claves del SRI) no se documentan aquí: este manual es para clientes.
+          <strong>Estás viendo el manual del cliente.</strong> Es el mismo que lee cada
+          cliente, y a ti te sale completo porque tienes todos los módulos: cada uno ve
+          solo las secciones de lo que tiene contratado.
+          <br />
+          Lo tuyo no está aquí a propósito. Administrar cobros y activaciones, crear
+          usuarios, repartir permisos, las claves del SRI, los honorarios del despacho y
+          el informe de gestión son trabajo interno y no se documentan en un manual que
+          leen los clientes.
         </div>
       )}
 
