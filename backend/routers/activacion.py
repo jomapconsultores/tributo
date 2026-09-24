@@ -51,6 +51,9 @@ METODOS = ("transferencia", "deposito", "efectivo", "tarjeta", "otro")
 # cualquiera con sesión abierta.
 MAX_BYTES = 8 * 1024 * 1024
 TIPOS_OK = ("image/", "application/pdf")
+# Un pago puede venir partido en varias transferencias, cada una con su
+# comprobante. Cinco cubre de sobra el caso real y pone un techo.
+MAX_ARCHIVOS = 5
 # Tope de comprobantes en espera por usuario: evita que una pantalla trabada
 # (o un doble clic con ganas) llene la bandeja del administrador.
 MAX_PENDIENTES = 5
@@ -212,6 +215,10 @@ async def estado(user_id: str = Depends(get_current_user)):
 
 @router.post("/comprobantes")
 async def enviar_comprobante(
+    # `files` es el camino normal: un pago partido en dos transferencias son dos
+    # fotos de un mismo pago, no dos pagos. `file` se sigue aceptando para las
+    # pestañas que quedaron abiertas con la versión anterior de la app.
+    files: Optional[List[UploadFile]] = File(None),
     file: Optional[UploadFile] = File(None),
     monto: float = Form(0),
     meses: int = Form(1),
@@ -252,28 +259,47 @@ async def enviar_comprobante(
     if meses not in cobro.DESCUENTOS:
         meses = 1
 
-    path = nombre_archivo = None
-    if file is not None and file.filename:
-        contenido = await file.read()
+    # Todos los archivos del MISMO pago (una transferencia por foto, si se pagó
+    # en partes). El primero queda además en comprobante_path/nombre.
+    adjuntos = [f for f in ([*(files or []), file] if file else list(files or []))
+                if f is not None and f.filename]
+    if len(adjuntos) > MAX_ARCHIVOS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Puedes adjuntar hasta {MAX_ARCHIVOS} comprobantes por pago.")
+
+    guardados = []
+    if adjuntos:
+        _bucket()
+        sello = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    for n, adj in enumerate(adjuntos, start=1):
+        contenido = await adj.read()
         if not contenido:
-            raise HTTPException(status_code=400, detail="El archivo llegó vacío. Vuelve a adjuntarlo.")
+            raise HTTPException(status_code=400,
+                                detail=f"«{adj.filename}» llegó vacío. Vuelve a adjuntarlo.")
         if len(contenido) > MAX_BYTES:
             raise HTTPException(
                 status_code=400,
-                detail=f"El archivo pesa más de {MAX_BYTES // (1024 * 1024)} MB. Sube una foto o un PDF más liviano.")
-        tipo = (file.content_type or "").lower()
+                detail=(f"«{adj.filename}» pesa más de {MAX_BYTES // (1024 * 1024)} MB. "
+                        "Sube una foto o un PDF más liviano."))
+        tipo = (adj.content_type or "").lower()
         if not tipo.startswith(TIPOS_OK):
-            raise HTTPException(status_code=400, detail="El comprobante debe ser una imagen o un PDF.")
-        _bucket()
-        seguro = re.sub(r"[^A-Za-z0-9._-]", "_", file.filename)[:120]
-        sello = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-        path = f"{user_id}/{sello}_{seguro}"
+            raise HTTPException(status_code=400,
+                                detail=f"«{adj.filename}» no es una imagen ni un PDF.")
+        seguro = re.sub(r"[^A-Za-z0-9._-]", "_", adj.filename)[:120]
+        # El contador evita que dos fotos con el mismo nombre —«imagen.jpg» dos
+        # veces, que es lo que manda un teléfono— se pisen en el bucket.
+        path = f"{user_id}/{sello}_{n}_{seguro}"
         try:
             sb.storage.from_(BUCKET).upload(
                 path, contenido, {"content-type": tipo or "application/octet-stream", "upsert": "true"})
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"No se pudo guardar el comprobante: {e}")
-        nombre_archivo = file.filename
+            raise HTTPException(status_code=400, detail=f"No se pudo guardar «{adj.filename}»: {e}")
+        guardados.append({"path": path, "nombre": adj.filename,
+                          "subido": datetime.now(timezone.utc).isoformat()})
+
+    path = guardados[0]["path"] if guardados else None
+    nombre_archivo = guardados[0]["nombre"] if guardados else None
 
     titular = _titular(user_id)
     fila = {
@@ -292,6 +318,7 @@ async def enviar_comprobante(
         "nota": (nota or "").strip() or None,
         "comprobante_path": path,
         "comprobante_nombre": nombre_archivo,
+        "comprobantes": guardados,
         "estado": "pendiente",
     }
     try:
@@ -301,8 +328,13 @@ async def enviar_comprobante(
     nuevo = creado[0] if creado else fila
 
     # Aviso al administrador. Defensivo: si el correo falla, el comprobante ya
-    # quedó guardado y la insignia igual aparece.
+    # quedó guardado y la insignia igual aparece. Pero se anota QUE falló: sin
+    # eso, nadie se entera de que el canal está caído —el administrador espera
+    # un correo que no llega y el cliente cree que ya le avisaron—.
+    ok, err = False, None
     try:
+        archivos = "\n             ".join(f"{i}. {g['nombre']}" for i, g in enumerate(guardados, 1)) \
+            or "(no adjuntó archivo)"
         cuerpo = (
             "Un cliente informó un pago y espera que le actives el acceso.\n\n"
             f"Cliente:     {email}\n"
@@ -313,7 +345,7 @@ async def enviar_comprobante(
             f"Método:      {fila['metodo']}\n"
             f"Banco:       {fila['banco'] or '—'}\n"
             f"Referencia:  {fila['referencia'] or '—'}\n"
-            f"Comprobante: {nombre_archivo or '(no adjuntó archivo)'}\n"
+            f"Comprobantes: {archivos}\n"
             f"Nota:        {fila['nota'] or '—'}\n\n"
             "Revísalo y actívalo en Administración → Activaciones."
         )
@@ -321,7 +353,16 @@ async def enviar_comprobante(
         if not ok:
             print(f"[activacion] no se pudo avisar al admin: {err}")
     except Exception as e:
+        err = str(e)
         print(f"[activacion] error avisando al admin: {e}")
+    if nuevo.get("id"):   # sin id no hay fila que anotar (insert sin retorno)
+        try:
+            _sb().table("pagos_reportados").update(
+                {"aviso_admin_ok": bool(ok), "aviso_admin_error": (None if ok else (err or "")[:500])}
+            ).eq("id", nuevo["id"]).execute()
+            nuevo["aviso_admin_ok"] = bool(ok)
+        except Exception as e:
+            print(f"[activacion] no se pudo anotar el estado del aviso: {e}")
 
     activity.registrar(
         actor_user_id=user_id, action="solicitud", entity="Comprobante de pago",
@@ -368,10 +409,45 @@ async def listar(estado_filtro: Optional[str] = Query(None, alias="estado"),
     return {"data": data}
 
 
+def _firmar(path: str) -> Optional[str]:
+    try:
+        r = _sb().storage.from_(BUCKET).create_signed_url(path, 3600)
+        if isinstance(r, dict):
+            return r.get("signedURL") or r.get("signedUrl") or r.get("signed_url")
+    except Exception as e:
+        print(f"[activacion] no se pudo firmar {path}: {e}")
+    return None
+
+
+@router.get("/comprobantes/{cid}/archivos")
+async def archivos(cid: str, user_id: str = Depends(get_current_user)):
+    """TODOS los archivos del pago, con su URL firmada (1 hora).
+
+    Un pago partido en dos transferencias trae dos fotos, y el administrador
+    tiene que poder abrirlas las dos para cuadrar el total."""
+    fila = _buscar(cid, "user_id,comprobante_path,comprobante_nombre,comprobantes")
+    if fila["user_id"] != user_id and not es_super_admin(user_id):
+        raise HTTPException(status_code=404, detail="Comprobante no encontrado")
+
+    lista = fila.get("comprobantes") or []
+    # Filas anteriores a la migración 069: un solo archivo en las columnas viejas.
+    if not lista and fila.get("comprobante_path"):
+        lista = [{"path": fila["comprobante_path"],
+                  "nombre": fila.get("comprobante_nombre") or "comprobante"}]
+    if not lista:
+        raise HTTPException(status_code=404, detail="Este pago se informó sin archivo adjunto")
+
+    out = [{"nombre": a.get("nombre") or "comprobante", "url": _firmar(a.get("path"))}
+           for a in lista if a.get("path")]
+    return {"data": [a for a in out if a["url"]]}
+
+
 @router.get("/comprobantes/{cid}/archivo")
 async def archivo(cid: str, user_id: str = Depends(get_current_user)):
-    """URL firmada (1 hora) del comprobante. Solo su dueño o el administrador:
-    un path adivinado no alcanza para ver el respaldo bancario de otro."""
+    """URL firmada (1 hora) del PRIMER comprobante. Solo su dueño o el
+    administrador: un path adivinado no alcanza para ver el respaldo bancario
+    de otro. Se conserva junto a /archivos para las pestañas que quedaron
+    abiertas con la versión anterior de la app."""
     fila = _buscar(cid, "user_id,comprobante_path")
     if fila["user_id"] != user_id and not es_super_admin(user_id):
         raise HTTPException(status_code=404, detail="Comprobante no encontrado")

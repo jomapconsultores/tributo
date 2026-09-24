@@ -18,6 +18,7 @@ const Login                    = lazy(() => import('./pages/Login'))
 const Landing                  = lazy(() => import('./pages/Landing'))
 const ResetPassword            = lazy(() => import('./pages/ResetPassword'))
 const MiCuenta                 = lazy(() => import('./pages/MiCuenta'))
+const Manual                   = lazy(() => import('./pages/Manual'))
 const Database                 = lazy(() => import('./pages/Database'))
 const Classifier               = lazy(() => import('./pages/Classifier'))
 const SavedData                = lazy(() => import('./pages/SavedData'))
@@ -313,6 +314,10 @@ function App() {
               {/* Mi cuenta: datos propios y cambio de clave. Sin restricción de
                   módulo: todo usuario con sesión debe poder administrar su cuenta. */}
               <Route path="/mi-cuenta" element={<MiCuenta />} />
+              {/* Manual del cliente: sin restricción de módulo, como Mi cuenta.
+                  El propio manual muestra solo las secciones que esa persona
+                  tiene habilitadas. */}
+              <Route path="/manual" element={<Manual />} />
               <Route path="/normativa" element={<Normativa />} />
               <Route path="/reportes" element={<RedirHonorarios modo="faltantes" />} />
               <Route path="/reportes/faltantes" element={<RedirHonorarios modo="faltantes" />} />

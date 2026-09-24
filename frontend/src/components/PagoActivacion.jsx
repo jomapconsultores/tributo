@@ -54,7 +54,7 @@ export default function PagoActivacion({ titulo = '💳 Mi plan y pagos', enPaus
   const [aviso, setAviso] = useState(null)
   const [form, setForm] = useState({
     meses: 1, monto: '', fecha_pago: HOY(), metodo: 'transferencia',
-    banco: '', referencia: '', nota: '', file: null,
+    banco: '', referencia: '', nota: '', files: [],
   })
 
   const cargar = useCallback(() => {
@@ -91,24 +91,36 @@ export default function PagoActivacion({ titulo = '💳 Mi plan y pagos', enPaus
     }
     setEnviando(true)
     try {
-      await activacionAPI.enviar({
-        file: form.file, monto: parseFloat(form.monto), meses: form.meses,
+      const { data } = await activacionAPI.enviar({
+        files: form.files, monto: parseFloat(form.monto), meses: form.meses,
         fecha_pago: form.fecha_pago, metodo: form.metodo, banco: form.banco,
         referencia: form.referencia, nota: form.nota,
       })
       setAbierto(false)
-      setForm((f) => ({ ...f, referencia: '', nota: '', file: null }))
-      setAviso({ ok: true, texto: 'Comprobante enviado. El administrador lo revisará y activará tu acceso.' })
+      setForm((f) => ({ ...f, referencia: '', nota: '', files: [] }))
+      setAviso({
+        ok: true,
+        texto: data?.data?.aviso_admin_ok === false
+          // El correo no salió (servidor de correo caído). Mejor decirlo que
+          // dejar a la persona esperando una respuesta que nadie vio llegar.
+          ? 'Comprobante recibido y guardado. No pudimos enviar el aviso automático por correo, '
+            + 'pero queda en el panel del administrador para su revisión. Si es urgente, escríbenos.'
+          : 'Comprobante enviado. El administrador lo revisará y activará tu acceso.',
+      })
       cargar()
     } catch (err) {
       setAviso({ ok: false, texto: err?.response?.data?.detail || 'No se pudo enviar el comprobante' })
     } finally { setEnviando(false) }
   }
 
-  const verArchivo = async (id) => {
+  // Abre todos los archivos del pago. Son URL firmadas de una hora, se piden en
+  // el momento (no se guardan en la pantalla) para que no caduquen a la vista.
+  const verArchivos = async (id) => {
     try {
-      const { data } = await activacionAPI.archivo(id)
-      if (data.url) window.open(data.url, '_blank', 'noopener')
+      const { data } = await activacionAPI.archivos(id)
+      const lista = data?.data || []
+      if (!lista.length) { alert('Este pago se informó sin archivo adjunto'); return }
+      lista.forEach((a) => window.open(a.url, '_blank', 'noopener'))
     } catch (err) {
       alert(err?.response?.data?.detail || 'No se pudo abrir el comprobante')
     }
@@ -232,10 +244,26 @@ export default function PagoActivacion({ titulo = '💳 Mi plan y pagos', enPaus
             </label>
           </div>
 
-          <label>Comprobante (imagen o PDF, hasta 8 MB)
-            <input type="file" accept="image/*,application/pdf"
-                   onChange={(e) => upd({ file: e.target.files?.[0] || null })} />
+          {/* Varios archivos a propósito: quien paga en dos transferencias
+              tiene dos comprobantes de un MISMO pago, y con uno solo terminaba
+              escribiendo el otro a mano en la nota. */}
+          <label>Comprobantes (imagen o PDF, hasta 8 MB cada uno)
+            <input type="file" accept="image/*,application/pdf" multiple
+                   onChange={(e) => upd({ files: Array.from(e.target.files || []) })} />
           </label>
+          <p className="pa-hint">
+            Si pagaste en <strong>varias transferencias</strong>, adjúntalas todas aquí
+            (hasta 5) y escribe en el valor el <strong>total sumado</strong>.
+          </p>
+          {form.files.length > 0 && (
+            <ul className="pa-archivos">
+              {form.files.map((f, i) => (
+                <li key={`${f.name}-${i}`}>
+                  📎 {f.name} <span>({Math.round(f.size / 1024)} KB)</span>
+                </li>
+              ))}
+            </ul>
+          )}
 
           <label>Nota para el administrador (opcional)
             <textarea rows={2} value={form.nota} onChange={(e) => upd({ nota: e.target.value })} />
@@ -274,7 +302,9 @@ export default function PagoActivacion({ titulo = '💳 Mi plan y pagos', enPaus
                     </td>
                     <td>
                       {c.comprobante_path && (
-                        <button type="button" className="pa-link" onClick={() => verArchivo(c.id)}>Ver</button>
+                        <button type="button" className="pa-link" onClick={() => verArchivos(c.id)}>
+                          Ver{(c.comprobantes?.length || 1) > 1 ? ` (${c.comprobantes.length})` : ''}
+                        </button>
                       )}
                     </td>
                   </tr>

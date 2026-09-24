@@ -1,0 +1,150 @@
+/* ------------------------------------------------------------
+ * Desarrollado por Marco Antonio Posligua San Martín
+ * ------------------------------------------------------------ */
+
+.man-wrap {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 24px 20px 56px;
+  color: #1e293b;
+}
+
+.man-header { margin-bottom: 20px; }
+.man-header h1 { font-size: 1.5rem; color: #1e3a6e; margin: 0 0 6px; }
+.man-sub {
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin: 0 0 14px;
+  max-width: 60ch;
+}
+
+.man-print {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  border-radius: 9px;
+  padding: 9px 15px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.man-print:hover { border-color: #94a3b8; }
+
+.man-admin-nota {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  border-radius: 10px;
+  padding: 12px 15px;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  margin-bottom: 20px;
+}
+
+/* Índice: atajo para no tener que recorrer el manual entero buscando una cosa. */
+.man-indice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+.man-indice a {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #334155;
+  text-decoration: none;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 5px 12px;
+  white-space: nowrap;
+}
+.man-indice a:hover { border-color: #94a3b8; color: #1e3a6e; }
+
+.man-sec {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 20px 22px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .05);
+  /* Para que el ancla del índice no quede tapada por la cabecera */
+  scroll-margin-top: 16px;
+}
+.man-sec h2 { font-size: 1.05rem; color: #1e3a6e; margin: 0 0 6px; }
+
+.man-intro {
+  color: #64748b;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  margin: 0 0 14px;
+}
+
+.man-sec ol {
+  margin: 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.man-sec li {
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.man-nota {
+  margin: 14px 0 0;
+  padding: 10px 13px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #78350f;
+  border-radius: 9px;
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.man-ir {
+  margin-top: 14px;
+  border: 1px solid #2563eb;
+  background: #fff;
+  color: #2563eb;
+  border-radius: 9px;
+  padding: 8px 14px;
+  font-weight: 600;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+.man-ir:hover { background: #eff6ff; }
+
+.man-pie {
+  margin-top: 24px;
+  color: #64748b;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
+/* Impreso o guardado en PDF: sin botones, sin índice de navegación y sin
+   cortar una sección por la mitad entre dos páginas. */
+@media print {
+  .man-print,
+  .man-ir,
+  .man-indice { display: none; }
+  .man-wrap { max-width: none; padding: 0; }
+  .man-sec {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    box-shadow: none;
+    border-color: #cbd5e1;
+  }
+}
+
+@media (max-width: 520px) {
+  .man-indice { gap: 6px; padding: 12px; }
+  .man-sec { padding: 16px; }
+}

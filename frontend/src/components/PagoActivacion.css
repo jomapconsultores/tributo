@@ -214,3 +214,17 @@
   .pa-acciones-top { flex-direction: column; }
   .pa-acciones-top .pa-btn { width: 100%; }
 }
+
+/* Archivos elegidos antes de enviar: confirma qué va adjunto, que es lo que
+   más se pregunta quien sube dos fotos desde el teléfono. */
+.pa-archivos {
+  list-style: none;
+  margin: -6px 0 14px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border-radius: 9px;
+  font-size: 0.82rem;
+  color: #334155;
+}
+.pa-archivos li { padding: 2px 0; overflow-wrap: anywhere; }
+.pa-archivos span { color: #94a3b8; }

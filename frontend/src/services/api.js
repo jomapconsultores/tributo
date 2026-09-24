@@ -152,10 +152,12 @@ export const adminAPI = {
 export const activacionAPI = {
   estado: () => api.get('/api/activacion/estado'),
   mios: () => api.get('/api/activacion/mis-comprobantes'),
-  // El archivo es opcional: hay quien paga en efectivo y solo informa el dato.
-  enviar: ({ file, ...campos }) => {
+  // `files` admite varios: un pago partido en dos transferencias son dos fotos
+  // de un MISMO pago. Los archivos son opcionales (se puede informar un pago en
+  // efectivo sin adjuntar nada).
+  enviar: ({ files = [], ...campos }) => {
     const fd = new FormData()
-    if (file) fd.append('file', file)
+    Array.from(files).forEach((f) => { if (f) fd.append('files', f) })
     Object.entries(campos).forEach(([k, v]) => {
       if (v !== null && v !== undefined && v !== '') fd.append(k, v)
     })
@@ -163,7 +165,8 @@ export const activacionAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
-  archivo: (id) => api.get(`/api/activacion/comprobantes/${id}/archivo`),
+  // Todos los archivos del pago, con su URL firmada (1 hora)
+  archivos: (id) => api.get(`/api/activacion/comprobantes/${id}/archivos`),
   // Panel del administrador
   listar: (estado) => api.get('/api/activacion/comprobantes', { params: estado ? { estado } : undefined }),
   resumen: () => api.get('/api/activacion/resumen'),

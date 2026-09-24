@@ -458,6 +458,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         <div className="user-email" title={userEmail}>{userEmail}</div>
         {/* Mi cuenta: datos propios y cambio de clave (disponible para todo rol) */}
         <button className="logout-link" onClick={() => navigate('/mi-cuenta')}>Mi cuenta</button>
+        {/* Manual del cliente: enseña solo lo que esta persona puede hacer. */}
+        <button className="logout-link" onClick={() => navigate('/manual')}>📘 Manual de uso</button>
         <button className="logout-link" onClick={onLogout}>Cerrar sesión</button>
       </div>
 

@@ -68,10 +68,14 @@ export default function AdminActivaciones() {
 
   useEffect(cargar, [cargar])
 
-  const verArchivo = async (c) => {
+  // Un pago puede traer varias fotos (pagado en partes): se abren todas, que es
+  // lo que hace falta para cuadrar el total antes de aprobar.
+  const verArchivos = async (c) => {
     try {
-      const { data } = await activacionAPI.archivo(c.id)
-      if (data.url) window.open(data.url, '_blank', 'noopener')
+      const { data } = await activacionAPI.archivos(c.id)
+      const lista = data?.data || []
+      if (!lista.length) { alert('Este pago se informó sin archivo adjunto'); return }
+      lista.forEach((a) => window.open(a.url, '_blank', 'noopener'))
     } catch (e) {
       alert(e.response?.data?.detail || 'No se pudo abrir el comprobante')
     }
@@ -175,6 +179,16 @@ export default function AdminActivaciones() {
                     <span className={`aa-chip ${chip.cls}`}>{chip.txt}</span>
                   </div>
 
+                  {/* El correo de aviso no salió: sin decirlo, el administrador
+                      cree que le avisarían por correo y el cliente cree que ya
+                      le avisaron a alguien. */}
+                  {c.aviso_admin_ok === false && (
+                    <p className="aa-aviso-correo">
+                      📭 El aviso por correo de este comprobante no pudo enviarse
+                      (servidor de correo). Llegó igual al panel.
+                    </p>
+                  )}
+
                   <div className="aa-datos">
                     <div><span>Valor informado</span><strong>{money(c.monto)}</strong></div>
                     <div><span>Período</span><strong>{c.meses} mes(es)</strong></div>
@@ -191,8 +205,10 @@ export default function AdminActivaciones() {
 
                   <div className="aa-acts">
                     {c.comprobante_path ? (
-                      <button className="aa-btn" onClick={() => verArchivo(c)}>
-                        📎 Ver comprobante{c.comprobante_nombre ? ` (${c.comprobante_nombre})` : ''}
+                      <button className="aa-btn" onClick={() => verArchivos(c)}>
+                        📎 Ver {(c.comprobantes?.length || 1) > 1
+                          ? `los ${c.comprobantes.length} comprobantes`
+                          : `comprobante${c.comprobante_nombre ? ` (${c.comprobante_nombre})` : ''}`}
                       </button>
                     ) : (
                       <span className="aa-sin-archivo">Sin archivo adjunto</span>
