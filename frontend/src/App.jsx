@@ -19,6 +19,7 @@ const Landing                  = lazy(() => import('./pages/Landing'))
 const ResetPassword            = lazy(() => import('./pages/ResetPassword'))
 const MiCuenta                 = lazy(() => import('./pages/MiCuenta'))
 const Manual                   = lazy(() => import('./pages/Manual'))
+const ArchivoXML               = lazy(() => import('./pages/ArchivoXML'))
 const Database                 = lazy(() => import('./pages/Database'))
 const Classifier               = lazy(() => import('./pages/Classifier'))
 const SavedData                = lazy(() => import('./pages/SavedData'))
@@ -318,6 +319,11 @@ function App() {
                   El propio manual muestra solo las secciones que esa persona
                   tiene habilitadas. */}
               <Route path="/manual" element={<Manual />} />
+              {/* Archivo de XML: es el respaldo de lo ya cargado, transversal a
+                  gastos, ingresos y retenciones. Sin guard de módulo —quien no
+                  cargó nada lo verá vacío— y el backend filtra por los
+                  contribuyentes que cada uno puede ver. */}
+              <Route path="/archivo-xml" element={<ArchivoXML />} />
               <Route path="/normativa" element={<Normativa />} />
               <Route path="/reportes" element={<RedirHonorarios modo="faltantes" />} />
               <Route path="/reportes/faltantes" element={<RedirHonorarios modo="faltantes" />} />

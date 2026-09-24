@@ -221,6 +221,14 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         items: [L('🎓', 'Capacitaciones', '/capacitaciones')],
       },
       {
+        // El respaldo de todo lo cargado, mes a mes. Es transversal (gastos,
+        // ingresos y retenciones), por eso va suelto y no dentro de un módulo.
+        key: 'archivo_xml', ico: '🗂', rail: 'Archivo XML', title: 'Archivo de XML',
+        visible: has('gastos') || has('ingresos_ice') || has('retenciones') || has('agente_retencion'),
+        autoNav: true,
+        items: [L('🗂', 'Archivo de XML', '/archivo-xml')],
+      },
+      {
         key: 'clientes', ico: '👤', rail: 'Clientes', title: 'Clientes',
         visible: has('datos') && hasSub('dat_clientes'), custom: 'clientes',
       },
@@ -257,7 +265,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
       gastos: 'Egresos', retenciones: 'Egresos', agente_ret: 'Egresos',
       declaraciones: 'Tributario', pendientes: 'Tributario', devoluciones: 'Tributario',
       reportes: 'Gestión', odoo: 'Gestión', capacitaciones: 'Gestión',
-      clientes: 'Datos', compradores: 'Datos',
+      archivo_xml: 'Datos', clientes: 'Datos', compradores: 'Datos',
       admin: 'Sistema', empresas: 'Sistema',
     }
     return defs

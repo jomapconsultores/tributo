@@ -473,6 +473,11 @@ export const capacitacionesAPI = {
 export const xmlOriginalesAPI = {
   contar: (clientId, modulo) => api.get('/api/xml-originales/contar', { params: { client_id: clientId, modulo } }),
   descargar: (clientId, modulo) => api.get('/api/xml-originales/descargar', { params: { client_id: clientId, modulo }, responseType: 'blob' }),
+  // ARCHIVO: consultar lo guardado de meses anteriores, sin cambiar de período
+  contribuyentes: () => api.get('/api/xml-originales/contribuyentes'),
+  periodos: (identificacion) => api.get('/api/xml-originales/periodos', { params: { identificacion } }),
+  listar: (clientId, modulo) => api.get('/api/xml-originales/listar', { params: { client_id: clientId, modulo } }),
+  ver: (id) => api.get('/api/xml-originales/ver', { params: { id } }),
 }
 
 // Declaraciones (IVA / ICE)
