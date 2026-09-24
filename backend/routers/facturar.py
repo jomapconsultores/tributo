@@ -200,14 +200,10 @@ def _emitir_map(user_id, r, cobrables, mes, anio):
             "mensajes": [m.get("mensaje") for m in (res.get("mensajes") or []) if m.get("mensaje")]}
 
 
-@router.post("/emitir")
-async def emitir(body: EmitirIn, user_id: str = Depends(get_current_user)):
-    """Emite la factura de honorarios del mes de un contribuyente en su sistema.
-    Volver a tocarlo no duplica: los dos sistemas reconocen el mes (HON-AAAA-MM)."""
-    if not es_admin(user_id):
-        raise HTTPException(status_code=403, detail="Solo administradores o socios facturan.")
-    mes, anio = _periodo_pedido(body.mes, body.anio)
-    filas = _filas_de(user_id, body.identificacion, mes, anio)
+async def _emitir_uno(user_id: str, identificacion: str, mes: int, anio: int) -> dict:
+    """Emite la factura de un contribuyente. Lanza HTTPException con el motivo
+    cuando no se puede, para que el llamador decida si corta o sigue."""
+    filas = _filas_de(user_id, identificacion, mes, anio)
     if not filas:
         raise HTTPException(status_code=404, detail=(
             "Este contribuyente no tiene honorarios en Facturación (ningún servicio activo)."))
@@ -225,3 +221,59 @@ async def emitir(body: EmitirIn, user_id: str = Depends(get_current_user)):
     else:
         out = await _emitir_odoo(user_id, r, cobrables, mes, anio)
     return {"ok": True, "emisor": r["emisor"], "emisor_nombre": EMISORES[r["emisor"]], **out}
+
+
+@router.post("/emitir")
+async def emitir(body: EmitirIn, user_id: str = Depends(get_current_user)):
+    """Emite la factura de honorarios del mes de un contribuyente en su sistema.
+    Volver a tocarlo no duplica: los dos sistemas reconocen el mes (HON-AAAA-MM)."""
+    if not es_admin(user_id):
+        raise HTTPException(status_code=403, detail="Solo administradores o socios facturan.")
+    mes, anio = _periodo_pedido(body.mes, body.anio)
+    return await _emitir_uno(user_id, body.identificacion, mes, anio)
+
+
+class EmitirLoteIn(BaseModel):
+    identificaciones: list
+    mes: Optional[int] = None
+    anio: Optional[int] = None
+
+
+@router.post("/emitir-lote")
+async def emitir_lote(body: EmitirLoteIn, user_id: str = Depends(get_current_user)):
+    """Factura a VARIOS contribuyentes de una pasada, cada uno por su emisor.
+
+    Son documentos reales, así que se va uno por uno y lo que falla no corta el
+    resto: al final se devuelve qué se emitió, qué ya existía y qué no se pudo,
+    con el motivo de cada caso. Volver a lanzarlo no duplica —los dos sistemas
+    reconocen el mes por su referencia HON-AAAA-MM—, que es lo que hace seguro
+    reintentar después de corregir los que quedaron fuera."""
+    if not es_admin(user_id):
+        raise HTTPException(status_code=403, detail="Solo administradores o socios facturan.")
+    mes, anio = _periodo_pedido(body.mes, body.anio)
+    rucs = [r for r in (body.identificaciones or []) if (r or "").strip()]
+    if not rucs:
+        raise HTTPException(status_code=400, detail="No se indicó a quién facturar.")
+    if len(rucs) > 50:
+        raise HTTPException(status_code=400, detail="Máximo 50 contribuyentes por tanda.")
+
+    emitidas, ya_estaban, fallidas = [], [], []
+    for ruc in rucs:
+        try:
+            out = await _emitir_uno(user_id, ruc, mes, anio)
+            destino = ya_estaban if out.get("ya_existia") else emitidas
+            destino.append({"identificacion": ruc, "numero": out.get("numero"),
+                            "total": out.get("total"), "emisor": out.get("emisor"),
+                            "estado": out.get("estado")})
+        except HTTPException as e:
+            fallidas.append({"identificacion": ruc, "motivo": e.detail})
+        except Exception as e:
+            print(f"[facturar] lote {ruc}: {e}")
+            fallidas.append({"identificacion": ruc, "motivo": str(e)})
+
+    registrar(actor_user_id=user_id, action="emit", module="facturacion",
+              entity="Facturación en lote",
+              metadata={"mes": mes, "anio": anio, "emitidas": len(emitidas),
+                        "ya_estaban": len(ya_estaban), "fallidas": len(fallidas)})
+    return {"ok": True, "mes": mes, "anio": anio,
+            "emitidas": emitidas, "ya_estaban": ya_estaban, "fallidas": fallidas}

@@ -5,7 +5,7 @@ import io
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel
 from auth import get_current_user
 from database import get_supabase_client, fetch_all, fetch_in
@@ -993,6 +993,108 @@ async def marcar_presentada(decl_id: str, body: PresentadaIn, user_id: str = Dep
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class ItemCero(BaseModel):
+    client_id: str
+    tipo: str
+
+
+class EnCeroLoteIn(BaseModel):
+    items: List[ItemCero]
+    # Declarar en cero a alguien que SÍ tiene comprobantes cargados es casi
+    # siempre un error, así que por defecto se rechaza y hay que pedirlo aparte.
+    forzar: bool = False
+
+
+def _movimientos_de(resumen: dict) -> int:
+    """Cuántos comprobantes entraron en el período, según el cálculo.
+
+    Es el resguardo del modo «en cero»: si hay movimiento, la declaración no es
+    en cero y hay que mirarla en su pantalla."""
+    claves = ("num_ventas_total", "num_facturas_compras_total", "num_retenciones_periodo",
+              "num_ventas_ice", "num_retenciones_iva_agente")
+    total = 0
+    for k in claves:
+        try:
+            total += int(resumen.get(k) or 0)
+        except (TypeError, ValueError):
+            continue
+    return total
+
+
+@router.post("/en-cero-lote")
+async def declarar_en_cero_lote(body: EnCeroLoteIn, user_id: str = Depends(get_current_user)):
+    """Declara EN CERO a varios contribuyentes y las marca presentadas.
+
+    El mes sin movimiento igual se declara y igual se cobra, y hacerlo de a uno
+    —abrir cada contribuyente, calcular, guardar, marcar— era el trabajo más
+    repetitivo del cierre de mes. Acá se hace de una pasada.
+
+    Cada uno se calcula de verdad antes de guardarlo: si resulta que tenía
+    comprobantes cargados NO se toca y se informa, porque entonces no es una
+    declaración en cero. La declaración queda marcada `en_cero` para poder
+    distinguirla después de una marcada a mano sin pasar por el sistema.
+
+    Marca presentadas en el SRI: quien lo usa está diciendo que ya las presentó
+    en el portal. Se devuelve el detalle de qué se hizo y qué no."""
+    supabase = get_supabase_client()
+    hechas, omitidas = [], []
+
+    for item in body.items:
+        tipo = (item.tipo or "IVA").upper()
+        try:
+            assert_client_owner(item.client_id, user_id)
+            _verificar_submodulo(user_id, tipo)
+            c = _cliente(supabase, item.client_id)
+            nombre = c.get("nombre") or c.get("identificacion") or item.client_id
+            anio, mes = c.get("periodo_anio"), c.get("periodo_mes")
+
+            previas = supabase.table("declaraciones").select("id,presentada_sri,datos")\
+                .eq("client_id", item.client_id).eq("tipo", tipo)\
+                .order("created_at", desc=True).execute().data or []
+            if previas and previas[0].get("presentada_sri"):
+                omitidas.append({"nombre": nombre, "tipo": tipo,
+                                 "motivo": "Ya estaba presentada"})
+                continue
+
+            calculo = _calcular(supabase, item.client_id, tipo, user_id)
+            resumen = (calculo or {}).get("resumen") or {}
+            movs = _movimientos_de(resumen)
+            if movs and not body.forzar:
+                omitidas.append({
+                    "nombre": nombre, "tipo": tipo,
+                    "motivo": f"Tiene {movs} comprobante(s) en el período: revísala en su pantalla",
+                })
+                continue
+
+            datos = {**(calculo or {}), "en_cero": True}
+            if previas:
+                # Ya estaba guardada pero sin presentar: se completa, no se duplica.
+                supabase.table("declaraciones").update({
+                    "presentada_sri": True, "presentada_sri_at": "now()",
+                }).eq("id", previas[0]["id"]).execute()
+            else:
+                supabase.table("declaraciones").insert({
+                    "client_id": item.client_id, "user_id": user_id, "tipo": tipo,
+                    "anio": anio, "mes": mes, "datos": datos,
+                    "presentada_sri": True, "presentada_sri_at": "now()",
+                }).execute()
+
+            registrar(actor_user_id=user_id, action="declarar_en_cero", module="declaraciones",
+                      entity=f"Declaración {tipo} en cero", client_id=item.client_id,
+                      identificacion=c.get("identificacion"), contribuyente=c.get("nombre"),
+                      metadata={"mes": mes, "anio": anio, "presentada": True, "lote": True})
+            hechas.append({"nombre": nombre, "tipo": tipo,
+                           "identificacion": c.get("identificacion"),
+                           "mes": mes, "anio": anio})
+        except HTTPException as e:
+            omitidas.append({"nombre": item.client_id, "tipo": tipo, "motivo": e.detail})
+        except Exception as e:
+            print(f"[declaraciones] en-cero-lote {item.client_id}/{tipo}: {e}")
+            omitidas.append({"nombre": item.client_id, "tipo": tipo, "motivo": str(e)})
+
+    return {"ok": True, "hechas": hechas, "omitidas": omitidas}
 
 
 class PresentadaDirectaIn(BaseModel):

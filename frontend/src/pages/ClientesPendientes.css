@@ -205,3 +205,62 @@
   .cp-page { padding: 16px 14px 40px; }
   .cp-card { align-items: flex-start; }
 }
+
+/* ── Cierre de mes en lote ───────────────────────────────────────────────── */
+/* El mes sin movimiento igual se declara y se cobra; esta barra evita tener
+   que abrir contribuyente por contribuyente para dejarlo resuelto. */
+.cp-lote {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 11px 15px;
+  background: #eef4ff;
+  border: 1px solid #c9dbfb;
+  border-radius: 10px;
+  font-size: 0.86rem;
+  color: #1a3d6b;
+}
+.cp-lote-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.cp-btn-cero { background: #1a3d6b; border-color: #1a3d6b; color: #fff; }
+.cp-btn-cero:hover:not(:disabled) { background: #14325a; }
+.cp-btn-fact { background: #0f7a52; border-color: #0f7a52; color: #fff; }
+.cp-btn-fact:hover:not(:disabled) { background: #0c6544; }
+
+.cp-chk { display: inline-flex; align-items: center; padding: 0 2px; cursor: pointer; }
+.cp-chk input { cursor: pointer; }
+.cp-tipo-group.sel {
+  background: #e3ecfd;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1.5px #a9c6f7;
+}
+
+/* Resultado del lote: qué quedó hecho y qué no, con su motivo. */
+.cp-resultado {
+  position: relative;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #0f7a52;
+  border-radius: 10px;
+  padding: 13px 38px 13px 16px;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: #334155;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .06);
+}
+.cp-res-cerrar {
+  position: absolute; top: 8px; right: 10px;
+  border: none; background: none; cursor: pointer;
+  color: #94a3b8; font-size: 0.95rem; line-height: 1;
+}
+.cp-res-cerrar:hover { color: #334155; }
+.cp-res-lista { margin: 5px 0 0; font-size: 0.8rem; color: #64748b; overflow-wrap: anywhere; }
+.cp-res-warn { display: block; margin-top: 10px; color: #a8620a; }
+.cp-res-omitidas { margin: 5px 0 0; padding-left: 20px; font-size: 0.8rem; color: #64748b; }
+.cp-res-omitidas li { padding: 2px 0; }
+
+@media (max-width: 620px) {
+  .cp-lote-acts { width: 100%; }
+  .cp-lote-acts .cp-btn { flex: 1 1 auto; }
+}

@@ -512,6 +512,11 @@ export const declaracionesAPI = {
   // Igual pero desde Clientes pendientes (por client_id+tipo): crea el registro si no existía.
   marcarPresentadaDirecta: (client_id, tipo, presentada = true) =>
     api.put('/api/declaraciones/presentada-directa', { client_id, tipo, presentada }),
+  // Cierre de mes: declara EN CERO varias y las marca presentadas. Las que
+  // tengan comprobantes cargados no se tocan y vuelven en `omitidas`.
+  // items: [{ client_id, tipo }]
+  declararEnCeroLote: (items, forzar = false) =>
+    api.post('/api/declaraciones/en-cero-lote', { items, forzar }, { timeout: 180000 }),
   // Estado de declaración de un cliente/período: {esperados, presentadas, pendientes, todo_presentado}.
   estadoCliente: (clientId) => api.get('/api/declaraciones/estado-cliente', { params: { client_id: clientId } }),
   // Estado de TODOS los contribuyentes visibles, keyed por identificación (para los badges de lista).
@@ -667,6 +672,10 @@ export const facturarAPI = {
   // Firma y autorización del SRI pueden tardar: el tiempo por defecto no alcanza.
   emitir: (identificacion, mes, anio) =>
     api.post('/api/facturar/emitir', { identificacion, mes, anio }, { timeout: 180000 }),
+  // Varios de una pasada, cada uno por su emisor. Va una por una en el
+  // servidor, así que el tiempo se estira con la cantidad.
+  emitirLote: (identificaciones, mes, anio) =>
+    api.post('/api/facturar/emitir-lote', { identificaciones, mes, anio }, { timeout: 600000 }),
 }
 
 // ODOO: facturación directa desde honorarios (solo admin)
