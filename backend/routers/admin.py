@@ -3,13 +3,16 @@
 # ------------------------------------------------------------
 """Panel de administración (Fase 3). Solo para admins (app_admins).
 Permite listar/crear usuarios y asignar módulos/planes con vigencia."""
-from datetime import date, timedelta
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List
 from auth import get_current_user
 from database import get_supabase_client
 from routers.access import es_admin, es_super_admin, rol_de, MODULOS, SUBMODULOS, invalidar_cache_rol
+from services import activity, cobro
+from services.activity import _email_de
+from services.email_sender import enviar_correo
 
 # módulo → set de keys de submódulo (para reconciliar restricciones)
 _SUBS_KEYS = {mod: {s["key"] for s in subs} for mod, subs in SUBMODULOS.items()}
@@ -27,9 +30,11 @@ def _submodulos_permitidos_de(guardados: set) -> set:
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
-# Cada "mes" = 30 días exactos. Descuentos por pago anticipado.
-DIAS_MES = 30
-DESCUENTOS = {1: 0.0, 3: 0.05, 6: 0.10, 12: 0.25}
+# Cada "mes" = 30 días exactos. Descuentos por pago anticipado. La cuenta vive
+# en services/cobro.py, que es de donde la toman también el cobro por empresa y
+# la aprobación de comprobantes: una sola tabla de descuentos, no tres copias.
+DIAS_MES = cobro.DIAS_MES
+DESCUENTOS = cobro.DESCUENTOS
 
 # Paquetes → módulos que activan
 # 'gestion' y 'datos' van en todos los planes: son el trabajo alrededor de los
@@ -213,37 +218,89 @@ async def set_subscription(uid: str, body: SubIn, _: str = Depends(require_admin
 
 @router.post("/users/{uid}/pago")
 async def registrar_pago(uid: str, body: PagoIn, _: str = Depends(require_admin)):
+    """Asienta un pago cobrado a mano y deja la suscripción activa.
+
+    La cuenta (IVA, descuento por anticipo y corrimiento del vencimiento) está
+    en services/cobro.py, compartida con el cobro por empresa y con la
+    aprobación de comprobantes."""
+    r = cobro.registrar_pago(
+        user_id=uid, monto=body.monto, meses=body.meses, fecha=body.fecha,
+        periodo=body.periodo, metodo=body.metodo, nota=body.nota,
+        iva_incluido=body.iva_incluido, avanzar_mes=body.avanzar_mes,
+    )
+    # El acceso acaba de cambiar (de suspendido a activo): sin esto el cliente
+    # seguiría viendo la puerta cerrada hasta 2 minutos (caché de access.py).
+    invalidar_cache_rol(uid)
+    return {"ok": True, "proximo_pago": r.get("proximo_pago"), "cobrado": r.get("cobrado")}
+
+
+class ActivarIn(BaseModel):
+    activar: bool = True               # True = abrir el acceso, False = suspenderlo
+    meses: int = 0                     # 0 = solo levantar la pausa, sin regalar meses
+    plan: Optional[str] = None         # plan a habilitar si todavía no tiene módulos
+    avisar: bool = True                # mandarle el correo de "ya puedes entrar"
+
+
+@router.post("/users/{uid}/activar")
+async def activar_acceso(uid: str, body: ActivarIn, admin_id: str = Depends(require_admin)):
+    """Botón de ACTIVAR / SUSPENDER el uso de la plataforma para un cliente.
+
+    Activar hace las dos cosas que hacen falta para que alguien pueda entrar, y
+    que antes había que acordarse de hacer por separado: pone la suscripción en
+    'activo' (corriendo el vencimiento si ya había pasado, porque si no el
+    acceso se volvería a cerrar en la siguiente petición) y le habilita los
+    módulos del plan. Sin módulos no se entra a ninguna pantalla, así que
+    activar a alguien que no tiene ninguno y no indicar plan es un error y se
+    avisa en vez de dejar al administrador creyendo que abrió algo.
+
+    Suspender no avisa por correo ni toca la fecha: corta el acceso y deja la
+    suscripción como estaba, para que al reactivarla se vea dónde quedó."""
     sb = get_supabase_client()
-    meses = body.meses if body.meses in DESCUENTOS else 1
-    fecha = body.fecha or date.today().isoformat()
-    periodo = body.periodo or (f"{meses} mes(es)")
-    # Si no se especifica en el payload, usar la configuración guardada del cliente
-    if body.iva_incluido is None:
-        sub = sb.table("subscriptions").select("iva_incluido").eq("user_id", uid).execute().data
-        iva_incluido = bool(sub[0].get("iva_incluido")) if sub else False
-    else:
-        iva_incluido = body.iva_incluido
-    monto_final = round(body.monto, 2) if iva_incluido else round(body.monto * 1.15, 2)
-    sb.table("pagos").insert({
-        "user_id": uid, "monto": monto_final, "fecha": fecha,
-        "periodo": periodo, "metodo": body.metodo, "nota": body.nota,
-    }).execute()
-    sub_upd = {"estado": "activo"}
-    if body.avanzar_mes:
-        cur = sb.table("subscriptions").select("proximo_pago").eq("user_id", uid).execute().data
-        base = None
-        if cur and cur[0].get("proximo_pago"):
-            try:
-                y, m, d = map(int, str(cur[0]["proximo_pago"]).split("-"))
-                base = date(y, m, d)
-            except Exception:
-                base = None
-        hoy = date.today()
-        if not base or base < hoy:
-            base = hoy
-        sub_upd["proximo_pago"] = (base + timedelta(days=DIAS_MES * meses)).isoformat()
-    _upsert_sub(uid, sub_upd)
-    return {"ok": True, "proximo_pago": sub_upd.get("proximo_pago")}
+    if not body.activar:
+        cobro.suspender(user_id=uid)
+        invalidar_cache_rol(uid)
+        activity.registrar(actor_user_id=admin_id, action="update", module="cobros",
+                           entity="Acceso suspendido", metadata={"cliente": _email_de(uid)})
+        return {"ok": True, "estado": "suspendido"}
+
+    if body.plan:
+        if body.plan not in PLANES:
+            raise HTTPException(status_code=400, detail=f"Plan inválido ({' | '.join(PLANES)})")
+        _aplicar_modulos(uid, PLANES[body.plan], None)   # ya invalida el caché
+        _upsert_sub(uid, {"plan": body.plan})
+
+    activos = [m["modulo"] for m in (sb.table("user_modules").select("modulo,activo")
+                                     .eq("user_id", uid).eq("activo", True).execute().data or [])]
+    # es_super_admin y no rol_de: rol_de mira la empresa ACTIVA —la de quien
+    # está administrando, no la del usuario que se activa— y podría responder
+    # por la persona equivocada. El administrador de plataforma es el único que
+    # entra sin módulos propios (access.py se los da todos).
+    if not activos and not es_super_admin(uid):
+        raise HTTPException(
+            status_code=400,
+            detail="Este usuario no tiene ningún módulo habilitado: elige un plan para poder activarlo.")
+
+    r = cobro.activar(user_id=uid, meses=body.meses)
+    invalidar_cache_rol(uid)
+
+    destino = _email_de(uid) if body.avisar else ""
+    if destino:
+        try:
+            ok, err = enviar_correo(
+                destino, "✅ Tu acceso al Gestor Tributario está activo",
+                ("Tu acceso ya está habilitado: puedes entrar con tu usuario de siempre.\n\n"
+                 f"Acceso vigente hasta: {r.get('proximo_pago') or '—'}\n\n"
+                 "Si tienes cualquier problema para ingresar, escríbenos."))
+            if not ok:
+                print(f"[admin] no se pudo avisar la activación: {err}")
+        except Exception as e:
+            print(f"[admin] error avisando la activación: {e}")
+
+    activity.registrar(actor_user_id=admin_id, action="update", module="cobros",
+                       entity="Acceso activado",
+                       metadata={"cliente": _email_de(uid), "plan": body.plan,
+                                 "proximo_pago": r.get("proximo_pago")})
+    return {"ok": True, **r}
 
 
 @router.get("/descuentos")

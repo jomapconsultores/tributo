@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useClients } from '../context/ClientContext'
 import { useAccess, homeFor } from '../context/AccessContext'
-import { actividadAPI } from '../services/api'
+import { actividadAPI, activacionAPI } from '../services/api'
 import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import BajadorSRI from './BajadorSRI'
 import './Sidebar.css'
@@ -17,6 +17,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const { has, hasSub, isSuperAdmin, role } = useAccess()
   const [clientSearch, setClientSearch] = useState('')
   const [movNuevos, setMovNuevos] = useState(0)
+  // Comprobantes de pago esperando que el administrador active el acceso.
+  const [activPend, setActivPend] = useState(0)
   // Módulo abierto en la SEGUNDA columna. null = seguir la ruta actual.
   const [openKey, setOpenKey] = useState(null)
   // Bajador abierto en el panel copiable ('gastos' | 'emitidos'), o null.
@@ -31,6 +33,18 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
     const onVista = () => setMovNuevos(0)
     window.addEventListener('actividad-vista', onVista)
     return () => { clearInterval(id); window.removeEventListener('actividad-vista', onVista) }
+  }, [isSuperAdmin])
+
+  // Insignia de activaciones: un cliente que pagó y está esperando entrar no
+  // puede quedar sepultado en la bandeja de correo. Se revisa cada minuto, como
+  // los movimientos, y el evento permite apagarla al revisarlas.
+  useEffect(() => {
+    if (!isSuperAdmin) return
+    const load = () => activacionAPI.resumen().then((r) => setActivPend(r.data?.pendientes || 0)).catch(() => {})
+    load()
+    const id = setInterval(load, 60 * 1000)
+    window.addEventListener('activaciones-vistas', load)
+    return () => { clearInterval(id); window.removeEventListener('activaciones-vistas', load) }
   }, [isSuperAdmin])
 
   // Contribuyentes únicos (por identificación) para el listado por nombre
@@ -205,6 +219,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         visible: isSuperAdmin,
         items: [
           L('🛠️', 'Administración', '/admin'),
+          { kind: 'link', ico: '💳', label: 'Activaciones', path: '/admin/activaciones', visible: true, badge: activPend },
           { kind: 'link', ico: '📜', label: 'Movimientos', path: '/movimientos', visible: true, badge: movNuevos },
           L('🔑', 'Acceso a clientes', '/admin/acceso-clientes'),
           L('🛡️', 'Permisos', '/admin/permisos'),
@@ -237,7 +252,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         group: GRUPOS[m.key] || '',
         items: (m.items || []).filter((i) => i.visible !== false),
       }))
-  }, [has, hasSub, isSuperAdmin, role, movNuevos])
+  }, [has, hasSub, isSuperAdmin, role, movNuevos, activPend])
 
   // Módulo al que pertenece la ruta actual (para resaltar y abrir su panel).
   const activeKey = useMemo(() => {
@@ -420,7 +435,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
               >
                 <span className="sb-rail-ico">{m.ico}</span>
                 <span className="sb-rail-lbl">{m.rail}</span>
-                {m.key === 'admin' && movNuevos > 0 && <span className="sb-rail-dot" />}
+                {m.key === 'admin' && (movNuevos > 0 || activPend > 0) && <span className="sb-rail-dot" />}
               </button>
             </Fragment>
           ))}

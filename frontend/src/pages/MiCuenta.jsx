@@ -5,12 +5,17 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authAPI } from '../services/api'
+import { useAccess } from '../context/AccessContext'
+import PagoActivacion from '../components/PagoActivacion'
 import './MiCuenta.css'
 
 const MIN_CLAVE = 8
 
 export default function MiCuenta() {
   const navigate = useNavigate()
+  // Quien administra la plataforma cobra, no paga: no tiene sentido ofrecerle
+  // subir su propio comprobante.
+  const { isSuperAdmin } = useAccess()
   const [cargando, setCargando] = useState(true)
   const [perfil, setPerfil] = useState({ nombre: '', telefono: '', cargo: '', email: '' })
   const [claveActualPerfil, setClaveActualPerfil] = useState('')
@@ -117,6 +122,11 @@ export default function MiCuenta() {
           )}
         </form>
       </section>
+
+      {/* Mi plan: cuánto se paga, hasta cuándo hay acceso y dónde dejar el
+          comprobante para que el administrador lo active. Antes esto solo se
+          podía preguntar por WhatsApp. */}
+      {!isSuperAdmin && <PagoActivacion />}
 
       <section className="mc-card">
         <h2>Mi clave</h2>

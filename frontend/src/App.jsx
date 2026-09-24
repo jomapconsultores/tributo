@@ -45,6 +45,10 @@ const AdminClientAccess        = lazy(() => import('./pages/AdminClientAccess'))
 const AdminPermisos            = lazy(() => import('./pages/AdminPermisos'))
 const AdminBajadores          = lazy(() => import('./pages/AdminBajadores'))
 const AdminEmpresas            = lazy(() => import('./pages/AdminEmpresas'))
+const AdminActivaciones        = lazy(() => import('./pages/AdminActivaciones'))
+// Pago y envío del comprobante (cliente). Va lazy como las pantallas: solo se
+// descarga cuando alguien entra a «Mi cuenta» o se topa con el acceso en pausa.
+const PagoActivacion           = lazy(() => import('./components/PagoActivacion'))
 
 const PageLoader = () => <div className="loading">Cargando…</div>
 
@@ -111,11 +115,26 @@ function SinAcceso({ onLogout }) {
             <> Para volver a entrar hay que pagar <strong>${precio.toFixed(2)} + IVA</strong>
               {' '}(<strong>${(precio * 1.15).toFixed(2)}</strong>) al mes.</>
           )}
-          {' '}Avisa a quien administra el sistema y se reactiva en cuanto se registre el pago.
+          {' '}Sube abajo el comprobante de tu pago y el administrador reactiva el acceso
+          en cuanto lo revise.
         </p>
       ) : (
-        <p>Tu cuenta aún no tiene módulos habilitados. Contacta al administrador para activar tu plan.</p>
+        <p>
+          Tu cuenta aún no tiene módulos habilitados. Si ya pagaste, envía tu comprobante
+          aquí abajo y el administrador te activará el plan.
+        </p>
       )}
+
+      {/* La salida de esta pantalla, en los dos casos: al que se le venció y al
+          que todavía no lo activan. Sin esto decía «avisa al administrador» y no
+          había dónde avisarle: había que salir de la app a buscar un teléfono, y
+          el pago se perdía entre mensajes de WhatsApp. */}
+      <div style={{ marginTop: 26 }}>
+        <PagoActivacion
+          enPausa
+          titulo={porPago ? '💳 Pagar y reactivar mi acceso' : '💳 Pagar y activar mi acceso'}
+        />
+      </div>
       <button
         onClick={volverALogin}
         style={{
@@ -312,6 +331,7 @@ function App() {
                   guardados y lo que quedó escrito en otras pantallas. */}
               <Route path="/odoo-facturacion" element={<Navigate to="/facturacion" replace />} />
               <Route path="/odoo-facturacion/:tab" element={<RedirFacturacion />} />
+              <Route path="/admin/activaciones" element={<RequireSuperAdmin><AdminActivaciones /></RequireSuperAdmin>} />
               <Route path="/admin/acceso-clientes" element={<RequireSuperAdmin><AdminClientAccess /></RequireSuperAdmin>} />
               <Route path="/admin/permisos" element={<RequireSuperAdmin><AdminPermisos /></RequireSuperAdmin>} />
               <Route path="/admin/bajadores" element={<RequireSuperAdmin><AdminBajadores /></RequireSuperAdmin>} />

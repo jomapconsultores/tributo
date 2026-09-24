@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from config import get_settings
-from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router, retenciones_efectuadas, devoluciones_iva, organizations, bajadores, facturar
+from routers import auth, invoices, classification, memory, clients, retentions, ice, resources, ice_calc, declaraciones, products, rebajas, anexos, access, admin, contacto, credentials, sales_iva, compradores, normativa, xml_originales, reportes, odoo_factura, capacitaciones, webauthn as webauthn_router, retenciones_efectuadas, devoluciones_iva, organizations, bajadores, facturar, activacion
 from routers.access import require_module, require_submodule, require_submodule_any, es_super_admin
 import orgs as _orgs
 import os
@@ -325,6 +325,11 @@ app.include_router(auth.router)
 app.include_router(access.router)
 app.include_router(organizations.router)  # MULTIEMPRESA: empresas y sus miembros
 app.include_router(admin.router)
+# ACTIVACIÓN: el cliente informa su pago y el administrador le abre el acceso.
+# Va en el núcleo, sin dependencia de módulo, a propósito: quien lo usa es
+# justamente el cliente al que se le cerró el acceso por falta de pago, y
+# exigirle un módulo contratado para poder pagar lo dejaría sin salida.
+app.include_router(activacion.router)
 app.include_router(credentials.router)
 app.include_router(contacto.router)
 app.include_router(clients.router)

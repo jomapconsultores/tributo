@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { adminAPI } from '../services/api'
+import { adminAPI, activacionAPI } from '../services/api'
 import { useAccess } from '../context/AccessContext'
 import { clearAll as clearApiCache } from '../services/cache'
 import './Admin.css'
@@ -42,7 +42,12 @@ export default function Admin() {
   // una copia local que podría desincronizarse.
   const [descuentos, setDescuentos] = useState({ 1: 0, 3: 0.05, 6: 0.10, 12: 0.25 })
 
+  const [activPend, setActivPend] = useState(0)
+
   useEffect(() => { adminAPI.contactos().then((r) => setContactos(r.data?.data || [])).catch(() => {}) }, [])
+  // Comprobantes esperando revisión: se avisa acá porque este panel es donde el
+  // administrador entra a resolver los cobros.
+  useEffect(() => { activacionAPI.resumen().then((r) => setActivPend(r.data?.pendientes || 0)).catch(() => {}) }, [])
   useEffect(() => { adminAPI.descuentos().then((r) => setDescuentos(r.data?.descuentos || {})).catch(() => {}) }, [])
   useEffect(() => { adminAPI.submodulosCatalogo().then((r) => setCatalogoSub(r.data?.catalogo || {})).catch(() => {}) }, [])
 
@@ -146,6 +151,40 @@ export default function Admin() {
       alert(`✔ Pago registrado — Total c/IVA: $${total.toFixed(2)} (${meses} mes(es)). Próximo pago: ${r.data.proximo_pago || '—'}`)
     } catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy(false) }
   }
+  // Activar / suspender el uso de la plataforma. Es el botón que faltaba: hasta
+  // ahora abrirle el acceso a alguien era acordarse de poner el estado en
+  // 'activo', revisar que la fecha no estuviera vencida y marcarle los módulos,
+  // tres cosas en tres sitios distintos. El backend las hace juntas.
+  const cambiarAcceso = async (u, activar) => {
+    const e = edit[u.user_id] || {}
+    const tieneModulos = (e.mods?.size || 0) > 0
+    let plan = null
+    if (activar && !tieneModulos) {
+      // Sin módulos no se entra a ninguna pantalla: activar sin plan sería
+      // abrir una puerta a un pasillo cerrado.
+      plan = e.plan || u.subscription?.plan || ''
+      if (!plan) {
+        alert('Este usuario no tiene módulos ni plan asignado.\n\n' +
+              'Elige primero un plan en la columna "Plan rápido" y vuelve a activarlo.')
+        return
+      }
+    }
+    const msg = activar
+      ? `¿Activar el acceso de ${u.email}?\n\n` +
+        (plan ? `Se le habilitará el plan "${plan}".\n` : '') +
+        'Se le avisará por correo que ya puede entrar.'
+      : `¿Suspender el acceso de ${u.email}?\n\nNo podrá entrar hasta que vuelvas a activarlo.`
+    if (!window.confirm(msg)) return
+    setBusy(true)
+    try {
+      const r = await adminAPI.activarAcceso(u.user_id, { activar, plan })
+      await load()
+      alert(activar
+        ? `✔ Acceso activado${r.data?.proximo_pago ? ` — vigente hasta ${r.data.proximo_pago}` : ''}.`
+        : '✔ Acceso suspendido.')
+    } catch (err) { alert('Error: ' + (err.response?.data?.detail || err.message)) } finally { setBusy(false) }
+  }
+
   const resetIps = async (uid) => {
     if (!window.confirm('¿Borrar las IPs registradas de este usuario? Podrá iniciar sesión desde nuevos dispositivos.')) return
     setBusy(true)
@@ -224,6 +263,18 @@ export default function Admin() {
         <p className="adm-sub">Crea cuentas, asigna módulos contratados y gestiona la suscripción mensual.</p>
       </header>
 
+      {activPend > 0 && (
+        <div className="adm-activaciones">
+          <span>
+            💳 <strong>{activPend}</strong> cliente{activPend === 1 ? '' : 's'} envió su comprobante
+            de pago y está esperando que le actives el acceso.
+          </span>
+          <button className="adm-btn primary" onClick={() => navigate('/admin/activaciones')}>
+            Revisar activaciones
+          </button>
+        </div>
+      )}
+
       <div className="adm-new">
         <h2>Crear usuario</h2>
         <div className="adm-new-row">
@@ -264,6 +315,12 @@ export default function Admin() {
               {users.map((u) => {
                 const e = edit[u.user_id] || { mods: new Set() }
                 const venc = u.subscription?.vencida
+                // Tiene acceso quien no está suspendido ni vencido. Sin fila de
+                // suscripción se considera con acceso, que es lo que hace el
+                // backend (no bloquear a quien nunca se le fijó un plan).
+                const activo = u.subscription
+                  ? (u.subscription.estado !== 'suspendido' && !venc)
+                  : true
                 return (
                   <tr key={u.user_id} className={venc ? 'vencida' : ''}>
                     <td>
@@ -308,6 +365,17 @@ export default function Admin() {
                       </select>
                     </td>
                     <td className="adm-acts">
+                      {/* Activar / suspender: lo primero que se busca en esta
+                          fila cuando un cliente llama porque no puede entrar. */}
+                      {activo ? (
+                        <button className="adm-btn warn" disabled={busy || u.role === 'admin'}
+                                title="Suspender el acceso a la plataforma"
+                                onClick={() => cambiarAcceso(u, false)}>⏸ Suspender</button>
+                      ) : (
+                        <button className="adm-btn ok" disabled={busy || u.role === 'admin'}
+                                title="Activar el uso de la plataforma para este cliente"
+                                onClick={() => cambiarAcceso(u, true)}>✅ Activar</button>
+                      )}
                       <button className="adm-btn" disabled={busy || u.role === 'admin'} onClick={() => guardar(u.user_id)}>💾</button>
                       <button className="adm-btn" disabled={u.role === 'admin'} title="Módulos, pantallas y contribuyentes que puede ver/trabajar" onClick={() => navigate(`/admin/acceso-clientes?uid=${u.user_id}`)}>🔐 Permisos</button>
                       <button className="adm-btn pay" disabled={busy || u.role === 'admin'} onClick={() => registrarPago(u.user_id)}>💵 Pago</button>

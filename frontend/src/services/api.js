@@ -139,6 +139,36 @@ export const adminAPI = {
   // Recuperación de clave olvidada: genera una clave temporal de un solo uso
   resetPassword: (uid) => api.post(`/api/admin/users/${uid}/reset-password`),
   permisos: () => api.get('/api/admin/permisos'),
+  // Botón de activar / suspender el uso de la plataforma para un cliente.
+  // meses=0 solo levanta la pausa; `plan` habilita los módulos si aún no tiene
+  // ninguno (sin módulos, activar no abriría ninguna pantalla).
+  activarAcceso: (uid, { activar = true, meses = 0, plan = null, avisar = true } = {}) =>
+    api.post(`/api/admin/users/${uid}/activar`, { activar, meses, plan, avisar }),
+}
+
+// ACTIVACIÓN: el cliente informa su pago con el comprobante y el administrador
+// lo aprueba. Las rutas de cliente (estado / comprobantes / mis-comprobantes)
+// funcionan aunque su acceso esté suspendido: es justo cuando las necesita.
+export const activacionAPI = {
+  estado: () => api.get('/api/activacion/estado'),
+  mios: () => api.get('/api/activacion/mis-comprobantes'),
+  // El archivo es opcional: hay quien paga en efectivo y solo informa el dato.
+  enviar: ({ file, ...campos }) => {
+    const fd = new FormData()
+    if (file) fd.append('file', file)
+    Object.entries(campos).forEach(([k, v]) => {
+      if (v !== null && v !== undefined && v !== '') fd.append(k, v)
+    })
+    return api.post('/api/activacion/comprobantes', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  archivo: (id) => api.get(`/api/activacion/comprobantes/${id}/archivo`),
+  // Panel del administrador
+  listar: (estado) => api.get('/api/activacion/comprobantes', { params: estado ? { estado } : undefined }),
+  resumen: () => api.get('/api/activacion/resumen'),
+  aprobar: (id, data = {}) => api.post(`/api/activacion/comprobantes/${id}/aprobar`, data),
+  rechazar: (id, nota) => api.post(`/api/activacion/comprobantes/${id}/rechazar`, { nota }),
 }
 
 // MOVIMIENTOS: bitácora de actividad de los usuarios (solo admin)

@@ -1,0 +1,216 @@
+/* ------------------------------------------------------------
+ * Desarrollado por Marco Antonio Posligua San Martín
+ * ------------------------------------------------------------ */
+
+/* Mismo lenguaje visual que «Mi cuenta» (tarjeta blanca, borde suave): el
+   componente se monta dentro de esa pantalla y también en /sin-acceso. */
+.pa-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 20px;
+  margin: 0 auto 18px;
+  max-width: 640px;
+  text-align: left;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+.pa-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.pa-head h2 { font-size: 1.05rem; margin: 0; }
+
+.pa-estado {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.pa-estado.ok  { background: #ecfdf5; color: #065f46; }
+.pa-estado.err { background: #fef2f2; color: #991b1b; }
+
+/* Resumen del plan: etiqueta arriba, valor abajo, en rejilla que se apila sola
+   en el teléfono (que es desde donde el cliente sube la foto del comprobante). */
+.pa-resumen {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px 16px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border-radius: 10px;
+  margin-bottom: 14px;
+}
+.pa-resumen div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pa-resumen span { font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: .02em; }
+.pa-resumen strong { font-size: 0.95rem; color: #0f172a; overflow-wrap: anywhere; }
+
+.pa-nota-bloqueo {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  color: #78350f;
+  border-radius: 10px;
+  padding: 11px 13px;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  margin: 0 0 14px;
+}
+
+.pa-pendiente {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  border-radius: 10px;
+  padding: 10px 13px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  margin: 0 0 14px;
+}
+
+.pa-muted { color: #64748b; font-size: 0.88rem; margin: 0; }
+
+.pa-aviso {
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+.pa-aviso.ok  { background: #ecfdf5; color: #065f46; }
+.pa-aviso.err { background: #fef2f2; color: #991b1b; }
+
+.pa-btn {
+  padding: 10px 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #fff;
+  color: #334155;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.pa-btn.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+.pa-btn:disabled { opacity: .6; cursor: default; }
+
+.pa-form { margin-top: 14px; }
+
+.pa-hint {
+  color: #64748b;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  margin: 0 0 14px;
+}
+
+.pa-form label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 12px;
+}
+
+.pa-form input,
+.pa-form select,
+.pa-form textarea {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  font-size: 0.92rem;
+  font-weight: 400;
+  font-family: inherit;
+  background: #fff;
+  box-sizing: border-box;
+}
+.pa-form input:focus,
+.pa-form select:focus,
+.pa-form textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.pa-row { display: flex; gap: 12px; }
+.pa-row label { flex: 1; min-width: 0; }
+
+.pa-acciones {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.pa-historial { margin-top: 20px; }
+.pa-historial h3 {
+  font-size: 0.85rem;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  margin: 0 0 8px;
+}
+
+.pa-tabla { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+.pa-tabla th {
+  text-align: left;
+  color: #64748b;
+  font-weight: 600;
+  font-size: 0.75rem;
+  padding: 6px 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.pa-tabla td {
+  padding: 8px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: top;
+}
+
+.pa-chip {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.pa-chip.pend { background: #fef3c7; color: #92400e; }
+.pa-chip.ok   { background: #ecfdf5; color: #065f46; }
+.pa-chip.err  { background: #fef2f2; color: #991b1b; }
+
+.pa-motivo {
+  margin-top: 4px;
+  font-size: 0.78rem;
+  color: #991b1b;
+  line-height: 1.45;
+}
+
+.pa-link {
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+@media (max-width: 520px) {
+  .pa-row { flex-direction: column; gap: 0; }
+  .pa-acciones { flex-direction: column-reverse; }
+  .pa-acciones .pa-btn { width: 100%; }
+}
+
+/* Botonera de la tarjeta (enviar comprobante / volver a comprobar el acceso). */
+.pa-acciones-top { display: flex; gap: 10px; flex-wrap: wrap; }
+
+@media (max-width: 520px) {
+  .pa-acciones-top { flex-direction: column; }
+  .pa-acciones-top .pa-btn { width: 100%; }
+}
