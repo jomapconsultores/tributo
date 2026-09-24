@@ -154,10 +154,16 @@ export default function AdminBajadores() {
       <header className="ab-head">
         <h1>🔐 Bajadores del SRI</h1>
         <p>
-          Los marcadores no son de uso libre: cada uno lleva la llave de la persona que lo
-          bajó y, antes de tocar el portal, pregunta acá si sigue habilitada, si no se le
-          pasó el plazo y si es su máquina. Revocar apaga el marcador en el acto, y el
-          plazo lo apaga solo al cumplirse.
+          Los marcadores van <strong>con el servicio contratado</strong>: al cliente al día se
+          le habilitan solos la primera vez que abre el panel, y cuando su plan vence o queda
+          suspendido dejan de funcionar sin que haya que hacer nada. Esta pantalla es para lo
+          que el contrato no cubre: <strong>revocar</strong> a alguien (apaga su marcador en el
+          acto y manda por encima del plan), habilitar al equipo interno —que no tiene
+          suscripción— y liberar el equipo de quien cambió de computador.
+        </p>
+        <p>
+          Cada marcador lleva la llave de quien lo bajó y, antes de tocar el portal, pregunta
+          acá si sigue habilitada, si el plan está al día y si es su máquina.
         </p>
         <p className="ab-nota-devol">
           La llave de <strong>Devolución IVA</strong> hace algo más que habilitar el marcador:
@@ -185,9 +191,10 @@ export default function AdminBajadores() {
       <section className="ab-bloque">
         <h2>Autorizar a alguien</h2>
         <p className="ab-sub">
-          El permiso se da por un plazo: al cumplirse, el marcador de esa persona deja de
-          funcionar sin que haya que hacer nada. Máximo {mesesMax} meses; después se renueva
-          si corresponde.
+          Para quien <strong>no tiene suscripción</strong> (el equipo interno) o para reactivar
+          a alguien a quien se le revocó. El permiso se da por un plazo de hasta {mesesMax} meses
+          y al cumplirse el marcador deja de funcionar solo. Los clientes con el plan al día
+          <strong> no necesitan pasar por aquí</strong>: su llave se crea sola.
         </p>
         <form className="ab-form" onSubmit={autorizar}>
           <select

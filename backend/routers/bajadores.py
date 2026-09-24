@@ -11,15 +11,23 @@ marcador pregunta acá si su llave está habilitada y si la máquina es la
 autorizada. Revocada la llave, el marcador se apaga en el acto; usado desde otra
 PC, no arranca; y cada intento queda en la bitácora, salga bien o mal.
 
-La autorización es de a UNO: se le crea la llave a la persona (no al módulo).
-Quien no tenga llave activa no puede usarlos aunque tenga acceso a Gastos o a
-Devoluciones.
+QUIÉN PUEDE. Los bajadores van con el servicio: el cliente que lo tiene
+contratado los usa, y cuando su plan vence o se suspende dejan de andar. No hay
+que pedirle la llave a nadie —se crea sola la primera vez que abre el panel— ni
+acordarse de revocarla cuando deja de pagar: lo que manda es el contrato, que ya
+se revisa en cada pantalla del sistema.
 
-Y es POR UN PLAZO, de tres meses como máximo. Vencido, el marcador se apaga
-solo: nadie tiene que acordarse de revocarlo. Renovar es un acto del
-administrador y vuelve a contar desde el día de la renovación, así que nunca
-queda más de un trimestre por delante. La única llave sin vencimiento es la del
-dueño de la herramienta, que el sistema se crea sola.
+Antes la autorización era de a uno y a mano, con un plazo propio de tres meses.
+Eso dejaba fuera a clientes al día que sí habían contratado el paquete, y
+obligaba al administrador a renovar de a uno algo que el pago ya dice.
+
+El administrador conserva el control: puede REVOCAR una llave (activa = false) y
+esa decisión manda por encima del contrato, y puede otorgarla a mano —con plazo
+de hasta tres meses— a quien no tiene suscripción, que es el caso del equipo
+interno. La llave del dueño de la herramienta no caduca nunca.
+
+Cada intento queda en la bitácora igual, y la llave se sigue atando a UNA
+máquina: el contrato dice quién puede, no desde dónde.
 
 El endpoint que consulta el marcador (`/permiso`) es el único sin sesión: corre
 en el portal del SRI, otro origen, sin cookies ni token del usuario. Por eso va
@@ -36,9 +44,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+import orgs
 from auth import get_current_user
 from database import get_supabase_client
-from routers.access import es_super_admin
+from routers.access import es_super_admin, suscripcion
 from services.activity import registrar
 
 router = APIRouter(prefix="/api/bajadores", tags=["bajadores"])
@@ -174,6 +183,32 @@ def _dias_restantes(llave: dict) -> Optional[int]:
     return (fin - datetime.now(timezone.utc)).days
 
 
+def _contrato_al_dia(user_id: str) -> Tuple[bool, Optional[str]]:
+    """¿El servicio de esta persona está vigente? (sí/no, motivo del no).
+
+    Es lo que decide quién puede usar los bajadores. Se mira la suscripción que
+    le corresponde: la de su EMPRESA si la tiene contratada, y si no la suya.
+
+    El administrador de la plataforma pasa siempre. Quien no tiene ninguna
+    suscripción registrada también —es el equipo interno, que nunca tuvo uno—:
+    a ellos los sigue gobernando la llave que el administrador les dé a mano."""
+    try:
+        if es_super_admin(user_id):
+            return True, None
+        # Sin sesión (el marcador llama desde el portal del SRI) no hay empresa
+        # activa en el contexto: se resuelve acá la que le toca a esta persona.
+        org_id = orgs.org_activa() or orgs.resolver_org(user_id, None, False)
+        sub = suscripcion(user_id, org_id)
+        if sub.get("vigente", True):
+            return True, None
+        return False, ("suspendido" if sub.get("estado") == "suspendido" else "vencido")
+    except Exception as e:
+        # Ante un fallo al consultar NO se corta el trabajo de quien sí paga:
+        # el resto de candados (llave activa, equipo, plazo) sigue en pie.
+        print(f"[bajadores] no se pudo comprobar el contrato de {user_id}: {e}")
+        return True, None
+
+
 def _apto(sb, user_id: str, cual: str) -> Optional[dict]:
     """La llave vigente de esta persona para ese bajador, si la tiene."""
     return _apto_con_motivo(sb, user_id, cual)[0]
@@ -278,6 +313,19 @@ async def permiso(body: PermisoIn, request: Request):
             "detalle": "Tu permiso no cubre este bajador.",
         }, headers=CORS_ABIERTO)
 
+    # El bajador va con el servicio: si el plan venció o quedó suspendido, se
+    # apaga solo. Nadie tiene que acordarse de revocarlo al dejar de cobrar.
+    al_dia, motivo_contrato = _contrato_al_dia(llave["user_id"])
+    if not al_dia:
+        _anotar_uso(sb, llave=llave, resultado="sin_contrato", cuerpo=body, ip=ip)
+        return JSONResponse({
+            "ok": False, "motivo": "sin_contrato",
+            "detalle": ("Tu plan está suspendido." if motivo_contrato == "suspendido"
+                        else "Tu plan venció.")
+                       + " Los bajadores vuelven a funcionar en cuanto se registre el pago; "
+                         "no hace falta volver a bajar el marcador.",
+        }, headers=CORS_ABIERTO)
+
     equipo = (llave.get("dispositivo") or "").strip()
     if not equipo:
         # Primera vez: la llave se ata a ESTA máquina. Es el momento en que
@@ -318,8 +366,9 @@ def _llave_con_motivo(user_id: str, cual: str) -> Tuple[Optional[dict], Optional
     """La llave vigente de esta persona para ese uso, y si no, por qué no.
 
     Al administrador de la plataforma se le crea sola —es el dueño de la
-    herramienta, y la suya no caduca—; el resto necesita que se la habiliten uno
-    por uno y por un plazo."""
+    herramienta, y la suya no caduca—. Para el resto, aquí solo se MIRA lo que
+    ya existe: quién tiene derecho a una llave nueva lo decide el contrato, en
+    `mi_llave`."""
     if cual not in CUALES:
         raise HTTPException(status_code=400, detail=f"Bajador inválido: {sorted(CUALES)}")
     sb = get_supabase_client()
@@ -360,18 +409,69 @@ def requiere_llave(cual: str, que: str = "los bajadores del SRI"):
     return _dep
 
 
+def _llave_por_contrato(user_id: str) -> Optional[dict]:
+    """Crea la llave de quien tiene el servicio al día y todavía no la tenía.
+
+    Los bajadores van con el servicio contratado, así que pedirla es un trámite
+    que no aporta nada: se crea sola la primera vez que la persona abre el panel.
+    Nace SIN plazo propio (`vence_at` nulo) a propósito: la vigencia la pone el
+    contrato, que se comprueba en cada uso, y un plazo suelto solo conseguiría
+    cortarle el trabajo a alguien que está pagando."""
+    sb = get_supabase_client()
+    try:
+        creada = sb.table("bajadores_llaves").insert({
+            "user_id": user_id, "cual": "todos", "llave": _llave_nueva(),
+            "nota": "Alta automática: incluido en el servicio contratado",
+            "vence_at": None,
+        }).execute().data
+    except Exception as e:
+        print(f"[bajadores] no se pudo crear la llave de {user_id}: {e}")
+        return None
+    registrar(actor_user_id=user_id, action="create", module="admin",
+              entity="Permiso de bajadores (automático por contrato)")
+    return creada[0] if creada else None
+
+
 @router.get("/mi-llave")
 async def mi_llave(cual: str = "todos", user_id: str = Depends(get_current_user)):
-    """La llave de quien está usando el sistema, para incrustarla en su marcador."""
-    llave, motivo = _llave_con_motivo(user_id, cual)
+    """La llave de quien está usando el sistema, para incrustarla en su marcador.
+
+    Si tiene el servicio al día y aún no tiene llave, se le crea en el momento:
+    el bajador viene con lo contratado."""
+    llave, _motivo = _llave_con_motivo(user_id, cual)
     if not llave:
-        if motivo == "vencida":
+        sb = get_supabase_client()
+        previas = [f for f in (sb.table("bajadores_llaves").select("*")
+                               .eq("user_id", user_id).execute().data or [])
+                   if f.get("cual") in (cual, "todos")]
+        # Una llave dada de baja A MANO manda por encima del contrato: si el
+        # administrador cortó a esta persona, pagar no la devuelve sola.
+        if any(not f.get("activa") for f in previas):
             raise HTTPException(status_code=403, detail=(
-                "Tu autorización para usar los bajadores del SRI venció. Pedile al "
-                "administrador que te la renueve."))
+                "Tu permiso para usar los bajadores del SRI fue dado de baja. "
+                "Pídele al administrador que te habilite de nuevo."))
+
+        al_dia, motivo_contrato = _contrato_al_dia(user_id)
+        if not al_dia:
+            raise HTTPException(status_code=403, detail=(
+                ("Tu plan está suspendido." if motivo_contrato == "suspendido"
+                 else "Tu plan venció.")
+                + " Los bajadores del SRI vuelven a habilitarse en cuanto se registre el pago."))
+
+        if previas:
+            # Tenía llave con plazo propio ya caducado, pero su servicio está al
+            # día: manda el contrato y se le devuelve la vigencia sin que tenga
+            # que volver a bajar el marcador.
+            vieja = previas[0]
+            sb.table("bajadores_llaves").update({
+                "vence_at": None, "updated_at": _ahora(),
+            }).eq("id", vieja["id"]).execute()
+            llave = {**vieja, "vence_at": None}
+        else:
+            llave = _llave_por_contrato(user_id)
+    if not llave:
         raise HTTPException(status_code=403, detail=(
-            "No estás autorizado a usar los bajadores del SRI. La autorización se da "
-            "de a uno, desde el sistema."))
+            "No se pudo habilitar el bajador para tu cuenta. Avisa al administrador."))
     return {
         "llave": llave["llave"],
         "cual": llave["cual"],
