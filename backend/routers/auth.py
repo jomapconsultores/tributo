@@ -87,7 +87,19 @@ def _es_admin(user_id: str) -> bool:
 
 
 def _control_ip(user_id: str, ip: str):
-    """Permite máximo N IPs por usuario. Lanza 403 si se supera."""
+    """Anota desde dónde entra cada persona. Ya NO limita cuántos equipos usa.
+
+    El tope de 3 IPs partía de una idea razonable —que una cuenta no se preste—
+    pero castigaba el uso normal: una IP doméstica cambia sola cada vez que el
+    router se reinicia, y entre la casa, la oficina y el teléfono con datos, tres
+    se agotan en una semana sin que nadie haya prestado nada. Lo que se veía del
+    otro lado era «Límite de 3 dispositivos alcanzado» sin haber hecho nada
+    raro, y del lado del administrador, restablecer IPs de a uno.
+
+    Queda el REGISTRO, que es lo que de verdad servía: saber desde dónde entra
+    cada uno y cuándo fue la última vez. Si alguna vez hace falta volver a
+    limitar, `max_ips_por_usuario` en config.py sigue ahí: con un valor mayor
+    que cero, esta función vuelve a cortar."""
     if _es_admin(user_id):
         return
     sb = get_supabase_client()
@@ -96,10 +108,12 @@ def _control_ip(user_id: str, ip: str):
     if ip in ips:
         sb.table("user_ips").update({"last_seen": "now()"}).eq("user_id", user_id).eq("ip", ip).execute()
         return
-    if len(ips) >= settings.max_ips_por_usuario:
+
+    tope = int(getattr(settings, "max_ips_por_usuario", 0) or 0)
+    if tope > 0 and len(ips) >= tope:
         raise HTTPException(
             status_code=403,
-            detail=f"Límite de {settings.max_ips_por_usuario} dispositivos/IP alcanzado. "
+            detail=f"Límite de {tope} dispositivos/IP alcanzado. "
                    f"Contacta al administrador para restablecer tus accesos.",
         )
     sb.table("user_ips").insert({"user_id": user_id, "ip": ip}).execute()

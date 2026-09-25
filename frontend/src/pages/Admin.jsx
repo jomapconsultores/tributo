@@ -223,7 +223,9 @@ export default function Admin() {
   }
 
   const resetIps = async (uid) => {
-    if (!window.confirm('¿Borrar las IPs registradas de este usuario? Podrá iniciar sesión desde nuevos dispositivos.')) return
+    if (!window.confirm('¿Borrar el registro de equipos desde los que ha entrado este usuario?\n\n'
+      + 'Ya no hace falta para que pueda entrar —el límite de dispositivos se quitó—; '
+      + 'solo limpia el historial de accesos.')) return
     setBusy(true)
     try { await adminAPI.resetIps(uid); await load(); alert('✔ IPs restablecidas.') }
     catch (e) { alert('Error: ' + (e.response?.data?.detail || e.message)) } finally { setBusy(false) }
@@ -366,7 +368,11 @@ export default function Admin() {
                   <tr key={u.user_id} className={venc ? 'vencida' : ''}>
                     <td>
                       <div className="adm-email">{u.email}</div>
-                      <div className="adm-meta">Rol activo: {ROL_LBL[u.role] || '👤 Cliente'} · alta {u.created_at}{venc ? ' · ⚠ vencida' : ''} · IPs {u.ips ?? 0}/3</div>
+                      {/* El «/3» se fue con el tope: ya no se corta a nadie por
+                          entrar desde varios equipos. El número se queda porque
+                          sigue diciendo algo —desde cuántos sitios entra esta
+                          cuenta—, pero ya no es una cuota. */}
+                      <div className="adm-meta">Rol activo: {ROL_LBL[u.role] || '👤 Cliente'} · alta {u.created_at}{venc ? ' · ⚠ vencida' : ''} · equipos {u.ips ?? 0}</div>
                       {/* De dónde salen sus permisos. Sin esto, el administrador
                           marcaba casillas aquí para un miembro de empresa y no
                           pasaba nada: el sistema lee las de su membresía. */}
@@ -456,7 +462,7 @@ export default function Admin() {
                       </button>
                       <button className="adm-btn" disabled={u.role === 'admin'} title="Contribuyentes que puede ver/trabajar" onClick={() => navigate(`/admin/acceso-clientes?uid=${u.user_id}`)}>🔐 Permisos</button>
                       <button className="adm-btn pay" disabled={busy || u.role === 'admin'} onClick={() => registrarPago(u.user_id)}>💵 Pago</button>
-                      <button className="adm-btn" disabled={busy || u.role === 'admin'} title="Restablecer IPs" onClick={() => resetIps(u.user_id)}>🔓 IPs</button>
+                      <button className="adm-btn" disabled={busy || u.role === 'admin'} title="Borrar el historial de equipos desde los que entró" onClick={() => resetIps(u.user_id)}>🔓 Equipos</button>
                       <button className="adm-btn" disabled={busy} title="Olvidó su clave: genera una clave temporal de un solo uso" onClick={() => resetClave(u)}>🔑 Clave</button>
                       <button className="adm-btn danger" disabled={busy || u.role === 'admin' || u.user_id === MI_UID} title="Eliminar usuario" onClick={() => eliminarUsuario(u)}>🗑</button>
                     </td>

@@ -16,7 +16,12 @@ class Settings(BaseSettings):
     # — en producción hay que ponerle el dominio real del backend en Coolify.
     allowed_hosts: str = "*"
     environment: str = "development"
-    max_ips_por_usuario: int = 3
+    # Tope de equipos/IP desde los que puede entrar una misma cuenta.
+    # 0 = SIN LÍMITE, que es como está: el tope de 3 cortaba a gente que no
+    # había hecho nada raro (una IP doméstica cambia sola al reiniciar el
+    # router). Se sigue registrando desde dónde entra cada uno; para volver a
+    # limitar, basta con poner aquí un número mayor que cero.
+    max_ips_por_usuario: int = 0
 
     class Config:
         env_file = ".env"
