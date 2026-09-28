@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from auth import get_current_user
-from database import get_supabase_client, fetch_all
+from database import get_supabase_client, get_supabase_client_aislado, fetch_all
 from services.email_sender import enviar_correo, email_configurado
 
 DESTINO_ODOO = "johannanievecela@hotmail.com"
@@ -135,9 +135,14 @@ def _neto(oficial, descuento):
     return round(float(oficial or 0) * (1 - float(descuento or 0) / 100.0), 2)
 
 
-def _fetch_in_chunks(sb, table, select, col, ids, chunk=200):
+def _fetch_in_chunks(sb, table, select, col, ids, chunk=100):
     """fetch_all con filtro IN troceado: evita URLs gigantes cuando el rol ve
-    muchos contribuyentes (p.ej. el administrador, que ve a todos)."""
+    muchos contribuyentes (p.ej. el administrador, que ve a todos).
+
+    El trozo bajó de 200 a 100: cada id es un UUID de 36 caracteres, así que
+    200 dejaban una query string de ~7 KB. Sumadas las de varias consultas en
+    vuelo, son justo las cabeceras grandes con las que el proxy corta la
+    conexión (ver `_ERRORES_CONEXION` en database.py)."""
     out = []
     for i in range(0, len(ids), chunk):
         trozo = ids[i:i + chunk]
@@ -220,11 +225,16 @@ def _filas_y_total(user_id, mes: Optional[int] = None, anio: Optional[int] = Non
 
     serv_por_ruc = {}
 
-    # Parallelizar las 4 consultas independientes entre sí
+    # Las consultas son independientes entre sí, así que van en paralelo. Cada
+    # una con su PROPIO cliente (get_supabase_client_aislado): compartiendo el
+    # cacheado, las cinco viajaban multiplexadas sobre una sola conexión HTTP/2
+    # y el proxy la cortaba con GOAWAY, tumbando la pantalla entera con
+    # «RemoteProtocolError». Ver la nota en database.py.
     def _q_servicios():
         if not all_ids:
             return []
-        rows = _fetch_in_chunks(sb, "client_services", "client_id,service,active", "client_id", all_ids)
+        rows = _fetch_in_chunks(get_supabase_client_aislado(), "client_services",
+                                "client_id,service,active", "client_id", all_ids)
         return [r for r in rows if r.get("active")]
 
     # Declaraciones/anexos por CLIENTE visible (propio o compartido), no por quién
@@ -232,28 +242,33 @@ def _filas_y_total(user_id, mes: Optional[int] = None, anio: Optional[int] = Non
     def _q_anexos():
         if not all_ids:
             return []
-        return _fetch_in_chunks(sb, "anexos", "client_id,created_at", "client_id", all_ids)
+        return _fetch_in_chunks(get_supabase_client_aislado(), "anexos",
+                                "client_id,created_at", "client_id", all_ids)
 
     def _q_decls():
         if not all_ids:
             return []
-        return _fetch_in_chunks(sb, "declaraciones",
+        return _fetch_in_chunks(get_supabase_client_aislado(), "declaraciones",
                                 "client_id,tipo,created_at,presentada_sri,presentada_sri_at",
                                 "client_id", all_ids)
 
     def _q_guardados():
-        return fetch_all(lambda: sb.table("reportes_honorarios").select(
+        sbp = get_supabase_client_aislado()
+        return fetch_all(lambda: sbp.table("reportes_honorarios").select(
             "identificacion,producto,cobrar,valor,precio_oficial,descuento,iva_incluido,mes,anio").eq("user_id", user_id))
 
     # Lo que alguien marcó A MANO como hecho (o como no hecho) en este período.
     # Manda sobre lo deducido: el trabajo que se hizo fuera del sistema —o antes
     # de usarlo— no deja rastro que deducir, y quedaba faltante para siempre.
     def _q_trabajo():
-        return fetch_all(lambda: sb.table("reportes_trabajo").select(
+        sbp = get_supabase_client_aislado()
+        return fetch_all(lambda: sbp.table("reportes_trabajo").select(
             "identificacion,producto,realizado,nota,updated_at"
         ).eq("user_id", user_id).eq("mes", cur_mes).eq("anio", cur_anio))
 
-    with ThreadPoolExecutor(max_workers=5) as ex:
+    # 3 y no 5: aunque cada una lleve su conexión, lanzarlas todas de golpe
+    # vuelve a darle al proxy el pico de tráfico que no aguanta.
+    with ThreadPoolExecutor(max_workers=3) as ex:
         f_trabajo = ex.submit(_q_trabajo)
         f_svc = ex.submit(_q_servicios)
         f_anx = ex.submit(_q_anexos)
@@ -924,32 +939,38 @@ async def informe_general(mes: Optional[int] = None, anio: Optional[int] = None,
                 "rol": rol, "ve_valores": ve_valores, "filas": [],
                 "sin_contribuyente": [], "totales": {}}
 
+    # Cada consulta con su PROPIA conexión: ver la nota del otro bloque
+    # paralelo de este archivo y `_ERRORES_CONEXION` en database.py. Este
+    # informe era el que más se caía —`activity_log` es la tabla más grande—.
     def _q_actividad():
         rows = _fetch_in_chunks(
-            sb, "activity_log",
+            get_supabase_client_aislado(), "activity_log",
             "action,module,entity,client_id,identificacion,contribuyente,cantidad,actor_email,occurred_at",
             "client_id", ids)
         return [r for r in rows if ini <= str(r.get("occurred_at") or "") < fin]
 
     def _q_decls():
-        rows = _fetch_in_chunks(sb, "declaraciones", "client_id,tipo,created_at", "client_id", ids)
+        rows = _fetch_in_chunks(get_supabase_client_aislado(), "declaraciones",
+                                "client_id,tipo,created_at", "client_id", ids)
         return [r for r in rows if ini <= str(r.get("created_at") or "") < fin]
 
     def _q_anexos():
-        rows = _fetch_in_chunks(sb, "anexos", "client_id,created_at", "client_id", ids)
+        rows = _fetch_in_chunks(get_supabase_client_aislado(), "anexos",
+                                "client_id,created_at", "client_id", ids)
         return [r for r in rows if ini <= str(r.get("created_at") or "") < fin]
 
     def _q_devol():
         return _fetch_in_chunks(
-            sb, "devoluciones_iva_solicitudes",
+            get_supabase_client_aislado(), "devoluciones_iva_solicitudes",
             "client_id,mes,anio,estado,monto_solicitado,comprobantes_enviados,"
             "monto_enviado,presentada_at,fecha_carga_sri", "client_id", ids)
 
     def _q_honorarios():
-        return fetch_all(lambda: sb.table("reportes_honorarios").select(
+        sbp = get_supabase_client_aislado()
+        return fetch_all(lambda: sbp.table("reportes_honorarios").select(
             "identificacion,producto,cobrar,valor,iva_incluido,mes,anio").eq("user_id", user_id))
 
-    with ThreadPoolExecutor(max_workers=5) as ex:
+    with ThreadPoolExecutor(max_workers=3) as ex:
         f_act, f_dec = ex.submit(_q_actividad), ex.submit(_q_decls)
         f_anx, f_dev = ex.submit(_q_anexos), ex.submit(_q_devol)
         f_hon = ex.submit(_q_honorarios) if ve_valores else None

@@ -15,7 +15,23 @@ def get_supabase_client_anon() -> Client:
     return create_client(settings.supabase_url, settings.supabase_anon_key)
 
 
+def get_supabase_client_aislado() -> Client:
+    """Cliente NUEVO, con su propio pool de conexiones. Para los trabajos en
+    paralelo (ThreadPoolExecutor).
+
+    El cliente de `get_supabase_client()` está cacheado: hay UNO para toda la
+    app, así que varios hilos consultando a la vez multiplexan sus peticiones
+    sobre la MISMA conexión HTTP/2. Ahí es donde el proxy corta con GOAWAY y
+    todas caen juntas —y el reintento las vuelve a amontonar en la conexión
+    siguiente—. Con un cliente por hilo, cada consulta va por su conexión y
+    deja de arrastrar a las demás.
+
+    No se cachea a propósito: quien lo pide quiere una conexión aparte."""
+    return create_client(settings.supabase_url, settings.supabase_service_key)
+
+
 import time as _time
+import random as _random
 
 # Errores de CONEXIÓN (no de datos) al hablar con Supabase. El proxy que tiene
 # delante multiplexa las peticiones sobre una sola conexión HTTP/2 y, cuando se
@@ -34,19 +50,25 @@ def _es_error_de_conexion(e: Exception) -> bool:
     return any(s in m for s in _ERRORES_CONEXION)
 
 
-def _ejecutar_con_reintento(consulta, intentos: int = 3):
+def _ejecutar_con_reintento(consulta, intentos: int = 5):
     """Ejecuta una consulta de LECTURA reintentando los cortes de conexión.
 
     Solo se usa desde fetch_all/fetch_in, que son de solo lectura: reintentar es
     seguro porque un GET repetido no cambia nada. Un error de datos (columna
-    inexistente, permisos) NO se reintenta: se propaga tal cual."""
+    inexistente, permisos) NO se reintenta: se propaga tal cual.
+
+    La espera crece (0,2 · 0,4 · 0,8 · 1,6 s) y lleva algo de azar. Antes eran
+    tres intentos separados por 0,15 y 0,3 s: cuando el corte venía de varias
+    consultas amontonadas, los tres caían dentro del mismo atasco y el error
+    llegaba igual a la pantalla. Y sin el azar, dos hilos que fallan juntos
+    reintentan juntos, que es justo lo que hay que evitar."""
     for intento in range(intentos):
         try:
             return consulta().execute()
         except Exception as e:
             if intento == intentos - 1 or not _es_error_de_conexion(e):
                 raise
-            _time.sleep(0.15 * (intento + 1))
+            _time.sleep((0.2 * (2 ** intento)) * (1 + _random.random() * 0.25))
 
 
 def fetch_all(query_factory, chunk: int = 1000):

@@ -101,6 +101,10 @@ class FakeSB:
 
 import database
 database.get_supabase_client = lambda: FakeSB()
+# El bloque paralelo de reportes.py pide un cliente CON SU PROPIA conexión
+# (get_supabase_client_aislado) para que el proxy no corte las consultas
+# amontonadas. En la prueba tiene que devolver la misma tabla en memoria.
+database.get_supabase_client_aislado = lambda: FakeSB()
 import tenancy
 tenancy.visible_clients = lambda user_id, cols="*": [dict(c) for c in CLIENTES]
 
@@ -108,6 +112,7 @@ from routers import reportes, facturar, odoo_factura
 from services import contabilidad_map
 
 reportes.get_supabase_client = lambda: FakeSB()
+reportes.get_supabase_client_aislado = lambda: FakeSB()
 facturar.get_supabase_client = lambda: FakeSB()
 
 
