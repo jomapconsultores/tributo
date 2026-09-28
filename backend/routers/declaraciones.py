@@ -721,6 +721,144 @@ async def estado_cliente(client_id: str = Query(...), user_id: str = Depends(get
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/matriz")
+async def matriz_declaraciones(meses: int = Query(6, ge=1, le=24),
+                               user_id: str = Depends(get_current_user)):
+    """Estado de declaración de TODOS los períodos, no solo del último.
+
+    /pendientes se queda con el (año, mes) más alto de cada contribuyente, así
+    que un mes viejo sin marcar es INVISIBLE: no hay pantalla donde verlo y, por
+    lo tanto, tampoco dónde marcarlo. Eso obligaba a reconstruir a mano los
+    meses atrasados. Acá va el cuadro completo: una fila por contribuyente y
+    tipo, una columna por mes, y en cada celda el client_id con el que marcarla.
+
+    Estados de una celda:
+      · presentada — subida al SRI (presentada_sri).
+      · guardada   — hay declaración calculada, pero sin confirmar la subida.
+      · falta      — el período existe y el tipo se espera, pero no hay nada.
+      · na         — ese mes no tiene período abierto (nada que declarar acá).
+    Un contribuyente semestral solo tiene período en su mes ancla (junio y
+    diciembre); el resto de sus celdas son `na` a propósito.
+    """
+    try:
+        supabase = get_supabase_client()
+
+        mods = set(modulos_de(user_id))
+        puede_iva = "declaraciones" in mods and puede_submodulo(user_id, "decl_iva")
+        puede_ice = "declaraciones" in mods and puede_submodulo(user_id, "decl_ice")
+        puede_103 = "agente_retencion" in mods and puede_submodulo(user_id, "agret_103")
+        if not (puede_iva or puede_ice or puede_103):
+            return {"periodos": [], "filas": []}
+
+        clientes = visible_clients(
+            user_id, "id,identificacion,nombre,periodo_mes,periodo_anio,"
+                     "es_agente_retencion,periodicidad,created_at")
+        clientes = [c for c in clientes
+                    if c.get("periodo_mes") is not None and c.get("periodo_anio") is not None
+                    and (c.get("identificacion") or "").strip()]
+        if not clientes:
+            return {"periodos": [], "filas": []}
+
+        # Ventana de meses: los `meses` más recientes que existan, no los
+        # anteriores a hoy. Si el último cierre cargado es agosto, la pantalla
+        # abre en agosto y no en un mes en blanco.
+        todas = sorted({(c["periodo_anio"], c["periodo_mes"]) for c in clientes}, reverse=True)
+        ventana = sorted(todas[:meses])
+        en_ventana = set(ventana)
+
+        # Servicios contratados: activos en CUALQUIER período del contribuyente
+        # (al abrir un mes nuevo no se copian, pueden haber quedado en uno viejo).
+        # Mismo criterio que /pendientes, para que las dos pantallas coincidan.
+        id_to_ident = {c["id"]: (c.get("identificacion") or "").strip() for c in clientes}
+        svc_rows = fetch_in(
+            lambda: supabase.table("client_services").select("client_id,service").eq("active", True),
+            list(id_to_ident.keys()), "client_id")
+        svc_by_ident = {}
+        for r in svc_rows:
+            ident = id_to_ident.get(r.get("client_id"))
+            if ident:
+                svc_by_ident.setdefault(ident, set()).add(r.get("service"))
+
+        # Filas de cliente de la ventana, agrupadas por (identificación, período).
+        # Puede haber MÁS DE UNA: el mismo mes abierto dos veces por dos usuarios
+        # distintos. No se elige al azar —se prefiere la que ya tiene declaración
+        # del tipo, y el duplicado se avisa para que se pueda depurar—.
+        por_ident = {}
+        celdas_cli = {}
+        for c in clientes:
+            clave = (c["periodo_anio"], c["periodo_mes"])
+            if clave not in en_ventana:
+                continue
+            ident = (c.get("identificacion") or "").strip()
+            info = por_ident.setdefault(ident, {
+                "identificacion": ident, "nombre": c.get("nombre") or "",
+                "periodicidad": c.get("periodicidad") or "mensual",
+                "es_agente": False,
+            })
+            celdas_cli.setdefault((ident, clave), []).append(c)
+        # El agente de retención se marca en cualquier período, no solo en los
+        # de la ventana: si se marcó en mayo, en agosto sigue siéndolo.
+        for c in clientes:
+            ident = (c.get("identificacion") or "").strip()
+            if c.get("es_agente_retencion") and ident in por_ident:
+                por_ident[ident]["es_agente"] = True
+
+        cids_ventana = [c["id"] for lst in celdas_cli.values() for c in lst]
+        decl_rows = fetch_in(
+            lambda: supabase.table("declaraciones").select("client_id,tipo,presentada_sri"),
+            cids_ventana, "client_id")
+        decl = {}
+        for r in decl_rows:
+            k = (r.get("client_id"), (r.get("tipo") or "").upper())
+            # Si hay varias del mismo tipo, manda la presentada.
+            decl[k] = decl.get(k, False) or bool(r.get("presentada_sri"))
+
+        periodos = [{"anio": a, "mes": m, "clave": f"{a}-{m:02d}"} for a, m in ventana]
+        filas = []
+        for ident, info in por_ident.items():
+            svcs = svc_by_ident.get(ident, set())
+            tipos = []
+            if puede_iva and "declaracion_iva" in svcs:
+                tipos.append("IVA")
+            if puede_103 and info["es_agente"]:
+                tipos.append("103")
+            if puede_ice and "declaracion_ice" in svcs:
+                tipos.append("ICE")
+            for tipo in tipos:
+                celdas = {}
+                for a, m in ventana:
+                    lst = celdas_cli.get((ident, (a, m)))
+                    if not lst:
+                        celdas[f"{a}-{m:02d}"] = {"estado": "na"}
+                        continue
+                    # Preferir la fila que YA tiene declaración de este tipo; si
+                    # ninguna la tiene, la más antigua (la que se abrió primero).
+                    con_decl = [c for c in lst if (c["id"], tipo) in decl]
+                    if con_decl:
+                        # Entre las que tienen declaración, la presentada manda.
+                        elegida = sorted(con_decl, key=lambda c: not decl[(c["id"], tipo)])[0]
+                    else:
+                        elegida = sorted(lst, key=lambda c: c.get("created_at") or "")[0]
+                    if (elegida["id"], tipo) in decl:
+                        estado = "presentada" if decl[(elegida["id"], tipo)] else "guardada"
+                    else:
+                        estado = "falta"
+                    celdas[f"{a}-{m:02d}"] = {
+                        "estado": estado,
+                        "client_id": elegida["id"],
+                        **({"duplicado": len(lst)} if len(lst) > 1 else {}),
+                    }
+                filas.append({
+                    "identificacion": ident, "nombre": info["nombre"], "tipo": tipo,
+                    "periodicidad": info["periodicidad"], "celdas": celdas,
+                })
+
+        filas.sort(key=lambda f: ((f["nombre"] or "").upper(), f["tipo"]))
+        return {"periodos": periodos, "filas": filas}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class OverridesIn(BaseModel):
     client_id: str
     tipo: Optional[str] = "IVA"

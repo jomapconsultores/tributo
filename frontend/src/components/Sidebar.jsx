@@ -172,7 +172,13 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         color: 'declaraciones',
         visible: (has('declaraciones') || has('agente_retencion')) && hasSub('decl_pendientes'),
         autoNav: true,
-        items: [L('⏳', 'Clientes pendientes', '/clientes-pendientes')],
+        // Dos vistas del mismo trabajo: el mes en curso y el histórico. La
+        // segunda existe porque la primera solo mira el período más reciente,
+        // y los meses atrasados no se veían —ni se podían marcar— en ningún lado.
+        items: [
+          L('⏳', 'Clientes pendientes', '/clientes-pendientes'),
+          L('🗓️', 'Estado de declaraciones', '/estado-declaraciones'),
+        ],
       },
       {
         key: 'devoluciones', ico: '💰', rail: 'Devoluciones IVA', title: 'Devoluciones IVA',

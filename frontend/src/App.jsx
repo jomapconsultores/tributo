@@ -32,6 +32,7 @@ const IngresosIva              = lazy(() => import('./pages/IngresosIva'))
 const RecursosICE              = lazy(() => import('./pages/RecursosICE'))
 const Declaraciones            = lazy(() => import('./pages/Declaraciones'))
 const ClientesPendientes       = lazy(() => import('./pages/ClientesPendientes'))
+const MatrizDeclaraciones      = lazy(() => import('./pages/MatrizDeclaraciones'))
 const DevolucionesIvaTerceraEdad = lazy(() => import('./pages/DevolucionesIvaTerceraEdad'))
 const CatalogoProductos        = lazy(() => import('./pages/CatalogoProductos'))
 const Compradores              = lazy(() => import('./pages/Compradores'))
@@ -304,6 +305,7 @@ function App() {
               <Route path="/devoluciones-iva/tercera-edad" element={<RequireSubmodule modulo="declaraciones" sub="decl_devoluciones"><DevolucionesIvaTerceraEdad beneficiario="tercera_edad" /></RequireSubmodule>} />
               <Route path="/devoluciones-iva/discapacidad" element={<RequireSubmodule modulo="declaraciones" sub="decl_devoluciones"><DevolucionesIvaTerceraEdad beneficiario="discapacidad" /></RequireSubmodule>} />
               <Route path="/clientes-pendientes" element={<RequireAnyModule modulos={['declaraciones', 'agente_retencion']} sub="decl_pendientes"><ClientesPendientes /></RequireAnyModule>} />
+              <Route path="/estado-declaraciones" element={<RequireAnyModule modulos={['declaraciones', 'agente_retencion']} sub="decl_pendientes"><MatrizDeclaraciones /></RequireAnyModule>} />
               <Route path="/ingresos-iva" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_ingresos_iva"><IngresosIva /></RequireSubmodule>} />
               <Route path="/calculo-ice" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_calculo"><CalculoICE /></RequireSubmodule>} />
               <Route path="/anexo-pvp-ice" element={<RequireSubmodule modulo="ingresos_ice" sub="ice_anexo"><AnexoPVPICE /></RequireSubmodule>} />

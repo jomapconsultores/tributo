@@ -1,0 +1,296 @@
+/* Mismo lenguaje visual que Clientes pendientes: es la otra mitad del mismo
+   trabajo (esa pantalla mira el mes en curso, esta mira el histórico). */
+.mz-page {
+  padding: 20px 24px 48px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.mz-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.mz-header h1 {
+  margin: 0 0 6px;
+  font-size: 1.5rem;
+  color: #1a3d6b;
+}
+.mz-sub {
+  margin: 0;
+  color: #475569;
+  font-size: 0.9rem;
+  max-width: 720px;
+  line-height: 1.5;
+}
+
+.mz-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.mz-search {
+  flex: 1 1 240px;
+  min-width: 180px;
+  padding: 9px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+.mz-search:focus {
+  outline: none;
+  border-color: #1a3d6b;
+  box-shadow: 0 0 0 3px rgba(26, 61, 107, 0.12);
+}
+.mz-sel,
+.mz-chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #475569;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mz-sel select {
+  padding: 7px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+.mz-count {
+  color: #64748b;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.mz-count b.ok { color: #15803d; }
+.mz-count b.media { color: #b45309; }
+.mz-count b.falta { color: #b91c1c; }
+
+.mz-btn {
+  background: #fff;
+  color: #1a3d6b;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.mz-btn:hover {
+  background: #f1f5f9;
+  border-color: #1a3d6b;
+}
+.mz-btn-back {
+  background: #1a3d6b;
+  color: #fff;
+  border-color: #1a3d6b;
+}
+.mz-btn-back:hover {
+  background: #14315a;
+}
+
+.mz-error,
+.mz-aviso,
+.mz-empty {
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 0.88rem;
+  margin-bottom: 14px;
+}
+.mz-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+.mz-aviso {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  line-height: 1.5;
+}
+.mz-dup-marca {
+  color: #b45309;
+  font-weight: 700;
+}
+.mz-empty {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  color: #64748b;
+  text-align: center;
+  padding: 32px;
+}
+
+/* La tabla puede ser ancha (24 meses): scroll horizontal, con el nombre y el
+   tipo fijos a la izquierda para no perder de vista de quién es la fila. */
+.mz-tabla-wrap {
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+.mz-tabla {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  font-size: 0.85rem;
+}
+.mz-tabla thead th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  color: #1a3d6b;
+  font-weight: 700;
+  text-align: center;
+  padding: 10px 8px;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+  z-index: 2;
+}
+.mz-th-nombre {
+  text-align: left !important;
+  left: 0;
+  position: sticky;
+  z-index: 3;
+  min-width: 220px;
+}
+.mz-th-tipo {
+  left: 220px;
+  position: sticky;
+  z-index: 3;
+}
+.mz-tabla tbody tr:hover td {
+  background: #f8fafc;
+}
+.mz-tabla td {
+  padding: 8px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+.mz-nombre {
+  position: sticky;
+  left: 0;
+  background: #fff;
+  z-index: 1;
+  min-width: 220px;
+}
+.mz-nombre strong {
+  display: block;
+  color: #0f172a;
+  font-size: 0.86rem;
+  line-height: 1.3;
+}
+.mz-ruc {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.mz-sem {
+  display: inline-block;
+  margin-left: 6px;
+  background: #ede9fe;
+  color: #5b21b6;
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.mz-tipo {
+  position: sticky;
+  left: 220px;
+  background: #fff;
+  z-index: 1;
+}
+.mz-chip {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  background: #e2e8f0;
+  color: #334155;
+}
+.mz-chip-iva { background: #dbeafe; color: #1e40af; }
+.mz-chip-ice { background: #fee2e2; color: #9f1239; }
+.mz-chip-103 { background: #dcfce7; color: #166534; }
+
+.mz-celda {
+  text-align: center;
+  padding: 4px !important;
+}
+
+/* La celda ES el botón: marcar no debería costar un menú ni un modal. */
+.mz-marca {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.15s, background 0.15s;
+}
+.mz-marca:hover:not(:disabled) {
+  transform: scale(1.12);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+}
+.mz-marca:disabled {
+  cursor: default;
+}
+.mz-marca.ok {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #15803d;
+}
+.mz-marca.media {
+  background: #fef3c7;
+  border-color: #fcd34d;
+  color: #b45309;
+}
+.mz-marca.falta {
+  background: #fee2e2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+.mz-marca.na {
+  background: transparent;
+  color: #cbd5e1;
+}
+/* Período abierto más de una vez: la esquina rayada avisa sin tapar el estado. */
+.mz-marca.dup {
+  background-image: repeating-linear-gradient(
+    -45deg, rgba(180, 83, 9, 0.28) 0 3px, transparent 3px 6px);
+  background-size: 14px 14px;
+  background-repeat: no-repeat;
+  background-position: top right;
+}
+
+.mz-leyenda {
+  margin: 14px 0 0;
+  color: #64748b;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.mz-leyenda .mz-marca {
+  width: 22px;
+  height: 22px;
+  font-size: 0.8rem;
+  cursor: default;
+}
+
+@media (max-width: 720px) {
+  .mz-page { padding: 16px 12px 40px; }
+  .mz-th-nombre, .mz-nombre { min-width: 150px; }
+  .mz-th-tipo, .mz-tipo { left: 150px; }
+}

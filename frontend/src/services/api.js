@@ -493,6 +493,9 @@ export const declaracionesAPI = {
   list: (clientId, tipo) => api.get('/api/declaraciones/', { params: { client_id: clientId, tipo } }),
   // Contribuyentes con declaraciones pendientes en su período más reciente (según permisos).
   pendientes: () => api.get('/api/declaraciones/pendientes'),
+  // Cuadro mes × contribuyente de TODOS los períodos, no solo del último:
+  // los meses atrasados sin marcar no se ven en ningún otro lado.
+  matriz: (meses = 6) => api.get('/api/declaraciones/matriz', { params: { meses } }),
   // Historial completo del contribuyente (todos sus períodos/meses), por identificación.
   historial: (identificacion, tipo) => api.get('/api/declaraciones/', { params: { identificacion, tipo } }),
   // Borrador automático (server-side) del período+tipo — recuperable en cualquier dispositivo.
