@@ -3,6 +3,7 @@ import { credentialsAPI, clientsAPI } from '../services/api'
 import { useAccess } from '../context/AccessContext'
 import { infoDeclaracion, ordenarPorVencimiento } from '../utils/declaracionSRI'
 import OrdenLista from '../components/OrdenLista'
+import FiltroDeclarados from '../components/FiltroDeclarados'
 import useOrdenLista from '../hooks/useOrdenLista'
 import { filterBySearch } from '../utils/search'
 import useDeclPresentadas from '../hooks/useDeclPresentadas'
@@ -59,7 +60,7 @@ export default function AdminCredentials() {
   // hace cada contribuyente. El backend aplica la misma regla.
   const { isSuperAdmin, role } = useAccess()
   const puedeVerClaves = isSuperAdmin || ['admin', 'socio', 'trabajador'].includes(role)
-  const { estaPresentada } = useDeclPresentadas()
+  const { estaPresentada, nuncaDeclaro } = useDeclPresentadas()
   const [creds, setCreds] = useState([])
   const [contribs, setContribs] = useState([])
   // Servicios contratados por RUC (compartidos por todo el contribuyente). Maneja
@@ -95,6 +96,7 @@ export default function AdminCredentials() {
   const [diaFilter, setDiaFilter] = useState(() => localStorage.getItem('admCredDiaFilter') || '')
   useEffect(() => { try { localStorage.setItem('admCredDiaFilter', diaFilter) } catch { /* ignore */ } }, [diaFilter])
   const [orden, setOrden] = useOrdenLista('admCredOrden')
+  const [declarados, setDeclarados] = useOrdenLista('admCredDeclarados', 'todas')
   const DIAS_DECL = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28]
 
   const load = async () => {
@@ -178,16 +180,23 @@ export default function AdminCredentials() {
       const matchSvc = svcFilter.length === 0 ||
         svcFilter.some((k) => c.client_services?.includes(k))
       const matchDia = !diaFilter || infoDeclaracion(c.ruc).dia === Number(diaFilter)
-      return matchSvc && matchDia
+      const matchDecl = declarados === 'todas' || (declarados === 'nunca') === nuncaDeclaro(c.ruc)
+      return matchSvc && matchDia && matchDecl
     })
     if (orden === 'vencimiento') {
       list = ordenarPorVencimiento(list, {
         cliente: (c) => c._periodo || { identificacion: c.ruc },
         presentada: (c) => estaPresentada(c.ruc),
+        nunca: (c) => nuncaDeclaro(c.ruc),
       })
     }
     return list
-  }, [allRows, search, svcFilter, diaFilter, orden, estaPresentada])
+  }, [allRows, search, svcFilter, diaFilter, orden, declarados, estaPresentada, nuncaDeclaro])
+  const cuentasDeclarados = useMemo(() => ({
+    declaran: allRows.filter((c) => !nuncaDeclaro(c.ruc)).length,
+    nunca: allRows.filter((c) => nuncaDeclaro(c.ruc)).length,
+    todas: allRows.length,
+  }), [allRows, nuncaDeclaro])
 
   const onDelete = async (cred) => {
     if (!confirm(`Eliminar credencial SRI de "${cred.nombre}" (${cred.ruc})?\n\nEsta acción no se puede deshacer.`)) return
@@ -391,6 +400,7 @@ export default function AdminCredentials() {
           <option value="">Todas</option>
           {DIAS_DECL.map((d) => <option key={d} value={d}>día {d}</option>)}
         </select>
+        <FiltroDeclarados valor={declarados} onChange={setDeclarados} cuentas={cuentasDeclarados} />
         <OrdenLista orden={orden} onChange={setOrden} />
       </div>
 
@@ -447,7 +457,7 @@ export default function AdminCredentials() {
                   </td>
                   <td className="adm-cred-decl-cell">
                     {infoDeclaracion(c.ruc).valido
-                      ? <BadgeVencimiento ruc={c.ruc} client={c._periodo} presentada={estaPresentada(c.ruc)} />
+                      ? <BadgeVencimiento ruc={c.ruc} client={c._periodo} presentada={estaPresentada(c.ruc)} nunca={nuncaDeclaro(c.ruc)} />
                       : <span className="adm-cred-dim">—</span>}
                   </td>
                   {puedeVerClaves && <td>{c.username || <span className="adm-cred-dim">{c._sinClave ? '(sin clave)' : '(usa el RUC)'}</span>}</td>}

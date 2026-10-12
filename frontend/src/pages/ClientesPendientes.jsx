@@ -8,6 +8,7 @@ import { refrescarPresentadas } from '../hooks/useDeclPresentadas'
 import { periodoLargo } from '../utils/periodo'
 import { filterBySearch } from '../utils/search'
 import OrdenLista from '../components/OrdenLista'
+import FiltroDeclarados from '../components/FiltroDeclarados'
 import useOrdenLista from '../hooks/useOrdenLista'
 import './ClientesPendientes.css'
 
@@ -25,6 +26,7 @@ export default function ClientesPendientes() {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [orden, setOrden] = useOrdenLista('cpOrden')
+  const [declarados, setDeclarados] = useOrdenLista('cpDeclarados', 'declaran')
   const [marcando, setMarcando] = useState('')  // 'client_id|tipo' que se está marcando
   // Selección para el cierre de mes en lote: claves 'client_id|tipo'.
   const [sel, setSel] = useState(() => new Set())
@@ -104,13 +106,29 @@ export default function ClientesPendientes() {
 
   // Ya vienen en orden alfabético del backend; el filtro conserva ese orden.
   // Por vencimiento: lo vencido y lo que vence antes, arriba.
+  // Quien solo tiene cálculos y nunca presentó ese tipo de declaración no es
+  // trabajo del mes: se separa por tipo (puede declarar IVA y nunca ICE).
+  const porDeclarados = useCallback((modo) => rows
+    .map((r) => {
+      const nunca = r.nunca_declarados || []
+      const pendientes = modo === 'todas' ? r.pendientes
+        : r.pendientes.filter((t) => (modo === 'nunca') === nunca.includes(t))
+      return { ...r, pendientes }
+    })
+    .filter((r) => r.pendientes.length), [rows])
+  const cuentasDeclarados = useMemo(() => ({
+    declaran: porDeclarados('declaran').length,
+    nunca: porDeclarados('nunca').length,
+    todas: rows.length,
+  }), [porDeclarados, rows])
+  const visibles = useMemo(() => porDeclarados(declarados), [porDeclarados, declarados])
   const filtradas = useMemo(() => {
-    const list = filterBySearch(rows, search, (r) => [r.nombre, r.identificacion])
+    const list = filterBySearch(visibles, search, (r) => [r.nombre, r.identificacion])
     return orden === 'vencimiento' ? ordenarPorVencimiento(list) : list
-  }, [rows, search, orden])
+  }, [visibles, search, orden])
   const totalPendientes = useMemo(
-    () => rows.reduce((s, r) => s + (r.pendientes?.length || 0), 0),
-    [rows],
+    () => visibles.reduce((s, r) => s + (r.pendientes?.length || 0), 0),
+    [visibles],
   )
 
   // Abrir una declaración concreta del contribuyente: selecciona su período y
@@ -173,9 +191,10 @@ export default function ClientesPendientes() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        <FiltroDeclarados valor={declarados} onChange={setDeclarados} cuentas={cuentasDeclarados} />
         <OrdenLista orden={orden} onChange={setOrden} />
         <span className="cp-count">
-          {rows.length} contribuyente(s) · {totalPendientes} declaración(es) pendiente(s)
+          {visibles.length} contribuyente(s) · {totalPendientes} declaración(es) pendiente(s)
         </span>
         <button className="cp-btn" onClick={cargar}>↻ Actualizar</button>
       </div>

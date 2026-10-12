@@ -36,7 +36,7 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const { has, hasSub, isSuperAdmin, role } = useAccess()
   const [clientSearch, setClientSearch] = useState('')
   const [ordenClientes, setOrdenClientes] = useOrdenLista('sbOrdenClientes')
-  const { estaPresentada } = useDeclPresentadas()
+  const { estaPresentada, nuncaDeclaro } = useDeclPresentadas()
   const [movNuevos, setMovNuevos] = useState(0)
   // Comprobantes de pago esperando que el administrador active el acceso.
   const [activPend, setActivPend] = useState(0)
@@ -98,9 +98,13 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const contribFiltrados = useMemo(() => {
     const list = filtrarClientesPorTexto(contribuyentes, clientSearch)
     return ordenClientes === 'vencimiento'
-      ? ordenarPorVencimiento(list, { cliente: (c) => c.rep, presentada: (c) => estaPresentada(c.identificacion) })
+      ? ordenarPorVencimiento(list, {
+        cliente: (c) => c.rep,
+        presentada: (c) => estaPresentada(c.identificacion),
+        nunca: (c) => nuncaDeclaro(c.identificacion),
+      })
       : list
-  }, [contribuyentes, clientSearch, ordenClientes, estaPresentada])
+  }, [contribuyentes, clientSearch, ordenClientes, estaPresentada, nuncaDeclaro])
 
   const verContribuyente = (ident) => {
     setFocusIdent(ident)

@@ -5,6 +5,7 @@ import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import useDeclPresentadas from '../hooks/useDeclPresentadas'
 import BadgeVencimiento from './BadgeVencimiento'
 import OrdenLista from './OrdenLista'
+import FiltroDeclarados from './FiltroDeclarados'
 import useOrdenLista from '../hooks/useOrdenLista'
 import { ordenarPorVencimiento } from '../utils/declaracionSRI'
 import './ClientPickerScreen.css'
@@ -27,9 +28,11 @@ const avatarColor = (nombre) => {
 
 export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, onNewClient, svcLabel, hint }) {
   const { clients, selectClient } = useClients()
-  const { estaPresentada } = useDeclPresentadas()
+  const { estaPresentada, nuncaDeclaro } = useDeclPresentadas()
   const [search, setSearch] = useState('')
   const [orden, setOrden] = useOrdenLista('cpsOrden')
+  // Acá se trabaja también con quien solo tiene cálculos: por defecto se ven todos.
+  const [declarados, setDeclarados] = useOrdenLista('cpsDeclarados', 'todas')
   const [expanded, setExpanded] = useState({}) // identificacion -> mostrar sus períodos
 
   // Períodos de un contribuyente (más reciente primero) para desplegarlos y poder
@@ -41,7 +44,7 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
   // Un contribuyente puede tener varias filas (una por período). Aquí mostramos
   // UNA tarjeta por identificación: el representante es el período más reciente y
   // es el que se selecciona al hacer clic. 'periodos' cuenta cuántos tiene.
-  const visible = useMemo(() => {
+  const { items: visible, cuentas: cuentasDeclarados } = useMemo(() => {
     const base = idents_svc ? clients.filter((c) => idents_svc.has(c.identificacion)) : []
     const filtered = filtrarClientesPorTexto(base, search)
     const rank = (c) => (c.periodo_anio || 0) * 100 + (c.periodo_mes || 0)
@@ -56,10 +59,22 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
     }
     const lista = [...grupos.values()]
       .sort((a, b) => (a.rep.nombre || '').localeCompare(b.rep.nombre || ''))
-    return orden === 'vencimiento'
-      ? ordenarPorVencimiento(lista, { cliente: (g) => g.rep, presentada: (g) => estaPresentada(g.rep.identificacion) })
-      : lista
-  }, [clients, idents_svc, search, orden, estaPresentada])
+    const cuentas = {
+      declaran: lista.filter((g) => !nuncaDeclaro(g.rep.identificacion)).length,
+      nunca: lista.filter((g) => nuncaDeclaro(g.rep.identificacion)).length,
+      todas: lista.length,
+    }
+    const filtrada = declarados === 'todas' ? lista
+      : lista.filter((g) => (declarados === 'nunca') === nuncaDeclaro(g.rep.identificacion))
+    const items = orden === 'vencimiento'
+      ? ordenarPorVencimiento(filtrada, {
+        cliente: (g) => g.rep,
+        presentada: (g) => estaPresentada(g.rep.identificacion),
+        nunca: (g) => nuncaDeclaro(g.rep.identificacion),
+      })
+      : filtrada
+    return { items, cuentas }
+  }, [clients, idents_svc, search, orden, declarados, estaPresentada, nuncaDeclaro])
 
   return (
     <div className="cps-page">
@@ -110,7 +125,10 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
                   ? `${visible.length} de ${idents_svc.size} contribuyente(s)`
                   : `${idents_svc.size} contribuyente(s) habilitado(s)`}
               </span>
-              <OrdenLista orden={orden} onChange={setOrden} />
+              <span className="cps-count-ctrl">
+                <FiltroDeclarados valor={declarados} onChange={setDeclarados} cuentas={cuentasDeclarados} />
+                <OrdenLista orden={orden} onChange={setOrden} />
+              </span>
             </div>
 
             {/* Lista */}
@@ -135,7 +153,7 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
                               <span>{c.tipo_identificacion || 'RUC'}: {c.identificacion}</span>
                               <span className="cps-period">{periodoLargo(c)}</span>
                               {periodos > 1 && <span className="cps-period">· {periodos} períodos</span>}
-                              <BadgeVencimiento ruc={c.identificacion} client={c} presentada={estaPresentada(c.identificacion)} />
+                              <BadgeVencimiento ruc={c.identificacion} client={c} presentada={estaPresentada(c.identificacion)} nunca={nuncaDeclaro(c.identificacion)} />
                             </span>
                           </span>
                           <span className="cps-item-arrow">›</span>

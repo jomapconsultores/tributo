@@ -14,7 +14,17 @@ const fechaCorta = (f) =>
  *
  * Devuelve null si el RUC/identificación no permite calcular la fecha.
  */
-export default function BadgeVencimiento({ ruc, client = null, presentada = false, className = '' }) {
+export default function BadgeVencimiento({ ruc, client = null, presentada = false, nunca = false, className = '' }) {
+  // Nunca presentó una declaración (solo hay cálculos): no tiene plazo que
+  // vigilar, así que no se alarma con «vencido».
+  if (nunca) {
+    return (
+      <span className={`bvenc bvenc--nunca ${className}`.trim()} title="Nunca se ha presentado una declaración de este contribuyente: solo hay cálculos">
+        <span className="bvenc-ico" aria-hidden="true">🧮</span>
+        <span className="bvenc-txt">sin declaraciones</span>
+      </span>
+    )
+  }
   // Si la declaración de ese período ya fue presentada al SRI, no marca plazo:
   // muestra "declarada ✓" (no pendiente).
   if (presentada) {

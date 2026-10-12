@@ -5,7 +5,8 @@
   font-size: 0.78rem; cursor: pointer; white-space: nowrap; line-height: 1.4;
 }
 .ordl-btn:first-of-type { border-radius: 7px 0 0 7px; }
-.ordl-btn:last-of-type { border-radius: 0 7px 7px 0; margin-left: -1px; }
+.ordl-btn + .ordl-btn { margin-left: -1px; }
+.ordl-btn:last-of-type { border-radius: 0 7px 7px 0; }
 .ordl-btn:hover { background: #f1f5f9; }
 .ordl-btn.activo { background: #1a5276; border-color: #1a5276; color: #fff; }
 .ordl--compacto .ordl-btn { padding: 2px 6px; font-size: 0.72rem; }

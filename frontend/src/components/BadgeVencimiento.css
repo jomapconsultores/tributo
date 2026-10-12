@@ -16,6 +16,7 @@
 .bvenc-msg { font-weight: 500; opacity: 0.9; }
 
 /* Colores por nivel (mismos que el banner AlertaDeclaracion) */
+.bvenc--nunca   { background: #f1f5f9; color: #64748b; border-color: #cbd5e1; }
 .bvenc--ok      { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
 .bvenc--pronto  { background: #fffbeb; color: #92400e; border-color: #fcd34d; }
 .bvenc--hoy,

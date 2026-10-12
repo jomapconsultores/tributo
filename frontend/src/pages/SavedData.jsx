@@ -4,6 +4,7 @@ import { useClients } from '../context/ClientContext'
 import { nombreMes } from '../utils/periodo'
 import { infoDeclaracion, ordenarPorVencimiento } from '../utils/declaracionSRI'
 import OrdenLista from '../components/OrdenLista'
+import FiltroDeclarados from '../components/FiltroDeclarados'
 import useOrdenLista from '../hooks/useOrdenLista'
 import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import useDeclPresentadas from '../hooks/useDeclPresentadas'
@@ -24,7 +25,7 @@ const SD_STEPS = [
 
 export default function SavedData() {
   const { clients } = useClients()
-  const { estaPresentada } = useDeclPresentadas()
+  const { estaPresentada, nuncaDeclaro } = useDeclPresentadas()
   const idents_svc = null
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(null) // { identificacion, nombre }
@@ -36,6 +37,7 @@ export default function SavedData() {
   // Filtro/orden por fecha máxima de declaración (9no dígito del RUC)
   const [diaFilter, setDiaFilter] = useState(() => localStorage.getItem('sdDiaFilter') || '')
   const [orden, setOrden] = useOrdenLista('sdOrden')
+  const [declarados, setDeclarados] = useOrdenLista('sdDeclarados', 'todas')
   useEffect(() => { try { localStorage.setItem('sdDiaFilter', diaFilter) } catch { /* ignore */ } }, [diaFilter])
 
   // Mapa client_id → período (para mostrar el período de cada anexo)
@@ -66,11 +68,22 @@ export default function SavedData() {
   const filtered = useMemo(() => {
     let list = filtrarClientesPorTexto(contribuyentes, search)
     if (diaFilter) list = list.filter((c) => infoDeclaracion(c.identificacion).dia === Number(diaFilter))
+    if (declarados !== 'todas') {
+      list = list.filter((c) => (declarados === 'nunca') === nuncaDeclaro(c.identificacion))
+    }
     if (orden === 'vencimiento') {
-      list = ordenarPorVencimiento(list, { presentada: (c) => estaPresentada(c.identificacion) })
+      list = ordenarPorVencimiento(list, {
+        presentada: (c) => estaPresentada(c.identificacion),
+        nunca: (c) => nuncaDeclaro(c.identificacion),
+      })
     }
     return list
-  }, [contribuyentes, search, diaFilter, orden, estaPresentada])
+  }, [contribuyentes, search, diaFilter, orden, declarados, estaPresentada, nuncaDeclaro])
+  const cuentasDeclarados = useMemo(() => ({
+    declaran: contribuyentes.filter((c) => !nuncaDeclaro(c.identificacion)).length,
+    nunca: contribuyentes.filter((c) => nuncaDeclaro(c.identificacion)).length,
+    todas: contribuyentes.length,
+  }), [contribuyentes, nuncaDeclaro])
 
   const openContribuyente = async (c) => {
     setSelected(c)
@@ -144,6 +157,9 @@ export default function SavedData() {
             </select>
             <OrdenLista orden={orden} onChange={setOrden} compacto />
           </div>
+          <div className="sd-decl-filter">
+            <FiltroDeclarados valor={declarados} onChange={setDeclarados} cuentas={cuentasDeclarados} compacto />
+          </div>
           <div className="sd-list-scroll">
             {filtered.length === 0 && <div className="sd-empty">Sin contribuyentes.</div>}
             {filtered.map((c) => {
@@ -157,7 +173,7 @@ export default function SavedData() {
                   <span className="sd-li-meta">
                     {c.identificacion} · {c.periodos} período(s) · {c.num_facturas} fact.
                   </span>
-                  <span className="sd-li-decl"><BadgeVencimiento ruc={c.identificacion} presentada={estaPresentada(c.identificacion)} /></span>
+                  <span className="sd-li-decl"><BadgeVencimiento ruc={c.identificacion} presentada={estaPresentada(c.identificacion)} nunca={nuncaDeclaro(c.identificacion)} /></span>
                 </button>
               )
             })}

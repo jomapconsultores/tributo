@@ -5,6 +5,8 @@ import { useAccess, homeFor } from '../context/AccessContext'
 import { refrescarPresentadas } from '../hooks/useDeclPresentadas'
 import { MESES_CORTO } from '../utils/periodo'
 import { filterBySearch } from '../utils/search'
+import FiltroDeclarados from '../components/FiltroDeclarados'
+import useOrdenLista from '../hooks/useOrdenLista'
 import './MatrizDeclaraciones.css'
 
 // El cuadro que faltaba: mes a mes, quién presentó y quién no.
@@ -32,6 +34,8 @@ export default function MatrizDeclaraciones() {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [soloFaltantes, setSoloFaltantes] = useState(false)
+  // Filas de un tipo que nunca se presentó (solo cálculos) aparte de las que sí.
+  const [declarados, setDeclarados] = useOrdenLista('mzDeclarados', 'declaran')
   const [marcando, setMarcando] = useState('')   // 'ident|tipo|clave' en curso
 
   const cargar = useCallback(async () => {
@@ -45,19 +49,27 @@ export default function MatrizDeclaraciones() {
   }, [meses])
   useEffect(() => { cargar() }, [cargar])
 
+  const pasaDeclarados = useCallback((x, modo) => modo === 'todas' || (modo === 'nunca') === !!x.nunca_declarado, [])
+  const cuentasDeclarados = useMemo(() => ({
+    declaran: data.filas.filter((x) => pasaDeclarados(x, 'declaran')).length,
+    nunca: data.filas.filter((x) => pasaDeclarados(x, 'nunca')).length,
+    todas: data.filas.length,
+  }), [data.filas, pasaDeclarados])
+
   const filas = useMemo(() => {
     let f = filterBySearch(data.filas, search, (r) => [r.nombre, r.identificacion])
+    f = f.filter((x) => pasaDeclarados(x, declarados))
     if (soloFaltantes) {
       f = f.filter((x) => Object.values(x.celdas).some(
         (c) => c.estado === 'falta' || c.estado === 'guardada'))
     }
     return f
-  }, [data.filas, search, soloFaltantes])
+  }, [data.filas, search, soloFaltantes, declarados, pasaDeclarados])
 
   // Cuántas celdas faltan (sin contar los meses sin período abierto).
   const totales = useMemo(() => {
     let falta = 0, guardada = 0, presentada = 0, dup = 0
-    for (const f of data.filas) {
+    for (const f of data.filas.filter((x) => pasaDeclarados(x, declarados))) {
       for (const c of Object.values(f.celdas)) {
         if (c.estado === 'falta') falta++
         else if (c.estado === 'guardada') guardada++
@@ -66,7 +78,7 @@ export default function MatrizDeclaraciones() {
       }
     }
     return { falta, guardada, presentada, dup }
-  }, [data.filas])
+  }, [data.filas, declarados, pasaDeclarados])
 
   // Un clic invierte el estado de la celda. El backend crea el registro-marcador
   // si la declaración se hizo directo en el portal y nunca pasó por el sistema.
@@ -125,6 +137,7 @@ export default function MatrizDeclaraciones() {
             {[3, 6, 12, 24].map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
         </label>
+        <FiltroDeclarados valor={declarados} onChange={setDeclarados} cuentas={cuentasDeclarados} />
         <label className="mz-chk">
           <input type="checkbox" checked={soloFaltantes} onChange={(e) => setSoloFaltantes(e.target.checked)} />
           Solo con algo pendiente

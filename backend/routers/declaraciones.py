@@ -546,6 +546,25 @@ async def listar(client_id: Optional[str] = Query(None), tipo: Optional[str] = Q
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _tipos_declarados_alguna_vez(supabase, clientes) -> dict:
+    """identificación → tipos (IVA/ICE/103) presentados al SRI en CUALQUIER período.
+
+    Separa a quien ya declara de quien solo tiene cálculos (gastos clasificados,
+    cálculo previo de ICE…) sin haber presentado nunca una declaración: sin esto
+    los dos se ven igual de «pendientes» y la lista se llena de contribuyentes que
+    no se declaran desde el sistema."""
+    id_to_ident = {c["id"]: (c.get("identificacion") or "").strip() for c in clientes}
+    filas = fetch_in(
+        lambda: supabase.table("declaraciones").select("client_id,tipo").eq("presentada_sri", True),
+        list(id_to_ident.keys()), "client_id")
+    out = {}
+    for r in filas:
+        ident = id_to_ident.get(r.get("client_id"))
+        if ident:
+            out.setdefault(ident, set()).add((r.get("tipo") or "").upper())
+    return out
+
+
 def _estado_declaraciones_visibles(user_id: str):
     """Estado de declaración del PERÍODO MÁS RECIENTE de cada contribuyente visible.
 
@@ -609,6 +628,7 @@ def _estado_declaraciones_visibles(user_id: str):
         latest_ids, "client_id")
     presentadas_set = {(r.get("client_id"), (r.get("tipo") or "").upper())
                        for r in saved_rows if r.get("presentada_sri")}
+    declarados = _tipos_declarados_alguna_vez(supabase, clientes)
 
     out = []
     for ident, c in latest.items():
@@ -633,6 +653,12 @@ def _estado_declaraciones_visibles(user_id: str):
             "esperados": esperados,
             "presentadas": presentadas,
             "pendientes": pendientes,
+            # Tipos pendientes que NUNCA se presentaron en ningún período: solo
+            # hay cálculos, todavía no se declara desde el sistema.
+            "nunca_declarados": [t for t in pendientes if t not in declarados.get(ident, set())],
+            # Presentó alguna declaración, de cualquier tipo, en algún período.
+            # Los que no, solo tienen cálculos: sin plazo que vigilar.
+            "alguna_vez_declarado": bool(declarados.get(ident)),
             # Todo presentado: hay algo esperado y no queda ninguno pendiente.
             "todo_presentado": bool(esperados) and not pendientes,
         })
@@ -807,6 +833,7 @@ async def matriz_declaraciones(meses: int = Query(6, ge=1, le=24),
         decl_rows = fetch_in(
             lambda: supabase.table("declaraciones").select("client_id,tipo,presentada_sri"),
             cids_ventana, "client_id")
+        declarados = _tipos_declarados_alguna_vez(supabase, clientes)
         decl = {}
         for r in decl_rows:
             k = (r.get("client_id"), (r.get("tipo") or "").upper())
@@ -851,6 +878,8 @@ async def matriz_declaraciones(meses: int = Query(6, ge=1, le=24),
                 filas.append({
                     "identificacion": ident, "nombre": info["nombre"], "tipo": tipo,
                     "periodicidad": info["periodicidad"], "celdas": celdas,
+                    # Nunca presentada en ningún período (no solo en la ventana).
+                    "nunca_declarado": tipo not in declarados.get(ident, set()),
                 })
 
         filas.sort(key=lambda f: ((f["nombre"] or "").upper(), f["tipo"]))

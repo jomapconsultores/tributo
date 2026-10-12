@@ -178,15 +178,17 @@ export function infoDeclaracion(ruc, hoy = new Date()) {
 }
 
 // Ordena una lista por la fecha máxima de declaración, la más urgente primero
-// (las vencidas arriba). Las que ya están presentadas van después de las
-// pendientes y las sin fecha calculable (cédula, RUC raro) al final. El orden es
-// estable: a igual fecha se respeta el que traía la lista (alfabético).
+// (las vencidas arriba). Después van las ya presentadas, luego los que nunca
+// declararon (solo cálculos) y al final los sin fecha calculable (cédula, RUC
+// raro). El orden es estable: a igual fecha se respeta el que traía la lista.
 //   cliente(x)    → objeto con identificacion (y periodicidad/período si se tiene)
 //   presentada(x) → true si esa declaración ya se subió al SRI
-export function ordenarPorVencimiento(list, { cliente = (x) => x, presentada = () => false } = {}) {
+//   nunca(x)      → true si nunca presentó ninguna declaración
+export function ordenarPorVencimiento(list, { cliente = (x) => x, presentada = () => false, nunca = () => false } = {}) {
   const clave = (x) => {
     const e = estadoDeclaracionCliente(cliente(x))
-    if (!e.valido) return [2, 0]
+    if (!e.valido) return [3, 0]
+    if (nunca(x)) return [2, 0]
     return [presentada(x) ? 1 : 0, e.limite.getTime()]
   }
   return list

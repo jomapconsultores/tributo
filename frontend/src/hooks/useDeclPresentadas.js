@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import useCachedResource from './useCachedResource'
 import { declaracionesAPI } from '../services/api'
 import { bust } from '../services/cache'
@@ -29,7 +29,7 @@ export default function useDeclPresentadas() {
     window.addEventListener(EVENTO_PRESENTADA, onCambio)
     return () => window.removeEventListener(EVENTO_PRESENTADA, onCambio)
   }, [reload])
-  const mapa = data || {}
+  const mapa = useMemo(() => data || {}, [data])
   const estadoDe = useCallback(
     (identificacion) => mapa[(identificacion || '').trim()] || null,
     [mapa],
@@ -38,7 +38,14 @@ export default function useDeclPresentadas() {
     (identificacion) => !!estadoDe(identificacion)?.todo_presentado,
     [estadoDe],
   )
-  return { mapa, estadoDe, estaPresentada, loading, error, reload }
+  // Nunca presentó una declaración en ningún período (solo hay cálculos). Sin
+  // dato (cargando o backend anterior) se asume que sí declara, para no esconder
+  // a nadie por error.
+  const nuncaDeclaro = useCallback(
+    (identificacion) => estadoDe(identificacion)?.alguna_vez_declarado === false,
+    [estadoDe],
+  )
+  return { mapa, estadoDe, estaPresentada, nuncaDeclaro, loading, error, reload }
 }
 
 /** Invalida el caché del estado de presentación y avisa a las pantallas montadas.
