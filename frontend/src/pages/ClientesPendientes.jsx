@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { declaracionesAPI, facturarAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { useAccess, homeFor } from '../context/AccessContext'
-import { estadoDeclaracionCliente } from '../utils/declaracionSRI'
+import { estadoDeclaracionCliente, ordenarPorVencimiento } from '../utils/declaracionSRI'
 import { refrescarPresentadas } from '../hooks/useDeclPresentadas'
 import { periodoLargo } from '../utils/periodo'
 import { filterBySearch } from '../utils/search'
+import OrdenLista from '../components/OrdenLista'
+import useOrdenLista from '../hooks/useOrdenLista'
 import './ClientesPendientes.css'
 
 // Ruta de la pantalla de declaración según el tipo pendiente.
@@ -22,6 +24,7 @@ export default function ClientesPendientes() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
+  const [orden, setOrden] = useOrdenLista('cpOrden')
   const [marcando, setMarcando] = useState('')  // 'client_id|tipo' que se está marcando
   // Selección para el cierre de mes en lote: claves 'client_id|tipo'.
   const [sel, setSel] = useState(() => new Set())
@@ -100,10 +103,11 @@ export default function ClientesPendientes() {
   }
 
   // Ya vienen en orden alfabético del backend; el filtro conserva ese orden.
-  const filtradas = useMemo(
-    () => filterBySearch(rows, search, (r) => [r.nombre, r.identificacion]),
-    [rows, search],
-  )
+  // Por vencimiento: lo vencido y lo que vence antes, arriba.
+  const filtradas = useMemo(() => {
+    const list = filterBySearch(rows, search, (r) => [r.nombre, r.identificacion])
+    return orden === 'vencimiento' ? ordenarPorVencimiento(list) : list
+  }, [rows, search, orden])
   const totalPendientes = useMemo(
     () => rows.reduce((s, r) => s + (r.pendientes?.length || 0), 0),
     [rows],
@@ -169,6 +173,7 @@ export default function ClientesPendientes() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        <OrdenLista orden={orden} onChange={setOrden} />
         <span className="cp-count">
           {rows.length} contribuyente(s) · {totalPendientes} declaración(es) pendiente(s)
         </span>

@@ -2,7 +2,9 @@ import { useState, useMemo, useEffect, Fragment } from 'react'
 import { clientsAPI, anexosAPI } from '../services/api'
 import { useClients } from '../context/ClientContext'
 import { nombreMes } from '../utils/periodo'
-import { infoDeclaracion } from '../utils/declaracionSRI'
+import { infoDeclaracion, ordenarPorVencimiento } from '../utils/declaracionSRI'
+import OrdenLista from '../components/OrdenLista'
+import useOrdenLista from '../hooks/useOrdenLista'
 import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import useDeclPresentadas from '../hooks/useDeclPresentadas'
 import BadgeVencimiento from '../components/BadgeVencimiento'
@@ -33,9 +35,8 @@ export default function SavedData() {
   const [error, setError] = useState('')
   // Filtro/orden por fecha máxima de declaración (9no dígito del RUC)
   const [diaFilter, setDiaFilter] = useState(() => localStorage.getItem('sdDiaFilter') || '')
-  const [ordenFecha, setOrdenFecha] = useState(() => localStorage.getItem('sdOrdenFecha') === '1')
+  const [orden, setOrden] = useOrdenLista('sdOrden')
   useEffect(() => { try { localStorage.setItem('sdDiaFilter', diaFilter) } catch { /* ignore */ } }, [diaFilter])
-  useEffect(() => { try { localStorage.setItem('sdOrdenFecha', ordenFecha ? '1' : '0') } catch { /* ignore */ } }, [ordenFecha])
 
   // Mapa client_id → período (para mostrar el período de cada anexo)
   const clientById = useMemo(() => {
@@ -65,18 +66,11 @@ export default function SavedData() {
   const filtered = useMemo(() => {
     let list = filtrarClientesPorTexto(contribuyentes, search)
     if (diaFilter) list = list.filter((c) => infoDeclaracion(c.identificacion).dia === Number(diaFilter))
-    if (ordenFecha) {
-      list = [...list].sort((a, b) => {
-        const fa = infoDeclaracion(a.identificacion).proximaFecha
-        const fb = infoDeclaracion(b.identificacion).proximaFecha
-        if (!fa && !fb) return 0
-        if (!fa) return 1
-        if (!fb) return -1
-        return fa - fb
-      })
+    if (orden === 'vencimiento') {
+      list = ordenarPorVencimiento(list, { presentada: (c) => estaPresentada(c.identificacion) })
     }
     return list
-  }, [contribuyentes, search, diaFilter, ordenFecha])
+  }, [contribuyentes, search, diaFilter, orden, estaPresentada])
 
   const openContribuyente = async (c) => {
     setSelected(c)
@@ -148,9 +142,7 @@ export default function SavedData() {
               <option value="">📅 Declaración: todas</option>
               {DIAS_DECL.map((d) => <option key={d} value={d}>Declaran el día {d}</option>)}
             </select>
-            <label title="Ordenar por la próxima fecha de declaración (la más cercana primero)">
-              <input type="checkbox" checked={ordenFecha} onChange={(e) => setOrdenFecha(e.target.checked)} /> ↑ fecha
-            </label>
+            <OrdenLista orden={orden} onChange={setOrden} compacto />
           </div>
           <div className="sd-list-scroll">
             {filtered.length === 0 && <div className="sd-empty">Sin contribuyentes.</div>}

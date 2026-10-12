@@ -8,6 +8,10 @@ import { useAccess, homeFor } from '../context/AccessContext'
 import { actividadAPI, activacionAPI } from '../services/api'
 import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import BajadorSRI from './BajadorSRI'
+import OrdenLista from './OrdenLista'
+import useOrdenLista from '../hooks/useOrdenLista'
+import useDeclPresentadas from '../hooks/useDeclPresentadas'
+import { ordenarPorVencimiento } from '../utils/declaracionSRI'
 import './Sidebar.css'
 
 const ROL_LBL = {
@@ -31,6 +35,8 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   const { clients, selectedClientId, selectClient, setFocusIdent } = useClients()
   const { has, hasSub, isSuperAdmin, role } = useAccess()
   const [clientSearch, setClientSearch] = useState('')
+  const [ordenClientes, setOrdenClientes] = useOrdenLista('sbOrdenClientes')
+  const { estaPresentada } = useDeclPresentadas()
   const [movNuevos, setMovNuevos] = useState(0)
   // Comprobantes de pago esperando que el administrador active el acceso.
   const [activPend, setActivPend] = useState(0)
@@ -65,9 +71,12 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
   // Contribuyentes únicos (por identificación) para el listado por nombre
   const contribuyentes = useMemo(() => {
     const porIdentificacion = new Map()
+    const rank = (c) => (c.periodo_anio || 0) * 100 + (c.periodo_mes || 0)
     for (const c of clients) {
       const existing = porIdentificacion.get(c.identificacion)
       if (existing) {
+        // El período más reciente es el que da la fecha de vencimiento.
+        if (rank(c) > rank(existing.rep)) existing.rep = c
         if (c.is_shared) {
           existing.is_shared = true
           if (!existing.owner_email && c.owner_email) existing.owner_email = c.owner_email
@@ -79,13 +88,19 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         nombre: c.nombre,
         is_shared: !!c.is_shared,
         owner_email: c.owner_email || '',
+        rep: c,
       })
     }
     return Array.from(porIdentificacion.values())
       .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
   }, [clients])
   const sharedCount = contribuyentes.filter((c) => c.is_shared).length
-  const contribFiltrados = filtrarClientesPorTexto(contribuyentes, clientSearch)
+  const contribFiltrados = useMemo(() => {
+    const list = filtrarClientesPorTexto(contribuyentes, clientSearch)
+    return ordenClientes === 'vencimiento'
+      ? ordenarPorVencimiento(list, { cliente: (c) => c.rep, presentada: (c) => estaPresentada(c.identificacion) })
+      : list
+  }, [contribuyentes, clientSearch, ordenClientes, estaPresentada])
 
   const verContribuyente = (ident) => {
     setFocusIdent(ident)
@@ -400,6 +415,9 @@ export default function Sidebar({ onNewClient, onLogout, userEmail, open = false
         value={clientSearch}
         onChange={(e) => setClientSearch(e.target.value)}
       />
+      <div className="client-orden">
+        <OrdenLista orden={ordenClientes} onChange={setOrdenClientes} compacto />
+      </div>
       {contribFiltrados.length === 0 && (
         <div className="client-empty">{clients.length === 0 ? 'Sin clientes aún' : 'Sin coincidencias'}</div>
       )}

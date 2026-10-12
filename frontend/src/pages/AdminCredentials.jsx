@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { credentialsAPI, clientsAPI } from '../services/api'
 import { useAccess } from '../context/AccessContext'
-import { infoDeclaracion } from '../utils/declaracionSRI'
+import { infoDeclaracion, ordenarPorVencimiento } from '../utils/declaracionSRI'
+import OrdenLista from '../components/OrdenLista'
+import useOrdenLista from '../hooks/useOrdenLista'
 import { filterBySearch } from '../utils/search'
 import useDeclPresentadas from '../hooks/useDeclPresentadas'
 import BadgeVencimiento from '../components/BadgeVencimiento'
@@ -92,8 +94,7 @@ export default function AdminCredentials() {
   // la próxima fecha de declaración (la más cercana primero)
   const [diaFilter, setDiaFilter] = useState(() => localStorage.getItem('admCredDiaFilter') || '')
   useEffect(() => { try { localStorage.setItem('admCredDiaFilter', diaFilter) } catch { /* ignore */ } }, [diaFilter])
-  const [ordenFecha, setOrdenFecha] = useState(() => localStorage.getItem('admCredOrdenFecha') === '1')
-  useEffect(() => { try { localStorage.setItem('admCredOrdenFecha', ordenFecha ? '1' : '0') } catch { /* ignore */ } }, [ordenFecha])
+  const [orden, setOrden] = useOrdenLista('admCredOrden')
   const DIAS_DECL = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28]
 
   const load = async () => {
@@ -179,18 +180,14 @@ export default function AdminCredentials() {
       const matchDia = !diaFilter || infoDeclaracion(c.ruc).dia === Number(diaFilter)
       return matchSvc && matchDia
     })
-    if (ordenFecha) {
-      list = [...list].sort((a, b) => {
-        const fa = infoDeclaracion(a.ruc).proximaFecha
-        const fb = infoDeclaracion(b.ruc).proximaFecha
-        if (!fa && !fb) return 0
-        if (!fa) return 1
-        if (!fb) return -1
-        return fa - fb
+    if (orden === 'vencimiento') {
+      list = ordenarPorVencimiento(list, {
+        cliente: (c) => c._periodo || { identificacion: c.ruc },
+        presentada: (c) => estaPresentada(c.ruc),
       })
     }
     return list
-  }, [allRows, search, svcFilter, diaFilter, ordenFecha])
+  }, [allRows, search, svcFilter, diaFilter, orden, estaPresentada])
 
   const onDelete = async (cred) => {
     if (!confirm(`Eliminar credencial SRI de "${cred.nombre}" (${cred.ruc})?\n\nEsta acción no se puede deshacer.`)) return
@@ -394,10 +391,7 @@ export default function AdminCredentials() {
           <option value="">Todas</option>
           {DIAS_DECL.map((d) => <option key={d} value={d}>día {d}</option>)}
         </select>
-        <label className="adm-cred-orden" title="Ordenar por la próxima fecha de declaración (la más cercana primero)">
-          <input type="checkbox" checked={ordenFecha} onChange={(e) => setOrdenFecha(e.target.checked)} />
-          ↑ por fecha
-        </label>
+        <OrdenLista orden={orden} onChange={setOrden} />
       </div>
 
       {loading ? (

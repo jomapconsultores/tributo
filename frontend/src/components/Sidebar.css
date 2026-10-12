@@ -332,6 +332,9 @@
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 .client-search::placeholder { color: #475569; }
+.client-orden { display: flex; margin-bottom: 6px; }
+.client-orden .ordl { width: 100%; }
+.client-orden .ordl-btn { flex: 1; }
 .client-search:focus {
   border-color: rgba(99, 130, 246, 0.55);
   background: rgba(255,255,255,0.09);

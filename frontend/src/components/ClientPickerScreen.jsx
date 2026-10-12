@@ -4,6 +4,9 @@ import { periodoLargo, periodoCorto } from '../utils/periodo'
 import { filtrarClientesPorTexto } from '../utils/clientSearch'
 import useDeclPresentadas from '../hooks/useDeclPresentadas'
 import BadgeVencimiento from './BadgeVencimiento'
+import OrdenLista from './OrdenLista'
+import useOrdenLista from '../hooks/useOrdenLista'
+import { ordenarPorVencimiento } from '../utils/declaracionSRI'
 import './ClientPickerScreen.css'
 
 const initials = (nombre) => {
@@ -26,6 +29,7 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
   const { clients, selectClient } = useClients()
   const { estaPresentada } = useDeclPresentadas()
   const [search, setSearch] = useState('')
+  const [orden, setOrden] = useOrdenLista('cpsOrden')
   const [expanded, setExpanded] = useState({}) // identificacion -> mostrar sus períodos
 
   // Períodos de un contribuyente (más reciente primero) para desplegarlos y poder
@@ -50,8 +54,12 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
         if (rank(c) > rank(g.rep)) g.rep = c
       }
     }
-    return [...grupos.values()]
-  }, [clients, idents_svc, search])
+    const lista = [...grupos.values()]
+      .sort((a, b) => (a.rep.nombre || '').localeCompare(b.rep.nombre || ''))
+    return orden === 'vencimiento'
+      ? ordenarPorVencimiento(lista, { cliente: (g) => g.rep, presentada: (g) => estaPresentada(g.rep.identificacion) })
+      : lista
+  }, [clients, idents_svc, search, orden, estaPresentada])
 
   return (
     <div className="cps-page">
@@ -95,11 +103,14 @@ export default function ClientPickerScreen({ icon, title, subtitle, idents_svc, 
               )}
             </div>
 
-            {/* Contador */}
+            {/* Contador + orden */}
             <div className="cps-count">
-              {search
-                ? `${visible.length} de ${idents_svc.size} contribuyente(s)`
-                : `${idents_svc.size} contribuyente(s) habilitado(s)`}
+              <span>
+                {search
+                  ? `${visible.length} de ${idents_svc.size} contribuyente(s)`
+                  : `${idents_svc.size} contribuyente(s) habilitado(s)`}
+              </span>
+              <OrdenLista orden={orden} onChange={setOrden} />
             </div>
 
             {/* Lista */}
