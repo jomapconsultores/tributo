@@ -53,3 +53,9 @@ jobs:
 
       - name: Compile check
         run: python -m compileall -q . -x '(^|/)venv/'
+
+      - name: Unit tests sin BD (scripts/test_periodicidad.py, scripts/test_pdf_ice.py)
+        working-directory: ${{ github.workspace }}
+        run: |
+          python scripts/test_periodicidad.py
+          python scripts/test_pdf_ice.py
