@@ -54,6 +54,11 @@
 .ice-dropzone .dz-sub { font-size: 0.8rem; color: #a16207; }
 
 .ice-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ice-anexos-guardados { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 10px; padding: 8px 12px; margin-top: 10px; }
+.ice-ag-lbl { font-size: 0.78rem; font-weight: 700; color: #6d28d9; }
+.ice-ag-item { background: #fff; border: 1px solid #c4b5fd; border-radius: 20px; padding: 3px 11px; font-size: 0.8rem; font-weight: 600; color: #6d28d9; cursor: pointer; }
+.ice-ag-item:hover { background: #ede9fe; }
+.ice-ag-item.constancia { border-style: dashed; color: #64748b; border-color: #cbd5e1; font-weight: 500; }
 .ice-search { flex: 1; min-width: 200px; max-width: 340px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.85rem; outline: none; }
 .ice-search:focus { border-color: #d97706; }
 

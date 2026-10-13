@@ -233,6 +233,9 @@ export default function SavedData() {
                             {anexoOpen === a.id && (
                               <tr><td colSpan={6}>
                                 <div style={{ fontSize: 12, color: '#444', padding: '4px 0' }}>
+                                  {d.marcada_directa && !(d.rows || []).length && (
+                                    <div><strong>Presentado directo en el SRI:</strong> solo hay constancia de que se hizo, sin su contenido. Para verlo aquí, carga su XML en Anexo PVP+ICE y guárdalo en este mes.</div>
+                                  )}
                                   <div><strong>Informante:</strong> {d.header?.IdInformante || '—'} · {d.header?.razonSocial || '—'}</div>
                                   <div style={{ marginTop: 4, maxHeight: 180, overflow: 'auto' }}>
                                     {(d.rows || []).slice(0, 50).map((r, i) => (

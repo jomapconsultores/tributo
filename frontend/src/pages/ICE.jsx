@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
-import { iceAPI, downloadBlob } from '../services/api'
+import { iceAPI, anexosAPI, downloadBlob } from '../services/api'
 import { descargarXmlsOriginales } from '../utils/xmlOriginales'
 import { useClients } from '../context/ClientContext'
-import { periodoLargo } from '../utils/periodo'
+import { periodoLargo, periodoCorto, MESES_CORTO } from '../utils/periodo'
 import BulkBar from '../components/BulkBar'
 import { useBulkSelection } from '../hooks/useBulkSelection'
 import { useClientList } from '../hooks/useClientList'
@@ -93,6 +93,34 @@ export default function ICE() {
   const setFiltro = (k, v) => setFiltros((p) => ({ ...p, [k]: v }))
   const [dragActive, setDragActive] = useState(false)
   const xmlInputRef = useRef(null)
+
+  // Anexos PVP+ICE guardados del RUC (todos sus períodos). Se abren en el
+  // editor de Anexo PVP+ICE; las constancias de lo presentado directo en el
+  // SRI no tienen contenido y solo se explican.
+  const [anexosRuc, setAnexosRuc] = useState([])
+  const rucActual = selectedClient?.identificacion
+  useEffect(() => {
+    if (!rucActual) { setAnexosRuc([]); return }
+    const ids = new Set(clients.filter((c) => c.identificacion === rucActual).map((c) => c.id))
+    anexosAPI.list()
+      .then((r) => setAnexosRuc((r.data?.data || []).filter((a) => ids.has(a.client_id))))
+      .catch(() => setAnexosRuc([]))
+  }, [rucActual, clients.length])
+  const esConstancia = (a) => !!a.datos?.marcada_directa && !(a.datos.rows || []).length
+  const periodoAnexo = (a) => {
+    if (a.periodo_anio && a.periodo_mes) return `${MESES_CORTO[a.periodo_mes - 1] || a.periodo_mes} ${a.periodo_anio}`
+    const cli = clients.find((c) => c.id === a.client_id)
+    return cli ? periodoCorto(cli) : '—'
+  }
+  const abrirAnexoGuardado = (a) => {
+    if (esConstancia(a)) {
+      alert(`El anexo ${a.tipo} de ${periodoAnexo(a)} se presentó directamente en el SRI: `
+        + 'el sistema solo guarda la constancia de que se hizo, no su contenido.\n\n'
+        + 'Para tenerlo aquí, carga su XML en "Anexo PVP+ICE" y guárdalo en ese mes.')
+      return
+    }
+    navigate('/anexo-pvp-ice', { state: { abrirAnexoId: a.id } })
+  }
 
   useEffect(() => { iceAPI.taxYears().then((r) => setYears(r.data.years || ['2026'])).catch(() => {}) }, [])
 
@@ -401,6 +429,19 @@ export default function ICE() {
         <button className="ice-btn small danger" onClick={handleClear}>🗑 Limpiar</button>
         <input className="ice-search" placeholder="🔍 Desglose: fecha, cliente, RUC, producto, botellas, ICE, total…" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
+
+      {anexosRuc.length > 0 && (
+        <div className="ice-anexos-guardados">
+          <span className="ice-ag-lbl">📄 Anexos guardados del RUC:</span>
+          {anexosRuc.map((a) => (
+            <button key={a.id} className={`ice-ag-item${esConstancia(a) ? ' constancia' : ''}`}
+              onClick={() => abrirAnexoGuardado(a)}
+              title={esConstancia(a) ? 'Presentado directo en el SRI: solo hay constancia, sin contenido' : 'Abrirlo en Anexo PVP+ICE para verlo o modificarlo'}>
+              {a.tipo} · {periodoAnexo(a)} · {esConstancia(a) ? 'presentado en el SRI' : `${a.datos?.rows?.length ?? 0} filas`}
+            </button>
+          ))}
+        </div>
+      )}
 
       {busy && <div className="ice-busy">⏳ {busy}</div>}
 

@@ -1,5 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
 import { iceAPI, productsAPI, anexosAPI, compradoresAPI, downloadBlob } from '../services/api'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useClients } from '../context/ClientContext'
 import { periodoCorto, MESES_CORTO } from '../utils/periodo'
 import useDraft from '../hooks/useDraft'
@@ -76,6 +77,10 @@ const normalizarCantidades = (tipo, r) => {
   return out
 }
 
+// Anexo guardado solo como constancia de que se presentó directo en el SRI
+// (marcada_directa, sin filas): no hay contenido que abrir.
+const esConstancia = (a) => !!a?.datos?.marcada_directa && !(a.datos.rows || []).length
+
 const dig = (v) => String(v || '').replace(/\D/g, '')
 const pad = (v, n) => dig(v).padStart(n, '0')
 const sinCeros = (v) => String(parseInt(dig(v) || '0', 10))
@@ -95,6 +100,8 @@ const descomponerCodigo = (cod) => {
 
 export default function AnexoPVPICE() {
   const { clients } = useClients()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [tipo, setTipo] = useDraft(`${DRAFT}:tipo`, null) // 'ICE' | 'PVP'
   const [header, setHeader] = useDraft(`${DRAFT}:header`, {})
   const [rows, setRows] = useDraft(`${DRAFT}:rows`, [])
@@ -255,6 +262,14 @@ export default function AnexoPVPICE() {
 
   const recuperarAnexo = (a) => {
     const d = a.datos || {}
+    // Constancia sin contenido: deja registrado que el anexo de ese mes se hizo
+    // directo en el portal del SRI. Abrirla vaciaba el editor sin mostrar nada.
+    if (esConstancia(a)) {
+      alert(`El anexo ${a.tipo} de ${periodoAnexo(a)} se presentó directamente en el SRI: `
+        + 'el sistema solo guarda la constancia de que se hizo, no su contenido.\n\n'
+        + 'Para tenerlo aquí, carga su XML (📂 Cargar XML) y guárdalo en ese mes.')
+      return
+    }
     const t = d.tipo || a.tipo
     const cli = clients.find((c) => c.id === a.client_id)
     // Se abre EN SU período: sincronizamos la ref ANTES de mover los selectores
@@ -275,6 +290,18 @@ export default function AnexoPVPICE() {
     setCopiaDe(null)
     cerrarPanel()
   }
+
+  // Llegó desde "Ingresos ICE - XML" con un anexo guardado para abrir: se trae
+  // completo y se abre en su período (cuando ya están los contribuyentes, que
+  // es lo que usa recuperarAnexo para mover RUC y Mes/Año).
+  const abrirId = location.state?.abrirAnexoId
+  useEffect(() => {
+    if (!abrirId || !clients.length) return
+    navigate(location.pathname, { replace: true, state: null })
+    anexosAPI.get(abrirId)
+      .then((r) => recuperarAnexo(r.data))
+      .catch((e) => alert('No se pudo abrir el anexo: ' + (e.response?.data?.detail || e.message)))
+  }, [abrirId, clients.length])
 
   const borrarAnexo = async (id) => {
     if (!window.confirm('¿Eliminar este anexo guardado?')) return
@@ -784,8 +811,10 @@ export default function AnexoPVPICE() {
           {saved.map((a) => (
             <span key={a.id} className={`ax-saved-item${a.id === savedId ? ' activo' : ''}`}>
               <button className="ax-saved-load" onClick={() => recuperarAnexo(a)}
-                title="Abrirlo para modificarlo (se abre en su propio mes; para reusarlo en otro, cambia el Mes/Año arriba y guarda)">
-                {a.tipo} · {periodoAnexo(a)} · {(a.datos?.rows?.length ?? 0)} filas
+                title={esConstancia(a)
+                  ? 'Presentado directo en el SRI: solo hay constancia, sin contenido'
+                  : 'Abrirlo para modificarlo (se abre en su propio mes; para reusarlo en otro, cambia el Mes/Año arriba y guarda)'}>
+                {a.tipo} · {periodoAnexo(a)} · {esConstancia(a) ? 'presentado en el SRI' : `${a.datos?.rows?.length ?? 0} filas`}
               </button>
               <button className="ax-saved-del" onClick={() => borrarAnexo(a.id)} title="Eliminar">✕</button>
             </span>
